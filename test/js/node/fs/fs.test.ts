@@ -125,6 +125,67 @@ it.skipIf(isWindows)("fs.chmodSync applies mode bits above 0o777", () => {
   expect(statSync(dirPath).mode & 0o7777).toBe(0o1755);
 });
 
+describe("fs.access and fs.symlink success values match node", () => {
+  it("accessSync returns undefined", () => {
+    using dir = tempDir("fs-access-success", { "file.txt": "" });
+    const file = join(String(dir), "file.txt");
+    expect(fs.accessSync(file)).toBeUndefined();
+    expect(fs.accessSync(file, constants.R_OK)).toBeUndefined();
+    expect(fs.accessSync(String(dir))).toBeUndefined();
+  });
+
+  it("promises.access resolves to undefined", async () => {
+    using dir = tempDir("fs-access-success", { "file.txt": "" });
+    const file = join(String(dir), "file.txt");
+    expect(await promises.access(file)).toBeUndefined();
+    expect(await promises.access(file, constants.R_OK)).toBeUndefined();
+    expect(await promises.access(String(dir))).toBeUndefined();
+  });
+
+  it("access callback is called with exactly (null)", async () => {
+    using dir = tempDir("fs-access-success", { "file.txt": "" });
+    const file = join(String(dir), "file.txt");
+
+    const withoutMode = Promise.withResolvers<unknown[]>();
+    fs.access(file, (...args) => withoutMode.resolve(args));
+    expect(await withoutMode.promise).toStrictEqual([null]);
+
+    const withMode = Promise.withResolvers<unknown[]>();
+    fs.access(file, constants.R_OK, (...args) => withMode.resolve(args));
+    expect(await withMode.promise).toStrictEqual([null]);
+  });
+
+  it("access callback receives the error on failure", async () => {
+    using dir = tempDir("fs-access-success", {});
+    const { promise, resolve } = Promise.withResolvers<unknown[]>();
+    fs.access(join(String(dir), "missing.txt"), (...args) => resolve(args));
+    const args = await promise;
+    expect(args).toHaveLength(1);
+    expect(args[0]).toMatchObject({ code: "ENOENT", syscall: "access" });
+  });
+
+  it("symlink callback is called with exactly (null) in both overloads", async () => {
+    using dir = tempDir("fs-symlink-success", { "file.txt": "" });
+    const file = join(String(dir), "file.txt");
+
+    const threeArgs = Promise.withResolvers<unknown[]>();
+    fs.symlink(file, join(String(dir), "link-3"), (...args) => threeArgs.resolve(args));
+    expect(await threeArgs.promise).toStrictEqual([null]);
+
+    const fourArgs = Promise.withResolvers<unknown[]>();
+    fs.symlink(file, join(String(dir), "link-4"), "file", (...args) => fourArgs.resolve(args));
+    expect(await fourArgs.promise).toStrictEqual([null]);
+  });
+
+  it("symlink callback receives the error on failure", async () => {
+    using dir = tempDir("fs-symlink-failure", { "file.txt": "", "taken": "" });
+    const { promise, resolve } = Promise.withResolvers<unknown[]>();
+    fs.symlink(join(String(dir), "file.txt"), join(String(dir), "taken"), (...args) => resolve(args));
+    const args = await promise;
+    expect(args).toHaveLength(1);
+    expect(args[0]).toMatchObject({ code: "EEXIST", syscall: "symlink" });
+  });
+});
 it.concurrent("fs.writeFile(1, data) should work when its inherited", async () => {
   await using proc = Bun.spawn({
     cmd: [bunExe(), join(import.meta.dir, "fs-writeFile-1-fixture.js"), "1"],

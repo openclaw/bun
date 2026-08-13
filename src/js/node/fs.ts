@@ -419,7 +419,7 @@ var access = function access(path, mode, callback?) {
       callback = wrapFsCallback(callback);
     }
 
-    if ($isCallable(callback)) fs.symlinkCb(err => callback(err === null ? undefined : err), target, path, type);
+    if ($isCallable(callback)) fs.symlinkCb(callback, target, path, type);
     else fs.symlink(target, path, type).then(callback, callback);
   },
   truncate = function truncate(path, len, callback?) {
