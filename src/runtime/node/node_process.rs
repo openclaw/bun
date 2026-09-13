@@ -5,7 +5,7 @@ use core::ffi::c_char;
 use bun_core::EncodedSlice;
 use bun_core::env_var;
 use bun_core::{self, Environment, Global};
-use bun_jsc::{EncodedSliceJsc as _, JSGlobalObject, JSValue, JsResult};
+use bun_jsc::{CallFrame, EncodedSliceJsc as _, JSGlobalObject, JSValue, JsResult};
 
 // Both materialize the array on first access through `Bun__Process__createArgv`
 // / `createExecArgv` below, which return zero with the exception pending.
@@ -60,6 +60,34 @@ pub(crate) fn get_argv(global: &JSGlobalObject) -> JsResult<JSValue> {
 
 pub(crate) fn get_exec_argv(global: &JSGlobalObject) -> JsResult<JSValue> {
     bun_jsc::call_zero_is_throw(global, || Bun__Process__getExecArgv(global))
+}
+
+#[bun_jsc::host_fn(export = "Bun__Process__getActiveResourcesInfo")]
+fn get_active_resources_info(global: &JSGlobalObject, _frame: &CallFrame) -> JsResult<JSValue> {
+    let all = crate::jsc_hooks::timer_all();
+    if all.is_null() {
+        return JSValue::create_empty_array(global, 0);
+    }
+
+    // SAFETY: this host function runs on the JS thread. `timer_all()` points
+    // to this thread's live RuntimeState for the lifetime of the VM.
+    let (timeout_count, immediate_count) =
+        unsafe { ((*all).active_timer_count, (*all).immediate_ref_count) };
+    debug_assert!(timeout_count >= 0);
+    debug_assert!(immediate_count >= 0);
+
+    // Node appends one entry per referenced timeout, followed by one per referenced immediate.
+    // https://github.com/nodejs/node/blob/v26.8.2/src/node_process_methods.cc#L302-L332
+    let timeout_count = timeout_count.max(0) as usize;
+    let immediate_count = immediate_count.max(0) as usize;
+    JSValue::create_array_from_iter(global, 0..timeout_count + immediate_count, |index| {
+        let name = if index < timeout_count {
+            &b"Timeout"[..]
+        } else {
+            &b"Immediate"[..]
+        };
+        Ok(EncodedSlice::latin1(name).to_js(global))
+    })
 }
 
 // ───────────────────────────── exit ─────────────────────────────

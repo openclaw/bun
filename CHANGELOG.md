@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Report referenced Timeout and Immediate resources from `process.getActiveResourcesInfo()`, isolated per worker.
 - Release callback async contexts when timers are canceled, even while their handles remain reachable.
 - Point `NODE` and `npm_node_execpath` at the selected executable Node shim, including private fallback directories.
 - Avoid allocator handoffs during nonblocking event-loop polls.

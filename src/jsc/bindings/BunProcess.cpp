@@ -193,6 +193,7 @@ extern "C" void Bun__ensureProcessIPCInitialized(JSGlobalObject*);
 extern "C" const char* Bun__githubURL;
 extern "C" const char* Bun__sqlite3_version();
 BUN_DECLARE_HOST_FUNCTION(Bun__Process__send);
+BUN_DECLARE_HOST_FUNCTION(Bun__Process__getActiveResourcesInfo);
 
 extern "C" void Process__emitDisconnectEvent(Zig::GlobalObject* global);
 extern "C" void Process__emitErrorEvent(Zig::GlobalObject* global, EncodedJSValue value);
@@ -5096,7 +5097,7 @@ extern "C" void Process__emitErrorEvent(Zig::GlobalObject* global, EncodedJSValu
   exitCode                         processExitCode                                     CustomAccessor|DontDelete
   _fatalException                  Process_functionFatalException                      Function 1
   features                         constructFeatures                                   PropertyCallback
-  getActiveResourcesInfo           Process_stubFunctionReturningArray                  Function 0
+  getActiveResourcesInfo           Bun__Process__getActiveResourcesInfo                 Function 0
   getBuiltinModule                 Process_functionLoadBuiltinModule                   Function 1
   hasUncaughtExceptionCaptureCallback Process_hasUncaughtExceptionCaptureCallback      Function 0
   hrtime                           constructProcessHrtimeObject                        PropertyCallback

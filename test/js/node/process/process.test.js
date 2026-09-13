@@ -1580,13 +1580,97 @@ describe.concurrent(() => {
     });
   }
 
-  const arrayStubs = ["getActiveResourcesInfo", "_getActiveRequests", "_getActiveHandles"];
+  const arrayStubs = ["_getActiveRequests", "_getActiveHandles"];
 
   for (const stub of arrayStubs) {
     it(`process.${stub}`, () => {
       expect(process[stub]()).toBeInstanceOf(Array);
     });
   }
+
+  it.concurrent("process.getActiveResourcesInfo tracks referenced timers and immediates", async () => {
+    await runInlineFixture(
+      `const assert = require("node:assert/strict");
+       const timerResources = () => process.getActiveResourcesInfo().filter(
+         name => name === "Timeout" || name === "Immediate"
+       );
+       assert.deepEqual(timerResources(), []);
+
+       const timeout1 = setTimeout(() => {}, 60_000);
+       const timeout2 = setTimeout(() => {}, 60_000);
+       const interval = setInterval(() => {}, 60_000);
+       const immediate1 = setImmediate(() => {});
+       const immediate2 = setImmediate(() => {});
+       assert.deepEqual(timerResources(), ["Timeout", "Timeout", "Timeout", "Immediate", "Immediate"]);
+
+       timeout1.unref();
+       immediate1.unref();
+       assert.deepEqual(timerResources(), ["Timeout", "Timeout", "Immediate"]);
+       timeout1.ref();
+       immediate1.ref();
+       assert.deepEqual(timerResources(), ["Timeout", "Timeout", "Timeout", "Immediate", "Immediate"]);
+
+       clearTimeout(timeout1);
+       clearTimeout(timeout2);
+       clearInterval(interval);
+       clearImmediate(immediate1);
+       clearImmediate(immediate2);
+       assert.deepEqual(timerResources(), []);
+       console.log("ok");`,
+      "ok\n",
+    );
+  });
+
+  it.concurrent("process.getActiveResourcesInfo tracks timer callback lifetimes", async () => {
+    await runInlineFixture(
+      `const assert = require("node:assert/strict");
+       const resources = name => process.getActiveResourcesInfo().filter(type => type === name);
+       const timeout = setTimeout(() => {
+         assert.deepEqual(resources("Timeout"), ["Timeout"]);
+         clearTimeout(timeout);
+         assert.deepEqual(resources("Timeout"), []);
+         const interval = setInterval(() => {
+           assert.deepEqual(resources("Timeout"), ["Timeout"]);
+           clearInterval(interval);
+           assert.deepEqual(resources("Timeout"), []);
+           setImmediate(() => {
+             assert.deepEqual(resources("Immediate"), []);
+             console.log("ok");
+           });
+         }, 0);
+       }, 0);`,
+      "ok\n",
+    );
+  });
+
+  it.concurrent("process.getActiveResourcesInfo is isolated per Worker", async () => {
+    await runInlineFixture(
+      `const assert = require("node:assert/strict");
+       const { Worker } = require("node:worker_threads");
+       const timers = () => process.getActiveResourcesInfo().filter(name => name === "Timeout");
+       const worker = new Worker(
+         \`const { parentPort } = require("node:worker_threads");
+          const timer = setTimeout(() => {}, 60_000);
+          parentPort.postMessage(process.getActiveResourcesInfo().filter(name => name === "Timeout"));
+          parentPort.once("message", () => {
+            clearTimeout(timer);
+            parentPort.postMessage(process.getActiveResourcesInfo().filter(name => name === "Timeout"));
+          });\`,
+         { eval: true },
+       );
+       worker.once("message", workerTimers => {
+         assert.deepEqual(timers(), []);
+         assert.deepEqual(workerTimers, ["Timeout"]);
+         worker.once("message", async cleared => {
+           assert.deepEqual(cleared, []);
+           await worker.terminate();
+           console.log("ok");
+         });
+         worker.postMessage("clear");
+       });`,
+      "ok\n",
+    );
+  });
 
   const emptyObjectStubs = [];
   const emptyArrayStubs = ["moduleLoadList", "_preload_modules"];
