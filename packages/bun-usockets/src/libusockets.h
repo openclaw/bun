@@ -398,6 +398,10 @@ struct us_listen_socket_t *us_socket_group_listen_fd(us_socket_group_r group,
     LIBUS_SOCKET_DESCRIPTOR fd, int backlog, int options, int socket_ext_size, int *error)
     __attribute__((nonnull(1, 8)));  /* ssl_ctx nullable */
 void us_listen_socket_close(struct us_listen_socket_t *ls) nonnull_fn_decl;
+/* Replaces the default SSL_CTX used by future accepts. Existing sockets keep
+ * their own SSL_CTX references and continue uninterrupted. */
+void us_listen_socket_set_ssl_ctx(struct us_listen_socket_t *ls,
+    struct ssl_ctx_st *ssl_ctx) __attribute__((nonnull(1, 2)));
 
 /* SNI: tree hangs off the listen socket. ssl_ctx is up_ref'd; user is opaque
  * (uWS stores a per-domain HttpRouter*). user may be NULL. */
@@ -519,6 +523,10 @@ struct us_bun_socket_context_options_t {
     const char *sigalgs;
     /* Colon-separated named-group list applied via SSL_CTX_set1_groups_list. */
     const char *ecdh_curve;
+    /* Whether the default root store of this context includes the system's trusted CAs (node's
+     * per-Environment --use-system-ca): 0 = the process default (CLI flags / NODE_USE_SYSTEM_CA),
+     * 1 = include, -1 = exclude. Only matters when no `ca`/`ca_file_name` is given. */
+    int use_system_ca;
 };
 
 enum create_bun_socket_error_t {

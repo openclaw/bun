@@ -28,7 +28,6 @@ use bun_jsc::module_loader::{ArenaResetGuard, FetchFlags, TranspileArgs, Transpi
 use bun_jsc::resolved_source::Bytecode;
 use bun_jsc::virtual_machine::{
     InitOptions, RuntimeHooks, RuntimeState as OpaqueRuntimeState, SweepResult, VirtualMachine,
-    WorkerExecArgvFlags,
 };
 use bun_jsc::{
     AnyPromise, ErrorableResolvedSource, JSGlobalObject, JSInternalPromise, JSModuleLoader,
@@ -279,6 +278,7 @@ pub(crate) unsafe fn runtime_state_of(vm: *mut VirtualMachine) -> *mut RuntimeSt
 /// `RuntimeState.ssl_ctx_cache` (this crate). The cached `SSL_CTX*` is held
 /// for the VM's lifetime so the weak-cache entry never tombstones.
 pub(crate) fn default_client_ssl_ctx(vm: &VirtualMachine) -> *mut bun_uws::SslCtx {
+    let use_system_ca = vm.tls_use_system_ca_option();
     let rare = vm.as_mut().rare_data();
     if rare.default_client_ssl_ctx.is_none() {
         let mut err = bun_uws::create_bun_socket_error_t::none;
@@ -297,8 +297,14 @@ pub(crate) fn default_client_ssl_ctx(vm: &VirtualMachine) -> *mut bun_uws::SslCt
         // weak cache so a `tls.connect()` with default options later resolves
         // to the same CTX rather than building a second one with the same
         // digest. The +1 ref returned here is held for the VM's lifetime, so
-        // the entry never tombstones.
-        match cache.get_or_create_opts(&Default::default(), &mut err) {
+        // the entry never tombstones. `use_system_ca` is this thread's
+        // --use-system-ca decision (per-Environment in node), the same value
+        // `tls_true_defaults` stamps, so the two resolve to one CTX.
+        let opts = bun_uws::us_bun_socket_context_options_t {
+            use_system_ca,
+            ..Default::default()
+        };
+        match cache.get_or_create_opts(&opts, &mut err) {
             Some(ctx) => rare.default_client_ssl_ctx = Some(ctx),
             None => bun_core::Output::panic(format_args!(
                 "default client SSL_CTX init failed: {}",
@@ -765,6 +771,9 @@ unsafe fn load_preloads(vm: *mut VirtualMachine) -> bun_jsc::CrateResult<*mut JS
 
     // SAFETY: per fn contract.
     let n = unsafe { &*vm }.preload.len();
+    // SAFETY: per fn contract; these scalar fields are immutable during loading.
+    let require_start = unsafe { &*vm }.preload_require_start;
+    let require_end = require_start.saturating_add(unsafe { &*vm }.preload_require_count);
     for i in 0..n {
         // SAFETY: `i < n`; the `Box<[u8]>` allocation is stable across the
         // `resolve_and_auto_install` call below (which only touches
@@ -786,11 +795,16 @@ unsafe fn load_preloads(vm: *mut VirtualMachine) -> bun_jsc::CrateResult<*mut JS
             // ── resolve ─────────────────────────────────────────────────────
             // SAFETY: per fn contract; `top_level_dir` is the `'static` fs
             // singleton field.
+            let import_kind = if i >= require_start && i < require_end {
+                ImportKind::Require
+            } else {
+                ImportKind::Stmt
+            };
             let mut result = match unsafe {
                 (*vm).transpiler.resolver.resolve_and_auto_install(
                     &*top_level_dir,
                     normalized,
-                    ImportKind::Stmt,
+                    import_kind,
                     global_cache,
                 )
             } {
@@ -1526,7 +1540,7 @@ static __BUN_RUNTIME_HOOKS: RuntimeHooks = RuntimeHooks {
     console_print_runtime_object,
     load_standalone_sourcemap,
     apply_standalone_runtime_flags,
-    parse_worker_exec_argv_flags,
+    parse_worker_exec_argv,
     stop_cron_for_vm_teardown,
     cron_clear_all_reload,
     retroactively_report_discovered_tests,
@@ -1566,19 +1580,24 @@ unsafe fn apply_standalone_runtime_flags(
     crate::run_main::apply_standalone_runtime_flags(unsafe { &mut *transpiler }, graph);
 }
 
-/// Scan a Worker's `execArgv` for `--no-addons` and `--no-ffi-cc`. Like the
-/// CLI parser, the scan stops at the first positional.
-///
+/// Parse a Worker's `execArgv`; scans argv directly since `ArgIter<'static>` would leak the UTF-8 copies.
 /// # Safety
-/// Each `WTFStringImpl` in `exec_argv` is a live WTF string (the C++
-/// `Worker::create` array, kept alive for the worker's lifetime).
-unsafe fn parse_worker_exec_argv_flags(
+/// Each `WTFStringImpl` in `exec_argv` is a live WTF string kept alive for the worker's lifetime.
+unsafe fn parse_worker_exec_argv(
     exec_argv: &[bun_core::WTFStringImpl],
-) -> Option<WorkerExecArgvFlags> {
-    let mut flags = WorkerExecArgvFlags {
-        allow_addons: true,
-        allow_ffi_cc: true,
-    };
+) -> bun_jsc::virtual_machine::WorkerExecArgv {
+    use crate::cli::arguments::replace_pid_placeholder;
+    enum Pending {
+        None,
+        Interval,
+        Name,
+        Dir,
+    }
+    let mut out = bun_jsc::virtual_machine::WorkerExecArgv::default();
+    let mut no_addons = false;
+    let mut no_ffi_cc = false;
+    let mut pending = Pending::None;
+    let parse_interval = |v: &[u8]| std::str::from_utf8(v).ok().and_then(|s| s.parse().ok());
     for &arg in exec_argv {
         if arg.is_null() {
             continue;
@@ -1586,19 +1605,59 @@ unsafe fn parse_worker_exec_argv_flags(
         // SAFETY: per fn contract — `arg` is a live `WTFStringImpl*`.
         let owned = unsafe { &*arg }.to_owned_slice_z();
         let bytes = owned.as_bytes();
+        match core::mem::replace(&mut pending, Pending::None) {
+            Pending::None => {}
+            Pending::Interval => {
+                out.cpu_prof_interval = parse_interval(bytes);
+                continue;
+            }
+            Pending::Name => {
+                out.cpu_prof_name = Some(replace_pid_placeholder(bytes));
+                continue;
+            }
+            Pending::Dir => {
+                out.cpu_prof_dir = Some(bytes.into());
+                continue;
+            }
+        }
+        // execArgv holds no positionals: a bare token is the value of a flag this parser doesn't model
+        // (`-r ./preload.js`, `--conditions x`), so skip it rather than ending the scan.
         if bytes.first() != Some(&b'-') {
-            break;
+            continue;
         }
         if bytes == b"--" {
             break;
         }
         if bytes == b"--no-addons" {
-            flags.allow_addons = false;
+            no_addons = true;
         } else if bytes == b"--no-ffi-cc" {
-            flags.allow_ffi_cc = false;
+            no_ffi_cc = true;
+        } else if bytes == b"--use-system-ca" {
+            out.use_system_ca = Some(true);
+        } else if bytes == b"--no-use-system-ca" {
+            out.use_system_ca = Some(false);
+        } else if bytes == b"--cpu-prof" {
+            out.cpu_prof = true;
+        } else if bytes == b"--cpu-prof-md" {
+            out.cpu_prof_md = true;
+        } else if bytes == b"--cpu-prof-interval" {
+            pending = Pending::Interval;
+        } else if let Some(v) = bytes.strip_prefix(b"--cpu-prof-interval=") {
+            out.cpu_prof_interval = parse_interval(v);
+        } else if bytes == b"--cpu-prof-name" {
+            pending = Pending::Name;
+        } else if let Some(v) = bytes.strip_prefix(b"--cpu-prof-name=") {
+            out.cpu_prof_name = Some(replace_pid_placeholder(v));
+        } else if bytes == b"--cpu-prof-dir" {
+            pending = Pending::Dir;
+        } else if let Some(v) = bytes.strip_prefix(b"--cpu-prof-dir=") {
+            out.cpu_prof_dir = Some(v.into());
         }
     }
-    Some(flags)
+    // Override both unconditionally: the caller ANDs them with the parent's values.
+    out.allow_addons = Some(!no_addons);
+    out.allow_ffi_cc = Some(!no_ffi_cc);
+    out
 }
 
 /// `jsc.API.cron.CronJob.clearAllForVM(vm, .teardown)` —
@@ -3869,7 +3928,7 @@ fn force_loader_from_api_u8(api_loader: u8) -> Option<Loader> {
 /// `bun_ast::LoaderHashTable` (= `StringArrayHashMap<bun_ast::Loader>`).
 fn loader_for_path(path: &Fs::Path<'_>, loaders: &bun_ast::LoaderHashTable) -> Option<Loader> {
     if path.is_data_url() {
-        return Some(Loader::Dataurl);
+        return Some(bun_bundler::options::data_url_loader(path.text));
     }
     let name = path.name();
     let ext = name.ext;
@@ -3902,6 +3961,7 @@ fn loader_for_path(path: &Fs::Path<'_>, loaders: &bun_ast::LoaderHashTable) -> O
 unsafe fn normalize_specifier_for_loader<'a>(
     jsc_vm: *mut VirtualMachine,
     slice_: &'a [u8],
+    preserve_path_delimiters: bool,
 ) -> (&'a [u8], &'a [u8], &'a [u8]) {
     let mut slice = slice_;
     if slice.is_empty() {
@@ -3924,7 +3984,9 @@ unsafe fn normalize_specifier_for_loader<'a>(
     }
     let specifier = slice;
     let mut query: &[u8] = b"";
-    if let Some(i) = bun_core::strings::index_of_char_usize(slice, b'?') {
+    if !preserve_path_delimiters
+        && let Some(i) = bun_core::strings::index_of_char_usize(slice, b'?')
+    {
         let i = i as usize;
         query = &slice[i..];
         slice = &slice[..i];
@@ -3955,11 +4017,17 @@ unsafe fn get_loader_and_virtual_source<'a>(
     virtual_source_to_use: &'a mut Option<bun_ast::Source>,
     blob_to_deinit: &mut Option<crate::webcore::Blob>,
     type_attribute_str: Option<&[u8]>,
+    preserve_path_delimiters: bool,
 ) -> crate::Result<LoaderResult<'a>> {
     let (normalized_file_path_from_specifier, specifier, query) =
         // SAFETY: per fn contract.
-        unsafe { normalize_specifier_for_loader(jsc_vm, specifier_str) };
-    let mut path = Fs::Path::init(normalized_file_path_from_specifier);
+        unsafe { normalize_specifier_for_loader(jsc_vm, specifier_str, preserve_path_delimiters) };
+    let mut path =
+        if bun_core::strings::has_prefix_comptime(normalized_file_path_from_specifier, b"data:") {
+            Fs::Path::init_with_namespace(normalized_file_path_from_specifier, b"dataurl")
+        } else {
+            Fs::Path::init(normalized_file_path_from_specifier)
+        };
 
     // SAFETY: per fn contract — `transpiler.options` is a value field of the VM.
     let mut loader: Option<Loader> =
@@ -4170,6 +4238,7 @@ pub unsafe extern "C" fn Bun__transpileFile(
     allow_promise: bool,
     is_commonjs_require: bool,
     force_loader: u8,
+    preserve_path_delimiters: bool,
 ) -> *mut c_void {
     use bun_jsc::resolved_source::Tag as ResolvedSourceTag;
 
@@ -4198,6 +4267,7 @@ pub unsafe extern "C" fn Bun__transpileFile(
             &mut virtual_source_to_use,
             &mut blob_to_deinit,
             type_attribute_str,
+            preserve_path_delimiters,
         )
     } {
         Ok(lr) => lr,
@@ -4253,6 +4323,9 @@ pub unsafe extern "C" fn Bun__transpileFile(
 
     // ── module_type sniff from extension / package.json ─────────────────────
     let module_type: ModuleType = 'brk: {
+        if lr.path.is_data_url() {
+            break 'brk ModuleType::Unknown;
+        }
         let ext = lr.path.name().ext;
         // regex /\.[cm][jt]s$/
         if ext.len() == b".cjs".len() {
@@ -4301,6 +4374,8 @@ pub unsafe extern "C" fn Bun__transpileFile(
             )
         };
         if !had_blob
+            // Async completion only has the filesystem specifier, not the encoded module key.
+            && !preserve_path_delimiters
             && allow_promise
             && (has_loaded || is_in_preload)
             && concurrent_loader.is_java_script_like()

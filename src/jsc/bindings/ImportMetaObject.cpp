@@ -89,12 +89,20 @@ ImportMetaObject* ImportMetaObject::create(JSC::JSGlobalObject* globalObject, JS
 
 ImportMetaObject* ImportMetaObject::createFromSpecifier(JSC::JSGlobalObject* globalObject, const String& specifier)
 {
+    if (specifier.startsWith("file://"_s) || specifier.startsWith("data:"_s))
+        return create(globalObject, specifier);
+
     auto index = specifier.find('?');
     URL url;
     if (index != notFound) {
         StringView view = specifier;
         url = URL::fileURLWithFileSystemPath(view.substring(0, index));
-        url.setQuery(view.substring(index + 1));
+        // A fragment with no query rides behind the '?' in a module key: "/x.mjs?#a" is "file:///x.mjs#a".
+        auto suffix = view.substring(index + 1);
+        if (suffix.startsWith('#'))
+            url.setFragmentIdentifier(suffix.substring(1));
+        else
+            url.setQuery(suffix);
     } else {
         url = URL::fileURLWithFileSystemPath(specifier);
     }
@@ -210,6 +218,7 @@ extern "C" JSC::EncodedJSValue functionImportMeta__resolveSyncPrivate(JSC::JSGlo
     JSValue userPathList = callFrame->argument(4);
     JSValue parentModule = callFrame->argument(5);
     JSValue resolveFilenameOptions = callFrame->argument(6);
+    Strong<JSString> referrerRoot;
 
     if (globalObject->onLoadPlugins.hasVirtualModules()) {
         if (moduleName.isString()) {
@@ -255,6 +264,16 @@ extern "C" JSC::EncodedJSValue functionImportMeta__resolveSyncPrivate(JSC::JSGlo
                     return JSC::JSValue::encode(string);
                 }
                 return JSC::JSValue::encode(result);
+            }
+        }
+
+        if (auto* parent = dynamicDowncast<Bun::JSCommonJSModule>(parentModule); parent && !parent->filenameIsModuleKey && from.isString()) {
+            auto filename = from.toWTFString(globalObject);
+            RETURN_IF_EXCEPTION(scope, {});
+            auto referrer = moduleReferrerFromFilename(filename, false);
+            if (referrer != filename) {
+                referrerRoot.set(vm, jsString(vm, referrer));
+                from = referrerRoot.get();
             }
         }
 

@@ -26,6 +26,7 @@
 
 #include "config.h"
 #include "WorkerMessagingProxy.h"
+#include <JavaScriptCore/ErrorInstance.h>
 
 #include "BunClientData.h"
 #include "GlobalEventScope.h"
@@ -39,6 +40,9 @@
 #include "Worker.h"
 #include "ZigGlobalObject.h"
 #include <JavaScriptCore/JSPromise.h>
+#include <JavaScriptCore/PropertyNameArray.h>
+#include <wtf/HashSet.h>
+#include <wtf/ThreadSafeRefCounted.h>
 #include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
@@ -55,6 +59,7 @@ void* WebWorker__create(
     void* parentVM,
     const BunString* name,
     const BunString* url,
+    const BunString* evalSource,
     BunString* errorMessage,
     uint32_t parentContextId,
     uint32_t contextId,
@@ -67,12 +72,22 @@ void* WebWorker__create(
     bool defaultExecArgv,
     StringImpl** execArgvPtr,
     size_t execArgvLen,
+    // NODE_USE_SYSTEM_CA as seen by the worker's own `env` option: 1 / 0, or -1 when it inherits the env.
+    int8_t envUseSystemCa,
     BunString* preloadModulesPtr,
-    size_t preloadModulesLen);
+    size_t preloadModulesLen,
+    BunString* execArgvPreloadModulesPtr,
+    size_t execArgvPreloadModulesLen,
+    size_t execArgvEvalPreloadCount,
+    size_t execArgvBunPreloadCount,
+    size_t execArgvRequirePreloadCount,
+    uint8_t execArgvEvalMode);
 // Raise a TerminationException in the worker VM at its next safepoint and wake its loop. Any thread.
 void WebWorker__requestTermination(void*);
 // Toggle the keep-alive this worker holds on the parent event loop. Parent thread.
 void WebWorker__setRef(void*, bool);
+bool WebWorker__hasRef(void* worker);
+bool WebWorker__getELU(void* worker, double* elapsedMs, double* idleMs);
 // Release that keep-alive. Parent thread.
 void WebWorker__releaseParentPollRef(void*);
 // Block until the OS thread has exited. Parent thread, after the worker reported destroyed or was
@@ -133,6 +148,11 @@ ExceptionOr<void> WorkerMessagingProxy::startWorkerGlobalScope(const String& scr
         preloadModules.append(Bun::toString(str));
     }
 
+    Vector<BunString> execArgvPreloadModules;
+    execArgvPreloadModules.reserveInitialCapacity(m_options.execArgvPreloadModules.size());
+    for (auto& str : m_options.execArgvPreloadModules)
+        execArgvPreloadModules.append(Bun::toString(str));
+
     static_assert(sizeof(WTF::String) == sizeof(WTF::StringImpl*));
     std::span<WTF::StringImpl*> execArgv = m_options.execArgv
                                                .transform([](Vector<String>& vec) -> std::span<WTF::StringImpl*> {
@@ -140,16 +160,24 @@ ExceptionOr<void> WorkerMessagingProxy::startWorkerGlobalScope(const String& scr
                                                })
                                                .value_or(std::span<WTF::StringImpl*> {});
 
+    int8_t envUseSystemCa = -1;
+    if (m_options.env) {
+        auto it = m_options.env->find("NODE_USE_SYSTEM_CA"_s);
+        envUseSystemCa = it != m_options.env->end() && it->value == "1"_s ? 1 : 0;
+    }
+
     // The thread holds a ref on the proxy until releaseWorkerThread().
     ref();
     BunString errorMessage = BunStringEmpty;
     BunString name = Bun::toString(m_options.name);
     BunString url = Bun::toString(scriptURL);
+    BunString evalSource = Bun::toString(m_options.evalSource);
     m_workerThread = WebWorker__create(
         this,
         WebCore::clientData(m_scriptExecutionContext->vm())->bunVM,
         &name,
         &url,
+        &evalSource,
         &errorMessage,
         m_loaderContextIdentifier,
         m_workerContextIdentifier,
@@ -162,9 +190,17 @@ ExceptionOr<void> WorkerMessagingProxy::startWorkerGlobalScope(const String& scr
         !m_options.execArgv.has_value(),
         execArgv.data(),
         execArgv.size(),
+        envUseSystemCa,
         preloadModules.begin(),
-        preloadModules.size());
+        preloadModules.size(),
+        execArgvPreloadModules.begin(),
+        execArgvPreloadModules.size(),
+        m_options.execArgvEvalPreloadCount,
+        m_options.execArgvBunPreloadCount,
+        m_options.execArgvRequirePreloadCount,
+        static_cast<uint8_t>(m_options.execArgvEvalMode));
     m_options.preloadModules.clear();
+    m_options.execArgvPreloadModules.clear();
 
     if (!m_workerThread) {
         m_state.store(State::Closed);
@@ -188,6 +224,24 @@ void WorkerMessagingProxy::setKeepAlive(bool keepAlive)
     if (m_askedToTerminate || m_keepAliveReleased || !m_workerThread)
         return;
     WebWorker__setRef(m_workerThread, keepAlive);
+}
+
+std::optional<bool> WorkerMessagingProxy::hasRef() const
+{
+    ASSERT(!m_scriptExecutionContext || m_scriptExecutionContext->isContextThread());
+    if (!m_workerThread)
+        return std::nullopt;
+    return WebWorker__hasRef(m_workerThread);
+}
+
+bool WorkerMessagingProxy::eventLoopUtilization(double& elapsedMs, double& idleMs)
+{
+    ASSERT(!m_scriptExecutionContext || m_scriptExecutionContext->isContextThread());
+    // The proxy holds a ref on the thread object until releaseWorkerThread(), so it is readable
+    // here; whether its VM is still there is answered under the thread's own lock.
+    if (!m_workerThread)
+        return false;
+    return WebWorker__getELU(m_workerThread, &elapsedMs, &idleMs);
 }
 
 void WorkerMessagingProxy::workerObjectDestroyed()
@@ -445,16 +499,166 @@ void WorkerMessagingProxy::postMessageToWorkerObject(MessageWithMessagePorts&& m
     }
 }
 
-void WorkerMessagingProxy::postMessageErrorToWorkerObject(String&& message)
+void WorkerMessagingProxy::postMessageErrorToWorkerObject(String&& message, String&& code)
 {
-    ScriptExecutionContext::postTaskTo(m_loaderContextIdentifier, m_loaderLoopKind, [protectedThis = Ref { *this }, message = WTF::move(message).isolatedCopy()](ScriptExecutionContext&) {
+    ScriptExecutionContext::postTaskTo(m_loaderContextIdentifier, m_loaderLoopKind, [protectedThis = Ref { *this }, message = WTF::move(message).isolatedCopy(), code = WTF::move(code).isolatedCopy()](ScriptExecutionContext& context) {
         RefPtr workerObject = protectedThis->m_workerObject;
         if (!workerObject)
             return;
         ErrorEvent::Init init;
         init.message = message;
+        // The thrown value could not be cloned; `code` is all the parent can otherwise recover of it.
+        if (!code.isNull()) {
+            auto* globalObject = context.globalObject();
+            auto& vm = JSC::getVM(globalObject);
+            auto* carrier = JSC::createError(globalObject, message);
+            carrier->putDirect(vm, WebCore::builtinNames(vm).codePublicName(), JSC::jsString(vm, code));
+            init.error = carrier;
+        }
         workerObject->dispatchEvent(ErrorEvent::create(eventNames().errorEvent, init, EventIsTrusted::Yes));
     });
+}
+
+// A string `error.code` on the thrown value, read without leaving an exception behind.
+static String errorCodeOf(JSC::JSGlobalObject& globalObject, JSC::JSValue value)
+{
+    auto& vm = JSC::getVM(&globalObject);
+    auto scope = DECLARE_TOP_EXCEPTION_SCOPE(vm);
+    if (!value.isObject() || scope.exception())
+        return {};
+    JSC::JSValue codeValue = value.getObject()->getIfPropertyExists(&globalObject, WebCore::builtinNames(vm).codePublicName());
+    String code;
+    if (!scope.exception() && codeValue && codeValue.isString())
+        code = codeValue.toWTFString(&globalObject);
+    CLEAR_IF_EXCEPTION(scope);
+    return code;
+}
+
+class SerializedWorkerErrorMetadata final : public ThreadSafeRefCounted<SerializedWorkerErrorMetadata> {
+public:
+    static Ref<SerializedWorkerErrorMetadata> create() { return adoptRef(*new SerializedWorkerErrorMetadata); }
+
+    RefPtr<SerializedScriptValue> properties;
+    RefPtr<SerializedScriptValue> cause;
+    RefPtr<SerializedWorkerErrorMetadata> causeMetadata;
+    bool causeEnumerable { false };
+
+private:
+    SerializedWorkerErrorMetadata() = default;
+};
+
+static constexpr unsigned maxWorkerErrorMetadataDepth = 32;
+
+static RefPtr<SerializedWorkerErrorMetadata> serializeWorkerErrorMetadata(Zig::GlobalObject& globalObject, JSC::ErrorInstance& error, HashSet<JSC::JSObject*>& seen, bool includeCode, unsigned depth)
+{
+    if (!seen.add(&error).isNewEntry)
+        return nullptr;
+
+    auto& vm = JSC::getVM(&globalObject);
+    auto scope = DECLARE_TOP_EXCEPTION_SCOPE(vm);
+    auto metadata = SerializedWorkerErrorMetadata::create();
+
+    auto* propertiesObject = JSC::constructEmptyObject(&globalObject);
+    JSC::Strong<JSC::JSObject> protectedProperties(vm, propertiesObject);
+    JSC::PropertyNameArrayBuilder properties(vm, JSC::PropertyNameMode::Strings, JSC::PrivateSymbolMode::Exclude);
+    error.methodTable()->getOwnPropertyNames(&error, &globalObject, properties, JSC::DontEnumPropertiesMode::Exclude);
+    if (!scope.exception()) {
+        for (const auto& property : properties) {
+            if (property == vm.propertyNames->cause || (!includeCode && property == WebCore::builtinNames(vm).codePublicName()))
+                continue;
+            JSC::JSValue propertyValue = error.get(&globalObject, property);
+            if (scope.exception()) {
+                scope.clearException();
+                continue;
+            }
+            if (!propertyValue.isCallable() && !propertyValue.isSymbol()) {
+                propertiesObject->putDirectMayBeIndex(&globalObject, property, propertyValue);
+                if (scope.exception())
+                    scope.clearException();
+            }
+        }
+        metadata->properties = SerializedScriptValue::create(globalObject, propertiesObject, SerializationForStorage::No, SerializationErrorMode::NonThrowing);
+    }
+    CLEAR_IF_EXCEPTION(scope);
+
+    JSC::PropertyDescriptor causeDescriptor;
+    bool hasCause = error.getOwnPropertyDescriptor(&globalObject, vm.propertyNames->cause, causeDescriptor);
+    if (scope.exception()) {
+        scope.clearException();
+        return metadata;
+    }
+    if (!hasCause)
+        return metadata;
+
+    JSC::JSValue cause = error.get(&globalObject, vm.propertyNames->cause);
+    if (scope.exception()) {
+        scope.clearException();
+        return metadata;
+    }
+    if (cause.isCallable() || cause.isSymbol())
+        return metadata;
+
+    metadata->cause = SerializedScriptValue::create(globalObject, cause, SerializationForStorage::No, SerializationErrorMode::NonThrowing);
+    CLEAR_IF_EXCEPTION(scope);
+    if (!metadata->cause)
+        return metadata;
+    metadata->causeEnumerable = causeDescriptor.enumerable();
+    if (depth + 1 < maxWorkerErrorMetadataDepth) {
+        if (auto* causeError = dynamicDowncast<JSC::ErrorInstance>(cause))
+            metadata->causeMetadata = serializeWorkerErrorMetadata(globalObject, *causeError, seen, true, depth + 1);
+    }
+    return metadata;
+}
+
+static void applyWorkerErrorMetadata(JSC::JSGlobalObject& globalObject, JSC::JSObject& error, const SerializedWorkerErrorMetadata& metadata)
+{
+    auto& vm = JSC::getVM(&globalObject);
+    auto scope = DECLARE_TOP_EXCEPTION_SCOPE(vm);
+
+    if (metadata.properties) {
+        JSC::JSValue propertiesValue = metadata.properties->deserialize(globalObject, &globalObject, SerializationErrorMode::NonThrowing);
+        if (scope.exception()) {
+            scope.clearException();
+        } else if (auto* properties = propertiesValue.getObject()) {
+            JSC::PropertyNameArrayBuilder names(vm, JSC::PropertyNameMode::Strings, JSC::PrivateSymbolMode::Exclude);
+            properties->methodTable()->getOwnPropertyNames(properties, &globalObject, names, JSC::DontEnumPropertiesMode::Exclude);
+            if (!scope.exception()) {
+                for (const auto& name : names) {
+                    JSC::JSValue propertyValue = properties->get(&globalObject, name);
+                    if (scope.exception()) {
+                        scope.clearException();
+                        continue;
+                    }
+                    error.putDirectMayBeIndex(&globalObject, name, propertyValue);
+                    if (scope.exception())
+                        scope.clearException();
+                }
+            }
+            CLEAR_IF_EXCEPTION(scope);
+        }
+    }
+
+    if (!metadata.cause)
+        return;
+    JSC::JSValue cause = metadata.cause->deserialize(globalObject, &globalObject, SerializationErrorMode::NonThrowing);
+    if (scope.exception()) {
+        scope.clearException();
+        return;
+    }
+    JSC::PropertyDescriptor descriptor;
+    descriptor.setValue(cause);
+    descriptor.setWritable(true);
+    descriptor.setEnumerable(metadata.causeEnumerable);
+    descriptor.setConfigurable(true);
+    error.methodTable()->defineOwnProperty(&error, &globalObject, vm.propertyNames->cause, descriptor, false);
+    if (scope.exception()) {
+        scope.clearException();
+        return;
+    }
+    if (metadata.causeMetadata) {
+        if (auto* causeError = dynamicDowncast<JSC::ErrorInstance>(cause))
+            applyWorkerErrorMetadata(globalObject, *causeError, *metadata.causeMetadata);
+    }
 }
 
 bool WorkerMessagingProxy::postSerializedErrorToWorkerObject(Zig::GlobalObject& workerGlobalObject, JSC::JSValue value)
@@ -466,20 +670,34 @@ bool WorkerMessagingProxy::postSerializedErrorToWorkerObject(Zig::GlobalObject& 
 
     auto serialized = SerializedScriptValue::create(workerGlobalObject, value, SerializationForStorage::No, SerializationErrorMode::NonThrowing);
     CLEAR_IF_EXCEPTION(scope);
+    // Cloning an Error reads `stack`; when that getter throws (a throwing Error.prepareStackTrace),
+    // Node drops only `stack` (lib/internal/error_serdes.js TryGetAllProperties) rather than the
+    // whole error, so retry once with an own undefined `stack` that cannot run the getter again.
+    if (!serialized && !vm.hasPendingTerminationException()) {
+        if (auto* errorInstance = dynamicDowncast<JSC::ErrorInstance>(value)) {
+            errorInstance->putDirect(vm, vm.propertyNames->stack, JSC::jsUndefined(), static_cast<unsigned>(JSC::PropertyAttribute::DontEnum));
+            errorInstance->setStackPropertyAlreadyMaterialized();
+            serialized = SerializedScriptValue::create(workerGlobalObject, value, SerializationForStorage::No, SerializationErrorMode::NonThrowing);
+            CLEAR_IF_EXCEPTION(scope);
+        }
+    }
     if (!serialized)
         return false;
 
     // Structured clone keeps only the standard Error fields; Node's worker 'error' event also
     // preserves a string `error.code` (lib/internal/error_serdes.js).
-    String errorCode;
-    if (value.isObject()) {
-        JSC::JSValue codeValue = value.getObject()->getIfPropertyExists(&workerGlobalObject, WebCore::builtinNames(vm).codePublicName());
-        if (!scope.exception() && codeValue && codeValue.isString())
-            errorCode = codeValue.toWTFString(&workerGlobalObject);
-        CLEAR_IF_EXCEPTION(scope);
+    String errorCode = errorCodeOf(workerGlobalObject, value);
+
+    // Node's worker error serializer preserves an Error's own enumerable metadata and recursively
+    // serializes `cause`. The ordinary structured-clone Error path intentionally keeps only
+    // standard Error fields, so carry these worker-only additions separately.
+    RefPtr<SerializedWorkerErrorMetadata> serializedMetadata;
+    if (auto* errorInstance = dynamicDowncast<JSC::ErrorInstance>(value)) {
+        HashSet<JSC::JSObject*> seen;
+        serializedMetadata = serializeWorkerErrorMetadata(workerGlobalObject, *errorInstance, seen, false, 0);
     }
 
-    return ScriptExecutionContext::postTaskTo(m_loaderContextIdentifier, m_loaderLoopKind, [protectedThis = Ref { *this }, serialized = serialized.releaseNonNull(), errorCode = WTF::move(errorCode).isolatedCopy()](ScriptExecutionContext& context) {
+    return ScriptExecutionContext::postTaskTo(m_loaderContextIdentifier, m_loaderLoopKind, [protectedThis = Ref { *this }, serialized = serialized.releaseNonNull(), serializedMetadata = WTF::move(serializedMetadata), errorCode = WTF::move(errorCode).isolatedCopy()](ScriptExecutionContext& context) {
         RefPtr workerObject = protectedThis->m_workerObject;
         if (!workerObject)
             return;
@@ -492,6 +710,10 @@ bool WorkerMessagingProxy::postSerializedErrorToWorkerObject(Zig::GlobalObject& 
             if (auto* errorObject = deserialized.getObject())
                 errorObject->putDirect(vm, WebCore::builtinNames(vm).codePublicName(), JSC::jsString(vm, errorCode));
         }
+        if (serializedMetadata) {
+            if (auto* errorObject = deserialized.getObject())
+                applyWorkerErrorMetadata(*globalObject, *errorObject, *serializedMetadata);
+        }
         ErrorEvent::Init init;
         init.error = deserialized;
         workerObject->dispatchEvent(ErrorEvent::create(eventNames().errorEvent, init, EventIsTrusted::Yes));
@@ -502,11 +724,11 @@ void WorkerMessagingProxy::postErrorToWorkerObject(Zig::GlobalObject& workerGlob
 {
     switch (m_options.kind) {
     case WorkerOptions::Kind::Web:
-        postMessageErrorToWorkerObject(String { message });
+        postMessageErrorToWorkerObject(String { message }, {});
         return;
     case WorkerOptions::Kind::Node:
         if (!postSerializedErrorToWorkerObject(workerGlobalObject, error))
-            postMessageErrorToWorkerObject(String { message });
+            postMessageErrorToWorkerObject(String { message }, errorCodeOf(workerGlobalObject, error));
         return;
     }
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it, setDefaultTimeout, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it, setDefaultTimeout, test } from "bun:test";
 import { bunEnv, bunExe, isDebug, tempDir, tmpdirSync } from "harness";
 import { once } from "node:events";
 import fs from "node:fs";
@@ -36,6 +36,63 @@ test("support eval in worker", async () => {
   });
   expect(result).toBe(2);
   await worker.terminate();
+});
+
+test("online fires before the entry point finishes", async () => {
+  const sab = new SharedArrayBuffer(4);
+  const signal = new Int32Array(sab);
+  const worker = new Worker(
+    `const { workerData } = require("worker_threads");
+     Atomics.wait(new Int32Array(workerData), 0, 0);`,
+    { eval: true, workerData: sab },
+  );
+  try {
+    await once(worker, "online");
+    Atomics.store(signal, 0, 1);
+    Atomics.notify(signal, 0);
+    const [code] = await once(worker, "exit");
+    expect(code).toBe(0);
+  } finally {
+    await worker.terminate();
+  }
+});
+
+// Node reads all of these off one process-wide clock, so a stamp the worker takes
+// between the parent's send and receive lands between the parent's two stamps.
+// An origin restarted per VM puts every worker stamp behind the parent's by the
+// worker's spawn delay.
+test("hrtime, uptime, Bun.nanoseconds and performance share the parent's origin", async () => {
+  const worker = new Worker(
+    `const { parentPort } = require("worker_threads");
+     parentPort.once("message", () => {
+       const [sec, nsec] = process.hrtime();
+       parentPort.postMessage({
+         hrtime: sec * 1e9 + nsec,
+         hrtimeBigint: Number(process.hrtime.bigint()),
+         uptime: Math.round(process.uptime() * 1e9),
+         nanoseconds: Bun.nanoseconds(),
+         performanceNow: Math.round(performance.now() * 1e6),
+         timeOrigin: performance.timeOrigin,
+       });
+     });
+     parentPort.postMessage("ready");`,
+    { eval: true },
+  );
+  try {
+    await once(worker, "message");
+    const sent = Number(process.hrtime.bigint());
+    worker.postMessage("ping");
+    const [{ timeOrigin, ...stamps }] = await once(worker, "message");
+    const received = Number(process.hrtime.bigint());
+
+    const outsideWindow = Object.fromEntries(
+      Object.entries(stamps as Record<string, number>).filter(([, ns]) => ns < sent || ns > received),
+    );
+    expect({ sent, received, outsideWindow }).toEqual({ sent, received, outsideWindow: {} });
+    expect(timeOrigin).toBe(performance.timeOrigin);
+  } finally {
+    await worker.terminate();
+  }
 });
 
 test("all worker_threads module properties are present", () => {
@@ -343,6 +400,283 @@ describe("execArgv option", async () => {
     await run('["--no-warnings"]', '["--no-warnings"]\n');
   });
   // TODO(@190n) get our handling of non-string array elements in line with Node's
+});
+
+describe("execArgv preloads", () => {
+  let fixtureDir: ReturnType<typeof tempDir> | undefined;
+  let entry: string;
+  let importPreload: string;
+  let nestedEntry: string;
+  let requirePreload: string;
+
+  beforeAll(() => {
+    fixtureDir = tempDir("worker-execargv-preloads", {
+      "entry.mjs": `
+        import { argv, execArgv } from "node:process";
+        import { parentPort, workerData } from "node:worker_threads";
+        parentPort.postMessage({
+          argv: argv.slice(2),
+          execArgv,
+          preloads: globalThis.execArgvPreloads ?? null,
+          workerData,
+        });
+      `,
+      "import.mjs": `
+        globalThis.execArgvPreloads ??= [];
+        globalThis.execArgvPreloads.push("import");
+      `,
+      "nested.mjs": `
+        import { parentPort, Worker } from "node:worker_threads";
+        const child = new Worker(new URL("./entry.mjs", import.meta.url));
+        child.once("message", message => {
+          parentPort.postMessage({ child: message.preloads, parent: globalThis.execArgvPreloads ?? null });
+        });
+      `,
+      "require.cjs": `
+        globalThis.execArgvPreloads ??= [];
+        globalThis.execArgvPreloads.push("require");
+      `,
+      "node_modules/worker-preload-conditions/package.json": JSON.stringify({
+        name: "worker-preload-conditions",
+        exports: { import: "./import.mjs", require: "./require.cjs" },
+      }),
+      "node_modules/worker-preload-conditions/import.mjs": `
+        globalThis.execArgvPreloads ??= [];
+        globalThis.execArgvPreloads.push("condition-import");
+      `,
+      "node_modules/worker-preload-conditions/require.cjs": `
+        globalThis.execArgvPreloads ??= [];
+        globalThis.execArgvPreloads.push("condition-require");
+      `,
+    });
+    const root = String(fixtureDir);
+    entry = join(root, "entry.mjs");
+    importPreload = join(root, "import.mjs");
+    nestedEntry = join(root, "nested.mjs");
+    requirePreload = join(root, "require.cjs");
+  });
+
+  afterAll(() => fixtureDir?.[Symbol.dispose]());
+
+  async function runWorker(execArgv: string[]) {
+    const worker = new Worker(entry, {
+      argv: ["worker-arg"],
+      execArgv,
+      workerData: { from: "parent" },
+    });
+    const exited = new Promise<number>(resolve => worker.once("exit", resolve));
+    const [message] = await once(worker, "message");
+    expect(await exited).toBe(0);
+    return message;
+  }
+
+  async function runPreloadFailureProbe(preload: string) {
+    const source = `
+      const { Worker } = require("node:worker_threads");
+      const events = [];
+      const worker = new Worker(${JSON.stringify(entry)}, { execArgv: ["--import", ${JSON.stringify(preload)}] });
+      worker.on("message", message => events.push(["message", message]));
+      worker.on("error", error => events.push(["error", error.message]));
+      worker.on("exit", code => console.log(JSON.stringify({ events, code })));
+    `;
+    const proc = Bun.spawn({ cmd: [bunExe(), "-e", source], env: bunEnv, stdout: "pipe", stderr: "pipe" });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    return { stdout, stderr, exitCode };
+  }
+
+  describe.each([
+    ["separate import and inline require", "separate-import"],
+    ["inline import and separate require", "inline-import"],
+  ])("%s", (_name, form) => {
+    test("runs before the source worker entry", async () => {
+      const execArgv =
+        form === "separate-import"
+          ? ["--import", importPreload, `--require=${requirePreload}`]
+          : [`--import=${importPreload}`, "--require", requirePreload];
+      expect(await runWorker(execArgv)).toEqual({
+        argv: ["worker-arg"],
+        execArgv,
+        preloads: ["require", "import"],
+        workerData: { from: "parent" },
+      });
+    });
+  });
+
+  test("inherits parent preloads unless execArgv is explicitly empty", async () => {
+    const source = `
+      const { once } = require("node:events");
+      const { Worker } = require("node:worker_threads");
+      async function run(options) {
+        const worker = new Worker(${JSON.stringify(entry)}, options);
+        const exited = once(worker, "exit");
+        const [message] = await once(worker, "message");
+        await exited;
+        return message.preloads;
+      }
+      console.log(JSON.stringify(await run({})));
+      console.log(JSON.stringify(await run({ execArgv: [] })));
+    `;
+    const proc = Bun.spawn({
+      cmd: [bunExe(), "--require", requirePreload, "-e", source],
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect(stderr).toBe("");
+    expect(exitCode).toBe(0);
+    expect(stdout).toBe('["require"]\nnull\n');
+  });
+
+  test("inherits explicit preloads through nested workers", async () => {
+    const worker = new Worker(nestedEntry, { execArgv: ["--require", requirePreload] });
+    const exited = new Promise<number>(resolve => worker.once("exit", resolve));
+    const [message] = await once(worker, "message");
+    expect(message).toEqual({ child: ["require"], parent: ["require"] });
+    expect(await exited).toBe(0);
+  });
+
+  test("resolves require and import preloads with their matching package conditions", async () => {
+    const source = `
+      const { Worker } = require("node:worker_threads");
+      const worker = new Worker(${JSON.stringify(entry)}, {
+        execArgv: ["--require", "worker-preload-conditions", "--import", "worker-preload-conditions"],
+      });
+      worker.on("message", message => console.log(JSON.stringify(message.preloads)));
+    `;
+    const proc = Bun.spawn({
+      cmd: [bunExe(), "-e", source],
+      cwd: String(fixtureDir),
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect({ stdout, stderr, exitCode }).toEqual({
+      stdout: '["condition-require","condition-import"]\n',
+      stderr: "",
+      exitCode: 0,
+    });
+  });
+
+  test("uses the same package conditions for inherited preloads in the parent and worker", async () => {
+    const source = `
+      const { Worker } = require("node:worker_threads");
+      console.log(JSON.stringify(globalThis.execArgvPreloads));
+      const worker = new Worker(${JSON.stringify(entry)});
+      worker.on("message", message => console.log(JSON.stringify(message.preloads)));
+    `;
+    const proc = Bun.spawn({
+      cmd: [bunExe(), "--require", "worker-preload-conditions", "--import", "worker-preload-conditions", "-e", source],
+      cwd: String(fixtureDir),
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect({ stdout, stderr, exitCode }).toEqual({
+      stdout: '["condition-require","condition-import"]\n["condition-require","condition-import"]\n',
+      stderr: "",
+      exitCode: 0,
+    });
+  });
+
+  test("reports preload failures on the Worker", async () => {
+    expect(
+      await runPreloadFailureProbe("data:text/javascript,throw%20new%20Error(%22execArgv%20preload%20failed%22)"),
+    ).toEqual({
+      stdout: '{"events":[["error","execArgv preload failed"]],"code":1}\n',
+      stderr: "",
+      exitCode: 0,
+    });
+  });
+
+  test("keeps exit code zero when a preload error is handled", async () => {
+    const preload = `data:text/javascript,${encodeURIComponent(`
+      import { parentPort } from "node:worker_threads";
+      process.on("uncaughtException", error => parentPort.postMessage("handled:" + error.message));
+      throw new Error("handled preload failure");
+    `)}`;
+    expect(await runPreloadFailureProbe(preload)).toEqual({
+      stdout: '{"events":[["message","handled:handled preload failure"]],"code":0}\n',
+      stderr: "",
+      exitCode: 0,
+    });
+  });
+
+  describe.each([
+    ["require in CommonJS", "--require", null, ["require"]],
+    ["import in CommonJS", "--import", null, null],
+    ["import in ES module", "--import", "module", ["import"]],
+    ["import in TypeScript ES module", "--import", "module-typescript", ["import"]],
+  ])("%s eval preload", (_name, flag, inputType, expected) => {
+    test("applies eval worker semantics", async () => {
+      const module = flag === "--require" ? requirePreload : importPreload;
+      const source = inputType
+        ? `import { parentPort } from "node:worker_threads"; const preloads${inputType === "module-typescript" ? ": string[] | null" : ""} = globalThis.execArgvPreloads ?? null; parentPort.postMessage(preloads)`
+        : `require("node:worker_threads").parentPort.postMessage(globalThis.execArgvPreloads ?? null)`;
+      const worker = new Worker(source, {
+        eval: true,
+        execArgv: [...(inputType ? [`--input-type=${inputType}`] : []), flag, module],
+      });
+      const [message] = await once(worker, "message");
+      expect(message).toEqual(expected);
+      await worker.terminate();
+    });
+  });
+
+  describe.each([
+    ["syntax-detected module", null],
+    ["module input type", "module"],
+    ["TypeScript module input type", "module-typescript"],
+  ])("%s", (_name, inputType) => {
+    test("inherits import preloads for eval workers", async () => {
+      const source = `
+        const { Worker } = require("node:worker_threads");
+        const worker = new Worker(
+          'import { parentPort } from "node:worker_threads"; const preloads${inputType === "module-typescript" ? ": string[] | null" : ""} = globalThis.execArgvPreloads ?? null; parentPort.postMessage(preloads)',
+          { eval: true },
+        );
+        worker.on("message", message => console.log(JSON.stringify(message)));
+      `;
+      const proc = Bun.spawn({
+        cmd: [bunExe(), ...(inputType ? ["--input-type", inputType] : []), "--import", importPreload, "-e", source],
+        env: bunEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      expect({ stdout, stderr, exitCode }).toEqual({ stdout: '["import"]\n', stderr: "", exitCode: 0 });
+    });
+  });
+
+  describe.each([
+    ["title", ["--title=worker"], "--title=worker"],
+    ["missing import", ["--import"], "--import requires an argument"],
+    ["missing require", ["--require", "--no-warnings"], "--require requires an argument"],
+  ])("%s", (_name, execArgv, message) => {
+    test("rejects invalid or process-wide flags", () => {
+      let error: unknown;
+      try {
+        new Worker(entry, { execArgv });
+      } catch (cause) {
+        error = cause;
+      }
+      expect(error).toEqual(
+        expect.objectContaining({ code: "ERR_WORKER_INVALID_EXEC_ARGV", message: expect.stringContaining(message) }),
+      );
+    });
+  });
+
+  describe.each([
+    ["conditions alias", ["-C", "development"]],
+    ["inline boolean", ["--enable-source-maps=true"]],
+    ["unhandled rejection mode", ["--unhandled-rejections=strict"]],
+  ])("%s", (_name, execArgv) => {
+    test("is accepted", async () => {
+      expect(await runWorker(execArgv)).toEqual(expect.objectContaining({ execArgv, preloads: null }));
+    });
+  });
 });
 
 test("eval does not leak source code", async () => {
@@ -701,6 +1035,82 @@ describe("error event", () => {
     const [err] = await once(worker, "error");
     expect(err).toBeInstanceOf(TypeError);
     expect(err.message).toBe("oh no");
+  });
+
+  test("preserves Error cause and enumerable metadata", async () => {
+    const worker = new Worker(
+      `const cause = new RangeError("root cause", { cause: new URIError("deep cause") });
+       cause.code = "E_CAUSE";
+       cause.details = { stage: "inner" };
+       const error = new TypeError("outer", { cause });
+       error.code = "E_WORKER";
+       error.details = { retryable: true, attempts: 2 };
+       error.requestId = 42;
+       error[0] = "numeric metadata";
+       throw error;`,
+      { eval: true },
+    );
+    const [err] = await once(worker, "error");
+    expect(err).toBeInstanceOf(TypeError);
+    expect(err.message).toBe("outer");
+    expect(err.code).toBe("E_WORKER");
+    expect(err.cause).toBeInstanceOf(RangeError);
+    expect(err.cause.message).toBe("root cause");
+    expect(err.cause.code).toBe("E_CAUSE");
+    expect(err.cause.details).toEqual({ stage: "inner" });
+    expect(err.cause.cause).toBeInstanceOf(URIError);
+    expect(err.cause.cause.message).toBe("deep cause");
+    expect(err.details).toEqual({ retryable: true, attempts: 2 });
+    expect(err.requestId).toBe(42);
+    expect(err[0]).toBe("numeric metadata");
+    expect(Object.getOwnPropertyDescriptor(err, "cause")?.enumerable).toBe(false);
+  });
+
+  test("preserves an assigned cause as enumerable", async () => {
+    const worker = new Worker(
+      `const error = new Error("outer");
+       error.cause = "assigned cause";
+       throw error;`,
+      { eval: true },
+    );
+    const [err] = await once(worker, "error");
+    expect(err.cause).toBe("assigned cause");
+    expect(Object.getOwnPropertyDescriptor(err, "cause")?.enumerable).toBe(true);
+    expect(Object.keys(err)).toContain("cause");
+  });
+
+  test("an uncloneable cause does not suppress cloneable metadata", async () => {
+    const worker = new Worker(
+      `const { MessageChannel } = require("node:worker_threads");
+       const error = new Error("outer", { cause: new MessageChannel().port1 });
+       error.details = { preserved: true };
+       throw error;`,
+      { eval: true },
+    );
+    const [err] = await once(worker, "error");
+    expect(err).toBeInstanceOf(Error);
+    expect(err.message).toBe("outer");
+    expect(err.details).toEqual({ preserved: true });
+  });
+
+  test("bounds deeply nested cause metadata", async () => {
+    const worker = new Worker(
+      `let error = new Error("leaf");
+       for (let i = 0; i < 10_000; i++) error = new Error("level " + i, { cause: error });
+       throw error;`,
+      { eval: true },
+    );
+    const [err] = await once(worker, "error");
+    expect(err).toBeInstanceOf(Error);
+    expect(err.message).toBe("level 9999");
+    let cause = err;
+    let depth = 0;
+    while (cause instanceof Error) {
+      cause = cause.cause;
+      depth++;
+    }
+    expect(depth).toBeGreaterThan(1);
+    expect(depth).toBeLessThan(100);
   });
 
   test("falls back to string when the error cannot be serialized", async () => {
@@ -1254,6 +1664,24 @@ test("off() removes only the listener it names, per event and per port", () => {
     b.port1.close();
     b.port2.close();
   }
+});
+
+test("MessagePort listeners receive the port as `this` for on() and once()", async () => {
+  const { port1, port2 } = new MessageChannel();
+  const seen: unknown[] = [];
+  const { promise, resolve } = Promise.withResolvers<void>();
+  port1.on("message", function () {
+    seen.push(this);
+  });
+  port1.once("message", function () {
+    seen.push(this);
+    resolve();
+  });
+  port2.postMessage("x");
+  await promise;
+  expect(seen).toEqual([port1, port1]);
+  port1.close();
+  port2.close();
 });
 
 // bun collects entangled ports; node never does. A worker that drops its transferred
@@ -2030,6 +2458,22 @@ test("parentPort.unref() lets a listening worker exit", async () => {
   expect(await exited).toBe(0);
 });
 
+test("clearing process.exitCode restores a worker's natural zero exit", async () => {
+  const worker = new Worker(
+    `const assert = require("node:assert/strict");
+     const { parentPort } = require("node:worker_threads");
+     process.exitCode = 23;
+     process.exitCode = undefined;
+     assert.strictEqual(process.exitCode, undefined);
+     parentPort.postMessage("cleared");`,
+    { eval: true },
+  );
+  const message = once(worker, "message");
+  const exited = once(worker, "exit");
+  expect(await message).toEqual(["cleared"]);
+  expect(await exited).toEqual([0]);
+});
+
 test("receiveMessageOnPort distinguishes an undefined message from an empty queue", () => {
   const { port1, port2 } = new MessageChannel();
   port1.postMessage(undefined);
@@ -2506,10 +2950,17 @@ test("worker argv/execArgv option strings, read repeatedly in the worker", async
     parentPort.postMessage({ argv: process.argv.slice(2), execArgv: process.execArgv })`;
   const ws = Array.from(
     { length: 4 },
-    (_, i) => new Worker(src, { eval: true, argv: ["", "a" + i, "\u00fc\u2603", ""], execArgv: ["", "--x"] }),
+    (_, i) =>
+      new Worker(src, {
+        eval: true,
+        argv: ["", "a" + i, "\u00fc\u2603", ""],
+        execArgv: ["--no-warnings"],
+      }),
   );
   const got = await Promise.all(ws.map(w => new Promise(res => w.once("message", res))));
-  expect(got).toEqual([0, 1, 2, 3].map(i => ({ argv: ["", "a" + i, "\u00fc\u2603", ""], execArgv: ["", "--x"] })));
+  expect(got).toEqual(
+    [0, 1, 2, 3].map(i => ({ argv: ["", "a" + i, "\u00fc\u2603", ""], execArgv: ["--no-warnings"] })),
+  );
   await Promise.all(ws.map(w => w.terminate()));
 });
 

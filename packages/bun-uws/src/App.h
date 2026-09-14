@@ -87,6 +87,8 @@ namespace uWS {
         int allow_partial_trust_chain = 0;
         const char *sigalgs = nullptr;
         const char *ecdh_curve = nullptr;
+        /* 0 = process default, 1 = include system CAs, -1 = exclude (see libusockets.h) */
+        int use_system_ca = 0;
 
         /* Conversion operator used internally */
         operator struct us_bun_socket_context_options_t() const {
@@ -214,6 +216,33 @@ public:
     /* Returns the SSL_CTX* of this app, or nullptr. */
     void *getNativeHandle() {
         return sslCtx;
+    }
+
+    bool setSecureContext(SocketContextOptions options, const char *const *additionalCa, unsigned int additionalCaCount) {
+        if constexpr (!SSL) {
+            return false;
+        } else {
+            enum create_bun_socket_error_t err = CREATE_BUN_SOCKET_ERROR_NONE;
+            struct ssl_ctx_st *next = us_ssl_ctx_from_options(options, &err);
+            if (!next) return false;
+
+            for (unsigned int i = 0; i < additionalCaCount; i++) {
+                if (!us_ssl_ctx_add_ca_cert(next, additionalCa[i])) {
+                    us_internal_ssl_ctx_unref(next);
+                    return false;
+                }
+            }
+            if (httpContext->getSocketContextData()->http2Context) {
+                us_ssl_ctx_enable_http2_alpn(next, httpContext->getSocketContextData()->allowHttp1);
+            }
+            forEachListenSocket([&](us_listen_socket_t *ls) {
+                us_listen_socket_set_ssl_ctx(ls, next);
+            });
+
+            us_internal_ssl_ctx_unref(sslCtx);
+            sslCtx = next;
+            return true;
+        }
     }
 
     /* Attaches a "filter" function to track socket connections/disconnections */

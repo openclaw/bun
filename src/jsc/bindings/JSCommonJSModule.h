@@ -140,6 +140,8 @@ public:
     }
 
     bool hasEvaluated = false;
+    // Loader keys can carry query suffixes; decoded URLs and assigned filenames are paths.
+    bool filenameIsModuleKey = true;
 
     JSCommonJSModule(JSC::VM& vm, JSC::Structure* structure, JSC::JSString* id, JSC::JSValue filename, JSC::JSString* dirname)
         : Base(vm, structure)

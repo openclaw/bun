@@ -1,5 +1,6 @@
 #pragma once
 #include "root.h"
+#include <wtf/URL.h>
 
 #define POSIX_PATH_SEP_s "/"_s
 #define POSIX_PATH_SEP '/'
@@ -50,6 +51,27 @@ ALWAYS_INLINE bool isAbsolutePath(WTF::String input)
 #else // OS(WINDOWS)
     return input.startsWith('/');
 #endif
+}
+
+/// Length of the `<path>` of a `<path>?query` module key. Twin of `module_key_without_query` (resolver_jsc.rs).
+ALWAYS_INLINE unsigned moduleKeyPathLength(const WTF::String& key)
+{
+    unsigned devicePrefixLength = 0;
+#if OS(WINDOWS)
+    // `\\?\C:\...` and `\\.\...` are paths, not queries.
+    if (key.length() >= 4 && IS_SLASH(key[0]) && IS_SLASH(key[1]) && (key[2] == '?' || key[2] == '.') && IS_SLASH(key[3]))
+        devicePrefixLength = 4;
+#endif
+    size_t queryStart = key.find('?', devicePrefixLength);
+    return queryStart == WTF::notFound ? key.length() : static_cast<unsigned>(queryStart);
+}
+
+// Filesystem filenames must not acquire module-query semantics after decoding a URL.
+ALWAYS_INLINE WTF::String moduleReferrerFromFilename(const WTF::String& filename, bool isModuleKey)
+{
+    if (!isModuleKey && filename.find('?') != WTF::notFound)
+        return WTF::URL::fileURLWithFileSystemPath(filename).string();
+    return filename;
 }
 
 #undef IS_LETTER

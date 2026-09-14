@@ -897,8 +897,10 @@ JSC_DEFINE_HOST_FUNCTION(Process_functionExit, (JSC::JSGlobalObject * globalObje
 
     auto code = callFrame->argument(0);
 
-    setProcessExitCodeInner(globalObject, process, code);
-    RETURN_IF_EXCEPTION(throwScope, {});
+    if (callFrame->argumentCount() > 0) {
+        setProcessExitCodeInner(globalObject, process, code);
+        RETURN_IF_EXCEPTION(throwScope, {});
+    }
 
     Process__dispatchOnExit(zigGlobal, Bun__getExitCode(bunVM(zigGlobal)));
     RETURN_IF_EXCEPTION(throwScope, {});
@@ -2301,7 +2303,10 @@ bool setProcessExitCodeInner(JSC::JSGlobalObject* lexicalGlobalObject, Process* 
 {
     auto throwScope = DECLARE_THROW_SCOPE(process->vm());
 
-    if (!code.isUndefinedOrNull()) {
+    if (code.isUndefinedOrNull()) {
+        process->m_isExitCodeObservable = false;
+        Bun__setExitCode(process->globalObject()->bunVM(), 0);
+    } else {
         if (code.isString()) {
             auto codeString = code.getString(lexicalGlobalObject);
             RETURN_IF_EXCEPTION(throwScope, false);
@@ -4740,9 +4745,48 @@ static inline JSValue getCachedCwd(JSC::JSGlobalObject* globalObject)
     RELEASE_AND_RETURN(scope, cwdStr);
 }
 
-extern "C" EncodedJSValue Process__getCachedCwd(JSC::JSGlobalObject* globalObject)
+// Match lib/path.js: a replaced process.cwd is observable when resolution needs a base.
+extern "C" EncodedJSValue Process__getPathCwd(JSC::JSGlobalObject* globalObject, bool posix)
 {
-    return JSValue::encode(getCachedCwd(globalObject));
+    auto& vm = JSC::getVM(globalObject);
+    auto* processObject = defaultGlobalObject(globalObject)->processObject();
+    auto& cwdName = builtinNames(vm).cwdPublicName();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    JSValue cwd = processObject->get(globalObject, cwdName);
+    RETURN_IF_EXCEPTION(scope, {});
+    auto* function = dynamicDowncast<JSFunction>(cwd);
+    JSValue result;
+    if (function && function->isHostFunction() && function->nativeFunction() == Process_functionCwd) {
+        result = getCachedCwd(globalObject);
+        RETURN_IF_EXCEPTION(scope, {});
+    } else {
+        auto callData = JSC::getCallData(cwd);
+        if (callData.type == CallData::Type::None) [[unlikely]] {
+            JSC::throwTypeError(globalObject, scope, "process.cwd is not a function"_s);
+            return {};
+        }
+        result = JSC::profiledCall(globalObject, ProfilingReason::API, cwd, callData, processObject, JSC::MarkedArgumentBuffer());
+        RETURN_IF_EXCEPTION(scope, {});
+        if (!result.isString()) [[unlikely]] {
+            JSC::throwTypeError(globalObject, scope, "process.cwd returned a non-string value"_s);
+            return {};
+        }
+    }
+
+#if OS(WINDOWS)
+    if (posix) {
+        auto value = result.toWTFString(globalObject);
+        RETURN_IF_EXCEPTION(scope, {});
+        value = makeStringByReplacingAll(value, '\\', '/');
+        auto slash = value.find('/');
+        auto start = slash == WTF::notFound ? (value.isEmpty() ? 0 : value.length() - 1) : slash;
+        result = jsString(vm, value.substring(start));
+    }
+#else
+    UNUSED_PARAM(posix);
+#endif
+
+    RELEASE_AND_RETURN(scope, JSValue::encode(result));
 }
 
 JSC_DEFINE_HOST_FUNCTION(Process_functionCwd, (JSC::JSGlobalObject * globalObject, JSC::CallFrame* callFrame))

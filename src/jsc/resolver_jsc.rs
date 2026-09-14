@@ -19,14 +19,34 @@ fn node_module_paths_for_js(global: &JSGlobalObject, frame: &CallFrame) -> JsRes
     }
 
     let in_str = argument.to_bun_string(global)?;
-    Ok(node_module_paths_js_value(&in_str, global, false))
+    Ok(node_module_paths_js_value(&in_str, global, false, false))
 }
 
 #[unsafe(no_mangle)]
 extern "C" fn Resolver__propForRequireMainPaths(global: &JSGlobalObject) -> JSValue {
     crate::mark_binding!();
 
-    node_module_paths_js_value(&BunString::static_("."), global, false)
+    node_module_paths_js_value(&BunString::static_("."), global, false, false)
+}
+
+/// The `<path>` of a `<path>?query` module key. Twin of `moduleKeyPathLength` (PathInlines.h).
+pub fn module_key_without_query(key: &[u8]) -> &[u8] {
+    // `\\?\C:\...` and `\\.\...` are paths, not queries.
+    let device_prefix_len = if cfg!(windows)
+        && key.len() >= 4
+        && bun_paths::is_sep_any(key[0])
+        && bun_paths::is_sep_any(key[1])
+        && (key[2] == b'?' || key[2] == b'.')
+        && bun_paths::is_sep_any(key[3])
+    {
+        4
+    } else {
+        0
+    };
+    match strings::index_of_char_usize(&key[device_prefix_len..], b'?') {
+        Some(query_start) => &key[..device_prefix_len + query_start],
+        None => key,
+    }
 }
 
 // C++ callers pass a borrowed `const BunString*` (`Bun::toString`).
@@ -35,12 +55,17 @@ extern "C" fn node_module_paths_js_value(
     in_str: &BunString,
     global: &JSGlobalObject,
     use_dirname: bool,
+    split_query: bool,
 ) -> JSValue {
     let mut list: Vec<bun_core::String> = Vec::new();
 
     let utf8 = in_str.to_utf8();
     let base_path: &[u8] = if use_dirname {
-        resolve_path::dirname::<bun_paths::platform::Auto>(utf8.slice())
+        resolve_path::dirname::<bun_paths::platform::Auto>(if split_query {
+            module_key_without_query(utf8.slice())
+        } else {
+            utf8.slice()
+        })
     } else {
         utf8.slice()
     };

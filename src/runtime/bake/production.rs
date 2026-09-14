@@ -107,6 +107,12 @@ pub fn build_command(ctx: Context) -> crate::Result<()> {
         log: NonNull::new(ctx.log),
         args: ctx.args.clone(),
         smol: ctx.runtime_options.smol,
+        // Not `is_main_thread`: that takes the process's one initial script execution context id,
+        // and a production build creates further globals in this process, so this VM has to draw a
+        // generated id like the rest. `is_main_thread` is set on the VM below instead; the flag is
+        // therefore passed explicitly, since init() only derives it for main-thread options.
+        use_system_ca: crate::cli::Arguments::main_use_system_ca(),
+        use_system_ca_flag: crate::cli::Arguments::main_use_system_ca(),
         ..Default::default()
     })?;
     // SAFETY: `init_bake` returns a freshly-allocated VM owned by this thread;
@@ -134,6 +140,14 @@ pub fn build_command(ctx: Context) -> crate::Result<()> {
         // preload/argv are `Vec<Box<[u8]>>`; clone because the VM owns its
         // fields. Startup-only, so the copies are not hot.
         vm.preload.clone_from(&ctx.preloads);
+        vm.worker_preloads.clone_from(&ctx.preloads);
+        vm.worker_eval_preloads
+            .clone_from(&ctx.worker_eval_preloads);
+        vm.worker_preload_require_start = ctx.worker_preload_require_start;
+        vm.worker_preload_require_count = ctx.worker_preload_require_count;
+        vm.worker_eval_mode = ctx.worker_eval_mode;
+        vm.preload_require_start = ctx.worker_preload_require_start;
+        vm.preload_require_count = ctx.worker_preload_require_count;
         vm.argv.clone_from(&ctx.passthrough);
         vm.arena = NonNull::new(&raw mut arena);
         // vm.allocator = arena.arena() — dropped per §Allocators
