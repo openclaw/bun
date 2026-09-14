@@ -396,6 +396,8 @@ impl WebWorker {
         let preload_modules: &[BunString] =
             unsafe { bun_core::ffi::slice(preload_modules_ptr, preload_modules_len) };
 
+        // SAFETY: WorkerMessagingProxy's vector stays live through this call;
+        // the preloads are copied before the borrowed slice can escape.
         let exec_argv_preload_modules: &[BunString] = unsafe {
             bun_core::ffi::slice(exec_argv_preload_modules_ptr, exec_argv_preload_modules_len)
         };

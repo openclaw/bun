@@ -166,10 +166,6 @@ impl<'a> DataURL<'a> {
         Ok(parsed)
     }
 
-    pub fn decode_mime_type(&self) -> bun_http_types::MimeType::MimeType {
-        bun_http_types::MimeType::MimeType::init(self.mime_type, false, None)
-    }
-
     /// Returns the category of this URL's normalized MIME essence.
     pub fn mime_type_category(&self) -> bun_http_types::MimeType::Category {
         use bun_http_types::MimeType::Category;

@@ -1519,20 +1519,6 @@ size_t uws_req_get_header(uws_req_t *res, const char *lower_case_header,
       return (struct us_loop_t *)uWS::Loop::get(existing_native_loop);
   }
 
-  void uws_res_uncork(int ssl, uws_res_r res)
-  {
-    if (ssl)
-    {
-      uWS::HttpResponse<true> *uwsRes = (uWS::HttpResponse<true> *)res;
-      uwsRes->uncork();
-    }
-    else
-    {
-      uWS::HttpResponse<false> *uwsRes = (uWS::HttpResponse<false> *)res;
-      uwsRes->uncork();
-    }
-  }
-
   void us_socket_mark_needs_more_not_ssl(uws_res_r res)
   {
     us_socket_r s = (us_socket_t *)res;
@@ -1643,16 +1629,6 @@ __attribute__((callback (corker, ctx)))
     } else {
       uWS::HttpResponse<false> *uwsRes = (uWS::HttpResponse<false> *)res;
       uwsRes->flushHeaders(flushImmediately);
-    }
-  }
-
-  bool uws_res_is_corked(int ssl, uws_res_r res) {
-    if (ssl) {
-      uWS::HttpResponse<true> *uwsRes = (uWS::HttpResponse<true> *)res;
-      return uwsRes->isCorked();
-    } else {
-      uWS::HttpResponse<false> *uwsRes = (uWS::HttpResponse<false> *)res;
-      return uwsRes->isCorked();
     }
   }
 

@@ -154,10 +154,6 @@ impl<const SSL: bool> Response<SSL> {
         c::uws_res_flush_headers(Self::ssl_flag(), self.as_raw(), flush_immediately)
     }
 
-    pub(crate) fn is_corked(&mut self) -> bool {
-        c::uws_res_is_corked(Self::ssl_flag(), self.as_raw())
-    }
-
     pub(crate) fn state(&self) -> State {
         // SAFETY: `Response<SSL>` and `c::uws_res` are layout-identical opaque
         // ZSTs (both `UnsafeCell<[u8; 0]>`); the reborrow is a no-op cast.
@@ -178,10 +174,6 @@ impl<const SSL: bool> Response<SSL> {
 
     pub(crate) fn prepare_for_sendfile(&mut self) {
         c::uws_res_prepare_for_sendfile(Self::ssl_flag(), self.as_raw())
-    }
-
-    pub(crate) fn uncork(&mut self) {
-        c::uws_res_uncork(Self::ssl_flag(), self.as_raw())
     }
 
     pub(crate) fn pause(&mut self) {
@@ -793,14 +785,6 @@ impl AnyResponse {
         any_dispatch!(self, |r| r.flush_headers(flush_immediately))
     }
 
-    pub fn is_corked(self) -> bool {
-        any_dispatch!(self, |r| r.is_corked())
-    }
-
-    pub fn uncork(self) {
-        any_dispatch!(self, |r| r.uncork())
-    }
-
     pub fn get_buffered_amount(self) -> u64 {
         any_dispatch!(self, |r| r.get_buffered_amount())
     }
@@ -1174,7 +1158,6 @@ pub mod c {
             port: &mut i32,
             is_ipv6: &mut bool,
         ) -> usize;
-        pub(crate) safe fn uws_res_uncork(ssl: i32, res: &mut uws_res);
         pub(crate) fn uws_res_end(
             ssl: i32,
             res: *mut uws_res,
@@ -1187,7 +1170,6 @@ pub mod c {
             res: &mut uws_res,
             flush_immediately: bool,
         );
-        pub(crate) safe fn uws_res_is_corked(ssl: i32, res: &mut uws_res) -> bool;
         pub(crate) safe fn uws_res_pause(ssl: i32, res: &mut uws_res);
         pub(crate) safe fn uws_res_resume(ssl: i32, res: &mut uws_res);
         pub(crate) safe fn uws_res_write_continue(ssl: i32, res: &mut uws_res);

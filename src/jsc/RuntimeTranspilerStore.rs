@@ -327,16 +327,13 @@ impl RuntimeTranspilerStore {
         // The path text is heap-duplicated here and freed in `reset_for_pool` via
         // heap::take on `path.text`.
         let owned_text: *mut [u8] = bun_core::heap::into_raw(Box::<[u8]>::from(path.text));
-        // SAFETY: owned_text was just allocated via heap::alloc and lives until
-        // `reset_for_pool` reconstructs and drops the Box. The unbounded
-        // lifetime from raw-ptr deref coerces to `'static` for `bun_paths::fs::Path<'static>`.
+        // SAFETY: the job owns this Box allocation until `reset_for_pool`;
+        // its Path borrows the bytes without mutating them.
+        let owned_text = unsafe { &*owned_text.cast_const() };
         let owned_path = if path.is_data_url() {
-            bun_paths::fs::Path::init_with_namespace(
-                unsafe { &*owned_text.cast_const() },
-                b"dataurl",
-            )
+            bun_paths::fs::Path::init_with_namespace(owned_text, b"dataurl")
         } else {
-            bun_paths::fs::Path::init(unsafe { &*owned_text.cast_const() })
+            bun_paths::fs::Path::init(owned_text)
         };
         let promise: *mut JSInternalPromise = JSInternalPromise::create(global_object);
 
