@@ -1558,7 +1558,9 @@ class ChildProcess extends EventEmitter {
       if (has_ipc) {
         this.send = this.#send;
         this.disconnect = this.#disconnect;
-        this.channel = new Control();
+        // Node's IPC pipe is its own ref'd handle; subprocess.unref() does not release it.
+        this.#handle.$setChannelRef(true);
+        this.channel = new Control(this.#handle);
         Object.defineProperty(this, "_channel", {
           get() {
             return this.channel;
@@ -1958,9 +1960,37 @@ function abortChildProcess(child, killSignal, reason) {
   }
 }
 
+// Node's Control from lib/internal/child_process.js.
 class Control extends EventEmitter {
-  constructor() {
+  #handle;
+  #refs = 0;
+  #refExplicitlySet = false;
+
+  constructor(handle) {
     super();
+    this.#handle = handle;
+  }
+
+  refCounted() {
+    if (++this.#refs === 1 && !this.#refExplicitlySet) {
+      this.#handle.$setChannelRef(true);
+    }
+  }
+
+  unrefCounted() {
+    if (--this.#refs === 0 && !this.#refExplicitlySet) {
+      this.#handle.$setChannelRef(false);
+    }
+  }
+
+  ref() {
+    this.#refExplicitlySet = true;
+    this.#handle.$setChannelRef(true);
+  }
+
+  unref() {
+    this.#refExplicitlySet = true;
+    this.#handle.$setChannelRef(false);
   }
 }
 
