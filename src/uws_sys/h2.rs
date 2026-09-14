@@ -129,10 +129,6 @@ impl Response {
     pub fn request_body_ended(&self) -> bool {
         c::uws_h2_res_request_body_ended(self)
     }
-    pub(crate) fn is_corked(&self) -> bool {
-        false
-    }
-    pub(crate) fn uncork(&mut self) {}
     pub(crate) fn is_connect_request(&self) -> bool {
         false
     }

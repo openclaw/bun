@@ -1107,7 +1107,9 @@ fn resolve_with_args<const IS_FILE_PATH: bool>(
     let mut query_string = BunString::EMPTY;
 
     let decoded_specifier;
+    let mut file_url_suffix = BunString::EMPTY;
     let specifier_for_resolve = if specifier.starts_with_ascii(b"file://") {
+        file_url_suffix = bun_url::suffix_from_file_url(specifier);
         decoded_specifier = bun_url::path_from_file_url(specifier);
         &decoded_specifier
     } else {
@@ -1120,6 +1122,7 @@ fn resolve_with_args<const IS_FILE_PATH: bool>(
         from,
         Some(&mut query_string),
         mode,
+        !specifier.starts_with_ascii(b"file://"),
     )? {
         Ok(path) => path,
         Err(err) if err.as_class_ref::<jsc::ResolveMessage>().is_some() => {
@@ -1129,10 +1132,30 @@ fn resolve_with_args<const IS_FILE_PATH: bool>(
         Err(err) => return Err(ctx.throw_value(err)),
     };
 
-    if !query_string.is_empty() {
+    // CommonJS cache keys must distinguish a literal '?' in the resolved path
+    // from the query suffix, including when a relative import reaches that path.
+    // Bun.resolve's directory-based public APIs still return filesystem paths.
+    let encoded_module_key = IS_FILE_PATH
+        && !mode.is_esm()
+        && result_value.index_of_ascii_char(b'?').is_some()
+        && bun_paths::is_absolute(result_value.to_utf8().slice());
+    let result_value = if encoded_module_key {
+        bun_url::file_url_from_string(&result_value)
+    } else {
+        result_value
+    };
+
+    if !query_string.is_empty() || !file_url_suffix.is_empty() {
         let mut arraylist: Vec<u8> = Vec::with_capacity(1024);
         // Vec<u8> writes are infallible.
-        let _ = write!(&mut arraylist, "{}{}", result_value, query_string);
+        let _ = write!(&mut arraylist, "{}", result_value);
+        if file_url_suffix.is_empty() {
+            let _ = write!(&mut arraylist, "{}", query_string);
+        } else if !encoded_module_key && file_url_suffix.starts_with_ascii(b"#") {
+            let _ = write!(&mut arraylist, "?{}", file_url_suffix);
+        } else {
+            let _ = write!(&mut arraylist, "{}", file_url_suffix);
+        }
 
         return Ok(Resolved::Found(bun_string_jsc::create_utf8_for_js(
             ctx, &arraylist,

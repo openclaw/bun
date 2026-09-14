@@ -181,10 +181,6 @@ impl Response {
     pub(crate) fn is_closed(&self) -> bool {
         false
     }
-    pub(crate) fn is_corked(&self) -> bool {
-        false
-    }
-    pub(crate) fn uncork(&mut self) {}
     pub(crate) fn is_connect_request(&self) -> bool {
         false
     }

@@ -33,6 +33,7 @@ typedef union BunStringImpl {
 namespace WTF {
 class StringImpl;
 class String;
+class URL;
 }
 
 typedef union BunStringImpl {
@@ -357,6 +358,8 @@ BunString toStringRef(WTF::StringImpl* wtfString);
 // This creates a detached string view, which cannot be ref/unref.
 // Be very careful using this, and ensure the memory owner does not get destroyed.
 BunString toStringView(WTF::StringView view);
+
+WTF::String moduleKeyFromFileURL(const WTF::URL&);
 }
 
 typedef struct {
@@ -395,7 +398,8 @@ extern "C" JSC::JSPromise* Bun__transpileFile(
     ErrorableResolvedSource* result,
     bool allowPromise,
     bool isCommonJSRequire,
-    BunLoaderType forceLoaderType);
+    BunLoaderType forceLoaderType,
+    bool preservePathDelimiters);
 
 extern "C" bool Bun__fetchBuiltinModule(
     void* bunVM,

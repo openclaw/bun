@@ -83,6 +83,12 @@ pub struct InitOptions {
     /// The CLI's `api.TransformOptions`. Consumed by `RuntimeHooks::init_runtime_state`
     /// → `Transpiler::init(.., configureTransformOptionsForBunVM(args), ..)`.
     pub transform_options: bun_options_types::schema::api::TransformOptions,
+    /// Explicit CA intent for this VM; `None` lets NODE_USE_SYSTEM_CA decide.
+    pub use_system_ca: Option<bool>,
+    /// The part of `use_system_ca` that came from a flag (this thread's execArgv, or the parent's
+    /// when inheriting): what a child Worker inherits. Ignored on the main thread, whose
+    /// `use_system_ca` is flag-only already.
+    pub use_system_ca_flag: Option<bool>,
     /// Consumed by `RuntimeHooks::init_runtime_state` → `configureDebugger`.
     pub debugger: bun_options_types::context::Debugger,
     /// When `Some`, [`init`] adopts
@@ -125,6 +131,8 @@ impl Default for InitOptions {
             store_fd: false,
             smol: false,
             eval_mode: false,
+            use_system_ca: None,
+            use_system_ca_flag: None,
             is_main_thread: false,
             worker_ptr: core::ptr::null_mut(),
             context_id: None,
@@ -183,6 +191,17 @@ pub struct VirtualMachine {
     /// counter stays at zero).
     pub pending_unref_counter: core::sync::atomic::AtomicI32,
     pub preload: Vec<Box<[u8]>>,
+    pub preload_require_start: usize,
+    pub preload_require_count: usize,
+    /// Effective execArgv preloads retained after this VM runs them, so child
+    /// workers can inherit the same startup contract.
+    pub worker_preloads: Vec<Box<[u8]>>,
+    /// The require-style subset of `worker_preloads` that Node also applies
+    /// before eval Worker source.
+    pub worker_eval_preloads: Vec<Box<[u8]>>,
+    pub worker_preload_require_start: usize,
+    pub worker_preload_require_count: usize,
+    pub worker_eval_mode: bun_options_types::context::WorkerEvalMode,
     pub unhandled_pending_rejection_to_capture: Option<*mut JSValue>,
     /// LAYERING: the real type is `bun_runtime`'s
     /// `html_rewriter::RewriterPipe` (a forward dep), stored type-erased.
@@ -222,6 +241,12 @@ pub struct VirtualMachine {
     /// pushed after this (a finalizer deferred from the final collection) would only leak.
     pub(crate) has_run_cleanup_hooks: bool,
     pub plugin_runner: Option<crate::plugin_runner::PluginRunner>,
+    /// Explicit `--use-system-ca` / `--no-use-system-ca` for THIS thread, or
+    /// `None` when neither was given and NODE_USE_SYSTEM_CA decides. Node makes
+    /// this an Environment option, so a Worker's execArgv can differ.
+    pub use_system_ca: Option<bool>,
+    /// See [`InitOptions::use_system_ca_flag`]; equals `use_system_ca` on the main thread.
+    pub use_system_ca_flag: Option<bool>,
     pub is_main_thread: bool,
     pub exit_handler: ExitHandler,
 
@@ -278,6 +303,17 @@ pub struct VirtualMachine {
     pub argv: Vec<Box<[u8]>>,
 
     pub origin_timer: std::time::Instant,
+    /// `us_loop_idle_clock_ns()` when THIS thread's loop began; 0 until then, which
+    /// eventLoopUtilization() reports as node's "loop has not begun" zeros. Read cross-thread.
+    pub loop_start_ns: core::sync::atomic::AtomicU64,
+    /// The loop's idle counter when `loop_start_ns` was stamped: parking before the loop "began"
+    /// (a watcher waiting for the first file, a debugger pause) is not loop idle time.
+    pub loop_idle_base_ns: core::sync::atomic::AtomicU64,
+    /// `bun run` sets this around the entry load: the ticks that fetch the entry graph (imports
+    /// transpile off-thread) do not stamp `loop_start_ns`; once `entry_evaluation_started`, a tick
+    /// is the loop running under a top-level await and does. Node's loopStart works out the same:
+    /// zeros throughout the entry's synchronous evaluation, however its graph was loaded.
+    pub loop_start_deferred: bool,
     pub(crate) origin_timestamp: u64,
     /// For fake timers: override performance.now() with a specific value (in nanoseconds).
     pub overridden_performance_now: Option<u64>,
@@ -704,11 +740,12 @@ impl ExitHandler {
         vm.entry_evaluation_started = true;
     }
 
-    /// Only a worker's start waits on this (`wait_for_worker_entry_evaluation`);
-    /// any other VM answers `true` so the hook's registry probe never runs there.
+    /// Only a worker's start (`wait_for_worker_entry_evaluation`) and `bun run`'s deferred loop-start
+    /// stamp (`loop_start_deferred`) wait on this; any other VM answers `true` so the hook's registry
+    /// probe never runs there.
     #[unsafe(no_mangle)]
     pub(crate) extern "C" fn Bun__VM__entryEvaluationStarted(vm: &VirtualMachine) -> bool {
-        vm.entry_evaluation_started || vm.worker.is_none()
+        vm.entry_evaluation_started || !(vm.worker.is_some() || vm.loop_start_deferred)
     }
 
     /// The module-registry key of the current entry load's root: the
@@ -2245,13 +2282,50 @@ extern crate alloc;
 /// casts back on the other side of each hook.
 pub type RuntimeState = *mut c_void;
 
-/// Runtime flags a Worker's `execArgv` can set. `true` means allowed.
-#[derive(Copy, Clone, Debug)]
-pub struct WorkerExecArgvFlags {
-    /// `!--no-addons`
-    pub allow_addons: bool,
-    /// `!--no-ffi-cc`
-    pub allow_ffi_cc: bool,
+unsafe extern "C" {
+    safe fn us_default_use_system_ca() -> i32;
+}
+
+impl VirtualMachine {
+    /// Whether TLS contexts created by this thread trust the system CAs by default: this thread's
+    /// explicit `--use-system-ca` / `--no-use-system-ca`, else the process default.
+    pub fn tls_use_system_ca(&self) -> bool {
+        self.use_system_ca
+            .unwrap_or_else(|| us_default_use_system_ca() != 0)
+    }
+
+    /// The same decision as the `use_system_ca` tri-state TLS options carry
+    /// (0 = process default, 1 = include, -1 = exclude).
+    pub fn tls_use_system_ca_option(&self) -> i32 {
+        match self.use_system_ca {
+            None => 0,
+            Some(true) => 1,
+            Some(false) => -1,
+        }
+    }
+
+    /// This thread's decision differs from the process default, so anything keyed on "the default
+    /// TLS context" (fetch's shared client context) must use a variant of its own.
+    pub fn tls_use_system_ca_differs_from_process(&self) -> bool {
+        self.use_system_ca
+            .is_some_and(|v| v != (us_default_use_system_ca() != 0))
+    }
+}
+
+/// The subset of a Worker's `execArgv` that bun acts on (node's per-Environment options).
+#[derive(Default)]
+pub struct WorkerExecArgv {
+    /// `Some(false)` for `--no-addons`.
+    pub allow_addons: Option<bool>,
+    /// `Some(false)` for `--no-ffi-cc`.
+    pub allow_ffi_cc: Option<bool>,
+    pub use_system_ca: Option<bool>,
+    /// `--cpu-prof` (JSON) / `--cpu-prof-md`; either enables profiling of the worker thread.
+    pub cpu_prof: bool,
+    pub cpu_prof_md: bool,
+    pub cpu_prof_interval: Option<u32>,
+    pub cpu_prof_name: Option<Box<[u8]>>,
+    pub cpu_prof_dir: Option<Box<[u8]>>,
 }
 
 pub struct RuntimeHooks {
@@ -2374,10 +2448,10 @@ pub struct RuntimeHooks {
         transpiler: *mut Transpiler<'static>,
         graph: &'static dyn bun_resolver::StandaloneModuleGraph,
     ),
-    /// Parse a Worker's `execArgv` for the flags in [`WorkerExecArgvFlags`].
-    /// `None` if parsing failed.
-    pub parse_worker_exec_argv_flags:
-        unsafe fn(exec_argv: &[bun_core::WTFStringImpl]) -> Option<WorkerExecArgvFlags>,
+    /// Parse `execArgv` against the `RunCommand` param table (lives in `bun_runtime::cli`, forward-dep).
+    /// Caller writes `allow_addons` / `allow_ffi_cc` back into `transform_options` and applies
+    /// `cpu_prof` to the worker VM.
+    pub parse_worker_exec_argv: unsafe fn(exec_argv: &[bun_core::WTFStringImpl]) -> WorkerExecArgv,
     /// `CronJob.clearAllForVM(vm, .teardown)`. `CronJob` lives in
     /// `bun_runtime::api::cron`.
     pub stop_cron_for_vm_teardown: fn(vm: &mut VirtualMachine),
@@ -2615,6 +2689,11 @@ fn get_origin_timestamp() -> u64 {
     (now - ORIGIN_RELATIVE_EPOCH).max(0) as u64
 }
 
+fn process_origin() -> (std::time::Instant, u64) {
+    static ORIGIN: std::sync::OnceLock<(std::time::Instant, u64)> = std::sync::OnceLock::new();
+    *ORIGIN.get_or_init(|| (std::time::Instant::now(), get_origin_timestamp()))
+}
+
 impl VirtualMachine {
     /// `VirtualMachine.init(opts)` — allocate + wire the per-thread VM.
     ///
@@ -2697,6 +2776,12 @@ impl VirtualMachine {
             addr_of_mut!((*vm).main_resolved_path).write(bun_core::String::EMPTY);
             addr_of_mut!((*vm).hide_bun_stackframes).write(true);
             addr_of_mut!((*vm).is_main_thread).write(opts.is_main_thread);
+            addr_of_mut!((*vm).use_system_ca).write(opts.use_system_ca);
+            addr_of_mut!((*vm).use_system_ca_flag).write(if opts.is_main_thread {
+                opts.use_system_ca
+            } else {
+                opts.use_system_ca_flag
+            });
             // Left at the
             // zeroed default this aliases `hot_reload_counter`'s initial 0, so a
             // watcher event that races the very first entry-point load makes
@@ -2706,8 +2791,11 @@ impl VirtualMachine {
             addr_of_mut!((*vm).pending_internal_promise_reported_at).write(u32::MAX);
             addr_of_mut!((*vm).on_unhandled_rejection)
                 .write(VirtualMachine::default_on_unhandled_rejection);
-            addr_of_mut!((*vm).origin_timer).write(std::time::Instant::now());
-            addr_of_mut!((*vm).origin_timestamp).write(get_origin_timestamp());
+            addr_of_mut!((*vm).loop_start_ns).write(core::sync::atomic::AtomicU64::new(0));
+            addr_of_mut!((*vm).loop_idle_base_ns).write(core::sync::atomic::AtomicU64::new(0));
+            let (origin_timer, origin_timestamp) = process_origin();
+            addr_of_mut!((*vm).origin_timer).write(origin_timer);
+            addr_of_mut!((*vm).origin_timestamp).write(origin_timestamp);
             addr_of_mut!((*vm).smol).write(opts.smol);
             // `Option<{CPU,Heap}ProfilerConfig>` are NOT zero-valid: each
             // payload contains a `bool`, and rustc picks that field's invalid
@@ -2882,10 +2970,70 @@ impl VirtualMachine {
         self.event_loop_mut().wait_for_promise(promise)
     }
 
+    /// This thread's loop has begun: the main thread stamps it on its first poll (node's uv_run, after
+    /// the entry point's synchronous evaluation); a worker stamps it before its script, whose
+    /// bootstrap already runs inside the loop. A no-op while [`Self::loop_start_deferred`] holds.
+    #[inline]
+    pub fn mark_loop_started(&self) {
+        use core::sync::atomic::Ordering;
+        if self.loop_start_ns.load(Ordering::Relaxed) != 0
+            || (self.loop_start_deferred && !self.entry_evaluation_started)
+        {
+            return;
+        }
+        // SAFETY: `event_loop` is this VM's own loop; the idle counter is read atomically.
+        let idle = unsafe { (*self.event_loop).try_usockets_loop() }
+            .map_or(0, |l| unsafe { uws::us_loop_idle_ns(l) });
+        // Base first: a reader that sees the start stamped also sees the base it belongs to.
+        self.loop_idle_base_ns.store(idle, Ordering::Release);
+        let ns = uws::us_loop_idle_clock_ns().max(1);
+        let _ = self
+            .loop_start_ns
+            .compare_exchange(0, ns, Ordering::Release, Ordering::Relaxed);
+    }
+
+    /// See [`Self::loop_start_deferred`]. `bun run` sets it before loading the entry point and clears
+    /// it, then stamps, when it enters its run loop.
+    pub fn defer_loop_start(&mut self, deferred: bool) {
+        self.loop_start_deferred = deferred;
+    }
+
+    /// Milliseconds since this thread's loop began polling; `None` before that.
+    pub fn loop_elapsed_ms(&self) -> Option<f64> {
+        Self::loop_elapsed_ms_since(
+            self.loop_start_ns
+                .load(core::sync::atomic::Ordering::Acquire),
+        )
+    }
+
+    /// `raw_idle_ns` (this thread's `us_loop_idle_ns`) minus the idle accumulated before the loop began.
+    pub fn loop_idle_ms(&self, raw_idle_ns: u64) -> f64 {
+        Self::loop_idle_ms_above(
+            self.loop_idle_base_ns
+                .load(core::sync::atomic::Ordering::Acquire),
+            raw_idle_ns,
+        )
+    }
+
+    /// The two formulas on copied-out stamps, shared with the parent-side reader of a worker's
+    /// loop (`WebWorker__getELU`), which holds no reference to the worker's VM.
+    pub fn loop_elapsed_ms_since(loop_start_ns: u64) -> Option<f64> {
+        if loop_start_ns == 0 {
+            return None;
+        }
+        let now = uws::us_loop_idle_clock_ns();
+        Some(now.saturating_sub(loop_start_ns) as f64 / 1_000_000.0)
+    }
+
+    pub fn loop_idle_ms_above(loop_idle_base_ns: u64, raw_idle_ns: u64) -> f64 {
+        raw_idle_ns.saturating_sub(loop_idle_base_ns) as f64 / 1_000_000.0
+    }
+
     /// `eventLoop().autoTick()` — dispatched through the runtime hook
     /// (needs `Timer::All` for the poll timeout).
     #[inline]
     pub fn auto_tick(&mut self) {
+        self.mark_loop_started();
         if let Some(hooks) = runtime_hooks() {
             // SAFETY: hook contract — `self` is the live per-thread VM.
             unsafe { (hooks.auto_tick)(self) };
@@ -2903,6 +3051,7 @@ impl VirtualMachine {
     /// `on_before_exit` / `bun_main` still make forward progress.
     #[inline]
     pub fn auto_tick_active(&mut self) {
+        self.mark_loop_started();
         if let Some(hooks) = runtime_hooks() {
             // SAFETY: `self` is the live per-thread VM (hook contract).
             unsafe { (hooks.auto_tick_active)(self) };
@@ -3397,6 +3546,10 @@ pub struct Options {
     // configuration is plumbed through `RuntimeHooks::ensure_debugger` (the
     // CLI option struct lives in `bun_cli`, a forward dep). See
     // `runtime/jsc_hooks.rs` for the `configureDebugger` call site.
+    /// Explicit CA intent; `None` lets NODE_USE_SYSTEM_CA decide.
+    pub use_system_ca: Option<bool>,
+    /// See [`InitOptions::use_system_ca_flag`].
+    pub use_system_ca_flag: Option<bool>,
     pub is_main_thread: bool,
 }
 
@@ -3474,13 +3627,14 @@ static SOURCE_CODE_PRINTER_FROM_MACRO: Cell<bool> = Cell::new(false);
 fn normalize_specifier_for_resolution<'a>(
     specifier_: &'a [u8],
     query_string: &mut &'a [u8],
+    split_query: bool,
 ) -> &'a [u8] {
     // In a `data:` URL everything after the comma is the payload; a `?` is
     // part of the data, not a query string.
     if bun_core::strings::has_prefix_comptime(specifier_, b"data:") {
         return specifier_;
     }
-    if let Some(i) = bun_core::strings::index_of_char_usize(specifier_, b'?') {
+    if split_query && let Some(i) = bun_core::strings::index_of_char_usize(specifier_, b'?') {
         *query_string = &specifier_[i..];
         &specifier_[..i]
     } else {
@@ -3581,13 +3735,6 @@ pub fn collect_macro_vm_garbage() {
     debug_assert!(!vm_ref.is_main_thread);
     debug_assert_eq!(vm_ref.macro_guard_depth, 0);
     vm_ref.jsc_vm().run_gc(true);
-}
-
-fn normalize_source(source: &[u8]) -> &[u8] {
-    if let Some(rest) = source.strip_prefix(b"file://") {
-        return rest;
-    }
-    source
 }
 
 // Additional FFI used by the formerly-gated impl.
@@ -4164,6 +4311,8 @@ impl VirtualMachine {
             mini_mode: opts.smol,
             eval_mode: false,
             is_main_thread: opts.is_main_thread,
+            use_system_ca: opts.use_system_ca,
+            use_system_ca_flag: opts.use_system_ca_flag,
             ..Default::default()
         };
         let vm = Self::init(init_opts)?;
@@ -4195,6 +4344,8 @@ impl VirtualMachine {
             smol: opts.smol,
             eval_mode: opts.eval,
             is_main_thread: false,
+            use_system_ca: opts.use_system_ca,
+            use_system_ca_flag: opts.use_system_ca_flag,
             // The global is created with the worker's messaging proxy, context id
             // and `mini` so the C++ ZigGlobalObject is born with its options wired.
             worker_ptr: worker.messaging_proxy(),
@@ -4238,6 +4389,8 @@ impl VirtualMachine {
             mini_mode: opts.smol,
             eval_mode: false,
             is_main_thread: opts.is_main_thread,
+            use_system_ca: opts.use_system_ca,
+            use_system_ca_flag: opts.use_system_ca_flag,
             ..Default::default()
         };
         // Note: shares the console / log / event-loop wiring with `init`;
@@ -4517,6 +4670,8 @@ impl VirtualMachine {
         source: &[u8],
         is_esm: bool,
         is_a_file_path: bool,
+        split_query: bool,
+        split_source_query: bool,
     ) -> crate::CrateResult<()> {
         use bun_js_parser::Macro;
         use bun_resolver::{ResultUnion, node_fallbacks};
@@ -4581,17 +4736,24 @@ impl VirtualMachine {
 
         let is_special_source = source == MAIN_FILE_NAME || Macro::is_macro_path(source);
         let mut query_string: &[u8] = b"";
-        let normalized_specifier = normalize_specifier_for_resolution(specifier, &mut query_string);
+        let normalized_specifier =
+            normalize_specifier_for_resolution(specifier, &mut query_string, split_query);
         let top_level_dir = self.top_level_dir();
         let source_to_use: &[u8] = if !is_special_source {
             if is_a_file_path {
+                // `source` is the referrer's module key, which may be `<path>?query`.
+                let source_path = if split_source_query {
+                    crate::resolver_jsc::module_key_without_query(source)
+                } else {
+                    source
+                };
                 // SAFETY: PORT — `dir_with_trailing_slash()` returns a
                 // re-slice of `source`, which the caller guarantees outlives
                 // the resolve call (and the resolver only borrows it for the
                 // synchronous `resolve_and_auto_install`).
                 unsafe {
                     bun_ptr::detach_lifetime(
-                        bun_resolver::fs::PathName::init(source).dir_with_trailing_slash(),
+                        bun_resolver::fs::PathName::init(source_path).dir_with_trailing_slash(),
                     )
                 }
             } else {
@@ -4706,6 +4868,7 @@ impl VirtualMachine {
         source: &bun_core::String,
         query_string: Option<&mut bun_core::String>,
         mode: ResolveMode,
+        split_query: bool,
     ) -> JsResult<Result<bun_core::String, JSValue>> {
         const MAX_LEN: usize = (bun_paths::MAX_PATH_BYTES as f64 * 1.5) as usize;
         // `data:` URLs carry the module source inline and never touch the
@@ -4756,7 +4919,17 @@ impl VirtualMachine {
         }
 
         let specifier_utf8 = specifier.to_utf8();
-        let source_utf8 = source.to_utf8();
+        // Parse the URL before decoding so a pathname's %3F never becomes a
+        // module-query delimiter. Hold its decoded storage through resolution.
+        let source_is_file_url = source.starts_with_ascii(b"file://");
+        let decoded_source;
+        let source_for_resolve = if source_is_file_url {
+            decoded_source = bun_url::path_from_file_url(source);
+            &decoded_source
+        } else {
+            source
+        };
+        let source_utf8 = source_for_resolve.to_utf8();
 
         if jsc_vm.plugin_runner.is_some() {
             use bun_bundler::transpiler::PluginRunner;
@@ -4772,7 +4945,7 @@ impl VirtualMachine {
                     global,
                     &bun_core::String::from_bytes(namespace),
                     &bun_core::String::borrow_utf8(after_namespace),
-                    source,
+                    source_for_resolve,
                     crate::BunPluginTarget::Bun,
                 )? {
                     return Ok(resolved_path);
@@ -4860,9 +5033,11 @@ impl VirtualMachine {
         let resolve_result = jsc_vm._resolve(
             &mut result,
             specifier_utf8.slice(),
-            normalize_source(source_utf8.slice()),
+            source_utf8.slice(),
             mode.is_esm(),
             IS_A_FILE_PATH,
+            split_query,
+            !source_is_file_url,
         );
         if let Err(err_) = resolve_result {
             let err = err_;
@@ -4903,7 +5078,17 @@ impl VirtualMachine {
         }
 
         if let Some(query) = query_string {
-            *query = bun_core::String::clone_utf8(result.query_string);
+            // `bun build --compile` finds an embedded module by its exact key, so that key gets no suffix.
+            let is_embedded = result.result.as_ref().is_some_and(|resolved| {
+                resolved
+                    .flags
+                    .contains(bun_resolver::ResultFlags::IS_STANDALONE_MODULE)
+            });
+            *query = if is_embedded {
+                bun_core::String::EMPTY
+            } else {
+                bun_core::String::clone_utf8(result.query_string)
+            };
         }
 
         Ok(Ok(bun_core::String::clone_utf8(result.path)))
@@ -4955,6 +5140,8 @@ impl VirtualMachine {
         // time and `load_preloads` clears the boxes but keeps the Vec buffer,
         // so reclaim it here or every Worker leaks it.
         drop(core::mem::take(&mut self.preload));
+        drop(core::mem::take(&mut self.worker_preloads));
+        drop(core::mem::take(&mut self.worker_eval_preloads));
 
         // SAFETY: this VM is raw-`dealloc`'d (no field `Drop` runs), so
         // `transpiler` is never auto-dropped after `deinit` clears its fields.

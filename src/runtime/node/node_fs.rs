@@ -441,18 +441,21 @@ fn openat_os_path(dirfd: FD, path: &OSPathSliceZ, flags: i32, mode: Mode) -> May
     sys::openat_windows(dirfd, path.as_slice(), flags, mode)
 }
 
-/// Check whether a directory exists at `(fd, path)` — dispatches on path element width. On
-/// Windows `OSPathSliceZ` is already `&WStr`, so forward to the wide overload
-/// instead of narrowing to UTF-8 and re-widening. POSIX is a forwarder.
+/// Match mkdir's path semantics when checking an existing directory.
 #[inline]
-fn directory_exists_at_os_path(dir: FD, path: &OSPathSliceZ) -> Maybe<bool> {
+fn directory_exists_os_path(path: &OSPathSliceZ) -> Maybe<bool> {
     #[cfg(not(windows))]
     {
-        sys::directory_exists_at(dir, path)
+        sys::directory_exists_at(FD::INVALID, path)
     }
     #[cfg(windows)]
     {
-        sys::directory_exists_at_w(dir, path.as_slice())
+        // Win32 resolves relative dot components using the logical cwd, including junctions.
+        match Syscall::stat_w(path) {
+            Ok(st) => Ok(sys::S::ISDIR(st.st_mode as _)),
+            Err(err) if err.get_errno() == E::ENOENT => Ok(false),
+            Err(err) => Err(err),
+        }
     }
 }
 
@@ -5470,7 +5473,7 @@ impl NodeFS {
                 // it is unclear if macOS lies about if the existing item is
                 // a directory or not, so it is checked.
                 E::EISDIR | E::EEXIST => {
-                    return match directory_exists_at_os_path(FD::INVALID, path) {
+                    return match directory_exists_os_path(path) {
                         Err(_) => Err(sys::Error {
                             errno: err.errno,
                             syscall: sys::Tag::mkdir,
@@ -5562,9 +5565,7 @@ impl NodeFS {
                                 // On Windows, this may happen if trying to mkdir replacing a file
                                 #[cfg(windows)]
                                 {
-                                    if let Ok(res) =
-                                        directory_exists_at_os_path(FD::INVALID, parent)
-                                    {
+                                    if let Ok(res) = directory_exists_os_path(parent) {
                                         // is a directory. break.
                                         if !res {
                                             // SAFETY: `working_mem` is not used after this return; the
@@ -7385,45 +7386,52 @@ impl NodeFS {
         {
             let mut outbuf = bun_paths::path_buffer_pool::get();
             let inbuf = &mut self.sync_error_buf;
-            // SAFETY: single-threaded init flag (resolver/fs.rs).
-            debug_assert!(
-                bun_resolver::fs::INSTANCE_LOADED.load(core::sync::atomic::Ordering::Relaxed)
-            );
-
             let path_slice = args.path.slice();
-            // SAFETY: instance() returns the leaked singleton; INSTANCE_LOADED checked above.
-            let fs = FileSystem::get();
-            let parts = [fs.top_level_dir, path_slice];
-            let inbuf_len = inbuf.len();
-            let Some(joined) = fs.abs_buf_checked(&parts, &mut inbuf[..inbuf_len - 1]) else {
-                return Err(sys::Error {
-                    errno: E::ENAMETOOLONG as _,
-                    syscall: sys::Tag::realpath,
-                    path: args.path.slice().into(),
-                    ..Default::default()
-                });
+            let path = if variant == RealpathVariant::Emulated {
+                debug_assert!(
+                    bun_resolver::fs::INSTANCE_LOADED.load(core::sync::atomic::Ordering::Relaxed)
+                );
+                // SAFETY: instance() returns the process-lifetime resolver singleton.
+                let fs = FileSystem::get();
+                let cwd = if path_slice.starts_with(b"/") {
+                    &b""[..]
+                } else {
+                    fs.top_level_dir
+                };
+                let mut spill = Vec::new();
+                let joined = paths::resolve_path::join_spill::<paths::platform::Posix>(
+                    &mut spill,
+                    &[cwd, path_slice],
+                );
+                if joined.len() >= inbuf.len() {
+                    return Err(sys::Error {
+                        errno: E::ENAMETOOLONG as _,
+                        syscall: sys::Tag::realpath,
+                        path: args.path.slice().into(),
+                        ..Default::default()
+                    });
+                }
+                let path_len = joined.len();
+                inbuf[..path_len].copy_from_slice(joined);
+                inbuf[path_len] = 0;
+                ZStr::from_buf(&inbuf[..], path_len)
+            } else {
+                if path_slice.len() >= inbuf.len() {
+                    return Err(sys::Error {
+                        errno: E::ENAMETOOLONG as _,
+                        syscall: sys::Tag::realpath,
+                        path: args.path.slice().into(),
+                        ..Default::default()
+                    });
+                }
+                args.path.slice_z(inbuf)
             };
-            let path_len = joined.len();
-            inbuf[path_len] = 0;
-            let path = ZStr::from_buf(&inbuf[..], path_len);
-
-            #[cfg(any(target_os = "linux", target_os = "android"))]
-            let flags = sys::O::PATH; // O_PATH is faster
-            #[cfg(not(any(target_os = "linux", target_os = "android")))]
-            let flags = sys::O::RDONLY | sys::O::NONBLOCK | sys::O::NOCTTY;
-
-            let fd = match sys::open(path, flags, 0) {
-                Err(err) => return Err(err.with_path(path)),
-                Ok(fd_) => fd_,
-            };
-            let _close = scopeguard::guard(fd, |fd| fd.close());
-
-            let buf = match Syscall::get_fd_path(fd, &mut outbuf) {
+            // Resolve without opening and closing the target, which would
+            // release process-owned POSIX locks.
+            let buf = match Syscall::realpath(path, &mut outbuf) {
                 Err(err) => return Err(err.with_path(path)),
                 Ok(buf_) => buf_,
             };
-
-            let _ = variant;
             if args.encoding == Encoding::Utf8 {
                 if let PathLike::String(s) = &args.path {
                     if strings::eql_long(s.slice(), buf, true) {
@@ -9521,30 +9529,6 @@ pub(crate) fn zig_delete_tree(
                         Err(E::EISDIR) => {
                             treat_as_dir = true;
                             continue 'handle_entry;
-                        }
-                        #[cfg(target_os = "macos")]
-                        Err(e @ E::EACCES) => {
-                            // Same ancestor-rmdir retry as the directory sites:
-                            // node reports the containing directory's ENOTEMPTY on
-                            // macOS when a file child cannot be unlinked. EPERM is
-                            // NOT converted -- on macOS it can mean "target is a
-                            // directory" and must keep flowing to the caller.
-                            let ancestor = &stack[top_idx];
-                            let ancestor_name: &[u8] = if ancestor.name_is_borrowed {
-                                sub_path
-                            } else {
-                                &ancestor.name
-                            };
-                            if matches!(
-                                dt_delete_dir(
-                                    sys::Dir::borrow(&ancestor.parent_dir),
-                                    ancestor_name
-                                ),
-                                Err(E::ENOTEMPTY | E::EEXIST)
-                            ) {
-                                return Err(dt_err(E::ENOTEMPTY));
-                            }
-                            return Err(dt_err(e));
                         }
                         // "EPERM because it's a directory" is OS-dependent
                         // (Linux returns EISDIR; macOS returns EPERM). We only

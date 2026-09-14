@@ -956,6 +956,7 @@ Full documentation is available at <magenta>https://bun.com/docs/cli/run<r>
         bun_ast::initialize_store();
 
         let vm_ptr = VirtualMachine::init(VmInitOptions {
+            use_system_ca: crate::cli::Arguments::main_use_system_ca(),
             transform_options: ctx.args.clone(),
             log: ::core::ptr::NonNull::new(ctx.log),
             debugger: ::core::mem::take(&mut ctx.runtime_options.debugger),
@@ -971,6 +972,13 @@ Full documentation is available at <magenta>https://bun.com/docs/cli/run<r>
         // `vm.preload`/`vm.argv` are `Vec<Box<[u8]>>` on both sides;
         // hand the CLI's vectors over wholesale (process-lifetime, never freed).
         vm.preload = std::mem::take(&mut ctx.preloads);
+        vm.worker_preloads.clone_from(&vm.preload);
+        vm.worker_eval_preloads = std::mem::take(&mut ctx.worker_eval_preloads);
+        vm.worker_preload_require_start = ctx.worker_preload_require_start;
+        vm.worker_preload_require_count = ctx.worker_preload_require_count;
+        vm.worker_eval_mode = ctx.worker_eval_mode;
+        vm.preload_require_start = ctx.worker_preload_require_start;
+        vm.preload_require_count = ctx.worker_preload_require_count;
         vm.argv = std::mem::take(&mut ctx.passthrough);
         // `InitOptions` has no `store_fd` field, so set it on the resolver directly.
         vm.transpiler.resolver.store_fd = ctx.debug.hot_reload != cli::command::HotReload::None;
@@ -1157,6 +1165,7 @@ Full documentation is available at <magenta>https://bun.com/docs/cli/run<r>
             graph: Some(graph_dyn),
             is_main_thread: true,
             smol: ctx.runtime_options.smol,
+            use_system_ca: crate::cli::Arguments::main_use_system_ca(),
             // `Options::dns_result_order` is `u8` until the
             // b2-cycle widens it to `bun_dns::Order`; the enum is
             // `#[repr(u8)]` so `as u8` is exact.
@@ -1174,6 +1183,13 @@ Full documentation is available at <magenta>https://bun.com/docs/cli/run<r>
         }
 
         vm.preload = std::mem::take(&mut ctx.preloads);
+        vm.worker_preloads.clone_from(&vm.preload);
+        vm.worker_eval_preloads = std::mem::take(&mut ctx.worker_eval_preloads);
+        vm.worker_preload_require_start = ctx.worker_preload_require_start;
+        vm.worker_preload_require_count = ctx.worker_preload_require_count;
+        vm.worker_eval_mode = ctx.worker_eval_mode;
+        vm.preload_require_start = ctx.worker_preload_require_start;
+        vm.preload_require_count = ctx.worker_preload_require_count;
         vm.argv = std::mem::take(&mut ctx.passthrough);
 
         // `vm.main` is a BACKREF (`*const [u8]`) into `entry_path`'s heap
@@ -1302,18 +1318,15 @@ impl Run<'_> {
         // ── CPU profiler ────────────────────────────────────────────────────
         if ctx.runtime_options.cpu_prof.enabled {
             let opts = &ctx.runtime_options.cpu_prof;
-            // SAFETY: `ctx` is process-lifetime; erase `Box<[u8]>` borrows to
-            // `'static` for `CPUProfilerConfig`.
-            let name: &'static [u8] = unsafe { &*std::ptr::from_ref::<[u8]>(opts.name.as_ref()) };
-            // SAFETY: same process-lifetime erasure as `name` above.
-            let dir: &'static [u8] = unsafe { &*std::ptr::from_ref::<[u8]>(opts.dir.as_ref()) };
-            vm.cpu_profiler_config = Some(bun_jsc::bun_cpu_profiler::CPUProfilerConfig {
-                name,
-                dir,
+            let config = bun_jsc::bun_cpu_profiler::CPUProfilerConfig {
+                name: opts.name.clone(),
+                dir: opts.dir.clone(),
                 md_format: opts.md_format,
                 json_format: opts.json_format,
                 interval: opts.interval,
-            });
+                thread_id: 0,
+            };
+            vm.cpu_profiler_config = Some(config);
             bun_jsc::bun_cpu_profiler::set_sampling_interval(opts.interval);
             // SAFETY: `vm.jsc_vm` set in `init`.
             bun_jsc::bun_cpu_profiler::start_cpu_profiler(unsafe { &mut *vm.jsc_vm });
@@ -1323,7 +1336,7 @@ impl Run<'_> {
         // ── Heap profiler ───────────────────────────────────────────────────
         if ctx.runtime_options.heap_prof.enabled {
             let opts = &ctx.runtime_options.heap_prof;
-            // SAFETY: `ctx` is process-lifetime; see CPU-profiler note above.
+            // SAFETY: `ctx` is process-lifetime; erase the `Box<[u8]>` borrow to `'static`.
             let name: &'static [u8] = unsafe { &*std::ptr::from_ref::<[u8]>(opts.name.as_ref()) };
             // SAFETY: same process-lifetime erasure as `name` above.
             let dir: &'static [u8] = unsafe { &*std::ptr::from_ref::<[u8]>(opts.dir.as_ref()) };
@@ -1425,6 +1438,7 @@ impl Run<'_> {
             }
         }
 
+        vm.defer_loop_start(true);
         match vm.load_entry_point(entry) {
             Ok(promise) => {
                 // SAFETY: `promise` is a live GC cell returned by the module loader.
@@ -1489,6 +1503,10 @@ impl Run<'_> {
         }
 
         // ── core run-loop ──────────────────────────────────────────────────
+        // Node's loopStart: the entry point's synchronous evaluation is over, whether or not the
+        // evaluate hook saw it begin (a `Module.runMain` override runs the entry itself).
+        vm.defer_loop_start(false);
+        vm.mark_loop_started();
         if vm.is_watcher_enabled() {
             vm.report_exception_in_hot_reloaded_module_if_needed();
             loop {

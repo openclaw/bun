@@ -1499,6 +1499,10 @@ describe.concurrent(() => {
     expect(flags.has("--no_warnings")).toBe(true);
     expect(flags.has("--require=./foo.js")).toBe(true);
     expect(flags.has("--not-a-real-flag")).toBe(false);
+    // Every supported CA flag, including the --no- negation, is env-allowed as in node.
+    expect(
+      ["--use-system-ca", "--no-use-system-ca", "--use-openssl-ca", "--use-bundled-ca"].filter(f => flags.has(f)),
+    ).toEqual(["--use-system-ca", "--no-use-system-ca", "--use-openssl-ca", "--use-bundled-ca"]);
     flags.add("--not-a-real-flag");
     expect(flags.has("--not-a-real-flag")).toBe(false);
     // Node freezes the prototype and constructor too; the vendored upstream
@@ -1783,7 +1787,86 @@ it("process.execArgv", async () => {
   }
 });
 
+it("process.execArgv with node's -pe alias", async () => {
+  // `bun -pe X`: node's whole-token alias, X is -p's value.
+  const auto = await Bun.$`${bunExe()} -pe ${"JSON.stringify(process.execArgv)"}`.text();
+  expect(JSON.parse(auto)).toEqual(["-pe", "JSON.stringify(process.execArgv)"]);
+
+  const script = join(__dirname, "print-process-execArgv.js");
+  const run = await Bun.$`${bunExe()} run -pe ${script}`.text();
+  expect(JSON.parse(run.split("\n")[0])).toEqual({ execArgv: ["-pe"], argv: [] });
+});
+
 describe("process.exitCode", () => {
+  it.each(["undefined", "null"])("can be cleared with %s", async clearValue => {
+    await runInlineFixture(
+      `
+      import assert from "node:assert/strict";
+      process.exitCode = 42;
+      process.exitCode = ${clearValue};
+      assert.strictEqual(process.exitCode, undefined);
+      process.on("beforeExit", code => {
+        assert.strictEqual(code, 0);
+        assert.strictEqual(process.exitCode, undefined);
+      });
+      process.on("exit", code => {
+        assert.strictEqual(code, 0);
+        assert.strictEqual(process.exitCode, undefined);
+      });
+    `,
+      null,
+      0,
+    );
+  });
+
+  it.each(["undefined", "null"])("process.exit(%s) clears an existing code", async clearValue => {
+    await runInlineFixture(
+      `
+      import assert from "node:assert/strict";
+      process.exitCode = 42;
+      process.on("exit", code => {
+        assert.strictEqual(code, 0);
+        assert.strictEqual(process.exitCode, undefined);
+      });
+      process.exit(${clearValue});
+    `,
+      null,
+      0,
+    );
+  });
+
+  it("accepts a numeric exit code after clearing one", async () => {
+    await runInlineFixture(
+      `
+      import assert from "node:assert/strict";
+      process.exitCode = 42;
+      process.exitCode = undefined;
+      process.exitCode = 7;
+      assert.strictEqual(process.exitCode, 7);
+      process.on("exit", code => {
+        assert.strictEqual(code, 7);
+        assert.strictEqual(process.exitCode, 7);
+      });
+    `,
+      null,
+      7,
+    );
+  });
+
+  it("preserves a numeric exit code when validation rejects a replacement", async () => {
+    await runInlineFixture(
+      `
+      import assert from "node:assert/strict";
+      process.exitCode = 23;
+      assert.throws(() => { process.exitCode = 1.5; }, { code: "ERR_OUT_OF_RANGE" });
+      assert.strictEqual(process.exitCode, 23);
+      process.exitCode = undefined;
+    `,
+      null,
+      0,
+    );
+  });
+
   it("normal", async () => {
     await runInlineFixture(
       `
