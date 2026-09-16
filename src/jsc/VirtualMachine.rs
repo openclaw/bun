@@ -4120,17 +4120,26 @@ fn normalize_specifier_for_resolution<'a>(
     query_string: &mut &'a [u8],
     split_query: bool,
 ) -> &'a [u8] {
-    // In a `data:` URL everything after the comma is the payload; a `?` is
-    // part of the data, not a query string.
+    // In a `data:` URL everything after the comma is the payload; URL suffix
+    // delimiters can be part of that data.
     if bun_core::strings::has_prefix_comptime(specifier_, b"data:") {
         return specifier_;
     }
-    if split_query && let Some(i) = bun_core::strings::index_of_char_usize(specifier_, b'?') {
-        *query_string = &specifier_[i..];
-        &specifier_[..i]
-    } else {
-        specifier_
+    if split_query {
+        let query_start = bun_core::strings::index_of_char_usize(specifier_, b'?');
+        let fragment_start = bun_core::strings::index_of_char_usize(specifier_, b'#');
+        let suffix_start = match (query_start, fragment_start) {
+            (Some(query_start), Some(fragment_start)) => Some(query_start.min(fragment_start)),
+            (Some(query_start), None) => Some(query_start),
+            (None, Some(fragment_start)) => Some(fragment_start),
+            (None, None) => None,
+        };
+        if let Some(suffix_start) = suffix_start {
+            *query_string = &specifier_[suffix_start..];
+            return &specifier_[..suffix_start];
+        }
     }
+    specifier_
 }
 
 /// Heap-backed so only a pointer lives in TLS; see test/js/bun/binary/tls-segment-size.
@@ -5244,8 +5253,11 @@ impl VirtualMachine {
 
         let is_special_source = source == MAIN_FILE_NAME || Macro::is_macro_path(source);
         let mut query_string: &[u8] = b"";
-        let normalized_specifier =
-            normalize_specifier_for_resolution(specifier, &mut query_string, split_query);
+        let normalized_specifier = normalize_specifier_for_resolution(
+            specifier,
+            &mut query_string,
+            split_query && !is_special_source,
+        );
         let top_level_dir = self.top_level_dir();
         let source_to_use: &[u8] = if !is_special_source {
             if is_a_file_path {

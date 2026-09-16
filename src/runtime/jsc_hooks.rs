@@ -3878,7 +3878,7 @@ fn loader_for_path(path: &Fs::Path<'_>, loaders: &bun_ast::LoaderHashTable) -> O
 }
 
 /// `options.normalizeSpecifier(jsc_vm, slice)` — strip the VM's origin
-/// host/path prefix and split off the `?query`.
+/// host/path prefix and split off the URL query/fragment suffix.
 ///
 /// # Safety
 /// `jsc_vm` is the live per-thread VM.

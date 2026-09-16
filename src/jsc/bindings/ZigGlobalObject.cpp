@@ -3511,7 +3511,7 @@ static String fileURLSuffix(const URL& url)
 
 static String resolvedModuleKey(const String& resolved, const String& suffix)
 {
-    if (isAbsolutePath(resolved) && resolved.find('?') != WTF::notFound)
+    if (isAbsolutePath(resolved) && (resolved.find('?') != WTF::notFound || resolved.find('#') != WTF::notFound))
         return makeString(URL::fileURLWithFileSystemPath(resolved).string(), suffix);
     // Node's default ESM realpath finalization aliases #x and ?#x.
     // https://github.com/nodejs/node/blob/v26.8.2/lib/internal/modules/esm/resolve.js
