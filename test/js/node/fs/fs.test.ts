@@ -3309,6 +3309,15 @@ it.if(isPosix)("realpathSync resolves root, regular files, and symlinks", () => 
   expect(realpathSync(linkPath)).toBe(self);
 });
 
+it.if(isPosix)("realpath preserves literal backslashes", async () => {
+  using dir = tempDir("fs-realpath-backslash", {});
+  const target = join(String(dir), "artifact\\root");
+  fs.mkdirSync(target);
+  const expected = realpathSync.native(target);
+  expect(realpathSync(target)).toBe(expected);
+  expect(await promises.realpath(target)).toBe(expected);
+});
+
 it.if(isPosix)("realpath resolves a symlink before a following parent traversal", async () => {
   using dir = tempDir("fs-realpath-symlink-parent", {});
   const root = String(dir);

@@ -6,6 +6,17 @@ import { join, resolve, sep } from "path";
 
 const fixture = (...segs: string[]) => resolve(import.meta.dir, "fixtures", ...segs);
 
+it.skipIf(isWindows)("resolves POSIX paths with literal backslashes through symlinks", () => {
+  using dir = tempDir("resolve-backslash", {
+    "real\\root/target.ts": "export const value = 42;",
+  });
+  const realDirectory = join(String(dir), "real\\root");
+  const aliasDirectory = join(String(dir), "alias\\root");
+  symlinkSync(realDirectory, aliasDirectory);
+  const target = join(aliasDirectory, "target.ts");
+  expect(Bun.resolveSync(target, String(dir))).toBe(realpathSync.native(target));
+});
+
 it("spawn test file", () => {
   writePackageJSONImportsFixture();
   writePackageJSONExportsFixture();
