@@ -15,6 +15,19 @@ it.skipIf(isWindows)("resolves POSIX paths with literal backslashes through syml
   symlinkSync(realDirectory, aliasDirectory);
   const target = join(aliasDirectory, "target.ts");
   expect(Bun.resolveSync(target, String(dir))).toBe(realpathSync.native(target));
+
+  const preserved = Bun.spawnSync({
+    cmd: [
+      bunExe(),
+      "--preserve-symlinks",
+      "-e",
+      `console.log(Bun.resolveSync(${JSON.stringify(target)}, ${JSON.stringify(String(dir))}))`,
+    ],
+    env: bunEnv,
+  });
+  expect(preserved.stderr.toString()).toBe("");
+  expect(preserved.exitCode).toBe(0);
+  expect(preserved.stdout.toString().trim()).toBe(target);
 });
 
 it("spawn test file", () => {

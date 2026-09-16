@@ -5495,6 +5495,9 @@ impl VirtualMachine {
                     bun_sys::exists_at_type(bun_sys::Fd::cwd(), &path_z),
                     Ok(bun_sys::ExistsAtType::File)
                 ) {
+                    if jsc_vm.transpiler.resolver.opts.preserve_symlinks {
+                        return Ok(Ok(specifier.clone()));
+                    }
                     let mut realpath_buf = bun_paths::path_buffer_pool::get();
                     if let Ok(realpath) = bun_sys::realpath(&path_z, &mut realpath_buf) {
                         return Ok(Ok(bun_core::String::from_bytes(realpath)));
