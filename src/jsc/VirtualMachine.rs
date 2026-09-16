@@ -4115,29 +4115,41 @@ pub(crate) static SOURCE_CODE_PRINTER: Cell<Option<NonNull<bun_js_printer::Buffe
 #[thread_local]
 static SOURCE_CODE_PRINTER_FROM_MACRO: Cell<bool> = Cell::new(false);
 
+/// How `_resolve` reads a `#` in a relative specifier.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HashSign {
+    /// A file name byte.
+    FileName,
+    /// The start of a URL fragment.
+    Fragment,
+}
+
+/// Start of a specifier's `?query` or, for relative ESM only, `#fragment` suffix.
+fn index_of_specifier_suffix(specifier: &[u8], hash_sign: HashSign) -> Option<usize> {
+    let query = bun_core::strings::index_of_char_usize(specifier, b'?');
+    if hash_sign == HashSign::FileName
+        || !(specifier.starts_with(b"./") || specifier.starts_with(b"../"))
+    {
+        return query;
+    }
+    let before_query = &specifier[..query.unwrap_or(specifier.len())];
+    bun_core::strings::index_of_char_usize(before_query, b'#').or(query)
+}
+
 fn normalize_specifier_for_resolution<'a>(
     specifier_: &'a [u8],
     query_string: &mut &'a [u8],
     split_query: bool,
+    hash_sign: HashSign,
 ) -> &'a [u8] {
     // In a `data:` URL everything after the comma is the payload; URL suffix
     // delimiters can be part of that data.
     if bun_core::strings::has_prefix_comptime(specifier_, b"data:") {
         return specifier_;
     }
-    if split_query {
-        let query_start = bun_core::strings::index_of_char_usize(specifier_, b'?');
-        let fragment_start = bun_core::strings::index_of_char_usize(specifier_, b'#');
-        let suffix_start = match (query_start, fragment_start) {
-            (Some(query_start), Some(fragment_start)) => Some(query_start.min(fragment_start)),
-            (Some(query_start), None) => Some(query_start),
-            (None, Some(fragment_start)) => Some(fragment_start),
-            (None, None) => None,
-        };
-        if let Some(suffix_start) = suffix_start {
-            *query_string = &specifier_[suffix_start..];
-            return &specifier_[..suffix_start];
-        }
+    if split_query && let Some(suffix_start) = index_of_specifier_suffix(specifier_, hash_sign) {
+        *query_string = &specifier_[suffix_start..];
+        return &specifier_[..suffix_start];
     }
     specifier_
 }
@@ -5195,6 +5207,7 @@ impl VirtualMachine {
         is_a_file_path: bool,
         split_query: bool,
         split_source_query: bool,
+        hash_sign: HashSign,
     ) -> crate::CrateResult<()> {
         use bun_js_parser::Macro;
         use bun_resolver::{ResultUnion, node_fallbacks};
@@ -5257,6 +5270,7 @@ impl VirtualMachine {
             specifier,
             &mut query_string,
             split_query && !is_special_source,
+            hash_sign,
         );
         let top_level_dir = self.top_level_dir();
         let source_to_use: &[u8] = if !is_special_source {
@@ -5595,7 +5609,7 @@ impl VirtualMachine {
         // SAFETY: per-thread VM is live for this synchronous call.
         let jsc_vm = unsafe { &mut *jsc_vm_ptr };
 
-        let resolve_result = jsc_vm._resolve(
+        let mut resolve_result = jsc_vm._resolve(
             &mut result,
             specifier_utf8.slice(),
             source_utf8.slice(),
@@ -5603,7 +5617,27 @@ impl VirtualMachine {
             IS_A_FILE_PATH,
             split_query,
             !source_is_file_url,
+            HashSign::FileName,
         );
+        // Preserve Bun's existing literal-# filename support. Only retry a relative ESM
+        // specifier as a URL fragment after the literal path fails to resolve.
+        if mode.is_esm()
+            && split_query
+            && matches!(resolve_result, Err(crate::CrateError::ModuleNotFound))
+            && index_of_specifier_suffix(specifier_utf8.slice(), HashSign::Fragment)
+                != index_of_specifier_suffix(specifier_utf8.slice(), HashSign::FileName)
+        {
+            resolve_result = jsc_vm._resolve(
+                &mut result,
+                specifier_utf8.slice(),
+                source_utf8.slice(),
+                mode.is_esm(),
+                IS_A_FILE_PATH,
+                split_query,
+                !source_is_file_url,
+                HashSign::Fragment,
+            );
+        }
         if let Err(err_) = resolve_result {
             let err = err_;
             let import_kind = mode.import_kind();
