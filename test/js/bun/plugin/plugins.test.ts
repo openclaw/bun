@@ -796,6 +796,7 @@ it.concurrent("onResolve can redirect a specifier to a real file in the file nam
 
       const target = join(import.meta.dir, "real.js");
       const createdTarget = join(import.meta.dir, "created.js");
+      const kinds = {};
 
       Bun.plugin({
         name: "redirect-to-file",
@@ -805,6 +806,10 @@ it.concurrent("onResolve can redirect a specifier to a real file in the file nam
           build.onResolve({ filter: /^created-package$/ }, () => {
             writeFileSync(createdTarget, 'export const value = "created";');
             return { path: createdTarget };
+          });
+          build.onResolve({ filter: /^(dynamic|required|require-resolve|resolve|meta)-kind$/ }, args => {
+            kinds[args.path] = args.kind;
+            return { path: target };
           });
           build.onResolve({ filter: /^explicit\\.mod$/ }, () => ({ path: target, namespace: "file" }));
           build.onResolve({ filter: /^empty-namespace\\.mod$/ }, () => ({ path: target, namespace: "" }));
@@ -835,6 +840,26 @@ it.concurrent("onResolve can redirect a specifier to a real file in the file nam
           requireComputed: await attempt(() => require("implicit" + ".mod").value),
           resolveSync: await attempt(() => Bun.resolveSync("implicit.mod", import.meta.dir)),
           importMetaResolve: await attempt(() => import.meta.resolve("implicit.mod")),
+          dynamicKind: await attempt(async () => {
+            await import("dynamic-kind");
+            return kinds["dynamic-kind"];
+          }),
+          requireKind: await attempt(() => {
+            require("required-kind");
+            return kinds["required-kind"];
+          }),
+          requireResolveKind: await attempt(() => {
+            require.resolve("require-resolve-kind");
+            return kinds["require-resolve-kind"];
+          }),
+          resolveKind: await attempt(() => {
+            Bun.resolveSync("resolve-kind", import.meta.dir);
+            return kinds["resolve-kind"];
+          }),
+          metaKind: await attempt(() => {
+            import.meta.resolve("meta-kind");
+            return kinds["meta-kind"];
+          }),
         }),
       );
     `,
@@ -862,6 +887,11 @@ it.concurrent("onResolve can redirect a specifier to a real file in the file nam
     requireComputed: "redirected",
     resolveSync: target,
     importMetaResolve: Bun.pathToFileURL(target).href,
+    dynamicKind: "dynamic-import",
+    requireKind: "require-call",
+    requireResolveKind: "require-resolve",
+    resolveKind: "import-statement",
+    metaKind: "import-statement",
   });
   expect(exitCode).toBe(0);
 });
