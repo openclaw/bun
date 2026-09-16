@@ -503,6 +503,7 @@ function Server(options, callback): void {
         minVersion,
         maxVersion,
         ciphers: typeof options.ciphers === "string" && options.ciphers ? options.ciphers : undefined,
+        ALPNProtocols: options.ALPNProtocols,
         requestCert: options.requestCert,
         rejectUnauthorized: options.rejectUnauthorized,
         _pfxExtraCACerts: pfxExtraCAs,
@@ -738,6 +739,7 @@ Server.prototype[setSecureContextSymbol] = function (options) {
     serverName: tlsOptions.servername,
     requestCert: current.requestCert,
     rejectUnauthorized: current.rejectUnauthorized,
+    ALPNProtocols: this.ALPNProtocols,
   };
   this[serverSymbol]?._setNodeHTTPSSecureContext(next, getAdditionalCAOptions(next));
   this[tlsSymbol] = normalizeServerTls(next);
