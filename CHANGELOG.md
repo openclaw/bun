@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Release callback async contexts when timers are canceled, even while their handles remain reachable.
 - Point `NODE` and `npm_node_execpath` at the selected executable Node shim, including private fallback directories.
 - Avoid allocator handoffs during nonblocking event-loop polls.
 - Close idle Node HTTP connections after bodyless responses finish inside their handlers, while preserving pending request bodies, queued responses, and tunnels.

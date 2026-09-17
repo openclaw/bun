@@ -50,6 +50,15 @@ impl TimerObjectInternals {
         f(&mut fl);
         self.flags.set(fl);
     }
+
+    fn clear_callback(&self, timer: JSValue, global: &JSGlobalObject) {
+        match self.flags.get().kind() {
+            Kind::SetImmediate => JSImmediate::callback_set_cached(timer, global, JSValue::NULL),
+            Kind::SetTimeout | Kind::SetInterval => {
+                JSTimeout::callback_set_cached(timer, global, JSValue::NULL)
+            }
+        }
+    }
 }
 
 impl Default for TimerObjectInternals {
@@ -1160,7 +1169,10 @@ impl TimerObjectInternals {
     pub(crate) fn cancel(&self, vm: *mut VirtualMachine) {
         if let Some(timer) = self.this_value.get().try_get() {
             // SAFETY: `vm` is the live per-thread VM (caller contract).
-            self.emit_async_hooks_destroy(timer, unsafe { (*vm).global });
+            let global_ptr = unsafe { (*vm).global };
+            let global = JSGlobalObject::opaque_ref(global_ptr);
+            self.emit_async_hooks_destroy(timer, global_ptr);
+            self.clear_callback(timer, global);
         }
         self.set_enable_keeping_event_loop_alive(vm, false);
         self.update_flags(|f| f.set_has_cleared_timer(true));
