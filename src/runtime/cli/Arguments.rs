@@ -348,6 +348,9 @@ const AUTO_OR_RUN_PARAMS: &[ParamType] = &[
     ),
 ];
 
+const VERSION_PARAM: ParamType =
+    parse_param!("-v, --version                     Print version and exit");
+
 const AUTO_ONLY_PARAMS: &[ParamType] = concat_params!(
     &[
         // parse_param!("--all"),
@@ -355,7 +358,7 @@ const AUTO_ONLY_PARAMS: &[ParamType] = concat_params!(
         parse_param!(
             "--elide-lines <NUMBER>            Number of lines of script output shown when using --filter (default: 0, show all lines)"
         ),
-        parse_param!("-v, --version                     Print version and exit"),
+        VERSION_PARAM,
         parse_param!("--revision                        Print version with revision and exit"),
     ],
     AUTO_OR_RUN_PARAMS,
@@ -381,6 +384,14 @@ pub(crate) const RUN_PARAMS: &[ParamType] = concat_params!(
     RUNTIME_PARAMS_,
     TRANSPILER_PARAMS_,
     BASE_PARAMS_
+);
+pub(crate) const NODE_PARAMS: &[ParamType] = concat_params!(
+    &[
+        VERSION_PARAM,
+        // Unknown long flags are otherwise ignored; reject this Bun-only flag before execution.
+        parse_param!("--revision"),
+    ],
+    RUN_PARAMS,
 );
 
 const BAKE_DEBUG_PARAMS: &[ParamType] = &[
@@ -701,6 +712,7 @@ const BASE_RUNTIME_TRANSPILER_PARAMS: &[ParamType] =
 )]
 pub(crate) static AUTO_TABLE: &clap::ConvertedTable = clap::comptime_table!(AUTO_PARAMS);
 pub(crate) static RUN_TABLE: &clap::ConvertedTable = clap::comptime_table!(RUN_PARAMS, cold);
+static NODE_TABLE: &clap::ConvertedTable = clap::comptime_table!(NODE_PARAMS, cold);
 pub(crate) static BUILD_TABLE: &clap::ConvertedTable = clap::comptime_table!(BUILD_PARAMS, cold);
 pub(crate) static TEST_TABLE: &clap::ConvertedTable = clap::comptime_table!(TEST_PARAMS, cold);
 static BASE_RUNTIME_TRANSPILER_TABLE: &clap::ConvertedTable =
@@ -713,7 +725,8 @@ static BASE_RUNTIME_TRANSPILER_TABLE: &clap::ConvertedTable =
 fn tag_table(cmd: CommandTag) -> &'static clap::ConvertedTable {
     match cmd {
         CommandTag::AutoCommand => AUTO_TABLE,
-        CommandTag::RunCommand | CommandTag::RunAsNodeCommand => RUN_TABLE,
+        CommandTag::RunAsNodeCommand => NODE_TABLE,
+        CommandTag::RunCommand => RUN_TABLE,
         CommandTag::BuildCommand => BUILD_TABLE,
         CommandTag::TestCommand => TEST_TABLE,
         CommandTag::BunxCommand => RUN_TABLE,
@@ -887,6 +900,11 @@ pub(crate) fn parse(cmd: CommandTag, ctx: Context<'_>) -> crate::Result<api::Tra
         }
     };
 
+    if cmd == CommandTag::RunAsNodeCommand && args.flag(b"--revision") {
+        Output::err_generic("Invalid Argument '--revision'", ());
+        Global::exit(1);
+    }
+
     if args.flag(b"--help") {
         command::tag_print_help(cmd, true);
         Output::flush();
@@ -900,6 +918,13 @@ pub(crate) fn parse(cmd: CommandTag, ctx: Context<'_>) -> crate::Result<api::Tra
         if args.flag(b"--revision") {
             cli::print_revision_and_exit();
         }
+    }
+    if cmd == CommandTag::RunAsNodeCommand && args.flag(b"--version") {
+        let _ = Output::writer().write_all(
+            const_format::concatcp!("v", bun_core::env::REPORTED_NODEJS_VERSION, "\n").as_bytes(),
+        );
+        Output::flush();
+        Global::exit(0);
     }
 
     // ── --cwd ────────────────────────────────────────────────────────────────
@@ -1224,7 +1249,7 @@ pub(crate) fn parse(cmd: CommandTag, ctx: Context<'_>) -> crate::Result<api::Tra
         if let Some(port_str) = args.option(b"--port") {
             if cmd == CommandTag::RunAsNodeCommand {
                 // TODO: prevent `node --port <script>` from working
-                ctx.runtime_options.eval.script = port_str.into();
+                ctx.runtime_options.eval.script = Some(port_str.into());
                 ctx.runtime_options.eval.eval_and_print = true;
             } else {
                 opts.port = match strings::parse_int::<u16>(port_str, 10) {
@@ -1301,10 +1326,10 @@ pub(crate) fn parse(cmd: CommandTag, ctx: Context<'_>) -> crate::Result<api::Tra
         }
 
         if let Some(script) = args.option(b"--print") {
-            ctx.runtime_options.eval.script = script.into();
+            ctx.runtime_options.eval.script = Some(script.into());
             ctx.runtime_options.eval.eval_and_print = true;
         } else if let Some(script) = args.option(b"--eval") {
-            ctx.runtime_options.eval.script = script.into();
+            ctx.runtime_options.eval.script = Some(script.into());
         }
         ctx.runtime_options.if_present = args.flag(b"--if-present");
         ctx.runtime_options.smol = args.flag(b"--smol");

@@ -105,7 +105,12 @@ impl RunCommand {
         // `<b>`/`<r>` tags verbatim.
         pretty!("<b>Usage<r>: <b><green>bun run<r> <cyan>[flags]<r> \\<file or script\\>\n\n");
         pretty!("<b>Flags:<r>");
-        bun_clap::simple_help(crate::cli::arguments::RUN_PARAMS);
+        let params = if crate::cli::PRETEND_TO_BE_NODE.load(Ordering::Relaxed) {
+            crate::cli::arguments::NODE_PARAMS
+        } else {
+            crate::cli::arguments::RUN_PARAMS
+        };
+        bun_clap::simple_help(params);
         pretty!(
             "\n\n\
 <b>Examples:<r>
@@ -991,16 +996,12 @@ Full documentation is available at <magenta>https://bun.com/docs/cli/run<r>
         let mut run_entry = entry;
         vm.set_main(entry);
 
-        if !ctx.runtime_options.eval.script.is_empty() {
+        if let Some(script) = ctx.runtime_options.eval.script.as_ref() {
             // SAFETY: `ctx.runtime_options.eval.script` is process-lifetime
             // (CLI argv); erase the borrow lifetime so the `Source` (stored in
             // the VM for the process duration) can backref into it.
-            let script: &'static [u8] = unsafe {
-                ::core::slice::from_raw_parts(
-                    ctx.runtime_options.eval.script.as_ptr(),
-                    ctx.runtime_options.eval.script.len(),
-                )
-            };
+            let script: &'static [u8] =
+                unsafe { ::core::slice::from_raw_parts(script.as_ptr(), script.len()) };
             vm.module_loader.eval_source =
                 Some(Box::new(bun_ast::Source::init_path_string(entry, script)));
             vm.module_loader.interactive_eval_script =
@@ -1287,7 +1288,7 @@ impl Run<'_> {
             fn JSC__JSGlobalObject__addGc(global: *const JSGlobalObject);
         }
         let ro = &ctx.runtime_options;
-        if !ro.eval.script.is_empty() {
+        if ro.eval.script.is_some() {
             // SAFETY: FFI; `vm.global` is live for the VM lifetime.
             unsafe { Bun__ExposeNodeModuleGlobals(vm.global) };
         }
@@ -2845,7 +2846,7 @@ impl RunCommand {
         if bun_sys::File::stdin().read_to_end_into(&mut list).is_err() {
             return Ok(false);
         }
-        ctx.runtime_options.eval.script = list.into_boxed_slice();
+        ctx.runtime_options.eval.script = Some(list.into_boxed_slice());
 
         #[cfg(windows)]
         const STDIN_TRIGGER: &[u8] = b"\\[stdin]";
@@ -2897,8 +2898,8 @@ impl RunCommand {
         // bootstrap via `[eval]`; it runs `process._eval` like Node's
         // internal/main/repl.js — no source splicing.
         ctx.runtime_options.eval.interactive_script =
-            Some(::core::mem::take(&mut ctx.runtime_options.eval.script));
-        ctx.runtime_options.eval.script = bootstrap.to_vec().into_boxed_slice();
+            Some(ctx.runtime_options.eval.script.take().unwrap_or_default());
+        ctx.runtime_options.eval.script = Some(bootstrap.to_vec().into_boxed_slice());
         Self::exec_eval(ctx)
     }
 
@@ -2951,19 +2952,19 @@ impl RunCommand {
             return Self::exec_node_repl(ctx);
         }
 
-        if !ctx.runtime_options.eval.script.is_empty() {
+        if ctx.runtime_options.eval.script.is_some() {
             return Self::exec_eval(ctx);
         }
 
-        if ctx.positionals.is_empty() {
-            // Node: bare `node` on a TTY starts the REPL. Only in emulation
-            // mode; bun's own `bun` with no args stays the help text. Use
-            // Output's cached stdio flag (set at startup via libuv's handle
-            // probe), which is the same check `bun update --interactive` uses.
-            if Output::is_stdin_tty() {
-                return Self::exec_node_repl(ctx);
+        match ctx.positionals.first().map(|arg| arg.as_ref()) {
+            None if Output::is_stdin_tty() => return Self::exec_node_repl(ctx),
+            None | Some(b"-") => {
+                if !Self::exec_stdin(ctx, !ctx.positionals.is_empty())? {
+                    Global::exit(1);
+                }
+                return Ok(());
             }
-            Self::exec_as_if_node_missing_script();
+            _ => {}
         }
 
         // borrowck — `boot_and_handle_error` takes `&mut ctx`, so
@@ -2999,20 +3000,6 @@ impl RunCommand {
             Self::exec_as_if_node_boot_failed(ctx, &basename, err);
         }
         Ok(())
-    }
-
-    #[cold]
-    #[inline(never)]
-    #[cfg_attr(
-        any(target_os = "linux", target_os = "android"),
-        unsafe(link_section = ".text.unlikely")
-    )]
-    fn exec_as_if_node_missing_script() -> ! {
-        Output::err_generic(
-            "Missing script to execute. Pass --interactive to start the Node.js-compatible REPL.",
-            (),
-        );
-        Global::exit(1);
     }
 
     #[cold]

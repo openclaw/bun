@@ -5,6 +5,42 @@ import { bunEnv, bunExe, isWindows, tempDir, tmpdirSync } from "harness";
 import { tmpdir } from "os";
 import { join, sep } from "path";
 
+test.concurrent.each([
+  { args: ["run", "-"], source: "", expected: "" },
+  { args: ["-"], source: "", expected: "" },
+  {
+    args: ["run", "-", "first", "second"],
+    source: "console.log(JSON.stringify(process.argv.slice(1)))",
+    expected: '["-","first","second"]\n',
+  },
+])("empty source and stdin argv for bun $args", async ({ args, source, expected }) => {
+  await using proc = Bun.spawn({
+    cmd: [bunExe(), ...args],
+    env: bunEnv,
+    stdin: Buffer.from(source),
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect({ stdout, stderr, exitCode }).toEqual({ stdout: expected, stderr: "", exitCode: 0 });
+});
+
+test.concurrent.each(
+  ["-e", "--eval", "--print"].flatMap(flag => [{ args: [flag, ""] }, { args: ["--no-warnings", flag, ""] }]),
+)("preserves Bun help for empty eval $args", async ({ args }) => {
+  await using proc = Bun.spawn({
+    cmd: [bunExe(), ...args],
+    env: bunEnv,
+    stdin: Buffer.from('throw new Error("stdin must not run")'),
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect(stdout).toContain("Usage: bun <command>");
+  expect(stderr).toBe("");
+  expect(exitCode).toBe(0);
+});
+
 for (const flag of ["-e", "--print"]) {
   describe(`bun ${flag}`, () => {
     test("it works", async () => {

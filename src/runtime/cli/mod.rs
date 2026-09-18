@@ -1453,7 +1453,14 @@ pub(crate) mod command {
             }
         }
 
-        if tag == Tag::AutoCommand && !ctx.runtime_options.eval.script.is_empty() {
+        if tag == Tag::AutoCommand
+            && ctx
+                .runtime_options
+                .eval
+                .script
+                .as_ref()
+                .is_some_and(|script| !script.is_empty())
+        {
             return run_command::RunCommand::exec_eval(ctx);
         }
 

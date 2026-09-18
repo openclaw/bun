@@ -2,6 +2,21 @@ import { describe, expect, test } from "bun:test";
 import { join } from "path";
 import { bunEnv, bunExe, fakeNodeRun, tempDir } from "../../harness";
 
+async function runNodeAlias(args: string[], stdin = "", files: Record<string, string> = {}) {
+  using temp = tempDir("fake-node-stdio", files);
+  await using proc = Bun.spawn({
+    cmd: [bunExe(), ...args],
+    argv0: "node",
+    cwd: String(temp),
+    env: bunEnv,
+    stdin: Buffer.from(stdin),
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  return { stdout, stderr, exitCode };
+}
+
 describe("fake node cli", () => {
   test("the node cli actually works", () => {
     using temp = tempDir("fake-node", {
@@ -125,18 +140,95 @@ describe("fake node cli", () => {
     );
   });
 
-  // Bare `node` now matches Node.js: a TTY stdin enters the REPL, a
-  // non-TTY stdin (pipe) prints "Missing script". fakeNodeRun's default
-  // stdin is platform-dependent (Windows may inherit a console), so pin
-  // a piped stdin here.
-  test("no args with piped stdin errors with 'Missing script'", () => {
-    using temp = tempDir("fake-node", {});
-    const result = Bun.spawnSync([bunExe(), "--bun", "node"], {
-      cwd: temp,
-      env: { ...bunEnv, NODE_ENV: undefined },
-      stdin: Buffer.alloc(0),
+  test.each([
+    { args: ["-v"] },
+    { args: ["--version"] },
+    { args: ["--no-warnings", "-v"] },
+    { args: ["--no-warnings", "--version"] },
+  ])("reports the Node compatibility version for $args", async ({ args }) => {
+    expect(await runNodeAlias(args)).toEqual({
+      stdout: `v${process.versions.node}\n`,
+      stderr: "",
+      exitCode: 0,
     });
-    expect(result.stderr.toString()).toContain("Missing script");
-    expect(result.success).toBe(false);
+  });
+
+  test.each([
+    { args: ["--revision"] },
+    { args: ["--revision", "entry.cjs"] },
+    { args: ["--revision", "-e", 'console.log("eval ran")'] },
+  ])("rejects Bun-only revision before executing $args", async ({ args }) => {
+    expect(
+      await runNodeAlias(args, 'console.log("stdin ran")', {
+        "entry.cjs": 'console.log("script ran")',
+      }),
+    ).toEqual({ stdout: "", stderr: "error: Invalid Argument '--revision'\n", exitCode: 1 });
+  });
+
+  test("passes revision after the script name through to the script", async () => {
+    expect(
+      await runNodeAlias(["entry.cjs", "--revision"], "", {
+        "entry.cjs": "console.log(JSON.stringify(process.argv.slice(2)))",
+      }),
+    ).toEqual({ stdout: '["--revision"]\n', stderr: "", exitCode: 0 });
+  });
+
+  test("Node help advertises version without the rejected revision flag", async () => {
+    const { stdout, stderr, exitCode } = await runNodeAlias(["--help"]);
+    expect(stdout).toContain("--version");
+    expect(stdout).not.toContain("--revision");
+    expect(stderr).toBe("");
+    expect(exitCode).toBe(0);
+  });
+
+  test.each([
+    { args: [], source: "", expected: "" },
+    { args: ["-"], source: "", expected: "" },
+    {
+      args: [],
+      source: "console.log(JSON.stringify(process.argv.slice(1)))",
+      expected: "[]\n",
+    },
+    {
+      args: ["-", "first", "second"],
+      source: "console.log(JSON.stringify(process.argv.slice(1)))",
+      expected: '["-","first","second"]\n',
+    },
+    {
+      args: ["--input-type=module"],
+      source:
+        'import { basename } from "node:path"; console.log(basename("/fixture/input"), JSON.stringify(process.argv.slice(1)))',
+      expected: "input []\n",
+    },
+    {
+      args: ["--input-type=module", "-", "first", "--literal"],
+      source:
+        'import { basename } from "node:path"; console.log(basename("/fixture/input"), JSON.stringify(process.argv.slice(1)))',
+      expected: 'input ["-","first","--literal"]\n',
+    },
+    {
+      args: ["--input-type=commonjs"],
+      source:
+        'const { basename } = require("node:path"); console.log(basename("/fixture/input"), JSON.stringify(process.argv.slice(1)))',
+      expected: "input []\n",
+    },
+  ])("executes stdin with $args", async ({ args, source, expected }) => {
+    expect(await runNodeAlias(args, source)).toEqual({ stdout: expected, stderr: "", exitCode: 0 });
+  });
+
+  test("empty eval takes precedence over piped source", async () => {
+    expect(await runNodeAlias(["-e", ""], 'throw new Error("stdin must not run")')).toEqual({
+      stdout: "",
+      stderr: "",
+      exitCode: 0,
+    });
+  });
+
+  test("runs preloads before empty stdin", async () => {
+    expect(
+      await runNodeAlias(["--require", "./preload.cjs"], "", {
+        "preload.cjs": 'console.log("preload", JSON.stringify(process.argv.slice(1)))',
+      }),
+    ).toEqual({ stdout: "preload []\n", stderr: "", exitCode: 0 });
   });
 });
