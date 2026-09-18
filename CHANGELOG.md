@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Preserve Node-alias stdin, eval arguments, version queries, and lexical entry paths; close transferred MessagePorts when worker startup fails.
 - Honor dynamic plugin targets and import kinds, preserve literal POSIX paths and ESM fragments, and match Node loading for untyped dependencies and inline TypeScript type clauses.
 - Report referenced Timeout and Immediate resources from `process.getActiveResourcesInfo()`, isolated per worker.
 - Release callback async contexts when timers are canceled, even while their handles remain reachable.
