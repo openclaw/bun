@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Return undefined from filesystem access operations and null on successful symlink callbacks. Thanks @robobun!
+- Keep empty-histogram NaN values and macOS SDK signpost attributes portable across supported compilers.
 - Preserve custom Headers iterators and copy server.fetch header ownership. Thanks @robobun!
 - Match Undici timeout metadata and WebSocket heartbeat APIs, HTTP listen errors and byte counters, and HTTPS constructor, half-open, and ALPN behavior.
 

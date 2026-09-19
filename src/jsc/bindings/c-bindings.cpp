@@ -1164,7 +1164,14 @@ extern "C" void Bun__signpost_emit(os_log_t log, os_signpost_type_t type, os_sig
         break;
 
     switch (trace_event_id) {
+#if !__has_attribute(stack_protector_ignore)
+        // The macOS 27 SDK uses an attribute unsupported by LLVM 21.
+        IGNORE_WARNINGS_BEGIN("unknown-attributes")
+#endif
         FOR_EACH_TRACE_EVENT(EMIT_SIGNPOST)
+#if !__has_attribute(stack_protector_ignore)
+        IGNORE_WARNINGS_END
+#endif
     default: {
         ASSERT_NOT_REACHED_WITH_MESSAGE("Invalid trace event id. Please run scripts/generate-perf-trace-events.sh to update the list of trace events.");
     }
