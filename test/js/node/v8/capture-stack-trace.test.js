@@ -922,6 +922,33 @@ test("Error.prepareStackTrace has a default implementation which behaves the sam
   expect(await bunRun(join(import.meta.dirname, "error-prepare-stack-default-fixture.js"))).toSpawn();
 });
 
+test("default Error.prepareStackTrace accepts object targets", () => {
+  const defaultPrepareStackTrace = Error.prepareStackTrace;
+  Error.prepareStackTrace = () => "custom";
+  Error.prepareStackTrace = defaultPrepareStackTrace;
+  expect(Error.prepareStackTrace).toBe(defaultPrepareStackTrace);
+
+  function PrototypeError() {
+    Error.captureStackTrace(this, this.constructor);
+    this.message = "prototype";
+  }
+  PrototypeError.prototype = new Error();
+  PrototypeError.prototype.constructor = PrototypeError;
+
+  for (const [target, expected] of [
+    [new Error("native"), "Error: native"],
+    [{ message: "plain" }, "Error: plain"],
+    [new PrototypeError(), "Error: prototype"],
+    [function target() {}, "Error"],
+  ]) {
+    expect(Error.prepareStackTrace(target, [])).toBe(expected);
+  }
+
+  for (const primitive of [undefined, null, 1, "target", Symbol("target")]) {
+    expect(() => Error.prepareStackTrace(primitive, [])).toThrow(TypeError);
+  }
+});
+
 test("Error.prepareStackTrace returns a CallSite object", () => {
   Error.prepareStackTrace = function (err, stack) {
     return stack;
