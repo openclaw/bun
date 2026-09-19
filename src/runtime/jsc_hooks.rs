@@ -751,6 +751,7 @@ unsafe fn load_preloads(vm: *mut VirtualMachine) -> bun_jsc::CrateResult<*mut JS
         // SAFETY: `preload` points at a live boxed slice for this iteration
         // (heap-stable `Box<[u8]>` payload; nothing below mutates `vm.preload`).
         let preload_slice: &[u8] = unsafe { &*preload };
+        let is_require = i >= require_start && i < require_end;
         // Convert a `file:` URL like an `import()` specifier: decode percent-escapes
         // and keep Windows drive letters (`file:///C:/x` is `C:\x`, not `/C:/x`).
         let decoded_path;
@@ -764,13 +765,15 @@ unsafe fn load_preloads(vm: *mut VirtualMachine) -> bun_jsc::CrateResult<*mut JS
             preload_slice
         };
 
-        // node: builtin specifiers bypass the file resolver — JSModuleLoader
-        // resolves them internally, so `bun --import node:*` works like Node's.
-        let module_name = if normalized.starts_with(b"node:") {
+        // ESM file URLs retain query and fragment identity in JSModuleLoader.
+        // node: builtin specifiers are also resolved there.
+        let module_name = if !is_require && preload_slice.starts_with(b"file:") {
+            bun_core::String::from_bytes(preload_slice)
+        } else if normalized.starts_with(b"node:") {
             bun_core::String::from_bytes(normalized)
         } else {
             // ── resolve ─────────────────────────────────────────────────────
-            let import_kind = if i >= require_start && i < require_end {
+            let import_kind = if is_require {
                 ImportKind::Require
             } else {
                 ImportKind::Stmt

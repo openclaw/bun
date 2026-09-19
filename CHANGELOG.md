@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Preserve inferred function and class names, format captured stacks for object targets, and retain query/fragment identity in file-URL preloads.
 - Restore fast realpath lookup without releasing POSIX locks: use O_PATH on Linux and fd-free full-path attributes on macOS, preserving symlink, firmlink, hard-link, and literal-path behavior.
 - Return undefined from filesystem access operations and null on successful symlink callbacks. Thanks @robobun!
 - Keep empty-histogram NaN values and macOS SDK signpost attributes portable across supported compilers.
