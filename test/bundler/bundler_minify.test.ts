@@ -349,15 +349,13 @@ describe("bundler", () => {
     itBundled(`minify/SingleUseInferredNames${label}`, {
       files: {
         "/entry.js": /* js */ `
-          const names = [];
-          { function declared() {} names.push(declared.name); }
-          { const arrow = () => {}; names.push(arrow.name); }
-          { let anonymous = function() {}; names.push(anonymous.name); }
-          { const C = class {}; names.push(C.name); }
-          const values = [];
-          { const callback = () => 42; values.push(callback()); }
-          { const C = class { value() { return 42; } }; values.push(new C().value()); }
-          console.log(JSON.stringify({ names, values }));
+          export {};
+          { function declared() {} console.log(JSON.stringify(declared.name)); }
+          { const arrow = () => {}; console.log(JSON.stringify(arrow.name)); }
+          { let anonymous = function() {}; console.log(JSON.stringify(anonymous.name)); }
+          { const C = class {}; console.log(JSON.stringify(C.name)); }
+          { const callback = () => 42; console.log(callback()); }
+          { const C = class { value() { return 42; } }; console.log(new C().value()); }
         `,
       },
       backend: "api",
@@ -367,9 +365,12 @@ describe("bundler", () => {
       run: {
         runtime: "node",
         validate({ stdout }) {
-          const result = JSON.parse(stdout);
-          expect(result.values).toEqual([42, 42]);
-          if (preserveNames) expect(result.names).toEqual(["declared", "arrow", "anonymous", "C"]);
+          const result = stdout
+            .trim()
+            .split("\n")
+            .map(line => JSON.parse(line));
+          expect(result.slice(4)).toEqual([42, 42]);
+          if (preserveNames) expect(result.slice(0, 4)).toEqual(["declared", "arrow", "anonymous", "C"]);
         },
       },
     });
