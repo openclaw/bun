@@ -288,9 +288,10 @@ describe.concurrent("--cpu-prof", () => {
     expect(exitCode).toBe(0);
   });
 
-  test("profile captures function names", async () => {
+  test.each(["top-level", "block"])("profile captures function names in %s scope", async scope => {
     using dir = tempDir("cpu-prof-functions", {
       "test.js": `
+        ${scope === "block" ? "{" : ""}
         function myFunction() {
           let sum = 0;
           const end = performance.now() + 100;
@@ -301,6 +302,7 @@ describe.concurrent("--cpu-prof", () => {
         }
 
         myFunction();
+        ${scope === "block" ? "}" : ""}
       `,
     });
 
@@ -321,9 +323,10 @@ describe.concurrent("--cpu-prof", () => {
     const profilePath = join(String(dir), profileFiles[0]);
     const profile = JSON.parse(readFileSync(profilePath, "utf-8"));
 
-    // Check that we captured some meaningful function names
-    const functionNames = profile.nodes.map((n: any) => n.callFrame.functionName);
-    expect(functionNames.some((name: string) => name !== "(root)" && name !== "(program)")).toBe(true);
+    const functionNames = profile.nodes.map(
+      (node: { callFrame: { functionName: string } }) => node.callFrame.functionName,
+    );
+    expect(functionNames).toContain("myFunction");
     expect(exitCode).toBe(0);
   });
 
