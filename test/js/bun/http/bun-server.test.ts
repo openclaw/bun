@@ -352,6 +352,49 @@ describe.concurrent("Server", () => {
     }
   });
 
+  test("server.fetch(url, { headers: Headers }) copies the headers", async () => {
+    let request: Request | undefined;
+    using server = Bun.serve({
+      port: 0,
+      fetch(req) {
+        request = req;
+        return new Response(req.headers.get("x-value"));
+      },
+    });
+    const url = `http://${server.hostname}:${server.port}/`;
+    const headers = new Headers({ "x-value": "initial" });
+    const response = await server.fetch(url, { headers });
+    expect(await response.text()).toBe("initial");
+    expect(request).toBeDefined();
+    const requestHeaders = request!.headers;
+
+    headers.set("x-value", "source");
+    expect(requestHeaders.get("x-value")).toBe("initial");
+
+    requestHeaders.set("x-value", "request");
+    expect(headers.get("x-value")).toBe("source");
+  });
+
+  test("server.fetch converts a Headers object through its custom iterator", async () => {
+    using server = Bun.serve({
+      port: 0,
+      fetch(req) {
+        return Response.json({
+          fromIterator: req.headers.get("x-from-iterator"),
+          original: req.headers.get("x-original"),
+        });
+      },
+    });
+    const headers = new Headers({ "x-original": "ignored" });
+    Object.defineProperty(headers, Symbol.iterator, {
+      value: function* () {
+        yield ["x-from-iterator", "used"];
+      },
+    });
+    const response = await server.fetch(`http://${server.hostname}:${server.port}/`, { headers });
+    expect(await response.json()).toEqual({ fromIterator: "used", original: null });
+  });
+
   test("server should return a body for a OPTIONS Request", async () => {
     using server = Bun.serve({
       port: 0,

@@ -1195,8 +1195,8 @@ fn on_reject_impl(global: &JSGlobalObject, callframe: &CallFrame) -> JsResult<JS
 }
 
 #[inline]
-fn fetch_headers_from_js(value: JSValue, global: &JSGlobalObject) -> Option<*mut FetchHeaders> {
-    FetchHeaders::cast_(value, global.vm()).map(|p| p.as_ptr())
+fn fetch_headers_from_js(value: JSValue) -> Option<*mut FetchHeaders> {
+    FetchHeaders::cast_as_init(value).map(|p| p.as_ptr())
 }
 
 /// Per-process latch for the dev-mode idle-timeout warning. The
@@ -1766,17 +1766,18 @@ where
                         }
 
                         let fetch_headers_to_use: *mut FetchHeaders =
-                            match fetch_headers_from_js(headers_value, global) {
+                            match fetch_headers_from_js(headers_value) {
                                 Some(h) => h,
                                 None => 'brk: {
                                     if headers_value.is_object() {
-                                        if let Some(fetch_headers) =
+                                        // `None` is an empty HeadersInit: no header to add.
+                                        let Some(fetch_headers) =
                                             FetchHeaders::create_from_js(global, headers_value)?
-                                        {
-                                            fetch_headers_to_deref
-                                                .set(Some(fetch_headers.as_ptr()));
-                                            break 'brk fetch_headers.as_ptr();
-                                        }
+                                        else {
+                                            break 'getter;
+                                        };
+                                        fetch_headers_to_deref.set(Some(fetch_headers.as_ptr()));
+                                        break 'brk fetch_headers.as_ptr();
                                     }
                                     return Err(global.throw_invalid_arguments(format_args!(
                                         "upgrade options.headers must be a Headers or an object"
@@ -1980,16 +1981,18 @@ where
                         break 'getter;
                     }
                     use jsc::HTTPHeaderName;
-                    let fh: *mut FetchHeaders = match fetch_headers_from_js(headers_value, global) {
+                    let fh: *mut FetchHeaders = match fetch_headers_from_js(headers_value) {
                         Some(h) => h,
                         None => 'brk: {
                             if headers_value.is_object() {
-                                if let Some(created) =
+                                // `None` is an empty HeadersInit: no header to add.
+                                let Some(created) =
                                     FetchHeaders::create_from_js(global, headers_value)?
-                                {
-                                    *fetch_headers_to_deref = Some(created.as_ptr());
-                                    break 'brk created.as_ptr();
-                                }
+                                else {
+                                    break 'getter;
+                                };
+                                *fetch_headers_to_deref = Some(created.as_ptr());
+                                break 'brk created.as_ptr();
                             }
                             return Err(global.throw_invalid_arguments(format_args!(
                                 "upgrade options.headers must be a Headers or an object"
@@ -2353,23 +2356,16 @@ where
                 }
 
                 if let Some(headers_) = opts.fast_get(ctx, jsc::BuiltinName::Headers)? {
-                    if let Some(headers__) = FetchHeaders::cast_(headers_, ctx.vm()) {
-                        // NOTE: `cast_` returns the `FetchHeaders*` held by the
-                        // JS `Headers` wrapper (`JSFetchHeaders`'s internal
-                        // `Ref<FetchHeaders>`) without bumping the refcount —
-                        // the FFI surface has `WebCore__FetchHeaders__deref` but
-                        // no `ref()`, so a +1 cannot be taken here. Adopting
-                        // hands that wrapper-held ref to the constructed
-                        // `Request` (via `Request::init2` below): the eventual
-                        // single deref happens when the Request's finalizer
-                        // drops its `headers` field (`HeadersRef::Drop`,
-                        // Response.rs), pairing with the wrapper's +1.
-                        // SAFETY: `headers__` is live (rooted by `headers_`),
-                        // and ownership of one ref transfers as described above.
-                        headers = Some(unsafe { HeadersRef::adopt(headers__) });
-                    } else if let Some(headers__) = FetchHeaders::create_from_js(ctx, headers_)? {
-                        // SAFETY: create_from_js returns a +1 ref.
-                        headers = Some(unsafe { HeadersRef::adopt(headers__) });
+                    if let Some(headers__) = FetchHeaders::cast_as_init(headers_) {
+                        // The JS `Headers` keeps its own reference; the Request
+                        // gets a copy, as `new Request(url, { headers })` does.
+                        // S008: `FetchHeaders` is an opaque ZST FFI handle — safe deref.
+                        headers = bun_opaque::opaque_deref_mut(headers__.as_ptr())
+                            .clone_this(ctx)?
+                            // SAFETY: `clone_this` returns a +1 ref.
+                            .map(|p| unsafe { HeadersRef::adopt(p) });
+                    } else {
+                        headers = HeadersRef::create_from_js(ctx, headers_)?;
                     }
                 }
 
