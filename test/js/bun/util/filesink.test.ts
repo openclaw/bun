@@ -171,6 +171,28 @@ import fs from "node:fs";
 import path from "node:path";
 import util from "node:util";
 
+it("flush reports the bytes completed by a small stdin pipe write", async () => {
+  await using child = Bun.spawn({
+    cmd: [bunExe(), "-e", "process.stdout.write(await Bun.stdin.text())"],
+    env: bunEnv,
+    stdin: "pipe",
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const output = Promise.all([child.stdout.text(), child.stderr.text(), child.exited]);
+  const data = "hello";
+  expect(child.stdin.write(data)).toBe(data.length);
+  expect(await child.stdin.flush()).toBe(data.length);
+  await child.stdin.end();
+  const [stdout, stderr, exitCode] = await output;
+  expect({ stdout, stderr, exitCode, signalCode: child.signalCode }).toEqual({
+    stdout: data,
+    stderr: "",
+    exitCode: 0,
+    signalCode: null,
+  });
+});
+
 it("end doesn't close when backed by a file descriptor", async () => {
   using _ = fileDescriptorLeakChecker();
   const x = tmpdirSync();

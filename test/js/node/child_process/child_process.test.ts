@@ -1,5 +1,5 @@
 import { semver, write } from "bun";
-import { afterAll, beforeEach, describe, expect, it } from "bun:test";
+import { afterAll, beforeEach, describe, expect, it, onTestFinished } from "bun:test";
 import fs from "fs";
 import {
   bunEnv,
@@ -746,55 +746,81 @@ describe("spawn()", () => {
     });
   });
 
-  it.skipIf(isWindows)(
-    "stdin write failure (EPIPE) emits 'error' and destroys even with a write callback",
-    async () => {
+  it.skipIf(isWindows).each([
+    { size: 5, corked: false },
+    { size: 65536, corked: false },
+    { size: 5, corked: true },
+    { size: 65536, corked: true },
+  ])(
+    "stdin write failure (EPIPE) emits 'error' and destroys with callbacks ($size bytes, corked=$corked)",
+    async ({ size, corked }) => {
       // Child closes its own stdin fd, signals ready on stdout, then stays alive.
       const child = spawn(
         bunExe(),
         ["-e", `require("fs").closeSync(0); process.stdout.write("ready\\n"); setInterval(() => {}, 1e5);`],
         { env: bunEnv, stdio: ["pipe", "pipe", "ignore"] },
       );
-      try {
-        await new Promise<void>((resolve, reject) => {
-          child.on("error", reject);
-          child.on("exit", () => reject(new Error("child exited before ready")));
-          child.stdout!.once("data", () => resolve());
-        });
-        child.removeAllListeners("error");
-        child.removeAllListeners("exit");
-
-        const errEv = Promise.withResolvers<any>();
-        const cb1 = Promise.withResolvers<any>();
-        child.stdin!.on("error", e => errEv.resolve(e));
-        child.stdin!.write(Buffer.alloc(65536, 0x41), e => cb1.resolve(e));
-
-        const [cb1Err, errEvErr] = await Promise.all([cb1.promise, errEv.promise]);
-
-        // Node names the syscall "write" even though the stdio pipe is a
-        // socketpair underneath.
-        expect({
-          cb1: cb1Err?.code,
-          errEv: errEvErr?.code,
-          syscall: errEvErr?.syscall,
-          destroyed: child.stdin!.destroyed,
-          writable: child.stdin!.writable,
-        }).toEqual({
-          cb1: "EPIPE",
-          errEv: "EPIPE",
-          syscall: "write",
-          destroyed: true,
-          writable: false,
-        });
-
-        const cb2 = Promise.withResolvers<any>();
-        const r2 = child.stdin!.write("more-bytes", e => cb2.resolve(e));
-        const cb2Err = await cb2.promise;
-
-        expect({ r2, cb2: cb2Err?.code }).toEqual({ r2: false, cb2: "ERR_STREAM_DESTROYED" });
-      } finally {
+      const closed = new Promise(resolve => child.once("close", resolve));
+      onTestFinished(async () => {
         child.kill("SIGKILL");
-      }
+        await closed;
+      });
+      await new Promise<void>((resolve, reject) => {
+        child.on("error", reject);
+        child.on("exit", () => reject(new Error("child exited before ready")));
+        child.stdout!.once("data", () => resolve());
+      });
+      child.removeAllListeners("error");
+      child.removeAllListeners("exit");
+
+      const errEv = Promise.withResolvers<any>();
+      const stdinClosed = new Promise(resolve => child.stdin!.once("close", resolve));
+      let errorCount = 0;
+      child.stdin!.on("error", e => {
+        errorCount++;
+        errEv.resolve(e);
+      });
+      const data = Buffer.alloc(size, 0x41);
+      const chunks = corked ? [data.subarray(0, 2), data.subarray(2)] : [data];
+      const callbackCounts = chunks.map(() => 0);
+      if (corked) child.stdin!.cork();
+      const callbacks = chunks.map((chunk, index) => {
+        const callback = Promise.withResolvers<any>();
+        child.stdin!.write(chunk, err => {
+          callbackCounts[index]++;
+          callback.resolve(err);
+        });
+        return callback.promise;
+      });
+      if (corked) child.stdin!.uncork();
+
+      const [callbackErrors, errEvErr] = await Promise.all([Promise.all(callbacks), errEv.promise, stdinClosed]);
+
+      // Node names the syscall "write" even though the stdio pipe is a
+      // socketpair underneath.
+      expect({
+        callbacks: callbackErrors.map(err => err?.code),
+        callbackCounts,
+        errEv: errEvErr?.code,
+        syscall: errEvErr?.syscall,
+        errorCount,
+        destroyed: child.stdin!.destroyed,
+        writable: child.stdin!.writable,
+      }).toEqual({
+        callbacks: corked ? ["EPIPE", "EPIPE"] : ["EPIPE"],
+        callbackCounts: corked ? [1, 1] : [1],
+        errEv: "EPIPE",
+        syscall: "write",
+        errorCount: 1,
+        destroyed: true,
+        writable: false,
+      });
+
+      const cb2 = Promise.withResolvers<any>();
+      const r2 = child.stdin!.write("more-bytes", e => cb2.resolve(e));
+      const cb2Err = await cb2.promise;
+
+      expect({ r2, cb2: cb2Err?.code }).toEqual({ r2: false, cb2: "ERR_STREAM_DESTROYED" });
     },
   );
 

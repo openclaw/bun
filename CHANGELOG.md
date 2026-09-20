@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Support independent IPC channel references, writable child stdio properties, and failed-spawn exit codes. Thanks @robobun!
+- Await buffered FileSink writes before completing Writable callbacks, preserving cork, drain, error, final-flush, and parent-end descriptor behavior.
 - Preserve inferred function and class names, format captured stacks for object targets, and retain query/fragment identity in file-URL preloads.
 - Restore fast realpath lookup without releasing POSIX locks: use O_PATH on Linux and fd-free full-path attributes on macOS, preserving symlink, firmlink, hard-link, and literal-path behavior.
 - Return undefined from filesystem access operations and null on successful symlink callbacks. Thanks @robobun!

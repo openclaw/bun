@@ -346,9 +346,15 @@ function close(stream, err, cb) {
   const fastPath: FileSink | true = stream[kWriteStreamFastPath];
   if (fastPath && fastPath !== true) {
     stream.fd = null;
-    const maybePromise = fastPath.end(err);
-    thenIfPromise(maybePromise, () => {
-      cb(err);
+    let maybePromise;
+    try {
+      maybePromise = fastPath.end(err);
+    } catch (endErr) {
+      cb(err || endErr);
+      return;
+    }
+    thenIfPromise(maybePromise, endErr => {
+      cb(err || endErr);
     });
     return;
   }
@@ -473,9 +479,7 @@ function WriteStream(this: FSStream, path: string | null | undefined, options?: 
   // Enable fast path
   if (fastPath) {
     this[kWriteStreamFastPath] = fd != null ? fastWriter : true;
-    this._write = underscoreWriteFast;
-    this._writev = undefined;
-    this.write = writeFast as any;
+    this._writev = writeStreamPrototype._writev;
     this._final = finalFast;
     if (fd != null) {
       // Already-open fd (stdio): skip the async _construct round-trip so the
@@ -559,31 +563,11 @@ function writevAll(chunks, size, pos, cb, retries = 0) {
   });
 }
 
-// Like Writable's afterWrite: no 'drain' once the stream is ending or destroyed.
-function emitDrain(stream: FSStream) {
-  const state = stream._writableState;
-  if (state === undefined || !(state.ending || state.destroyed)) {
-    stream.emit("drain");
-  }
-}
-
 function _write(data, encoding, cb) {
   const fileSink = this[kWriteStreamFastPath];
 
-  if (fileSink && fileSink !== true) {
-    const maybePromise = fileSink.write(data);
-    if ($isPromise(maybePromise)) {
-      maybePromise
-        .then(() => {
-          emitDrain(this);
-          cb(null);
-        })
-        .catch(cb);
-      return false; // Indicate backpressure
-    } else {
-      cb(null);
-      return true; // No backpressure
-    }
+  if (fileSink) {
+    writeToFileSink(this, data, cb);
   } else {
     this[kIsPerformingIO] = true;
     writeAll.$call(this, data, data.length, this.pos, er => {
@@ -602,41 +586,31 @@ function _write(data, encoding, cb) {
 }
 writeStreamPrototype._write = _write;
 
-function underscoreWriteFast(this: FSStream, data: any, encoding: any, cb: any) {
-  let fileSink = this[kWriteStreamFastPath];
-  if (!fileSink) {
-    // When the fast path is disabled, the write function gets reset.
-    this._write = _write;
-    return this._write(data, encoding, cb);
-  }
+function writeToFileSink(stream: FSStream, data: Buffer, cb: (err?: unknown) => void) {
+  let result;
   try {
+    let fileSink = stream[kWriteStreamFastPath];
     if (fileSink === true) {
-      fileSink = this[kWriteStreamFastPath] = Bun.file(this.path!).writer();
+      fileSink = stream[kWriteStreamFastPath] = Bun.file(stream.path!).writer();
       // @ts-expect-error
-      this.fd = fileSink._getFd();
+      stream.fd = fileSink._getFd();
     }
-
-    const maybePromise = fileSink.write(data);
-    if ($isPromise(maybePromise)) {
-      maybePromise.then(
-        () => {
-          if (cb) cb(null);
-          emitDrain(this);
-        },
-        err => {
-          if (cb) cb(err);
-          require("internal/streams/destroy").errorOrDestroy(this, err);
-        },
-      );
-      return false;
-    } else {
-      if (cb) process.nextTick(cb, null);
-      return true;
-    }
-  } catch (e) {
-    if (cb) process.nextTick(cb, e);
-    require("internal/streams/destroy").errorOrDestroy(this, e, true);
-    return false;
+    $assert(fileSink);
+    result = fileSink.write(data);
+    // A numeric write may only have buffered the bytes. Flush before yielding
+    // so a deferred pipe error still belongs to this Writable callback.
+    if (!$isPromise(result)) result = fileSink.flush();
+  } catch (err) {
+    cb(err);
+    return;
+  }
+  if ($isPromise(result)) {
+    result.then(
+      () => process.nextTick(cb, null),
+      err => process.nextTick(cb, err),
+    );
+  } else {
+    cb(null);
   }
 }
 
@@ -659,61 +633,6 @@ function finalFast(this: FSStream, cb: (err?: any) => void) {
   cb(null);
 }
 
-// This function implementation is not correct.
-const writablePrototypeWrite = Writable.prototype.write;
-const kWriteMonkeyPatchDefense = Symbol("!");
-function writeFast(this: FSStream, data: any, encoding: any, cb: any) {
-  if (this[kWriteMonkeyPatchDefense]) return writablePrototypeWrite.$call(this, data, encoding, cb);
-
-  // After end()/destroy() the Writable contract requires write() to fail with
-  // ERR_STREAM_WRITE_AFTER_END / ERR_STREAM_DESTROYED and not reach the sink.
-  const state = this._writableState;
-  if (state !== undefined && (state.ending || state.destroyed)) {
-    return writablePrototypeWrite.$call(this, data, encoding, cb);
-  }
-
-  if (typeof encoding === "function") {
-    cb = encoding;
-    encoding = undefined;
-  }
-  if (typeof cb !== "function") {
-    cb = streamNoop;
-  }
-
-  const fileSink = this[kWriteStreamFastPath];
-  if (fileSink && fileSink !== true) {
-    const maybePromise = fileSink.write(data);
-    if ($isPromise(maybePromise)) {
-      // Two-arg then(): a throw from the fulfillment handler must not be
-      // mistaken for a write failure.
-      maybePromise.then(
-        () => {
-          emitDrain(this);
-          cb(null);
-        },
-        err => {
-          cb(err);
-          // Node.js onwriteError: callback AND destroy are both invoked; the
-          // callback is additive, not a replacement for the 'error' event.
-          require("internal/streams/destroy").errorOrDestroy(this, err);
-        },
-      );
-      return false; // Indicate backpressure
-    } else {
-      cb(null);
-      return true; // No backpressure
-    }
-  } else {
-    const result: any = this._write!(data, encoding, cb);
-    if (this.write === writeFast) {
-      this.write = writablePrototypeWrite;
-    } else {
-      this[kWriteMonkeyPatchDefense] = true;
-    }
-    return result;
-  }
-}
-
 writeStreamPrototype._writev = function (data, cb) {
   const len = data.length;
   const chunks = new Array(len);
@@ -726,20 +645,8 @@ writeStreamPrototype._writev = function (data, cb) {
   }
 
   const fileSink = this[kWriteStreamFastPath];
-  if (fileSink && fileSink !== true) {
-    const maybePromise = fileSink.write(Buffer.concat(chunks));
-    if ($isPromise(maybePromise)) {
-      maybePromise
-        .then(() => {
-          emitDrain(this);
-          cb(null);
-        })
-        .catch(cb);
-      return false;
-    } else {
-      cb(null);
-      return true;
-    }
+  if (fileSink) {
+    writeToFileSink(this, Buffer.concat(chunks, size), cb);
   } else {
     this[kIsPerformingIO] = true;
     writevAll.$call(this, chunks, size, this.pos, er => {
@@ -758,14 +665,6 @@ writeStreamPrototype._writev = function (data, cb) {
 };
 
 writeStreamPrototype._destroy = function (err, cb) {
-  const sink = this[kWriteStreamFastPath];
-  if (sink && sink !== true) {
-    const end = sink.end(err);
-    if ($isPromise(end)) {
-      end.then(() => cb(err), cb);
-      return;
-    }
-  }
   // Usually for async IO it is safe to close a file descriptor
   // even when there are pending operations. However, due to platform
   // differences file IO is implemented using synchronous operations
@@ -821,7 +720,10 @@ Object.defineProperty(writeStreamPrototype, "pending", {
 function thenIfPromise<T>(maybePromise: Promise<T> | T, cb: any) {
   $assert(typeof cb === "function", "cb is not a function");
   if ($isPromise(maybePromise)) {
-    maybePromise.then(() => cb(null), cb);
+    maybePromise.then(
+      () => process.nextTick(cb, null),
+      err => process.nextTick(cb, err),
+    );
   } else {
     process.nextTick(cb, null);
   }

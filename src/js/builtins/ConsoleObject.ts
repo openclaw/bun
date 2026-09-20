@@ -142,8 +142,8 @@ export function write(this: Console & { $writer: ConsoleWriter | undefined }, in
     else pending = result;
   } while (++i < count);
 
-  writer.flush(true);
-  if (pending === undefined) return wrote;
+  const flushed = writer.flush();
+  if (pending === undefined) return $isPromise(flushed) ? flushed.then(() => wrote) : wrote;
   if (wrote === 0) return pending;
   return pending.then(n => wrote + n);
 }

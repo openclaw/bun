@@ -41,6 +41,8 @@ pub struct FileSink {
     pub(crate) must_be_kept_alive_until_eof: Cell<bool>,
     /// `to_result` returned `Backpressure` to a ByteStream; drain callbacks resume it.
     pub(crate) source_pending_pull: Cell<bool>,
+    /// The pending slot also joins an explicit flush, including in-flight Windows writes.
+    pending_flush: Cell<bool>,
 
     // TODO: these fields are duplicated on writer()
     // we should not duplicate these fields...
@@ -349,6 +351,20 @@ impl FileSink {
 
             (*this).run_pending_later.has.set(false);
 
+            // A queued drain can be followed by another buffered write before this task runs.
+            if (*this).pending_flush.get()
+                && (*this).writer.get().has_pending_data()
+                && !matches!(
+                    (*this).pending.get().result,
+                    streams::Writable::Err(_)
+                        | streams::Writable::Done
+                        | streams::Writable::OwnedAndDone(_)
+                )
+            {
+                return;
+            }
+            (*this).pending_flush.set(false);
+
             let _entered = (*this).event_loop().entered();
             // SAFETY(JsCell): `WritablePending::run` resolves a JSPromise which may
             // re-enter JS, but no other path holds a borrow of `self.pending` for
@@ -398,7 +414,10 @@ impl FileSink {
             }
 
             // if we are not done yet and has pending data we just wait so we do not runPending twice
-            if status == WriteStatus::Pending && has_pending_data {
+            if has_pending_data
+                && status != WriteStatus::EndOfFile
+                && (status == WriteStatus::Pending || (*this).pending_flush.get())
+            {
                 return;
             }
 
@@ -994,12 +1013,11 @@ impl FileSink {
     pub(crate) fn flush_from_js(
         &self,
         cx: &bun_jsc::JsThread<'_>,
-        wait: bool,
+        _wait: bool,
     ) -> sys::Result<JSValue> {
-        let _ = wait;
-
         if self.pending.get().state == streams::PendingState::Pending {
             if let streams::WritableFuture::Promise { strong, .. } = &self.pending.get().future {
+                self.pending_flush.set(true);
                 return sys::Result::Ok(strong.value());
             }
         }
@@ -1008,7 +1026,7 @@ impl FileSink {
             return sys::Result::Ok(JSValue::UNDEFINED);
         }
 
-        let had_buffered_data = self.writer.get().has_pending_data();
+        let buffered_before = self.writer.get().buffered_len();
         // SAFETY(JsCell): `IOWriter::flush` is pure I/O; no JS re-entry while
         // the `&mut IOWriter` is held.
         let rc = self.writer.with_mut(|w| w.flush());
@@ -1017,7 +1035,7 @@ impl FileSink {
         // JS that drained them has to release it too, or the loop still counts
         // as alive until the next deferred-task drain (a write()+flush() from a
         // 'beforeExit' listener then re-emits 'beforeExit').
-        if had_buffered_data && !self.writer.get().has_pending_data() {
+        if buffered_before > 0 && !self.writer.get().has_pending_data() {
             self.update_ref(false);
         }
         let flushed = match rc {
@@ -1031,8 +1049,18 @@ impl FileSink {
                 return sys::Result::Err(err);
             }
         };
-        // A flush takes no new chunk from the caller; a pending one reports the
-        // bytes it pushed out. It only reaches here when no write is pending.
+        if matches!(rc, WriteResult::Pending(_)) && self.writer.get().has_pending_data() {
+            if !self.must_be_kept_alive_until_eof.get() {
+                self.must_be_kept_alive_until_eof.set(true);
+                self.ref_();
+            }
+            self.pending_flush.set(true);
+            self.pending.with_mut(|p| {
+                p.consumed = buffered_before as u64;
+                p.result = streams::Writable::Owned(p.consumed);
+            });
+            return sys::Result::Ok(streams::Writable::Pending(self.pending.as_ptr()).to_js(cx));
+        }
         match self.to_result(rc, flushed) {
             streams::Writable::Err(_) => unreachable!(),
             result => sys::Result::Ok(result.to_js(cx)),
@@ -1637,6 +1665,7 @@ impl FileSink {
             started: Cell::new(false),
             must_be_kept_alive_until_eof: Cell::new(false),
             source_pending_pull: Cell::new(false),
+            pending_flush: Cell::new(false),
             pollable: Cell::new(false),
             nonblocking: Cell::new(false),
             force_sync: Cell::new(false),
