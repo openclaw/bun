@@ -1885,8 +1885,9 @@ function getNodeHTTPServerSocket() {
 
     get bytesWritten() {
       const handle = this[kHandle];
+      // HTTP response bodies and raw socket writes use separate counters.
       return handle
-        ? (handle.response?.getBytesWritten?.() ?? handle.bytesWritten ?? this[kBytesWritten] ?? 0)
+        ? (handle.response?.getBytesWritten?.() ?? 0) + (handle.bytesWritten ?? 0)
         : (this[kBytesWritten] ?? 0);
     }
     set bytesWritten(value) {
@@ -1936,7 +1937,7 @@ function getNodeHTTPServerSocket() {
     }
     #onDrain() {
       const handle = this[kHandle];
-      this[kBytesWritten] = handle ? (handle.response?.getBytesWritten?.() ?? handle.bytesWritten ?? 0) : 0;
+      this[kBytesWritten] = handle ? (handle.response?.getBytesWritten?.() ?? 0) + (handle.bytesWritten ?? 0) : 0;
       const callback = this.#pendingCallback;
       if (callback) {
         this.#pendingCallback = null;
