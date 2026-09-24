@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Avoid allocator handoffs during nonblocking event-loop polls.
 - Close idle Node HTTP connections after bodyless responses finish inside their handlers, while preserving pending request bodies, queued responses, and tunnels.
 - Report the actual stat error when an install patch file cannot be read, including symlink-loop errors. Thanks @SebTardif!
 - Resume injected HTTP and TLS connections after attaching server listeners so paused proxy sockets can deliver requests. Thanks @RomneyDa!

@@ -503,7 +503,8 @@ void us_loop_run_bun_tick(struct us_loop_t *loop, const struct timespec* timeout
     timeout = us_internal_clamp_to_sweep(loop, timeout, &sweep_ts);
 
     const unsigned int had_wakeups = __atomic_exchange_n(&loop->pending_wakeups, 0, __ATOMIC_ACQUIRE);
-    const int will_idle_inside_event_loop = had_wakeups == 0 && (!timeout || (timeout->tv_nsec != 0 || timeout->tv_sec != 0));
+    const int poll_may_block = !timeout || timeout->tv_nsec != 0 || timeout->tv_sec != 0;
+    const int will_idle_inside_event_loop = had_wakeups == 0 && poll_may_block;
     /* `now_ns` is the reading the JS side took to pick `timeout`
      * (timer::All::get_timeout), reused here to rate-limit the idle sweep; 0
      * if it had none to share. Nothing measures a deadline against it. */
@@ -511,12 +512,10 @@ void us_loop_run_bun_tick(struct us_loop_t *loop, const struct timespec* timeout
     if (will_idle_inside_event_loop && loop->data.jsc_vm)
         (void) Bun__JSC_onBeforeWait(loop->data.jsc_vm, now_ns, &released_heap_access);
 
-    /* The scavenger sweeps our heaps while we are in the kernel. Must come after
-     * Bun__JSC_onBeforeWait, which allocates: nothing may touch our heaps until the matching
-     * _end. mimalloc paces the sweep itself, so this costs a compare-and-swap per tick.
-     * With no scavenger to hand off to, fall back to sweeping inline -- but only on a tick that
-     * really parks, and rate-limited, because doing it between ticks is what we are avoiding. */
-    const int handed_off = mi_on_thread_idle_start();
+    /* Bun__JSC_onBeforeWait may allocate, so transfer heap ownership afterward.
+     * Keep ownership for zero-time polls, which provide no readiness wait.
+     * Without a scavenger, retain the rate-limited inline sweep before idle waits. */
+    const int handed_off = poll_may_block && mi_on_thread_idle_start();
     if (!handed_off && will_idle_inside_event_loop) {
         static const uint64_t idle_sweep_interval_ns = 100 * 1000000ULL;
         static _Thread_local uint64_t last_idle_sweep_ns = 0;
