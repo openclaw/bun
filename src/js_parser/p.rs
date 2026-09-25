@@ -213,6 +213,15 @@ pub struct RecentlyVisitedTSNamespace {
     pub(crate) map: Option<js_ast::StoreRef<js_ast::TSNamespaceMemberMap>>,
 }
 
+/// Keyed by where the node is: an async arrow's `async` -> its parameters; an arrow's `=>` -> its expression body; a
+/// class element's name or static block -> the element (its `static`, its `[`).
+#[derive(Default)]
+pub struct StartsForParseOnly {
+    pub(crate) async_arrow_parameters: bun_collections::HashMap<i32, i32>,
+    pub(crate) arrow_expression_bodies: bun_collections::HashMap<i32, i32>,
+    pub(crate) class_elements: bun_collections::HashMap<i32, i32>,
+}
+
 #[derive(Clone, Copy)]
 pub struct ReactRefreshImportClause<'a> {
     pub(crate) name: &'a [u8],
@@ -372,6 +381,8 @@ pub struct P<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> {
     pub(crate) has_commonjs_export_names: bool,
 
     pub(crate) stack_check: bun_core::StackCheck,
+    /// `Parser::parse_only`: where what does not say so itself starts.
+    pub(crate) starts_for_parse_only: Option<StartsForParseOnly>,
 
     pub(crate) reported_stack_overflow: core::cell::Cell<bool>,
 
@@ -1469,10 +1480,6 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
             let import_record_index =
                 self.add_import_record(ImportKind::Dynamic, arg.loc, str_.slice(self.arena));
 
-            if let Some(tag) = state.import_record_tag {
-                self.import_records.items_mut()[import_record_index as usize].tag = tag;
-            }
-
             if let Some(loader) = state.import_loader {
                 self.import_records.items_mut()[import_record_index as usize].loader = Some(loader);
             }
@@ -2138,6 +2145,13 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
         }
     }
 
+    /// See `Symbol::import_used_as_value`.
+    fn note_import_use(&mut self, ref_: Ref, opts: IdentifierOpts) {
+        if !opts.is_property_access_target() && !self.is_control_flow_dead {
+            self.symbols[ref_.inner_index() as usize].set_import_used_as_value(true);
+        }
+    }
+
     pub(crate) fn log_arrow_arg_errors(&mut self, errors: &mut DeferredArrowArgErrors) {
         if errors.invalid_expr_await.len > 0 {
             let r = errors.invalid_expr_await;
@@ -2263,12 +2277,14 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                     }
                 }
 
+                self.note_import_use(ref_, opts);
                 return self.new_expr(E::ImportIdentifier::new(ident.ref_, true), loc);
             }
         }
 
         // Substitute an EImportIdentifier now if this is an import item
         if self.is_import_item.contains_key(&ref_) {
+            self.note_import_use(ref_, opts);
             return self.new_expr(
                 E::ImportIdentifier::new(ref_, opts.was_originally_identifier()),
                 loc,
@@ -5492,7 +5508,9 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                 .with_must_keep_due_to_with_stmt(result.is_inside_with_scope)
                 .with_can_be_removed_if_unused(true),
             Some(parts[0]),
-            IdentifierOpts::new().with_was_originally_identifier(true),
+            IdentifierOpts::new()
+                .with_was_originally_identifier(true)
+                .with_is_property_access_target(parts.len() > 1),
         );
         if parts.len() > 1 {
             return Ok(self.member_expression(loc, value, &parts[1..]));
@@ -5529,14 +5547,13 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
     ) -> Expr {
         let mut value = initial_value;
 
-        for part in parts {
+        for (i, part) in parts.iter().enumerate() {
             if let Some(rewrote) = self.maybe_rewrite_property_access(
                 loc,
                 value,
                 part,
                 loc,
-                // All defaults on the packed-u8 IdentifierOpts.
-                IdentifierOpts::default(),
+                IdentifierOpts::default().with_is_property_access_target(i + 1 < parts.len()),
             ) {
                 value = rewrote;
             } else {
@@ -7916,6 +7933,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
             M::MIdentifier(ref_) => {
                 self.record_usage(ref_);
                 let e = if self.is_import_item.contains_key(&ref_) {
+                    self.note_import_use(ref_, IdentifierOpts::new());
                     self.new_expr(
                         E::ImportIdentifier {
                             ref_,
@@ -9579,6 +9597,10 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                         }
                     }
                     js_ast::StmtData::SLocal(local) => {
+                        // The linker keeps a `using` declaration inside the wrapper.
+                        if local.kind.is_using() {
+                            return true;
+                        }
                         if local.origin.is_commonjs_export()
                             || self.commonjs_named_exports.count() == 0
                         {
@@ -9756,6 +9778,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
             named_exports: Default::default(),
             log,
             stack_check: bun_core::StackCheck::init(),
+            starts_for_parse_only: None,
             reported_stack_overflow: core::cell::Cell::new(false),
             ts_infer_constraint_backtracks: Vec::new(),
             ts_conditional_arrow_attempts: Vec::new(),

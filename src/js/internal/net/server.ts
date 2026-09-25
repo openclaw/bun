@@ -1,6 +1,6 @@
 const { isIPv6 } = require("internal/net/isIP");
 
-let dns: typeof import("node:dns");
+let dns: typeof import("../../node/dns").default;
 
 function isIPv6LinkLocal(address: string): boolean {
   if (!isIPv6(address)) return false;

@@ -26,6 +26,8 @@ bun run build:local run script.ts          # debug build with local WebKit
 
 When exec args are present, build output is suppressed unless the build fails — you see only the binary's output. Build flags (e.g. `--asan=off`) go before the exec args; see `scripts/build.ts` header for the full arg routing rules.
 
+Build graph inspection also goes through the wrapper: `bun run build -t query <target>` or `bun run build -n -d explain`. The build pins Ninja; a different version can reset its log. CI toolchain pins and image provisioning live in `scripts/build/ci-images/`; read its `AGENTS.md` before changing them.
+
 ### Changes that don't require a build
 
 Edits to **TypeScript type declarations** (`packages/bun-types/**/*.d.ts`) do not touch any compiled code, so `bun bd` is unnecessary. The types test just packs the `.d.ts` files and runs `tsc` against fixtures — it never executes your build. Run it directly with the system Bun (an explicit exception to the "never use `bun test` directly" rule):
@@ -123,7 +125,7 @@ The Rust side is a Cargo workspace of ~200 crates rooted at `Cargo.toml`. The ke
 - `src/bun_core/` - The `bun.*`-namespace foundation: strings/`String` (`string/`), formatting (`fmt.rs`), logging (`output.rs`), feature flags, env vars, allocator helpers
 - `src/sys/` - Cross-platform syscall wrappers (`file.rs`, `dir.rs`, `fd.rs`, `Error.rs`, `tmp.rs`) — the `bun.sys` equivalent
 - `src/collections/`, `src/threading/`, `src/paths/`, `src/semver/`, `src/sourcemap/` - shared utilities
-- `src/runtime/bin_entry/` - process entry point (`main`); `bun_runtime` is built as the staticlib (`libbun_runtime.a`) linked into the final binary
+- `src/runtime/bin_entry/` - process entry point (`main`); `bun_runtime` is the root of the crate graph; every crate's rlib is an input of the final link
 - `src/runtime/cli/` - CLI argument parsing and command dispatch
 - `src/js_parser/`, `src/js_printer/` - JavaScript/TypeScript parsing and printing (each is its own crate; the lexer is `src/js_parser/lexer.rs`)
 - `src/transpiler/` - Wrapper around the parser/printer with sourcemap support
