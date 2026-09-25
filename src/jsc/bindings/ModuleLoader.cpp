@@ -967,7 +967,7 @@ static JSValue fetchESMSourceCode(
     void* bunVM = globalObject->bunVM();
     auto& vm = JSC::getVM(globalObject);
     auto scope = DECLARE_THROW_SCOPE(vm);
-    auto specifierKey = specifierJS->value(globalObject);
+    WTF::String specifierKey = specifierJS->value(globalObject);
     RETURN_IF_EXCEPTION(scope, {});
     auto specifierKeyBun = Bun::toString(specifierKey);
     auto* virtualSpecifier = preservePathDelimiters ? &specifierKeyBun : specifier;

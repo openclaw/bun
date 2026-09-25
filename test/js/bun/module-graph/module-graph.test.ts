@@ -5,7 +5,7 @@
 import { heapStats } from "bun:jsc";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { renameSync, rmSync, writeFileSync } from "fs";
-import { bunEnv, bunExe, isASAN, isDebug, isWindows, tempDir } from "harness";
+import { bunEnv, bunExe, isASAN, isDebug, isWindows, normalizeBunSnapshot, tempDir } from "harness";
 import { createRequire } from "node:module";
 import { join } from "path";
 
@@ -1210,6 +1210,30 @@ describe("Bun.ModuleGraph — error attribution matrix", () => {
       otherQuery: false,
       plain: false,
     });
+  });
+  test.each(["#tenant=1", "?tenant=1#first"])("a first file URL import with suffix %s is main", async suffix => {
+    using d = tempDir("module-graph-main-url-suffix", {
+      "m.mjs": `export const main = import.meta.main;`,
+    });
+    const file = Bun.pathToFileURL(join(String(d), "m.mjs")).href;
+    using g = new ModuleGraphClass();
+    const first = await g.import(file + suffix);
+    const other = await g.import(file + "#other");
+    const plain = await g.import(file);
+    expect([first.main, other.main, plain.main]).toEqual([true, false, false]);
+  });
+  // Windows filenames cannot contain '?'.
+  test.skipIf(isWindows)("a first file URL import with an encoded pathname delimiter is main", async () => {
+    using d = tempDir("module-graph-main-url-delimiter", {
+      "m?copy.mjs": `export const main = import.meta.main;`,
+    });
+    const file = Bun.pathToFileURL(join(String(d), "m?copy.mjs")).href;
+    for (const suffix of ["", "?tenant=1", "#first", "?tenant=1#first"]) {
+      using g = new ModuleGraphClass();
+      const first = await g.import(file + suffix);
+      const other = await g.import(file + "#other");
+      expect([first.main, other.main]).toEqual([true, false]);
+    }
   });
   test("the first import() is main from the moment it is requested: a second one in the same tick, and evicting main from require.cache, do not change it", async () => {
     using d = tempDir("module-graph-main-first", {
@@ -3109,6 +3133,19 @@ describe("Bun.ModuleGraph — generators, iterators, WeakRef/FinalizationRegistr
 });
 
 describe("Bun.ModuleGraph — specifiers and paths", () => {
+  // Windows filenames cannot contain '?'.
+  test.concurrent.skipIf(isWindows)("relative graph imports preserve literal question marks in cwd", async () => {
+    using dir = tempDir("module-graph-cwd-delimiter", {
+      "literal?dir/entry.mjs": `export default 42;`,
+    });
+    const result = await runBun(
+      ["-e", `using graph = new Bun.ModuleGraph(); console.log((await graph.import("./entry.mjs")).default);`],
+      { cwd: join(String(dir), "literal?dir") },
+    );
+    expect(normalizeBunSnapshot(result.stdout, dir)).toMatchInlineSnapshot(`"42"`);
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
   test("unicode, spaces, and very long path segments in module paths", async () => {
     const longName = "l".repeat(100) + ".mjs"; // long, but within Windows MAX_PATH together with the temp dir
     const dir = fixture({

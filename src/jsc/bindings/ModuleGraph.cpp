@@ -595,7 +595,7 @@ JSPromise* JSModuleGraph::import(Zig::GlobalObject* globalObject, JSValue specif
     RETURN_IF_EXCEPTION(scope, nullptr);
     String cwd = cwdValue.toWTFString(globalObject);
     RETURN_IF_EXCEPTION(scope, nullptr);
-    auto referrer = Identifier::fromString(vm, makeString(cwd, PLATFORM_SEP, "[module-graph]"_s));
+    auto referrer = Identifier::fromString(vm, moduleReferrerFromFilename(makeString(cwd, PLATFORM_SEP, "[module-graph]"_s), false));
     Identifier key = loader->resolve(globalObject, Identifier::fromString(vm, specifier), referrer, nullptr, false);
     RETURN_IF_EXCEPTION(scope, nullptr);
     // The first import makes its module main, whether or not it then loads. (Not a builtin: it
