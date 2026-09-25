@@ -42,7 +42,7 @@ const kTrailers = Symbol("kTrailers");
 const kTrailersDistinct = Symbol("kTrailersDistinct");
 const kTrailersCount = Symbol("kTrailersCount");
 
-type IncomingMessage = import("node:http").IncomingMessage;
+type IncomingMessage = import("node:http").IncomingMessage & { _dumped: boolean };
 
 function readStart(socket) {
   if (socket && !socket._paused && socket.readable) socket.resume();
