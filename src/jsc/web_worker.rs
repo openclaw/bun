@@ -106,7 +106,6 @@ pub struct WebWorker {
     /// Created by `node:worker_threads`' `Worker` (as opposed to the Web `Worker`
     /// constructor): loads `node:worker_threads` before preloads and the entry point.
     is_node_worker: bool,
-    store_fd: bool,
     /// Borrowed from the proxy's `WorkerOptions` (alive as long as the proxy).
     argv_ptr: *const WTFStringImpl,
     argv_len: usize,
@@ -492,7 +491,6 @@ impl WebWorker {
                     .saturating_sub(preload_require_start),
             );
         }
-        let store_fd = parent_ref.transpiler.resolver.store_fd;
         let mut transform_options = (*parent_ref.transpiler.options.transform_options).clone();
         // A worker's own `execArgv` carries node's per-Environment options (parsed with the
         // RunCommand param table, hence the hook); without one it inherits the parent's.
@@ -567,7 +565,6 @@ impl WebWorker {
             mini,
             eval_mode,
             is_node_worker,
-            store_fd,
             argv_ptr,
             argv_len,
             exec_argv_ptr,
@@ -902,7 +899,6 @@ impl WebWorker {
             virtual_machine::Options {
                 args: transform_options,
                 env_loader: NonNull::new(loader_ptr),
-                store_fd: self.store_fd,
                 graph: crate::virtual_machine::standalone_module_graph(),
                 use_system_ca,
                 use_system_ca_flag,

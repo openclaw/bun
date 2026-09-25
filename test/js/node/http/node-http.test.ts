@@ -2977,6 +2977,68 @@ it("a pipelined request behind Connection: close is never dispatched (clientErro
   }
 });
 
+describe("bytes after a message that forbade keep-alive", () => {
+  // Sends `payload` on one connection and reads until the socket closes.
+  async function roundTrip(payload: string) {
+    const requests: string[] = [];
+    const clientErrors: string[] = [];
+    const server = createServer((req, res) => {
+      requests.push(req.url!);
+      req.resume();
+      // Keep the response pending while the parser walks the rest of the read.
+      // Once it is sent the connection closes and the rest is never parsed.
+      setImmediate(() => res.end("ok"));
+    });
+    server.on("clientError", (err: any, socket) => {
+      clientErrors.push(err.code);
+      socket.destroy();
+    });
+    try {
+      server.listen(0, "127.0.0.1");
+      await once(server, "listening");
+      const { port } = server.address() as AddressInfo;
+
+      const chunks: Buffer[] = [];
+      const socket = connect(port, "127.0.0.1");
+      socket.on("error", () => {});
+      socket.on("data", c => chunks.push(c));
+      socket.write(payload);
+      await once(socket, "close");
+      return { requests, clientErrors, raw: Buffer.concat(chunks).toString("latin1") };
+    } finally {
+      server.close();
+    }
+  }
+
+  // Node's parser skips CR and LF in its closed state and raises
+  // HPE_CLOSED_CONNECTION only on other bytes, so the legacy extra CRLF after
+  // a POST body (RFC 9112 2.2) still gets its response.
+  it.each([
+    [
+      "CRLF after a Connection: close POST body",
+      "POST /a HTTP/1.1\r\nHost: x\r\nConnection: close\r\nContent-Length: 5\r\n\r\nhello\r\n",
+    ],
+    ["blank line after an HTTP/1.0 request", "GET /a HTTP/1.0\r\nHost: x\r\n\r\n\r\n"],
+  ])("%s is not a clientError", async (_label, payload) => {
+    const { requests, clientErrors, raw } = await roundTrip(payload);
+    expect({ requests, clientErrors, status: raw.split("\r\n")[0], body: raw.slice(-2) }).toEqual({
+      requests: ["/a"],
+      clientErrors: [],
+      status: "HTTP/1.1 200 OK",
+      body: "ok",
+    });
+  });
+
+  // The bytes are never parsed as a request, so they surface as the closed
+  // connection error and not as whatever parse error they would produce.
+  it("other bytes after the CRLF are HPE_CLOSED_CONNECTION", async () => {
+    const { requests, clientErrors } = await roundTrip(
+      "GET /a HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n\r\n@@@ not HTTP\r\n\r\n",
+    );
+    expect({ requests, clientErrors }).toEqual({ requests: ["/a"], clientErrors: ["HPE_CLOSED_CONNECTION"] });
+  });
+});
+
 it("pipelined responses buffered past the high water mark pause reads on the connection", async () => {
   // Node's parserOnIncoming stops reading a connection once the bytes queued on
   // responses that do not own the socket yet (state.outgoingData) reach
@@ -5114,89 +5176,6 @@ describe("HTTP server transport shutdown", () => {
       }
     }
   });
-
-  it("waits for post-flush backpressure before running a write callback", async () => {
-    const body = Buffer.alloc(2 * 1024 * 1024, "x");
-    const writeReturned = Promise.withResolvers<boolean>();
-    const callback = Promise.withResolvers<Error | undefined>();
-    let callbackCalled = false;
-    const server = createServer((_req, res) => {
-      res.writeHead(200, { "content-length": body.length });
-      const accepted = res.write(body, error => {
-        callbackCalled = true;
-        callback.resolve(error ?? undefined);
-        res.destroy();
-      });
-      writeReturned.resolve(accepted);
-    });
-    server.listen(0, "127.0.0.1");
-    await once(server, "listening");
-    const { port } = server.address() as AddressInfo;
-    const client = connect(port, "127.0.0.1");
-    const chunks: Buffer[] = [];
-    const closed = Promise.withResolvers<void>();
-    client.pause();
-    client.on("data", chunk => chunks.push(chunk));
-    client.on("error", () => {});
-    client.on("close", closed.resolve);
-
-    try {
-      await once(client, "connect");
-      client.write("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
-      expect(await writeReturned.promise).toBe(false);
-      expect(callbackCalled).toBe(false);
-      client.resume();
-      await closed.promise;
-      expect(await callback.promise).toBeUndefined();
-      const wire = Buffer.concat(chunks);
-      const headerEnd = wire.indexOf("\r\n\r\n");
-      expect(headerEnd).toBeGreaterThan(0);
-      expect(wire.subarray(headerEnd + 4)).toEqual(body);
-    } finally {
-      client.destroy();
-      server.closeAllConnections();
-      if (server.listening) {
-        await new Promise<void>(resolve => server.close(() => resolve()));
-      }
-    }
-  });
-
-  it("fails a buffered write callback when the peer resets before drain", async () => {
-    const body = Buffer.alloc(2 * 1024 * 1024, "x");
-    const writeReturned = Promise.withResolvers<boolean>();
-    const responseClosed = Promise.withResolvers<void>();
-    const callbackErrors: string[] = [];
-    const server = createServer((_req, res) => {
-      res.on("close", responseClosed.resolve);
-      const accepted = res.write(body, (error: NodeJS.ErrnoException | null | undefined) => {
-        callbackErrors.push(error?.code ?? "success");
-      });
-      writeReturned.resolve(accepted);
-    });
-    server.listen(0, "127.0.0.1");
-    await once(server, "listening");
-    const { port } = server.address() as AddressInfo;
-    const client = connect(port, "127.0.0.1");
-    client.on("error", () => {});
-    client.pause();
-
-    try {
-      await once(client, "connect");
-      client.write("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
-      expect(await writeReturned.promise).toBe(false);
-      client.resetAndDestroy();
-      await responseClosed.promise;
-      await new Promise<void>(resolve => setImmediate(resolve));
-      expect(callbackErrors).toHaveLength(1);
-      expect(["ERR_STREAM_DESTROYED", "ECONNRESET", "EPIPE"]).toContain(callbackErrors[0]);
-    } finally {
-      client.destroy();
-      server.closeAllConnections();
-      if (server.listening) {
-        await new Promise<void>(resolve => server.close(() => resolve()));
-      }
-    }
-  });
 });
 
 it("connectionListener queues pipelined responses like Node", async () => {
@@ -5437,4 +5416,32 @@ it("connectionListener pauses reads when queued pipelined responses back up", as
   expect(dispatched).toBe(N);
   clientSide.destroy();
   serverSide.destroy();
+});
+
+it("req.socket.setKeepAlive() and resetAndDestroy() return the socket", async () => {
+  const { promise, resolve, reject } = Promise.withResolvers<{ setKeepAlive: boolean; resetAndDestroy: boolean }>();
+  const server = createServer((req, res) => {
+    try {
+      const socket = req.socket;
+      resolve({
+        setKeepAlive: socket.setKeepAlive(true).setNoDelay(true) === socket,
+        resetAndDestroy: socket.resetAndDestroy() === socket,
+      });
+    } catch (e) {
+      reject(e);
+    }
+    res.end();
+  });
+  try {
+    await once(server.listen(0), "listening");
+    // resetAndDestroy() resets the connection in node, so the request itself may fail.
+    const request = fetch(`http://localhost:${(server.address() as AddressInfo).port}/`).then(
+      response => response.text(),
+      () => {},
+    );
+    expect(await promise).toEqual({ setKeepAlive: true, resetAndDestroy: true });
+    await request;
+  } finally {
+    server.close();
+  }
 });

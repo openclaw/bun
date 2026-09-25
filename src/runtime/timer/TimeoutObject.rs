@@ -11,7 +11,7 @@ super::impl_timer_object!(TimeoutObject, TimeoutObject, "Timeout");
 
 impl TimeoutObject {
     pub(crate) fn init(
-        global: &JSGlobalObject,
+        cx: &bun_jsc::JsThread<'_>,
         id: i32,
         async_hooks_id: u64,
         kind: Kind,
@@ -19,15 +19,7 @@ impl TimeoutObject {
         callback: JSValue,
         arguments: JSValue,
     ) -> JSValue {
-        Self::init_with(
-            global,
-            id,
-            async_hooks_id,
-            kind,
-            interval,
-            callback,
-            arguments,
-        )
+        Self::init_with(cx, id, async_hooks_id, kind, interval, callback, arguments)
     }
 
     #[bun_jsc::host_fn(method)]
@@ -40,7 +32,11 @@ impl TimeoutObject {
     }
 
     #[bun_jsc::host_fn(method)]
-    pub fn close(this: &Self, global: &JSGlobalObject, frame: &CallFrame) -> JsResult<JSValue> {
+    pub(crate) fn close(
+        this: &Self,
+        global: &JSGlobalObject,
+        frame: &CallFrame,
+    ) -> JsResult<JSValue> {
         this.internals.cancel(global.bun_vm_ptr());
         Ok(frame.this())
     }

@@ -1,5 +1,5 @@
+use bun_jsc::JSValue;
 use bun_jsc::virtual_machine::VirtualMachine;
-use bun_jsc::{JSGlobalObject, JSValue};
 
 use super::{Kind, TimerObjectInternals};
 
@@ -12,14 +12,14 @@ super::impl_timer_object!(ImmediateObject, ImmediateObject, "Immediate");
 
 impl ImmediateObject {
     pub(crate) fn init(
-        global: &JSGlobalObject,
+        cx: &bun_jsc::JsThread<'_>,
         id: i32,
         async_hooks_id: u64,
         callback: JSValue,
         arguments: JSValue,
     ) -> JSValue {
         Self::init_with(
-            global,
+            cx,
             id,
             async_hooks_id,
             Kind::SetImmediate,

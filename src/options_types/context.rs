@@ -228,6 +228,8 @@ pub struct BundlerOptions {
     pub bytecode: bool,
     pub bytecode_depth: u32,
     pub optimize_bytecode: bool,
+    /// `--bytecode-order`: payload order files, most important first.
+    pub bytecode_order: Vec<Box<[u8]>>,
     pub banner: Box<[u8]>,
     pub footer: Box<[u8]>,
     pub css_chunking: bool,
@@ -291,6 +293,7 @@ impl Default for BundlerOptions {
             bytecode: false,
             bytecode_depth: u32::MAX,
             optimize_bytecode: true,
+            bytecode_order: Vec::new(),
             banner: Box::default(),
             footer: Box::default(),
             css_chunking: false,

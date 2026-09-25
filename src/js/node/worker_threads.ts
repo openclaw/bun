@@ -1,5 +1,14 @@
-declare const self: typeof globalThis;
-type WebWorker = InstanceType<typeof globalThis.Worker>;
+declare const self: Omit<typeof globalThis, "onmessage"> & {
+  onmessage: ((this: typeof globalThis, ev: MessageEvent) => unknown) | null;
+  onmessageerror: ((this: typeof globalThis, ev: MessageEvent) => unknown) | null;
+};
+type WebWorker = InstanceType<typeof globalThis.Worker> & {
+  getHeapSnapshot(options: unknown): Promise<string>;
+  getHeapStatistics(): Promise<Record<string, number | boolean>>;
+  startCpuProfileInternal(): Promise<void>;
+  stopCpuProfileInternal(): Promise<string>;
+  cpuUsageInternal(): Promise<{ user: number; system: number }>;
+};
 
 const EventEmitter = require("node:events");
 const AsyncContextFrame = require("internal/async_context_frame");
@@ -99,7 +108,9 @@ const {
   // The Worker constructor secretly takes an extra parameter to provide the node:worker_threads
   // instance. This is so that it can emit the `worker` event on the process with the
   // node:worker_threads instance instead of the Web Worker instance.
-  new (...args: [...ConstructorParameters<typeof globalThis.Worker>, nodeWorker: Worker]) => WebWorker,
+  new (
+    ...args: [...ConstructorParameters<typeof globalThis.Worker>, nodeWorker: Worker, evalSource?: string]
+  ) => WebWorker,
   (worker: WebWorker) => boolean | undefined,
   (worker: WebWorker) => [number, number] | null,
 ];
@@ -354,7 +365,7 @@ function setupWorkerStdio(stdio) {
   // node routes console.log through process.stdout/stderr; Bun's global console
   // writes the fd directly, so rebind it to the port-backed streams.
   const { Console } = require("node:console");
-  globalThis.console = new Console(stdoutStream, stderrStream);
+  (globalThis as { console: unknown }).console = new Console(stdoutStream, stderrStream);
 }
 
 // Emulation of Node's JSTransferable protocol (kTransfer/kTransferList/kDeserialize) for
@@ -591,7 +602,7 @@ function packJSTransferables(options: NodeWorkerOptions): NodeWorkerOptions {
   return packed;
 }
 
-let workerData = unpackJSTransferables(_workerData);
+let workerData: any = unpackJSTransferables(_workerData);
 let threadId = _threadId;
 // node: main-thread and unspecified-worker name are both "" (trimmed).
 const threadName = isMainThread ? "" : (_threadName ?? "");
@@ -618,7 +629,7 @@ if (
 ) {
   const stdioPorts = workerData[BUN_WORKER_STDIO_KEY];
   const controlPort = workerData[BUN_WORKER_MESSAGING_KEY];
-  const transferredParentPort = workerData[BUN_WORKER_PARENT_PORT_KEY];
+  const transferredParentPort: MessagePort | undefined = workerData[BUN_WORKER_PARENT_PORT_KEY];
   workerData = workerData.data;
   if (stdioPorts) setupWorkerStdio(stdioPorts);
   if (controlPort) messaging.setupMainThreadPort(controlPort, _setEntryEvaluatedHook);
@@ -1043,7 +1054,9 @@ class Worker extends EventEmitter {
           snapshot[i](asyncId, "WORKER", 0, resource);
         } catch (err) {
           try {
-            console.error(typeof err?.stack === "string" ? err.stack : err);
+            console.error(
+              typeof (err as Partial<Error> | null | undefined)?.stack === "string" ? (err as Error).stack : err,
+            );
           } catch {}
           process.exit(1);
         }
@@ -1103,7 +1116,7 @@ class Worker extends EventEmitter {
     return internalEventLoopUtilization(_workerEventLoopUtilization(this.#worker), utilization1, utilization2);
   }
 
-  terminate(callback: unknown) {
+  terminate(callback?: unknown) {
     if (typeof callback === "function") {
       process.emitWarning(
         "Passing a callback to worker.terminate() is deprecated. It returns a Promise instead.",
@@ -1122,7 +1135,7 @@ class Worker extends EventEmitter {
       return $isPromise(onExitPromise) ? onExitPromise : Promise.$resolve(undefined);
     }
 
-    const { resolve, promise } = Promise.withResolvers();
+    const { resolve, promise } = Promise.withResolvers<number>();
     this.#worker.addEventListener(
       "close",
       event => {
@@ -1271,10 +1284,6 @@ class Worker extends EventEmitter {
       const code = error?.code;
       error = new Error(message, { cause: event });
       if (typeof code === "string") error.code = code;
-      const stack = event?.stack;
-      if (stack) {
-        error.stack = stack;
-      }
     }
     // Reshape the native 'ModuleNotFound ... (entry point)' error into node's
     // "Cannot find module '<path>'" (MODULE_NOT_FOUND).
@@ -1289,12 +1298,12 @@ class Worker extends EventEmitter {
     this.emit("error", error);
   }
 
-  #onMessage(event: MessageEvent) {
+  #onMessage(event: Pick<MessageEvent, "data">) {
     // TODO: is this right?
     this.emit("message", event.data);
   }
 
-  #onMessageError(event: MessageEvent) {
+  #onMessageError(event: Pick<MessageEvent, "data">) {
     // TODO: is this right?
     this.emit("messageerror", (event as any).error ?? event.data ?? event);
   }

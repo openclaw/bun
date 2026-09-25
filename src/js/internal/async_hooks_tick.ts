@@ -1,7 +1,7 @@
 // Shared init hooks for TickObject and WORKER resources. Keep this array
 // identity stable: process.nextTick captures it once. Timer hooks share the
 // async ID generator and deferred hook-mutation boundary below.
-const tickInitHooks = [];
+const tickInitHooks: Array<(asyncId: number, type: string, triggerAsyncId: number, resource: object) => void> = [];
 const allocateAsyncHooksId = $newRustFunction("runtime/timer/Timer.rs", "internal_bindings.new_async_hooks_id", 0);
 let hookDispatchDepth = 0;
 let pendingTickInitHooks;

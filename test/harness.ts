@@ -252,8 +252,8 @@ let canBuildNodeAddonsCached: boolean | undefined;
 export function canBuildNodeAddons(): boolean {
   if (canBuildNodeAddonsCached === undefined) {
     if (!isMacOS) {
-      // Linux and Windows CI toolchains are provisioned by the bootstrap
-      // scripts in lockstep with the reported Node version; only macOS test
+      // Linux and Windows CI toolchains are baked into the images
+      // (scripts/build/ci-images/spec.ts) in lockstep with the reported Node version; only macOS test
       // boxes have independently-managed Xcode installs.
       canBuildNodeAddonsCached = true;
     } else {
@@ -519,7 +519,7 @@ export interface BunRunResult {
   stdout: string;
   stderr: string;
   exitCode: number;
-  signalCode: NodeJS.Signals | null;
+  signalCode: NodeJS.Signals | number | null;
 }
 
 /**
@@ -1659,7 +1659,8 @@ export function rejectUnauthorizedScope(value: boolean) {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = value ? "1" : "0";
   return {
     [Symbol.dispose]() {
-      process.env.NODE_TLS_REJECT_UNAUTHORIZED = original_rejectUnauthorized;
+      if (original_rejectUnauthorized === undefined) delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+      else process.env.NODE_TLS_REJECT_UNAUTHORIZED = original_rejectUnauthorized;
     },
   };
 }

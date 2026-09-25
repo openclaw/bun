@@ -471,6 +471,76 @@ test("refreshing a completed timeout starts a new async lifecycle", async () => 
   expect({ stderr, exitCode }).toEqual({ stderr: "", exitCode: 0 });
 });
 
+test("disposing a ModuleGraph destroys each timer async resource once without stopping host timers", async () => {
+  await using proc = Bun.spawn({
+    cmd: [
+      bunExe(),
+      "-e",
+      `
+      const fs = require("node:fs");
+      const { createHook } = require("node:async_hooks");
+      const resources = new Set();
+      const lifecycles = [];
+      const destroyed = new Map();
+      let collecting = false;
+      let graphFires = 0;
+      let hostFires = 0;
+      const hook = createHook({
+        init(id, type, _trigger, resource) {
+          if ((collecting || resources.has(resource)) && (type === "Timeout" || type === "Immediate")) {
+            resources.add(resource);
+            lifecycles.push({ id, type });
+          }
+        },
+        destroy(id) {
+          if (lifecycles.some(entry => entry.id === id)) destroyed.set(id, (destroyed.get(id) || 0) + 1);
+        },
+      }).enable();
+      using graph = new Bun.ModuleGraph();
+      try {
+        collecting = true;
+        const timeout = graph.run(() => {
+          setInterval(() => graphFires++, 1);
+          setImmediate(() => graphFires++);
+          return setTimeout(() => graphFires++, 1);
+        });
+        collecting = false;
+        graph.dispose();
+        timeout.refresh();
+        await new Promise(resolve => setTimeout(() => { hostFires++; resolve(); }, 1));
+        await new Promise(resolve => setImmediate(resolve));
+        fs.writeSync(1, JSON.stringify({
+          types: lifecycles.map(entry => entry.type).sort(),
+          uniqueIds: new Set(lifecycles.map(entry => entry.id)).size,
+          resources: resources.size,
+          destroys: lifecycles.map(entry => destroyed.get(entry.id)),
+          graphFires,
+          hostFires,
+        }));
+      } finally {
+        hook.disable();
+      }
+      `,
+    ],
+    env: bunEnv,
+    stderr: "pipe",
+  });
+
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect({ stdout: JSON.parse(stdout), stderr, exitCode }).toEqual({
+    stdout: {
+      types: ["Immediate", "Timeout", "Timeout"],
+      uniqueIds: 3,
+      resources: 3,
+      destroys: [1, 1, 1],
+      graphFires: 0,
+      hostFires: 1,
+    },
+    stderr: "",
+    exitCode: 0,
+  });
+});
+
 test("timer hooks survive a replaced global Promise", async () => {
   await using proc = Bun.spawn({
     cmd: [
