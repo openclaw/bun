@@ -61,15 +61,33 @@ function onIncomingMessagePauseNodeHTTPResponse(this: IncomingMessage) {
 
 function onIncomingMessageResumeNodeHTTPResponse(this: IncomingMessage) {
   const handle = this[kHandle];
-  if (handle && !this.destroyed) {
-    const resumed = handle.resume();
-    if (resumed && resumed !== true) {
-      const bodyReadState = handle.hasBody;
-      if ((bodyReadState & NodeHTTPBodyReadState.done) !== 0) {
-        emitEOFIncomingMessage(this);
-      }
-      this.push(resumed);
+  if (!handle || this.destroyed) return;
+  handle.resume();
+
+  if (this[eofInProgress]) return;
+  if (this[noBodySymbol]) {
+    emitEOFIncomingMessage(this);
+    return;
+  }
+
+  const bodyReadState = handle.hasBody;
+  if ((bodyReadState & NodeHTTPBodyReadState.cancelled) !== 0) return;
+  if ((bodyReadState & NodeHTTPBodyReadState.done) !== 0 || bodyReadState === NodeHTTPBodyReadState.none) {
+    emitEOFIncomingMessage(this);
+  }
+
+  // A completed response or closed socket can still leave this request's
+  // buffered wire-fin tail readable. Only its own handle may deliver it.
+  if ((bodyReadState & NodeHTTPBodyReadState.hasBufferedDataDuringPause) !== 0) {
+    const drained = handle.drainRequestBody();
+    if (drained && !this._dumped) {
+      this.push(drained);
     }
+  }
+
+  if (!handle.ondata) {
+    handle.ondata = onDataIncomingMessage.bind(this);
+    handle.hasCustomOnData = false;
   }
 }
 
@@ -366,50 +384,12 @@ IncomingMessage.prototype._read = function _read(_n) {
 
   // Native server path.
   const socket = this.socket;
-  if (socket && socket.readable) {
-    if (this.upgrade) {
-      // Upgrade request with a body (Node 26 semantics): reading the request
-      // must not flip the raw socket into flowing mode - tunnel bytes pushed
-      // to the socket before the 'upgrade' listener attaches its own 'data'
-      // handler would be discarded by a flowing stream with no readers.
-      // Resume the native body source directly instead.
-      onIncomingMessageResumeNodeHTTPResponse.$call(this);
-    } else {
-      socket.resume();
-    }
+  // Upgrade body reads must not put the raw tunnel into flowing mode before
+  // its own reader attaches, or buffered tunnel bytes would be discarded.
+  if (socket && socket.readable && !this.upgrade) {
+    socket.resume();
   }
-
-  if (this[eofInProgress]) {
-    // There is a nextTick pending that will emit EOF
-    return;
-  }
-
-  if (this[noBodySymbol]) {
-    emitEOFIncomingMessage(this);
-    return;
-  }
-
-  const bodyReadState = handle.hasBody;
-
-  if (
-    (bodyReadState & NodeHTTPBodyReadState.done) !== 0 ||
-    bodyReadState === NodeHTTPBodyReadState.none ||
-    this._dumped
-  ) {
-    emitEOFIncomingMessage(this);
-  }
-
-  if ((bodyReadState & NodeHTTPBodyReadState.hasBufferedDataDuringPause) !== 0) {
-    const drained = handle.drainRequestBody();
-    if (drained && !this._dumped) {
-      this.push(drained);
-    }
-  }
-
-  if (!handle.ondata) {
-    handle.ondata = onDataIncomingMessage.bind(this);
-    handle.hasCustomOnData = false;
-  }
+  onIncomingMessageResumeNodeHTTPResponse.$call(this);
 };
 
 // It's possible that the socket will be destroyed, and removed from
@@ -761,10 +741,6 @@ IncomingMessage.prototype._dump = function _dump() {
     // If there is buffered data, it may trigger 'data' events.
     // Remove 'data' event listeners explicitly.
     this.removeAllListeners("data");
-    const handle = this[kHandle];
-    if (handle) {
-      handle.ondata = undefined;
-    }
     this.resume();
   }
 };

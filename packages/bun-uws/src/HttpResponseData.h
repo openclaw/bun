@@ -44,12 +44,16 @@ struct HttpResponseData : AsyncSocketData<SSL>, HttpParser {
 
     /* When we are done with a response we mark it like so */
     void markDone(uWS::HttpResponse<SSL> *uwsRes) {
+        const bool nodeHttp = HttpContext<SSL>::fromSocket((us_socket_t *) uwsRes)->isNodeHttp();
         onAborted = nullptr;
         /* Also remove onWritable so that we do not emit when draining behind the scenes. */
         onWritable = nullptr;
         writableUserData = nullptr;
-        /* Ignore data after this point */
-        inStream = nullptr;
+        /* node:http can finish its response before the upload's wire fin.
+         * The parser still owns that body's callback until fin or close. */
+        if (!nodeHttp) {
+            inStream = nullptr;
+        }
 
         // Ensure we don't call a timeout callback
         onTimeout = nullptr;
@@ -57,11 +61,10 @@ struct HttpResponseData : AsyncSocketData<SSL>, HttpParser {
         /* We are done with this request */
         this->state &= ~HttpResponseData<SSL>::HTTP_RESPONSE_PENDING;
 
-        HttpResponseData<SSL> *httpResponseData = uwsRes->getHttpResponseData();
-        /* A queued pipelined response (node:http) still owes output on this
-         * connection, so it is not idle between the responses. */
-        httpResponseData->isIdle = httpResponseData->nodeHttpQueuedPipelinedCount == 0;
+        updateIdleState(nodeHttp);
     }
+
+    void updateIdleState(bool nodeHttp);
 
     /* Caller of onWritable. It is possible onWritable calls markDone so we need to borrow it. */
     bool callOnWritable(uWS::HttpResponse<SSL>* response, uint64_t offset) {
@@ -279,6 +282,18 @@ struct HttpResponseData<SSL, true> : HttpResponseData<SSL, false> {
     /* Timeout sweep already reported this message; reset when it completes. */
     bool requestTimeoutReported = false;
 };
+
+template <bool SSL, bool IsNodeHttp>
+void HttpResponseData<SSL, IsNodeHttp>::updateIdleState(bool nodeHttp) {
+    this->isIdle = !(state & HTTP_RESPONSE_PENDING) && nodeHttpQueuedPipelinedCount == 0;
+    if (nodeHttp) {
+        /* Message timing, unlike the parser's remaining-byte counter, already
+         * reflects fin while a request-body callback is running. */
+        auto *nodeData = static_cast<HttpResponseData<SSL, true> *>(this);
+        this->isIdle = this->isIdle && !isConnectRequest
+            && !(state & HTTP_NODE_TUNNEL_AFTER_BODY) && nodeData->lastMessageStartMs == 0;
+    }
+}
 
 /* Readable name for the IsNodeHttp=true specialization (used by the node:http
  * bindings). */

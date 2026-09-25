@@ -180,6 +180,7 @@ pub(crate) enum BodyReadState {
     None = 0,
     Pending = 1,
     Done = 2,
+    Cancelled = 3,
 }
 
 unsafe extern "C" {
@@ -479,9 +480,8 @@ impl NodeHTTPResponse {
         raw.pause();
     }
 
-    /* Pipelined flood prevention pauses READS on the connection, legal after the in-flight
-     * response has ended — so this intentionally skips doPause's ENDED/REQUEST_HAS_COMPLETED
-     * guards (those exist for request-body flow control). */
+    /* Pipelined flood prevention pauses reads without changing the current
+     * request body's callback or buffering state. */
     pub(crate) fn pause_socket_reads(
         &self,
         _global: &JSGlobalObject,
@@ -621,28 +621,10 @@ impl NodeHTTPResponse {
         self.upgrade_context.with_mut(|c| c.reset()); // we can discard the upgrade context now
 
         let flags = self.flags.get();
-        if (flags.contains(Flags::UPGRADED)
-            || flags.contains(Flags::SOCKET_CLOSED)
-            || flags.contains(Flags::ENDED))
-            && (self.body_read_ref.get().has
-                || self.body_read_state.get() == BodyReadState::Pending)
-            && (!flags.contains(Flags::HAS_CUSTOM_ON_DATA)
-                || js::on_data_get_cached(this_value).is_none())
-        {
-            let had_ref = self.body_read_ref.get().has;
-            if !flags.contains(Flags::UPGRADED) && !flags.contains(Flags::SOCKET_CLOSED) {
-                scoped_log!(NodeHTTPResponse, "clearOnData");
-                if let Some(raw_response) = self.raw_response.get() {
-                    raw_response.clear_on_data();
-                }
-            }
-
+        if flags.intersects(Flags::UPGRADED | Flags::SOCKET_CLOSED) {
+            self.clear_on_data_callback(this_value, vm.global());
             self.body_read_ref.with_mut(|r| r.unref(vm));
-            self.body_read_state.set(BodyReadState::Done);
-
-            if had_ref {
-                self.mark_request_as_done_if_necessary();
-            }
+            self.mark_request_as_done_if_necessary();
         }
     }
 
@@ -672,11 +654,7 @@ impl NodeHTTPResponse {
             return body_pending;
         }
 
-        if flags.contains(Flags::ENDED) {
-            return body_pending;
-        }
-
-        true
+        !flags.is_requested_completed_or_ended() || body_pending
     }
 
     fn mark_request_as_done(&self) {
@@ -701,7 +679,8 @@ impl NodeHTTPResponse {
         });
 
         let vm = vm_get();
-        self.clear_on_data_callback(self.get_this_value(), vm.global());
+        self.clear_on_data_callback(JSValue::ZERO, vm.global());
+        self.body_read_ref.with_mut(|r| r.unref(vm));
         self.clear_pending_pinned_write(vm.global(), JSValue::ZERO);
         // ws may still upgrade an open tunnel: keep a context whose request pointer is detached.
         let tunneled = self.flags.get().contains(Flags::TUNNELED);
@@ -717,7 +696,6 @@ impl NodeHTTPResponse {
         // JS can still get at it; `set_on_data` frees it once the reader lets go.
         let flags = self.flags.get();
         let tail_still_readable = flags.contains(Flags::IS_DATA_BUFFERED_DURING_PAUSE_LAST)
-            && !flags.contains(Flags::SOCKET_CLOSED)
             && !flags.contains(Flags::UPGRADED);
         if !tail_still_readable {
             self.buffered_request_body_data_during_pause
@@ -782,6 +760,7 @@ impl NodeHTTPResponse {
             BodyReadState::None => {}
             BodyReadState::Pending => result |= 1 << 1,
             BodyReadState::Done => result |= 1 << 2,
+            BodyReadState::Cancelled => result |= 1 << 4,
         }
         if self.buffered_request_body_data_during_pause.get().len() > 0 {
             result |= 1 << 3;
@@ -1220,6 +1199,10 @@ pub(crate) enum AbortEvent {
 
 impl NodeHTTPResponse {
     fn handle_abort_or_timeout<const EVENT: AbortEvent>(&self, js_value: JSValue) {
+        let _guard = self.ref_guard();
+        if EVENT == AbortEvent::Abort {
+            self.update_flags(|f| f.insert(Flags::SOCKET_CLOSED));
+        }
         if self.flags.get().contains(Flags::REQUEST_HAS_COMPLETED) {
             if EVENT == AbortEvent::Abort {
                 // The socket is gone — no further uws callback will arrive to
@@ -1240,12 +1223,6 @@ impl NodeHTTPResponse {
             }
             return;
         }
-
-        if EVENT == AbortEvent::Abort {
-            self.update_flags(|f| f.insert(Flags::SOCKET_CLOSED));
-        }
-
-        let _guard = self.ref_guard();
 
         let js_this: JSValue = if js_value.is_empty() {
             self.get_this_value()
@@ -1325,10 +1302,9 @@ impl NodeHTTPResponse {
         let Some(raw) = self.raw_response.get() else {
             return Ok(JSValue::FALSE);
         };
-        if flags.contains(Flags::REQUEST_HAS_COMPLETED)
-            || flags.contains(Flags::SOCKET_CLOSED)
-            || flags.contains(Flags::ENDED)
+        if flags.contains(Flags::SOCKET_CLOSED)
             || flags.contains(Flags::UPGRADED)
+            || raw.is_connect_request()
         {
             return Ok(JSValue::FALSE);
         }
@@ -1382,10 +1358,11 @@ impl NodeHTTPResponse {
 
     pub(crate) fn do_resume(
         &self,
-        global_object: &JSGlobalObject,
+        _global_object: &JSGlobalObject,
         _frame: &CallFrame,
     ) -> JsResult<JSValue> {
         scoped_log!(NodeHTTPResponse, "doResume");
+        let _guard = self.ref_guard();
         // Re-arm the poll first, unconditionally: a paused socket that received
         // the peer's FIN has that EOF deferred (loop.c) until it is resumed, so
         // req._dump() after res.end() (which sets ENDED before calling us) must
@@ -1395,9 +1372,7 @@ impl NodeHTTPResponse {
         let Some(raw) = self.raw_response.get() else {
             return Ok(JSValue::FALSE);
         };
-        if flags.contains(Flags::REQUEST_HAS_COMPLETED)
-            || flags.contains(Flags::SOCKET_CLOSED)
-            || flags.contains(Flags::ENDED)
+        if flags.contains(Flags::SOCKET_CLOSED)
             || flags.contains(Flags::UPGRADED)
             // A CONNECT tunnel's bytes reach JS via onSocketData; arming inStream
             // here would deliver them twice (and park them in the body buffer).
@@ -1406,8 +1381,7 @@ impl NodeHTTPResponse {
             return Ok(JSValue::FALSE);
         }
         // Body already delivered: re-arming onData/onTimeout would overwrite a
-        // pipelined request's userData on the shared HttpResponseData. The drain
-        // below still runs so a body buffered-while-paused reaches its own caller.
+        // pipelined request's userData on the shared HttpResponseData.
         if self.body_read_state.get() == BodyReadState::Pending
             && !flags.contains(Flags::IS_DATA_BUFFERED_DURING_PAUSE_LAST)
         {
@@ -1415,9 +1389,9 @@ impl NodeHTTPResponse {
             raw.on_data(on_data_shim, self.as_ctx_ptr());
         }
         self.update_flags(|f| f.remove(Flags::IS_DATA_BUFFERED_DURING_PAUSE));
-        Ok(self
-            .drain_buffered_request_body_from_pause(global_object)?
-            .unwrap_or(JSValue::TRUE))
+        // Socket and pipeline resumption must not consume a request's buffer.
+        // Its own IncomingMessage drains it through drainRequestBody.
+        Ok(JSValue::TRUE)
     }
 
     pub(crate) fn on_request_complete(&self) {
@@ -1439,6 +1413,7 @@ fn node_http_request_on_resolve(global_object: &JSGlobalObject, callframe: &Call
     // arguments[1] is the JSNodeHTTPResponse cell from the resolve callback.
     // R-2: deref shared — `maybe_stop_reading_body`/`on_request_complete` re-enter.
     let this: &NodeHTTPResponse = arguments[1].as_class_ref::<NodeHTTPResponse>().unwrap();
+    let _guard = this.ref_guard();
     // `promise` non-empty is the ownership token for the server-handler ref;
     // `mark_request_as_done` may have already released it on abort.
     let had_promise = this.promise.with_mut(|p| {
@@ -1454,12 +1429,10 @@ fn node_http_request_on_resolve(global_object: &JSGlobalObject, callframe: &Call
         if !this_value.is_empty() {
             js::on_aborted_set_cached(this_value, global_object, JSValue::ZERO);
         }
-        scoped_log!(NodeHTTPResponse, "clearOnData");
         // Put any held zero-copy tail on the wire before terminating so the
         // chunked stream stays well-formed.
         this.spill_pending_pinned_write(global_object);
         if let Some(raw_response) = this.raw_response.get() {
-            raw_response.clear_on_data();
             raw_response.clear_on_writable();
             raw_response.clear_timeout();
             if raw_response.state().is_response_pending() {
@@ -1482,6 +1455,7 @@ fn node_http_request_on_reject(global_object: &JSGlobalObject, callframe: &CallF
     // arguments[1] is the JSNodeHTTPResponse cell from the reject callback.
     // R-2: deref shared — `maybe_stop_reading_body`/`on_request_complete` re-enter.
     let this: &NodeHTTPResponse = arguments[1].as_class_ref::<NodeHTTPResponse>().unwrap();
+    let _guard = this.ref_guard();
     // `promise` non-empty is the ownership token for the server-handler ref;
     // `mark_request_as_done` may have already released it on abort.
     let had_promise = this.promise.with_mut(|p| {
@@ -1500,12 +1474,10 @@ fn node_http_request_on_reject(global_object: &JSGlobalObject, callframe: &CallF
         if !this_value.is_empty() {
             js::on_aborted_set_cached(this_value, global_object, JSValue::ZERO);
         }
-        scoped_log!(NodeHTTPResponse, "clearOnData");
         // Put any held zero-copy tail on the wire before the terminating chunk
         // so the client's chunked decoder stays in sync.
         this.spill_pending_pinned_write(global_object);
         if let Some(raw_response) = this.raw_response.get() {
-            raw_response.clear_on_data();
             raw_response.clear_on_writable();
             raw_response.clear_timeout();
             if !raw_response.state().is_http_status_called() {
@@ -1534,6 +1506,7 @@ impl NodeHTTPResponse {
             return Ok(JSValue::UNDEFINED);
         }
 
+        let _guard = self.ref_guard();
         // Re-arm the poll before marking SOCKET_CLOSED (resume_socket is a no-op
         // once that flag is set) so a paused socket's deferred EOF can fire.
         self.resume_socket();
@@ -1572,10 +1545,8 @@ impl NodeHTTPResponse {
         if last {
             self.capture_request_trailers();
             self.update_flags(|f| f.insert(Flags::IS_DATA_BUFFERED_DURING_PAUSE_LAST));
-            if self.body_read_ref.get().has {
-                self.body_read_ref.with_mut(|r| r.unref(vm_get()));
-                self.mark_request_as_done_if_necessary();
-            }
+            self.body_read_ref.with_mut(|r| r.unref(vm_get()));
+            self.mark_request_as_done_if_necessary();
         }
     }
 
@@ -1630,11 +1601,20 @@ impl NodeHTTPResponse {
             chunk.len(),
             last
         );
+        // Even a non-final callback can finish the response and destroy its
+        // reader, releasing the pending-request owner before this frame returns.
+        let _guard = self.ref_guard();
         let body_was_pending = self.body_read_state.get() == BodyReadState::Pending;
-        // On the last chunk, keep `self` alive across the JS callback below.
-        let _guard = last.then(|| self.ref_guard());
-        if last {
+        if last && event == AbortEvent::None {
             self.body_read_state.set(BodyReadState::Done);
+        } else if event == AbortEvent::Abort
+            && body_was_pending
+            && !self
+                .flags
+                .get()
+                .contains(Flags::IS_DATA_BUFFERED_DURING_PAUSE_LAST)
+        {
+            self.body_read_state.set(BodyReadState::Cancelled);
         }
 
         // "Armed" means a callable is cached — the slot holds an explicit
@@ -1644,7 +1624,7 @@ impl NodeHTTPResponse {
         if !on_data_armed && body_was_pending && event == AbortEvent::None {
             // No reader armed yet: pipelined request whose body arrived in the same parse burst
             // as its headers, before JS ran _read() to install ondata. Park it where pause parks;
-            // the reader-arm drain picks it up. (Dumped requests move to Done first, never here.)
+            // the reader-arm drain picks it up.
             self.buffered_request_body_data_during_pause
                 .with_mut(|b| b.append_slice(chunk));
             self.update_flags(|f| {
@@ -1677,10 +1657,8 @@ impl NodeHTTPResponse {
 
         // Deferred tail:
         if last {
-            if self.body_read_ref.get().has {
-                self.body_read_ref.with_mut(|r| r.unref(vm_get()));
-                self.mark_request_as_done_if_necessary();
-            }
+            self.body_read_ref.with_mut(|r| r.unref(vm_get()));
+            self.mark_request_as_done_if_necessary();
         }
     }
 
@@ -2003,17 +1981,6 @@ impl NodeHTTPResponse {
         self.spill_pending_pinned_write(global_object);
 
         if IS_END {
-            // Discard the body read ref if it's pending and no onData callback is set at this point.
-            // This is the equivalent of req._dump().
-            if self.body_read_ref.get().has
-                && self.body_read_state.get() == BodyReadState::Pending
-                && (!self.flags.get().contains(Flags::HAS_CUSTOM_ON_DATA)
-                    || js::on_data_get_cached(this_value).is_none())
-            {
-                self.body_read_ref.with_mut(|r| r.unref(vm_get()));
-                self.body_read_state.set(BodyReadState::None);
-            }
-
             if !this_value.is_empty() {
                 js::on_aborted_set_cached(this_value, global_object, JSValue::ZERO);
             }
@@ -2210,19 +2177,22 @@ impl NodeHTTPResponse {
         // be the socket-current wrapper, which is a different pipelined response.
         let armed = self.armed_this_value.replace(JSValue::ZERO);
         let this_value = if armed.is_empty() { this_value } else { armed };
-        if self.body_read_state.get() != BodyReadState::None {
-            if !this_value.is_empty() {
-                js::on_data_set_cached(this_value, global_object, JSValue::UNDEFINED);
-            }
+        if !this_value.is_empty() {
+            js::on_data_set_cached(this_value, global_object, JSValue::UNDEFINED);
+        }
+        if self.body_read_state.get() == BodyReadState::Pending {
             let flags = self.flags.get();
-            if !flags.contains(Flags::SOCKET_CLOSED) && !flags.contains(Flags::UPGRADED) {
-                scoped_log!(NodeHTTPResponse, "clearOnData");
-                if let Some(raw_response) = self.raw_response.get() {
-                    raw_response.clear_on_data();
-                }
-            }
-            if self.body_read_state.get() != BodyReadState::Done {
+            if flags.contains(Flags::IS_DATA_BUFFERED_DURING_PAUSE_LAST) {
                 self.body_read_state.set(BodyReadState::Done);
+            } else {
+                // Only an unfinished body owns this shared callback. A completed
+                // request must not clear the next pipelined upload's reader.
+                if !flags.intersects(Flags::SOCKET_CLOSED | Flags::UPGRADED) {
+                    if let Some(raw_response) = self.raw_response.get() {
+                        raw_response.clear_on_data();
+                    }
+                }
+                self.body_read_state.set(BodyReadState::Cancelled);
             }
         }
     }
@@ -2233,43 +2203,24 @@ impl NodeHTTPResponse {
         global_object: &JSGlobalObject,
         value: JSValue,
     ) {
-        // Only `.pending` accepts a callback. `.done` means either uSockets delivered last=true or JS
-        // previously cleared `ondata` (which already called clearOnData()); either way, there is no
-        // more body to read, so don't re-register with uSockets or churn refs.
+        // Only a still-pending wire body owns the socket callback. Completing
+        // the response does not prevent its request from installing a reader.
         let flags = self.flags.get();
         if value.is_undefined_or_null()
-            || flags.contains(Flags::ENDED)
             || flags.contains(Flags::SOCKET_CLOSED)
             || self.body_read_state.get() != BodyReadState::Pending
             || flags.contains(Flags::IS_DATA_BUFFERED_DURING_PAUSE_LAST)
             || flags.contains(Flags::UPGRADED)
         {
-            js::on_data_set_cached(this_value, global_object, JSValue::UNDEFINED);
-            self.armed_this_value.set(JSValue::ZERO);
-            match self.body_read_state.get() {
-                BodyReadState::Pending | BodyReadState::Done => {
-                    if !flags.contains(Flags::REQUEST_HAS_COMPLETED)
-                        && !flags.contains(Flags::SOCKET_CLOSED)
-                        && !flags.contains(Flags::UPGRADED)
-                    {
-                        scoped_log!(NodeHTTPResponse, "clearOnData");
-                        if let Some(raw_response) = self.raw_response.get() {
-                            raw_response.clear_on_data();
-                        }
-                    }
-                    self.body_read_state.set(BodyReadState::Done);
-                }
-                BodyReadState::None => {}
-            }
-            if self.body_read_ref.get().has {
-                self.body_read_ref
-                    .with_mut(|r| r.unref(bun_vm_mut(global_object)));
-            }
-            // The reader is letting go of the body (_dump / _destroy, or it has
+            self.clear_on_data_callback(this_value, global_object);
+            self.body_read_ref
+                .with_mut(|r| r.unref(bun_vm_mut(global_object)));
+            // The reader is letting go of the body (_destroy, or it has
             // already drained what was buffered), so nothing will drain a tail
             // that `mark_request_as_done` left in place for it.
             self.buffered_request_body_data_during_pause
                 .with_mut(|b| b.clear_and_free());
+            self.mark_request_as_done_if_necessary();
             return;
         }
 
@@ -2322,6 +2273,7 @@ impl NodeHTTPResponse {
         callframe: &CallFrame,
     ) -> JsResult<JSValue> {
         let arguments = callframe.arguments();
+        let _guard = self.ref_guard();
         // We dont wanna a paused socket when we call end, so is important to resume the socket
         self.resume_socket();
         self.write_or_end::<true>(global_object, arguments, callframe.this())
