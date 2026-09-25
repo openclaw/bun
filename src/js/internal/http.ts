@@ -70,6 +70,7 @@ export const enum NodeHTTPBodyReadState {
   pending = 1 << 1,
   done = 1 << 2,
   hasBufferedDataDuringPause = 1 << 3,
+  cancelled = 1 << 4,
 }
 
 // Must be kept in sync with NodeHTTPResponse.Flags

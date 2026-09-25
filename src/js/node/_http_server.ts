@@ -51,8 +51,6 @@ const {
   STATUS_CODES,
   isTlsSymbol,
   hasServerResponseFinished,
-  NodeHTTPBodyReadState,
-  eofInProgress,
   drainMicrotasks,
   setServerCustomOptions,
   setServerAppFlags,
@@ -2066,37 +2064,14 @@ function getNodeHTTPServerSocket() {
     #resumeSocket() {
       const handle = this[kHandle];
       const response = handle?.response;
+      response?.resume();
       const upgradeIncoming = this[kUpgradeIncoming];
       if (upgradeIncoming) {
         // Upgrade with a body: reading the raw socket resumes the request so its
         // body keeps draining (Node's UpgradeStream._read). Request-body bytes
         // belong to the request stream, never to the raw upgrade stream, and the
         // socket does not end when the request body does.
-        if (response) {
-          const resumed = response.resume();
-          if (resumed && resumed !== true) {
-            upgradeIncoming.push(resumed);
-          }
-        }
         upgradeIncoming.resume();
-        return;
-      }
-      if (response) {
-        const resumed = response.resume();
-        if (resumed && resumed !== true) {
-          const bodyReadState = handle.hasBody;
-
-          const message = this._httpMessage;
-          const req = message?.req;
-
-          if ((bodyReadState & NodeHTTPBodyReadState.done) !== 0) {
-            emitServerSocketEOFNT(this, req);
-          }
-          if (req) {
-            req.push(resumed);
-          }
-          this.push(resumed);
-        }
       }
     }
 
@@ -2753,9 +2728,8 @@ function pausePipelineReads(socket) {
   const response = socket[kHandle]?.response;
   if (!response) return;
   socket._paused = true;
-  // Not response.pause(): that is request-body flow control and no-ops once the in-flight
-  // response has ended (always true when the pipeline backs up). pauseReads() pauses the
-  // connection regardless and native stops consuming already-received pipelined requests.
+  // pauseReads gates the connection without changing a request's body callback;
+  // native also stops consuming already-received pipelined requests.
   response.pauseReads();
 }
 
@@ -4053,21 +4027,6 @@ function updateHasBody(response, statusCode) {
   // No else: Node.js never sets _hasBody back to true here, so a HEAD
   // request's response (set in the constructor) stays body-less whatever
   // status writeHead() picks.
-}
-
-function emitServerSocketEOF(self, req) {
-  self.push(null);
-  if (req) {
-    req.push(null);
-    req.complete = true;
-  }
-}
-
-function emitServerSocketEOFNT(self, req) {
-  if (req) {
-    req[eofInProgress] = true;
-  }
-  process.nextTick(emitServerSocketEOF, self);
 }
 
 let OriginalWriteHeadFn, OriginalImplicitHeadFn;

@@ -618,6 +618,7 @@ private:
                     nodeHttpResponseData->lastMessageStartMs = 0;
                     nodeHttpResponseData->headersCompleted = false;
                     nodeHttpResponseData->requestTimeoutReported = false;
+                    httpResponseData->updateIdleState(true);
                 }
             }
 
@@ -724,6 +725,7 @@ private:
                     nodeHttpResponseData->lastMessageStartMs = nodeCompatMonotonicMs();
                     nodeHttpResponseData->headersCompleted = false;
                 }
+                httpResponseData->updateIdleState(true);
             }
 
             /* Timeout on uncork failure */

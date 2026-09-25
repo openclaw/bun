@@ -5,6 +5,7 @@
 - Preserve file-URL entry identity and literal `?` paths in `Bun.ModuleGraph`, and avoid retaining GC-backed string views across macro transpilation.
 - Prepare daily or manually requested upstream merges as frozen draft PRs, preserving fork history and stopping visibly on conflicts or permission failures.
 - Deliver `node:http` write callbacks when uncorking introduces transport backpressure, and retain error callbacks when the peer resets before the buffered write drains.
+- Preserve `node:http` request bodies after early responses, including paused reads, pipelined requests, and incomplete-upload cancellation.
 - Sync upstream through `29d9638da3dd5b498a5b608d3fa02549b0bdddf1`, preserving the fork's compatibility patches and their contributor histories. Reconcile timer hooks, module cache keys, and HTTP/TLS lifecycle behavior with upstream ModuleGraph ownership and builtin type checking.
 - Backport upstream [#42767](https://github.com/oven-sh/bun/pull/42767) to preserve keyword spacing after a long-lived process transpiles more than 2 GiB of modules.
 - Preserve raw Buffer filename bytes and file types in `fs.readdir` and `fs.opendir` directory entries when `encoding: "buffer"` is requested.

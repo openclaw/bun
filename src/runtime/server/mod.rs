@@ -1503,7 +1503,8 @@ impl<const SSL: bool, const DEBUG: bool> NewServer<SSL, DEBUG> {
                     {
                         nhr.set_on_aborted_handler();
                     }
-                    // If we ended the response without attaching an ondata handler, we discard the body read stream
+                    // Only a closed or adopted transport abandons the upload;
+                    // completing the response can leave request bytes pending.
                     else if !matches!(http_result, HttpResult::Pending) {
                         let this_value = nhr.get_this_value();
                         // SAFETY: `vm` is the process-static VirtualMachine.
