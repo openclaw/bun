@@ -4510,6 +4510,40 @@ it("connectionListener hands off Upgrade and CONNECT like Node", async () => {
   }
 });
 
+it("connectionListener consumes an injected socket paused by its previous owner", async () => {
+  const server = createServer((_req, res) => res.end("injected-ok"));
+  const front = createNetServer(socket => {
+    socket.pause();
+    server.emit("connection", socket);
+  });
+
+  try {
+    await once(front.listen(0, "127.0.0.1"), "listening");
+    const response = await new Promise<{ statusCode: number | undefined; body: string }>((resolve, reject) => {
+      const request = get(
+        {
+          host: "127.0.0.1",
+          port: (front.address() as AddressInfo).port,
+          agent: false,
+        },
+        response => {
+          const chunks: Buffer[] = [];
+          response.on("data", chunk => chunks.push(chunk));
+          response.on("end", () =>
+            resolve({ statusCode: response.statusCode, body: Buffer.concat(chunks).toString("utf8") }),
+          );
+        },
+      );
+      request.on("error", reject);
+    });
+
+    expect(response).toEqual({ statusCode: 200, body: "injected-ok" });
+  } finally {
+    front.close();
+    server.close();
+  }
+});
+
 it("https wraps a raw socket injected through the connection event", async () => {
   const server = createHttpsServer(tlsCert, (req, res) => {
     expect((req.socket as any).encrypted).toBe(true);
@@ -4519,6 +4553,7 @@ it("https wraps a raw socket injected through the connection event", async () =>
   const rawClosed = Promise.withResolvers<void>();
   const front = createNetServer(socket => {
     socket.once("close", () => rawClosed.resolve());
+    socket.pause();
     server.emit("connection", socket);
   });
 
