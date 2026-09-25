@@ -147,6 +147,12 @@ impl DevelopmentOption {
 }
 
 impl ServerConfig {
+    /// Commit a validated primary TLS configuration after the native context swap.
+    /// This keeps TLS enabled and leaves the separately configured SNI contexts intact.
+    pub(crate) fn replace_primary_tls_config(&mut self, config: SSLConfig) {
+        self.ssl_config = Some(config);
+    }
+
     pub(crate) fn is_development(&self) -> bool {
         self.development.is_development()
     }
