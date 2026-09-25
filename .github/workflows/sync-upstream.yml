@@ -1,0 +1,112 @@
+name: Sync upstream for review
+
+# Activation, credentials and recovery: .github/UPSTREAM_SYNC.md
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: fork-upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository == 'openclaw/bun' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Merge upstream into a draft review branch
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          # Optional, explicitly provisioned token for imports requiring Workflows write.
+          github-token: ${{ secrets.UPSTREAM_SYNC_TOKEN || github.token }}
+          script: |
+            const repo = { owner: "openclaw", repo: "bun" };
+            const branch = "automation/sync-upstream";
+            const head = `${repo.owner}:${branch}`;
+            const report = async message => {
+              core.info(message);
+              await core.summary.addRaw(message).write();
+            };
+            const compare = async (base, head) => (await github.rest.repos.compareCommitsWithBasehead({
+              ...repo, basehead: `${base}...${head}`, per_page: 1,
+            })).data.status;
+            const contains = status => status === "ahead" || status === "identical";
+
+            try {
+              const { data: pending } = await github.rest.pulls.list({ ...repo, head, state: "open" });
+              if (pending.length) {
+                await report(`Review pending: ${pending[0].html_url} at ${pending[0].head.sha}. Its head, body and draft state are unchanged.`);
+                return;
+              }
+
+              const { data: previous } = await github.rest.pulls.list({
+                ...repo, head, state: "closed", sort: "created", direction: "desc", per_page: 1,
+              });
+              if (previous.length && !previous[0].merged_at) {
+                throw new Error(`The previous sync PR was closed without merging: ${previous[0].html_url}. Resolve that review before restarting sync.`);
+              }
+              if (previous.length && (previous[0].base.ref !== "main" || previous[0].base.repo?.full_name !== "openclaw/bun" ||
+                  previous[0].head.ref !== branch || previous[0].head.repo?.full_name !== "openclaw/bun")) {
+                throw new Error(`The previous sync PR was not merged from ${branch} into this fork's main. Inspect ${previous[0].html_url} before restarting sync.`);
+              }
+
+              const main = (await github.rest.git.getRef({ ...repo, ref: "heads/main" })).data.object.sha;
+              const upstream = (await github.rest.repos.getBranch({ owner: "oven-sh", repo: "bun", branch: "main" })).data.commit.sha;
+              let existing;
+              try {
+                existing = (await github.rest.git.getRef({ ...repo, ref: `heads/${branch}` })).data.object.sha;
+              } catch (error) {
+                if (error.status !== 404) throw error;
+              }
+              if (existing && (!previous.length || previous[0].head.sha !== existing || !contains(await compare(existing, main)))) {
+                throw new Error(`Refusing to adopt ${branch}: its head is not the last merged sync PR incorporated in main. Inspect the branch manually; no reset or deletion was attempted.`);
+              }
+              if (contains(await compare(upstream, main))) {
+                await report(`No sync needed: main ${main} already contains upstream ${upstream}.`);
+                return;
+              }
+
+              if (!existing) await github.rest.git.createRef({ ...repo, ref: `refs/heads/${branch}`, sha: main });
+              // Merge APIs retain both histories and any concurrent commits; no ref is force-updated.
+              for (const sha of [main, upstream]) {
+                await github.rest.repos.merge({
+                  ...repo, base: branch, head: sha, commit_message: `Merge ${sha} into ${branch}`,
+                });
+              }
+              const synced = (await github.rest.git.getRef({ ...repo, ref: `heads/${branch}` })).data.object.sha;
+              if (!contains(await compare(main, synced)) || !contains(await compare(upstream, synced))) {
+                throw new Error(`Ancestry verification failed for ${synced}; inspect ${branch} before opening a PR.`);
+              }
+              const { data: pr } = await github.rest.pulls.create({
+                ...repo, head: branch, base: "main", draft: true,
+                title: `chore: sync upstream through ${upstream.slice(0, 12)}`,
+                body: [
+                  `Merge oven-sh/bun main at ${upstream} into fork main at ${main}, preserving both histories.`,
+                  `Review head: ${synced}. No build or runtime qualification is claimed.`,
+                  "This PR stays frozen while open. Review retained fork patches, resolve integration issues and run the required native checks before landing with a merge commit.",
+                  "With GITHUB_TOKEN, GitHub requires a maintainer to approve the generated PR workflow runs. Do not treat pending or skipped checks as successful qualification.",
+                  `Workflow run: https://github.com/${repo.owner}/${repo.repo}/actions/runs/${context.runId}`,
+                ].join("\n\n"),
+              });
+              if (pr.head.sha !== synced || pr.head.ref !== branch || pr.head.repo?.full_name !== "openclaw/bun" ||
+                  pr.base.ref !== "main" || pr.base.repo?.full_name !== "openclaw/bun") {
+                throw new Error(`Created draft ${pr.html_url} changed before verification. Inspect its current head and base; the recorded merge proof must be requalified.`);
+              }
+              await report(`Created draft ${pr.html_url} at ${synced}. Main was not changed; native qualification and a maintainer merge are required.`);
+            } catch (error) {
+              const remedy = error.status === 409
+                ? " Resolve the merge conflict on automation/sync-upstream manually and open a review PR; the workflow will not reset or overwrite the branch."
+                : error.status === 403 || error.status === 422
+                  ? " Check repository PR permissions and the API error. Imported workflow-file changes may require an explicitly authorized UPSTREAM_SYNC_TOKEN with Contents, Pull requests and Workflows write permissions; actions:write is not a substitute. No secret or setting was changed."
+                  : "";
+              const message = `Upstream sync stopped: ${error.message}.${remedy}`;
+              await report(message);
+              core.setFailed(message);
+            }
