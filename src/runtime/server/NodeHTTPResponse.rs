@@ -2146,6 +2146,11 @@ impl NodeHTTPResponse {
                 global_object,
                 value.with_async_context_if_needed(global_object),
             );
+            // Uncork can introduce backpressure after write() cleared its drain hook.
+            // Keep the native registration paired with the cached JS callback.
+            if let Some(raw_response) = self.raw_response.get() {
+                raw_response.on_writable(on_drain_shim, self.as_ctx_ptr());
+            }
         }
     }
 

@@ -13,6 +13,104 @@ afterEach(() => fault.clear());
 // one-sided fault run the faulted side in a subprocess.
 
 describe.skipIf(skip)("node:http under injected syscall faults", () => {
+  test.concurrent.each(["drain", "reset"])("settles a write callback after uncork backpressure: %s", async mode => {
+    // A false write result can mean only the JS high-water mark was exceeded.
+    // Fault a small corked write in its own process to prove native buffering.
+    const fixture = /* js */ `
+      import assert from "node:assert/strict";
+      import { once } from "node:events";
+      import { createServer } from "node:http";
+      import { connect } from "node:net";
+      import { socketFaultInjection as fault } from "bun:internal-for-testing";
+
+      const reset = ${JSON.stringify(mode === "reset")};
+      const body = Buffer.alloc(1024, "x");
+      const written = Promise.withResolvers();
+      const received = Promise.withResolvers();
+      const responseClosed = Promise.withResolvers();
+      const callbackErrors = [];
+      let drainCount = 0;
+      let handle;
+      const server = createServer((_req, res) => {
+        handle = res[Object.getOwnPropertySymbols(res).find(key => key.description === "handle")];
+        res.on("error", () => {});
+        res.on("close", responseClosed.resolve);
+        res.on("drain", () => drainCount++);
+        res.writeHead(200, { "content-length": body.length });
+        try {
+          assert.ok(handle);
+          assert.equal(fault.set({ syscall: "send", action: "zero", repeat: -1 }), true);
+          const accepted = res.write(body, error => callbackErrors.push(error?.code ?? "success"));
+          assert.equal(accepted, false);
+          assert.ok(handle.bufferedAmount > 0, "the native transport must hold pending bytes");
+          assert.deepEqual(callbackErrors, []);
+          written.resolve();
+        } catch (error) {
+          written.reject(error);
+        } finally {
+          // The reset case keeps the bytes pending until the peer closes.
+          if (!reset) fault.clear();
+        }
+      });
+      server.listen(0, "127.0.0.1");
+      await once(server, "listening");
+      const client = connect(server.address().port, "127.0.0.1");
+      const chunks = [];
+      if (!reset) {
+        client.on("data", chunk => {
+          chunks.push(chunk);
+          const wire = Buffer.concat(chunks);
+          const headerEnd = wire.indexOf("\\r\\n\\r\\n");
+          if (headerEnd >= 0 && wire.length - headerEnd - 4 >= body.length) {
+            received.resolve(wire.subarray(headerEnd + 4));
+          }
+        });
+        client.on("error", received.reject);
+        client.on("close", () => received.reject(new Error("closed before the body arrived")));
+      } else {
+        client.on("error", () => {});
+      }
+      try {
+        await once(client, "connect");
+        client.write("GET / HTTP/1.1\\r\\nHost: localhost\\r\\n\\r\\n");
+        await written.promise;
+        if (reset) {
+          client.resetAndDestroy();
+          await responseClosed.promise;
+          await new Promise(resolve => setImmediate(resolve));
+          assert.equal(callbackErrors.length, 1);
+          assert.ok(["ERR_STREAM_DESTROYED", "ECONNRESET", "EPIPE"].includes(callbackErrors[0]));
+          assert.equal(drainCount, 0);
+        } else {
+          assert.deepEqual(await received.promise, body);
+          await new Promise(resolve => setImmediate(resolve));
+          assert.equal(handle.bufferedAmount, 0);
+          assert.deepEqual(callbackErrors, ["success"]);
+          assert.equal(drainCount, 1);
+        }
+      } finally {
+        fault.clear();
+        client.destroy();
+        server.closeAllConnections();
+        await new Promise(resolve => server.close(resolve));
+      }
+      console.log("OK");
+    `;
+    await using proc = Bun.spawn({
+      cmd: [bunExe(), "-e", fixture],
+      env: bunEnv,
+      stderr: "pipe",
+      stdout: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect({ stdout, stderr, exitCode, signal: proc.signalCode }).toEqual({
+      stdout: "OK\n",
+      stderr: "",
+      exitCode: 0,
+      signal: null,
+    });
+  });
+
   test("upRes.pipe(res) with res.destroy() racing a queued drain (subprocess)", async () => {
     // A TLS-terminating proxy re-streams a large upstream body via pipe(),
     // 1-byte sends force backpressure → on_writable/on_drain on every
