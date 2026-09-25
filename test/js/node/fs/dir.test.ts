@@ -1,7 +1,9 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import { isMacOS, isWindows, tempDir } from "harness";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 
 function noop() {}
 describe("fs.opendir", () => {
@@ -188,8 +190,7 @@ describe("opendirSync string encoding shorthand", () => {
     const dirname = path.join(os.tmpdir(), "opendir-enc-" + String(Math.random() * 100).substring(0, 6));
     fs.mkdirSync(dirname);
     // latin1 makes the shorthand observable: the utf8 bytes of the name are
-    // reinterpreted per-byte. (encoding: "buffer" dirents are a pre-existing
-    // native readdir gap unrelated to the shorthand.)
+    // reinterpreted per-byte.
     fs.writeFileSync(path.join(dirname, "na\u00efve.txt"), "x");
     try {
       const dir = fs.opendirSync(dirname, "latin1");
@@ -202,43 +203,186 @@ describe("opendirSync string encoding shorthand", () => {
   });
 });
 
-describe("opendir buffer encoding", () => {
-  it("returns Buffer entry names from sync and async directories", async () => {
-    const dirname = path.join(os.tmpdir(), "opendir-buffer-" + String(Math.random() * 100).substring(0, 6));
-    fs.mkdirSync(dirname);
-    fs.writeFileSync(path.join(dirname, "entry.txt"), "x");
-    try {
-      const syncEntries = fs.readdirSync(dirname, { encoding: "buffer", withFileTypes: true });
-      expect(syncEntries[0]?.name).toEqual(Buffer.from("entry.txt"));
+describe("directory entries with buffer names", () => {
+  const readers = [
+    ["readdirSync", (dir, options) => fs.readdirSync(dir, { ...options, withFileTypes: true })],
+    ["readdir callback", (dir, options) => promisify(fs.readdir)(dir, { ...options, withFileTypes: true })],
+    ["readdir promise", (dir, options) => fs.promises.readdir(dir, { ...options, withFileTypes: true })],
+    [
+      "opendirSync/readSync",
+      (dir, options) => {
+        using handle = fs.opendirSync(dir, options);
+        const entries = [];
+        for (let entry; (entry = handle.readSync()) !== null; ) entries.push(entry);
+        return entries;
+      },
+    ],
+    [
+      "opendir callback/read callback",
+      async (dir, options) => {
+        await using handle = await promisify(fs.opendir)(dir, options);
+        const entries = [];
+        for (let entry; (entry = await promisify(handle.read.bind(handle))()) !== null; ) entries.push(entry);
+        return entries;
+      },
+    ],
+    [
+      "opendir promise/read promise",
+      async (dir, options) => {
+        await using handle = await fs.promises.opendir(dir, options);
+        const entries = [];
+        for (let entry; (entry = await handle.read()) !== null; ) entries.push(entry);
+        return entries;
+      },
+    ],
+    [
+      "opendir async iterator",
+      async (dir, options) => {
+        const entries = [];
+        for await (const entry of await fs.promises.opendir(dir, options)) entries.push(entry);
+        return entries;
+      },
+    ],
+  ] as const;
 
-      const asyncEntries = await fs.promises.readdir(dirname, { encoding: "buffer", withFileTypes: true });
-      expect(asyncEntries[0]?.name).toEqual(Buffer.from("entry.txt"));
-
-      const syncDir = fs.opendirSync(dirname, { encoding: "buffer" });
-      expect(syncDir.readSync()?.name).toEqual(Buffer.from("entry.txt"));
-      syncDir.closeSync();
-
-      const asyncDir = await fs.promises.opendir(dirname, { encoding: "buffer" });
-      expect((await asyncDir.read())?.name).toEqual(Buffer.from("entry.txt"));
-      await asyncDir.close();
-    } finally {
-      fs.rmSync(dirname, { recursive: true, force: true });
-    }
+  it.each(readers)("%s preserves Buffer names and file types", async (_label, read) => {
+    using dir = tempDir("dirent-buffer-names", { "ascii.txt": "", "unicode-😀.txt": "", "child/nested.txt": "" });
+    const names = ["ascii.txt", "unicode-😀.txt", "child"];
+    const entries = await read(String(dir), { encoding: "buffer" });
+    expect(entries.map(entry => entry instanceof fs.Dirent)).toEqual(names.map(() => true));
+    const retained = entries.map(entry => entry.name);
+    expect(
+      entries
+        .map(entry => ({
+          dirent: entry instanceof fs.Dirent,
+          buffer: Buffer.isBuffer(entry.name),
+          hex: Buffer.from(entry.name).toString("hex"),
+          directory: entry.isDirectory(),
+          file: entry.isFile(),
+          parentPath: entry.parentPath,
+        }))
+        .sort((a, b) => a.hex.localeCompare(b.hex)),
+    ).toEqual(
+      names
+        .map(name => ({
+          dirent: true,
+          buffer: true,
+          hex: Buffer.from(name).toString("hex"),
+          directory: name === "child",
+          file: name !== "child",
+          parentPath: String(dir),
+        }))
+        .sort((a, b) => a.hex.localeCompare(b.hex)),
+    );
+    const textEntries = await read(String(dir), {});
+    expect(textEntries.map(entry => entry.name).sort()).toEqual(names.toSorted());
+    expect(
+      fs
+        .readdirSync(String(dir), { encoding: "buffer" })
+        .map(name => [Buffer.isBuffer(name), name.toString("hex")])
+        .sort(),
+    ).toEqual(names.map(name => [true, Buffer.from(name).toString("hex")]).sort());
+    Bun.gc(true);
+    expect(retained.map(name => Buffer.from(name).toString("hex")).sort()).toEqual(
+      names.map(name => Buffer.from(name).toString("hex")).sort(),
+    );
   });
 
-  it.skipIf(process.platform !== "linux")("preserves non-UTF-8 entry bytes", async () => {
-    const dirname = path.join(os.tmpdir(), "opendir-buffer-raw-" + String(Math.random() * 100).substring(0, 6));
-    fs.mkdirSync(dirname);
-    const rawName = Buffer.from([0xff]);
-    fs.writeFileSync(Buffer.concat([Buffer.from(dirname + path.sep), rawName]), "x");
-    try {
-      const dir = await fs.promises.opendir(dirname, { encoding: "buffer" });
-      expect((await dir.read())?.name).toEqual(rawName);
-      await dir.close();
-    } finally {
-      fs.rmSync(dirname, { recursive: true, force: true });
-    }
+  // Windows paths are UTF-16; macOS rejects invalid UTF-8 filename bytes with EILSEQ.
+  it.skipIf(isWindows || isMacOS).each(readers)("%s preserves distinct non-UTF-8 names", async (_label, read) => {
+    using dir = tempDir("dirent-raw-names", {});
+    const names = [
+      Buffer.from([0x72, 0x61, 0x77, 0xff]),
+      Buffer.from([0x72, 0x61, 0x77, 0xfe]),
+      Buffer.from("raw\ufffd"),
+    ];
+    const prefix = Buffer.from(String(dir) + path.sep);
+    for (const name of names) fs.writeFileSync(Buffer.concat([prefix, name]), "");
+    fs.symlinkSync(Buffer.concat([prefix, names[0]]), path.join(String(dir), "link"));
+    const entries = await read(Buffer.from(String(dir)), { encoding: "buffer" });
+    expect(entries.map(entry => entry instanceof fs.Dirent)).toEqual([true, true, true, true]);
+    await read(String(dir), {});
+    Bun.gc(true);
+    expect(
+      entries
+        .map(entry => ({
+          buffer: Buffer.isBuffer(entry.name),
+          hex: Buffer.from(entry.name).toString("hex"),
+          file: entry.isFile(),
+          link: entry.isSymbolicLink(),
+        }))
+        .sort((a, b) => a.hex.localeCompare(b.hex)),
+    ).toEqual(
+      [...names, Buffer.from("link")]
+        .map(name => ({
+          buffer: true,
+          hex: name.toString("hex"),
+          file: !name.equals(Buffer.from("link")),
+          link: name.equals(Buffer.from("link")),
+        }))
+        .sort((a, b) => a.hex.localeCompare(b.hex)),
+    );
   });
+
+  it.each(readers.slice(0, 3))("%s preserves Buffer names in recursive results", async (_label, read) => {
+    using dir = tempDir("dirent-recursive-buffer", { "top.txt": "", "child/unicode-😀.txt": "" });
+    const entries = await read(String(dir), { encoding: "buffer", recursive: true });
+    expect(entries.map(entry => entry instanceof fs.Dirent)).toEqual([true, true, true]);
+    expect(
+      entries
+        .map(entry => ({
+          buffer: Buffer.isBuffer(entry.name),
+          hex: Buffer.from(entry.name).toString("hex"),
+          parentPath: entry.parentPath,
+          directory: entry.isDirectory(),
+        }))
+        .sort((a, b) => a.hex.localeCompare(b.hex)),
+    ).toEqual(
+      [
+        { buffer: true, hex: Buffer.from("child").toString("hex"), parentPath: String(dir), directory: true },
+        { buffer: true, hex: Buffer.from("top.txt").toString("hex"), parentPath: String(dir), directory: false },
+        {
+          buffer: true,
+          hex: Buffer.from("unicode-😀.txt").toString("hex"),
+          parentPath: path.join(String(dir), "child"),
+          directory: false,
+        },
+      ].sort((a, b) => a.hex.localeCompare(b.hex)),
+    );
+  });
+
+  it.skipIf(isWindows || isMacOS).each(readers.slice(0, 3))(
+    "%s preserves distinct non-UTF-8 names in recursive results",
+    async (_label, read) => {
+      using dir = tempDir("dirent-recursive-raw", {});
+      const child = path.join(String(dir), "child");
+      fs.mkdirSync(child);
+      const names = [
+        Buffer.from([0x72, 0x61, 0x77, 0xff]),
+        Buffer.from([0x72, 0x61, 0x77, 0xfe]),
+        Buffer.from("raw\ufffd"),
+      ];
+      const prefix = Buffer.from(child + path.sep);
+      for (const name of names) fs.writeFileSync(Buffer.concat([prefix, name]), "");
+      const entries = await read(String(dir), { encoding: "buffer", recursive: true });
+      expect(entries.map(entry => entry instanceof fs.Dirent)).toEqual([true, true, true, true]);
+      expect(
+        entries
+          .map(entry => ({
+            buffer: Buffer.isBuffer(entry.name),
+            hex: Buffer.from(entry.name).toString("hex"),
+            parentPath: entry.parentPath,
+            directory: entry.isDirectory(),
+          }))
+          .sort((a, b) => a.hex.localeCompare(b.hex)),
+      ).toEqual(
+        [
+          { buffer: true, hex: Buffer.from("child").toString("hex"), parentPath: String(dir), directory: true },
+          ...names.map(name => ({ buffer: true, hex: name.toString("hex"), parentPath: child, directory: false })),
+        ].sort((a, b) => a.hex.localeCompare(b.hex)),
+      );
+    },
+  );
 });
 
 // Node's Dir implements Symbol.dispose / Symbol.asyncDispose so it composes
