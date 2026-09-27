@@ -6,9 +6,9 @@ import { expect, test } from "bun:test";
 import { tempDir } from "harness";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { generateImage, imageKey, images } from "../../../scripts/build/ci-images/spec.ts";
 import { computeBunTriplet } from "../../../scripts/build/ci.ts";
 import type { Config } from "../../../scripts/build/config.ts";
-import { generateImage, imageKey, images } from "../../../scripts/build/ci-images/spec.ts";
 import {
   checksums,
   formatTag,
