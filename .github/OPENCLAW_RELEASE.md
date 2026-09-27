@@ -28,6 +28,12 @@ workflow reached `main`), dispatch the workflow from that commit's branch with
 does every pull request that changes the pipeline. A dry run's zips,
 `manifest.json` and `SHA256SUMS` are the `release` artifact of the run.
 
+A publish needs every release target to build and pass its smoke test. When a
+job fails on a download (provisioning retries three times in a fresh
+container), **Re-run failed jobs** keeps the targets that already built.
+Releases are prereleases and not "latest" while
+`vars.OPENCLAW_RELEASE_PRERELEASE` is unset or `true`.
+
 Rebuilding a commit that already has a release (a toolchain or pipeline change,
 not a source change) gets a new tag with `--rebuild 2` (`…-r2`). Published
 assets are never replaced: packagers pin their checksums.
@@ -159,7 +165,26 @@ not upstream releases.
 `vars.OPENCLAW_RELEASE_BUILD_RUNNER` selects the build runner; unset, it is
 GitHub's free `ubuntu-24.04-arm`. Measured on the commit of the first release:
 
-<!-- measurements -->
+| Host                                                                            | Provision | Build (ninja) | Job                 | Cost per release       |
+| ------------------------------------------------------------------------------- | --------- | ------------- | ------------------- | ---------------------- |
+| GitHub `ubuntu-24.04-arm` (4 vCPU, 16 GB, 108 GB free disk), one job per target | 2–14 min  | 9.0–9.4 min   | 12–25 min           | $0 (public repository) |
+| Crabbox `r8g.4xlarge` (16 vCPU, 128 GB), targets one after another              | 2–4.5 min | 4.0–4.5 min   | 20 min for all four | ≈ $0.20 at spot price  |
+
+Every release target's job on GitHub fits in about a quarter of the 340-minute
+timeout, with memory and disk to spare (the Crabbox build peaked at 11 GB with
+16 jobs). Provisioning time is download time: the slow darwin-x64 job spent
+12 minutes fetching Rust's standard libraries for the eleven targets the
+upstream image installs. The evaluation targets took longer on GitHub:
+windows-x64 17 min to provision (xwin's MSVC and Windows SDK download) plus
+12 min of build, musl 4–10 plus 10. Signing, smoke tests and publishing run on
+free GitHub-hosted runners too.
+
+GitHub's larger runners, Blacksmith (which `openclaw/openclaw` already uses:
+`blacksmith-16vcpu-ubuntu-2404-arm` at about $0.02/min would make a release
+cost about $1) or Crabbox as a self-hosted runner would cut the wall-clock
+time from about 25 to 10 minutes. None of that is needed for a weekly
+release. A self-hosted runner on a public repository would also run
+pull-request code.
 
 ## macOS signing and notarization
 
@@ -258,7 +283,35 @@ target as a dry run.
 
 ## Decisions this pipeline leaves open
 
-<!-- decisions -->
+1. **Where macOS signing keys may live.** `openclaw/bun` holds no signing
+   secrets, so darwin assets ship ad-hoc signed. The options are to (a) add
+   the fleet's five secrets to an `openclaw-release` environment of this
+   repository, limited to `openclaw-v*` tags, and set
+   `OPENCLAW_RELEASE_REQUIRE_SIGNING`; (b) keep the Developer ID
+   in `openclaw/releases` and sign darwin assets there before publishing; or
+   (c) stay ad-hoc: the Mac app re-signs, and the Tauri app's own downloads
+   carry no quarantine attribute, but anything downloaded by a browser is
+   refused by Gatekeeper. Recommended: (a).
+2. **Whether the fork builds its own WebKit.** Until oven-sh/WebKit#578 lands,
+   releases lack the FTL fix the current OpenClaw CI build carries, so
+   switching `setup-test-bun` to these releases brings back the CSS tokenizer
+   loop. The options are to push #578 upstream and wait, or run an
+   `openclaw/WebKit` fork that builds the release lanes (linux and macOS lto,
+   and later musl and Windows). oven-sh/WebKit builds a lane in 4–15 minutes on
+   32-core runners that a fork cannot use; on GitHub larger runners (Team
+   plan) that is a few dollars per WebKit revision. `webkit.ts` would also have
+   to take the prebuilt repository from a constant, a small fork-only change.
+3. **Build runner.** Recommended: keep GitHub's free runners. Change
+   `vars.OPENCLAW_RELEASE_BUILD_RUNNER` only if release latency matters.
+4. **Release visibility.** Releases are prereleases and never "latest" until
+   `vars.OPENCLAW_RELEASE_PRERELEASE` is `false`.
+5. **Tag protection.** A ruleset on `openclaw-v*` tags (creation by
+   maintainers, no updates or deletions) keeps a published release's tag from
+   moving. The publish job refuses a moved tag, but only while it runs.
+6. **musl and Windows.** musl is left out of releases until a consumer needs
+   it; windows-x64 waits for an Authenticode certificate.
+7. **Cadence.** Weekly releases after the upstream sync; security fixes within
+   a working day (above).
 
 ## Validation
 
