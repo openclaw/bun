@@ -29,8 +29,9 @@ does every pull request that changes the pipeline. A dry run's zips,
 `manifest.json` and `SHA256SUMS` are the `release` artifact of the run.
 
 A publish needs every release target to build and pass its smoke test. When a
-job fails on a download (provisioning retries three times in a fresh
-container), **Re-run failed jobs** keeps the targets that already built.
+job fails on a download (provisioning retries four times over about 12
+minutes, each in a fresh container), **Re-run failed jobs** keeps the targets
+that already built.
 Releases are prereleases and not "latest" while
 `vars.OPENCLAW_RELEASE_PRERELEASE` is unset or `true`.
 
@@ -317,6 +318,14 @@ target as a dry run.
    it; windows-x64 waits for an Authenticode certificate.
 7. **Cadence.** Weekly releases after the upstream sync; security fixes within
    a working day (above).
+8. **A cached builder image.** Provisioning downloads from a dozen hosts on
+   every job, and one of them (`apt.llvm.org`) has failed a job's attempts for
+   minutes at a time. Pushing the provisioned container to
+   `ghcr.io/openclaw/bun-release-builder:<hash of the provisioning script>`
+   once per toolchain change, and pulling it afterwards, would take those
+   hosts out of every other release and cut about 2–14 minutes per job. It is
+   free for a public package but adds a package to the organization and
+   `packages: write` to the build job.
 
 ## Validation
 

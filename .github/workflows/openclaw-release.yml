@@ -129,7 +129,7 @@ jobs:
           # downloads from a dozen hosts and cannot be rerun in place, so a failed attempt starts from a fresh container.
           # CI=true without GITHUB_ACTIONS: the build's GitHub integration reads run context the container lacks.
           script="${SCRIPT#"$GITHUB_WORKSPACE"/}"
-          for attempt in 1 2 3; do
+          for attempt in 1 2 3 4; do
             docker rm --force builder > /dev/null 2>&1 || true
             docker run --detach --name builder -e CI=true -v "$GITHUB_WORKSPACE:/work" -w /work \
               docker.io/library/debian:13@sha256:9cc080028c43b27d2074d63a5f9caf7166d731494965616c1a6d2827a004585c \
@@ -139,9 +139,10 @@ jobs:
               exit 0
             fi
             echo "::warning::Provisioning attempt $attempt failed"
-            sleep 60
+            [ "$attempt" = 4 ] && exit 1
+            # Hosts like apt.llvm.org fail for minutes at a time, not seconds.
+            sleep $((attempt * 120))
           done
-          exit 1
       - name: Build
         env:
           TARGET: ${{ matrix.target }}
