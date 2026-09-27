@@ -17,6 +17,7 @@ import {
   parseTag,
   parseWebkitVersion,
   provisionScript,
+  releaseNotes,
   releaseTargets,
   sectionsFor,
   sha256File,
@@ -140,6 +141,10 @@ test("the manifest pins each archive and the executable inside it", () => {
   expect(linux).not.toHaveProperty("signing");
   expect(m.assets[0]!.signing).toEqual({ kind: "developer-id", teamId: "FWJYW4S8P8", notarized: true });
   expect(m.webkit.version).toBe(facts.webkitVersion);
+  expect(releaseNotes(m)).not.toContain("ad-hoc");
+  const adhoc = manifest({ tag, repository: "openclaw/bun", facts, dist, signing: {} });
+  expect(adhoc.assets[0]!.signing).toEqual({ kind: "adhoc", notarized: false });
+  expect(releaseNotes(adhoc)).toContain("`darwin-arm64` keep the linker's ad-hoc signature");
   expect(m.bun.commit).toBe(facts.commit);
 
   // Same inputs, same bytes: the zips have fixed mtimes.

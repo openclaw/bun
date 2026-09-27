@@ -527,6 +527,7 @@ export function releaseNotes(m: ReturnType<typeof manifest>): string {
     const signing = a.signing ? ` ${a.signing.kind}${a.signing.notarized ? ", notarized" : ""} |` : " — |";
     return `| \`${a.target}\` | \`${a.name}\` | ${a.size.toLocaleString("en-US")} | \`${a.sha256}\` |${signing}`;
   });
+  const unsigned = m.assets.filter(a => a.signing && a.signing.kind !== "developer-id").map(a => `\`${a.target}\``);
   return [
     `OpenClaw Bun fork build of [\`${m.bun.commit}\`](https://github.com/${m.repository}/commit/${m.bun.commit}) (Bun ${m.bun.version}${m.bun.revision ? `, \`bun --revision\` ${m.bun.revision}` : ""}), linked against the oven-sh/WebKit prebuilt [\`${m.webkit.version}\`](${m.webkit.prebuilt}).`,
     "",
@@ -538,6 +539,12 @@ export function releaseNotes(m: ReturnType<typeof manifest>): string {
     "| --- | --- | ---: | --- | --- |",
     ...rows,
     "",
+    ...(unsigned.length
+      ? [
+          `${unsigned.join(" and ")} keep the linker's ad-hoc signature and are not notarized: no Developer ID is configured for this repository yet. An app that embeds them re-signs them; macOS refuses them when a browser downloaded them.`,
+          "",
+        ]
+      : []),
     ...(m.workflowRun ? [`Built by ${m.workflowRun}.`, ""] : []),
   ].join("\n");
 }
