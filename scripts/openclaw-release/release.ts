@@ -22,6 +22,7 @@ import { spawnSync, type SpawnSyncOptions } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   appendFileSync,
+  lstatSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -29,6 +30,7 @@ import {
   readdirSync,
   rmSync,
   statSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -335,19 +337,27 @@ function hostDescription(): string {
 }
 
 /**
- * A zip whose one top-level directory is `dir`, like upstream's (scripts/build/ci.ts makeZip). Entries get `mtime`
- * (seconds since the epoch) in UTC: zip stores local time, so the bytes would otherwise depend on the machine's zone.
+ * A zip whose one top-level directory is `dir`, like upstream's (scripts/build/ci.ts makeZip), and whose bytes depend
+ * only on the files: entries are sorted, stamped with `mtime` (seconds since the epoch) and written in UTC, since zip
+ * stores local time, and `-X` leaves out the owner and access-time fields.
  */
 export function zip(path: string, dir: string, files: string[], mtime: number): void {
   const stage = mkdtempSync(join(tmpdir(), "openclaw-zip-"));
   try {
     mkdirSync(join(stage, dir));
     for (const file of files) run(["cp", "-R", file, join(stage, dir, basename(file))], {});
+    const entries: string[] = [];
+    const walk = (entry: string) => {
+      const full = join(stage, entry);
+      const stat = lstatSync(full);
+      if (stat.isDirectory()) for (const child of readdirSync(full)) walk(join(entry, child));
+      if (!stat.isSymbolicLink()) utimesSync(full, mtime, mtime);
+      entries.push(stat.isDirectory() ? `${entry}/` : entry);
+    };
+    walk(dir);
+    entries.sort();
     rmSync(path, { force: true });
-    run(["cmake", "-E", "tar", "cf", resolve(path), "--format=zip", `--mtime=@${mtime}`, dir], {
-      cwd: stage,
-      env: { ...process.env, TZ: "UTC" },
-    });
+    run(["zip", "-X", "-q", "-y", resolve(path), ...entries], { cwd: stage, env: { ...process.env, TZ: "UTC" } });
   } finally {
     rmSync(stage, { recursive: true, force: true });
   }

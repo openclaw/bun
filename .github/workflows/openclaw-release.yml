@@ -127,14 +127,15 @@ jobs:
           SCRIPT: ${{ steps.provision.outputs.script }}
         run: |
           script="${SCRIPT#"$GITHUB_WORKSPACE"/}"
-          # The toolchain is the upstream build image's, installed into a container of its distro.
-          docker run --rm -e CI=true -e GITHUB_ACTIONS=true -e TARGET -e COMMIT -e SCRIPT="$script" \
+          # The toolchain is the upstream build image's, installed into a container of its distro. CI=true without
+          # GITHUB_ACTIONS: the build's GitHub integration reads run context the container does not have.
+          docker run --rm -e CI=true -e TARGET -e COMMIT -e SCRIPT="$script" \
             -v "$GITHUB_WORKSPACE:/work" -w /work \
             docker.io/library/debian:13@sha256:9cc080028c43b27d2074d63a5f9caf7166d731494965616c1a6d2827a004585c \
             bash -euo pipefail -c '
               echo "::group::Provision"
-              apt-get update -qq && apt-get install -y -qq git > /dev/null
               sh "$SCRIPT" "$COMMIT" openclaw-release
+              apt-get install --yes --no-install-recommends zip > /dev/null
               echo "::endgroup::"
               . /etc/profile.d/bun-ci.sh
               git config --global --add safe.directory "*"
