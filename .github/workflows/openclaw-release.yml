@@ -120,27 +120,38 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
         run: echo "script=$(bun pipeline/scripts/openclaw-release/release.ts provision --source source --target "$TARGET" | tail -1)" >> "$GITHUB_OUTPUT"
-      - name: Build
+      - name: Provision
         env:
-          TARGET: ${{ matrix.target }}
           COMMIT: ${{ needs.plan.outputs.commit }}
           SCRIPT: ${{ steps.provision.outputs.script }}
         run: |
+          # The toolchain is the upstream build image's, installed into a container of its distro. The bootstrap
+          # downloads from a dozen hosts and cannot be rerun in place, so a failed attempt starts from a fresh container.
+          # CI=true without GITHUB_ACTIONS: the build's GitHub integration reads run context the container lacks.
           script="${SCRIPT#"$GITHUB_WORKSPACE"/}"
-          # The toolchain is the upstream build image's, installed into a container of its distro. CI=true without
-          # GITHUB_ACTIONS: the build's GitHub integration reads run context the container does not have.
-          docker run --rm -e CI=true -e TARGET -e COMMIT -e SCRIPT="$script" \
-            -v "$GITHUB_WORKSPACE:/work" -w /work \
-            docker.io/library/debian:13@sha256:9cc080028c43b27d2074d63a5f9caf7166d731494965616c1a6d2827a004585c \
-            bash -euo pipefail -c '
-              echo "::group::Provision"
-              sh "$SCRIPT" "$COMMIT" openclaw-release
-              apt-get install --yes --no-install-recommends zip > /dev/null
-              echo "::endgroup::"
-              . /etc/profile.d/bun-ci.sh
-              git config --global --add safe.directory "*"
-              bun pipeline/scripts/openclaw-release/release.ts build --source source --target "$TARGET" --out dist
-            '
+          for attempt in 1 2 3; do
+            docker rm --force builder > /dev/null 2>&1 || true
+            docker run --detach --name builder -e CI=true -v "$GITHUB_WORKSPACE:/work" -w /work \
+              docker.io/library/debian:13@sha256:9cc080028c43b27d2074d63a5f9caf7166d731494965616c1a6d2827a004585c \
+              sleep infinity > /dev/null
+            if docker exec -e COMMIT -e SCRIPT="$script" builder sh -euc \
+              'sh "$SCRIPT" "$COMMIT" openclaw-release && apt-get install --yes --no-install-recommends zip > /dev/null'; then
+              exit 0
+            fi
+            echo "::warning::Provisioning attempt $attempt failed"
+            sleep 60
+          done
+          exit 1
+      - name: Build
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          docker exec -e TARGET builder bash -euo pipefail -c '
+            . /etc/profile.d/bun-ci.sh
+            git config --global --add safe.directory "*"
+            bun pipeline/scripts/openclaw-release/release.ts build --source source --target "$TARGET" --out dist
+          '
+          docker rm --force builder > /dev/null
           sudo chown -R "$(id -u):$(id -g)" dist
           ls -l dist
           df -h /
