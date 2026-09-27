@@ -370,7 +370,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.plan.outputs.tag }}
           PRERELEASE: ${{ vars.OPENCLAW_RELEASE_PRERELEASE || 'true' }}
+          COMMIT: ${{ needs.plan.outputs.commit }}
         run: |
+          # The tag may have moved since the plan job read it; the release must name the commit that was built.
+          tagged="$(git ls-remote "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "refs/tags/$TAG" "refs/tags/$TAG^{}" | sort -k2 | tail -1 | cut -f1)"
+          if [ "$tagged" != "$COMMIT" ]; then
+            echo "::error::$TAG points at ${tagged:-nothing}, but $COMMIT was built"
+            exit 1
+          fi
           cd release
           sha256sum --check SHA256SUMS
           flags=(--repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --notes-file release-notes.md --latest=false)

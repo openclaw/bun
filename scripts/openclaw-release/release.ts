@@ -497,7 +497,7 @@ function minimumFor(t: Target): string {
   if (t.os === "darwin") return "macOS 13.0";
   if (t.os === "windows") return "Windows 10 1809";
   const cpu = t.arch === "x64" ? "x86-64 with SSE4.2 (Nehalem)" : "ARMv8.0-A";
-  return t.abi === "musl" ? `musl libc, ${cpu}` : `glibc 2.31, ${cpu}`;
+  return t.abi === "musl" ? `musl libc with libstdc++ and libgcc, ${cpu}` : `glibc 2.17, ${cpu}`;
 }
 
 function extractedDigest(archive: string, member: string): { size: number; sha256: string } {
