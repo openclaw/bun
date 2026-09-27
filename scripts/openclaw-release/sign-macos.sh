@@ -87,7 +87,7 @@ for target in "${targets[@]}"; do
   submission=""
   if [ ${#notary_args[@]} -gt 0 ]; then
     result="$work/$target.notary.json"
-    xcrun notarytool submit "$zip" "${notary_args[@]}" --wait --timeout 1h --output-format json > "$result"
+    xcrun notarytool submit "$zip" "${notary_args[@]}" --no-s3-acceleration --wait --timeout 1h --output-format json > "$result"
     submission="$(plutil -extract id raw -o - "$result")"
     status="$(plutil -extract status raw -o - "$result")"
     if [ "$status" != "Accepted" ]; then
