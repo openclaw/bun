@@ -298,7 +298,8 @@ jobs:
           else
             "${smoke[@]}"
           fi
-          if [ "$RUNNER_OS" = macOS ]; then
+          # Upstream links darwin-x64 unsigned; everything else carries a signature that must verify.
+          if [ "$RUNNER_OS" = macOS ] && { [ "$TARGET" = darwin-arm64 ] || [ -f "dist/$TARGET.signing.json" ]; }; then
             codesign --verify --strict --verbose=2 "$exe"
             codesign -dv "$exe" 2>&1 | grep -E '^(Authority|TeamIdentifier|CodeDirectory)' || true
           fi

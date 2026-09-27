@@ -405,7 +405,10 @@ export function smoke(zipPath: string, name: TargetName, commit: string, webkitV
 // ──────────────────────────────────────────────────────────────── manifest
 
 export interface Signing {
-  /** `developer-id`: signed with a Developer ID and hardened runtime; `adhoc`: the linker's ad-hoc signature. */
+  /**
+   * `developer-id`: a Developer ID and the hardened runtime. Otherwise what the link leaves: an ad-hoc signature
+   * with the entitlements on arm64 (`adhoc`), none on x64 (`none`), which upstream ships unsigned too.
+   */
   kind: "developer-id" | "adhoc" | "none";
   identity?: string;
   teamId?: string;
@@ -467,7 +470,11 @@ export function manifest(input: ManifestInput) {
           }
         : {}),
       ...(t.os === "darwin"
-        ? { signing: input.signing[name] ?? ({ kind: "adhoc", notarized: false } satisfies Signing) }
+        ? {
+            signing:
+              input.signing[name] ??
+              ({ kind: t.arch === "arm64" ? "adhoc" : "none", notarized: false } satisfies Signing),
+          }
         : {}),
     };
   });
@@ -541,7 +548,7 @@ export function releaseNotes(m: ReturnType<typeof manifest>): string {
     "",
     ...(unsigned.length
       ? [
-          `${unsigned.join(" and ")} keep the linker's ad-hoc signature and are not notarized: no Developer ID is configured for this repository yet. An app that embeds them re-signs them; macOS refuses them when a browser downloaded them.`,
+          `${unsigned.join(" and ")} ${unsigned.length > 1 ? "are" : "is"} not signed with a Developer ID or notarized: none is configured for this repository yet. arm64 carries the linker's ad-hoc signature, x64 none, as upstream links them. An app that embeds them re-signs them; macOS refuses them when a browser downloaded them.`,
           "",
         ]
       : []),

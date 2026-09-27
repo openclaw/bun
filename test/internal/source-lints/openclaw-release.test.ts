@@ -144,7 +144,7 @@ test("the manifest pins each archive and the executable inside it", () => {
   expect(releaseNotes(m)).not.toContain("ad-hoc");
   const adhoc = manifest({ tag, repository: "openclaw/bun", facts, dist, signing: {} });
   expect(adhoc.assets[0]!.signing).toEqual({ kind: "adhoc", notarized: false });
-  expect(releaseNotes(adhoc)).toContain("`darwin-arm64` keep the linker's ad-hoc signature");
+  expect(releaseNotes(adhoc)).toContain("`darwin-arm64` is not signed with a Developer ID or notarized");
   expect(m.bun.commit).toBe(facts.commit);
 
   // Same inputs, same bytes: the zips have fixed mtimes.

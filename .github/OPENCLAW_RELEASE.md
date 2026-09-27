@@ -139,7 +139,8 @@ has one variant: upstream builds every x64 target at the Nehalem baseline.
 The smoke test runs the zipped executable on its own platform: `Bun.revision`
 and `process.versions.webkit` must match the release, `process.platform` and
 `process.arch` the target, and a loop that tiers up through the JITs must
-compute its expected result. On macOS it also verifies the code signature.
+compute its expected result. On macOS it also verifies the code signature,
+except on darwin-x64 without a Developer ID, which upstream links unsigned.
 
 ## Building
 
@@ -198,9 +199,10 @@ It reads the secrets the OpenClaw release fleet uses (`openclaw/release-workflow
 `MACOS_SIGNING_P12`, `MACOS_SIGNING_P12_PASSWORD`, `ASC_KEY_ID`,
 `ASC_ISSUER_ID` and `ASC_PRIVATE_KEY_P8`, from the `openclaw-release`
 environment when publishing (which can then require an approval) or from the
-repository. Pull requests never see them. Without them the executables keep
-the linker's ad-hoc signature and the manifest says
-`"kind": "adhoc", "notarized": false`; setting
+repository. Pull requests never see them. Without them the executables stay as
+upstream links them, darwin-arm64 with an ad-hoc signature and darwin-x64
+unsigned, and the manifest says `"kind": "adhoc"` or `"none"` with
+`"notarized": false`; setting
 `vars.OPENCLAW_RELEASE_REQUIRE_SIGNING` to `true` makes a publish fail
 instead. `sign-macos.sh` runs the same way on a maintainer's Mac with the
 Foundation identity in the release keychain and `NOTARYTOOL_PROFILE` or the
@@ -284,12 +286,13 @@ target as a dry run.
 ## Decisions this pipeline leaves open
 
 1. **Where macOS signing keys may live.** `openclaw/bun` holds no signing
-   secrets, so darwin assets ship ad-hoc signed. The options are to (a) add
+   secrets, so darwin assets ship as upstream links them (arm64 ad-hoc signed,
+   x64 unsigned) and are not notarized. The options are to (a) add
    the fleet's five secrets to an `openclaw-release` environment of this
    repository, limited to `openclaw-v*` tags, and set
    `OPENCLAW_RELEASE_REQUIRE_SIGNING`; (b) keep the Developer ID
    in `openclaw/releases` and sign darwin assets there before publishing; or
-   (c) stay ad-hoc: the Mac app re-signs, and the Tauri app's own downloads
+   (c) stay as linked: the Mac app re-signs, and the Tauri app's own downloads
    carry no quarantine attribute, but anything downloaded by a browser is
    refused by Gatekeeper. Recommended: (a).
 2. **Whether the fork builds its own WebKit.** Until oven-sh/WebKit#578 lands,
