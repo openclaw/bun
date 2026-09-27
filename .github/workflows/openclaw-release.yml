@@ -221,7 +221,7 @@ jobs:
           security list-keychains -d user -s "${keychains[@]}"
           export NOTARYTOOL_KEY="$RUNNER_TEMP/notary.p8"
           printf '%s' "$NOTARY_KEY_P8" > "$NOTARYTOOL_KEY"
-          pipeline/scripts/openclaw-release/sign-macos.sh --dist dist --entitlements source/entitlements.plist "${targets[@]}"
+          SIGN_KEYCHAIN="$keychain" pipeline/scripts/openclaw-release/sign-macos.sh --dist dist --entitlements source/entitlements.plist "${targets[@]}"
           rm -f "$NOTARYTOOL_KEY"
           security delete-keychain "$keychain"
       - name: Upload darwin-arm64

@@ -10,7 +10,8 @@
 # darwin-x64. Runs on macOS, in CI or on a maintainer's Mac.
 #
 # Environment (the names openclaw's scripts/notarize-mac-artifact.sh uses):
-#   SIGN_IDENTITY       codesign identity; default: the only "Developer ID Application" identity in the keychain
+#   SIGN_IDENTITY       codesign identity; default: the only "Developer ID Application" identity found
+#   SIGN_KEYCHAIN       keychain to take the identity from, instead of the search list
 #   NOTARYTOOL_PROFILE  notarytool keychain profile, or
 #   NOTARYTOOL_KEY, NOTARYTOOL_KEY_ID, NOTARYTOOL_ISSUER  an App Store Connect API key (.p8 path, key id, issuer)
 #   SKIP_NOTARIZE=1     sign only; the record says notarized: false
@@ -34,9 +35,11 @@ done
 }
 dist="$(cd "$dist" && pwd)"
 
+keychain_args=()
+[ -n "${SIGN_KEYCHAIN:-}" ] && keychain_args=(--keychain "$SIGN_KEYCHAIN")
 identity="${SIGN_IDENTITY:-}"
 if [ -z "$identity" ]; then
-  identities="$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer ID Application: .*\)"$/\1/p' | sort -u)"
+  identities="$(security find-identity -v -p codesigning ${SIGN_KEYCHAIN:+"$SIGN_KEYCHAIN"} | sed -n 's/.*"\(Developer ID Application: .*\)"$/\1/p' | sort -u)"
   if [ "$(printf '%s\n' "$identities" | grep -c .)" -ne 1 ]; then
     echo "sign-macos: set SIGN_IDENTITY; the keychain has these Developer ID identities:" >&2
     printf '  %s\n' "$identities" >&2
@@ -71,7 +74,7 @@ for target in "${targets[@]}"; do
   exe="$work/$triplet/bun"
   lipo "$exe" -verify_arch "$arch"
 
-  codesign --force --timestamp --options runtime --entitlements "$entitlements" --sign "$identity" "$exe"
+  codesign --force --timestamp --options runtime --entitlements "$entitlements" ${keychain_args[@]+"${keychain_args[@]}"} --sign "$identity" "$exe"
   codesign --verify --strict --verbose=2 "$exe"
   team="$(codesign -dv "$exe" 2>&1 | sed -n 's/^TeamIdentifier=//p')"
   granted="$(codesign -d --entitlements - --xml "$exe" 2>/dev/null)"

@@ -345,7 +345,7 @@ export function zip(path: string, dir: string, files: string[], mtime: number): 
   const stage = mkdtempSync(join(tmpdir(), "openclaw-zip-"));
   try {
     mkdirSync(join(stage, dir));
-    for (const file of files) run(["cp", "-R", file, join(stage, dir, basename(file))], {});
+    for (const file of files) run(["cp", "-RL", file, join(stage, dir, basename(file))], {});
     const entries: string[] = [];
     const walk = (entry: string) => {
       const full = join(stage, entry);
@@ -377,7 +377,8 @@ export function smoke(zipPath: string, name: TargetName, commit: string, webkitV
         [
           exe,
           "-e",
-          // Tiers a loop up through the JITs: a hardened-runtime signature without allow-jit dies here, not at --version.
+          // Tiers a loop up through the JITs: a hardened-runtime signature without allow-jit dies here, not at
+          // --version. The sum of 7i for i < 3e7, mod 1000003, is 28665.
           `let s = 0; for (let i = 0; i < 3e7; i++) s = (s + i * 7) % 1000003;
            console.log(JSON.stringify({ revision: Bun.revision, version: Bun.version, webkit: process.versions.webkit,
              platform: process.platform, arch: process.arch, s }))`,
@@ -393,7 +394,7 @@ export function smoke(zipPath: string, name: TargetName, commit: string, webkitV
     if (facts.platform !== platform || facts.arch !== t.arch) {
       problems.push(`runs as ${facts.platform}-${facts.arch}, expected ${platform}-${t.arch}`);
     }
-    if (facts.s !== 616287) problems.push(`the JIT loop computed ${facts.s}`);
+    if (facts.s !== 28665) problems.push(`the JIT loop computed ${facts.s}`);
     if (problems.length) throw new Error(`${name} smoke test failed:\n  ${problems.join("\n  ")}`);
     console.log(`${name}: ${run([exe, "--revision"], {}).trim()}, WebKit ${facts.webkit}, JIT loop ok`);
   } finally {
