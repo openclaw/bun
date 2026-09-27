@@ -185,8 +185,7 @@ describe("Bun.Terminal platform behaviour", () => {
     }
   });
 
-  // System conhost's ConPTY does not translate \x03 input to CTRL_C_EVENT.
-  test.todoIf(isWindows)("SAME: Ctrl+C input interrupts the child", async () => {
+  test("SAME: Ctrl+C input interrupts the child", async () => {
     const { output } = await runInTerminal(
       `process.on('SIGINT', () => { process.stdout.write('SIGINT'); process.exit(0); });
        setInterval(() => {}, 1000);
@@ -197,6 +196,40 @@ describe("Bun.Terminal platform behaviour", () => {
       },
     );
     expect(output).toContain("SIGINT");
+  });
+
+  // Ctrl+C ignore state is inherited by every process a parent creates. A parent
+  // started with it (detached: CREATE_NEW_PROCESS_GROUP here; also services and
+  // SSH sessions) must not pass it to the PTY child, or ConPTY's CTRL_C_EVENT
+  // for \x03 is ignored.
+  test.skipIf(!isWindows)("Ctrl+C reaches the PTY child when the parent ignores Ctrl+C", async () => {
+    const inner = `
+      let out = "";
+      let sent = false;
+      const decoder = new TextDecoder();
+      const watchdog = setTimeout(() => { console.log("TIMEOUT " + JSON.stringify(out)); process.exit(0); }, 10000);
+      const child = Bun.spawn({
+        cmd: [process.execPath, "-e", "process.on('SIGINT', () => { process.stdout.write('SIGINT'); process.exit(0); }); setInterval(() => {}, 1000); process.stdout.write('READY');"],
+        terminal: {
+          data(t, d) {
+            out += decoder.decode(d, { stream: true });
+            if (!sent && out.includes("READY")) { sent = true; t.write("\\x03"); }
+            if (out.includes("SIGINT")) { clearTimeout(watchdog); console.log("GOT SIGINT"); process.exit(0); }
+          },
+        },
+      });
+    `;
+    await using proc = Bun.spawn({
+      cmd: [bunExe(), "-e", inner],
+      env: bunEnv,
+      detached: true,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect(stdout.trim()).toBe("GOT SIGINT");
+    expect(stderr).toBe("");
+    expect(exitCode).toBe(0);
   });
 
   // ──────────────────────────────────────────────────────────────────────────
