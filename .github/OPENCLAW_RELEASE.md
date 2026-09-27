@@ -138,9 +138,11 @@ has one variant: upstream builds every x64 target at the Nehalem baseline.
 
 The smoke test runs the zipped executable on its own platform: `Bun.revision`
 and `process.versions.webkit` must match the release, `process.platform` and
-`process.arch` the target, and a loop that tiers up through the JITs must
-compute its expected result. On macOS it also verifies the code signature,
-except on darwin-x64 without a Developer ID, which upstream links unsigned.
+`process.arch` the target, and JavaScriptCore's DFG JIT must compile a hot
+function. A signature without `allow-jit` does not crash Bun: JSC falls back to
+its interpreter, so only the JIT's own compile count shows it. On macOS the test
+also verifies the code signature, except on darwin-x64 without a Developer ID,
+which upstream links unsigned.
 
 ## Building
 

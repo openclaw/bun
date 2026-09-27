@@ -377,15 +377,28 @@ export function smoke(zipPath: string, name: TargetName, commit: string, webkitV
         [
           exe,
           "-e",
-          // Tiers a loop up through the JITs: a hardened-runtime signature without allow-jit dies here, not at
-          // --version. The sum of 7i for i < 3e7, mod 1000003, is 28665.
-          `let s = 0; for (let i = 0; i < 3e7; i++) s = (s + i * 7) % 1000003;
+          // Without a working JIT (a hardened-runtime signature lacking allow-jit, say) JSC falls back to the
+          // interpreter and still computes the right sum; numberOfDFGCompiles then reports 1000000, JSC's "no
+          // JIT" answer. The sum of 7i for i < 1e5, mod 1000003, is 545003.
+          `const { numberOfDFGCompiles } = require("bun:jsc");
+           function f(n) { let s = 0; for (let i = 0; i < n; i++) s = (s + i * 7) % 1000003; return s; }
+           let sum = 0;
+           for (let round = 0; round < 50 && !(numberOfDFGCompiles(f) > 0); round++)
+             for (let k = 0; k < 200; k++) sum = f(1e5);
            console.log(JSON.stringify({ revision: Bun.revision, version: Bun.version, webkit: process.versions.webkit,
-             platform: process.platform, arch: process.arch, s }))`,
+             platform: process.platform, arch: process.arch, sum: f(1e5), dfg: numberOfDFGCompiles(f) }))`,
         ],
         {},
       ),
-    ) as { revision: string; version: string; webkit: string; platform: string; arch: string; s: number };
+    ) as {
+      revision: string;
+      version: string;
+      webkit: string;
+      platform: string;
+      arch: string;
+      sum: number;
+      dfg: number;
+    };
     const problems: string[] = [];
     if (facts.revision !== commit) problems.push(`Bun.revision is ${facts.revision}, expected ${commit}`);
     if (facts.webkit !== webkitVersion)
@@ -394,9 +407,11 @@ export function smoke(zipPath: string, name: TargetName, commit: string, webkitV
     if (facts.platform !== platform || facts.arch !== t.arch) {
       problems.push(`runs as ${facts.platform}-${facts.arch}, expected ${platform}-${t.arch}`);
     }
-    if (facts.s !== 28665) problems.push(`the JIT loop computed ${facts.s}`);
+    if (facts.sum !== 545003) problems.push(`the loop computed ${facts.sum}`);
+    if (!(facts.dfg > 0 && facts.dfg < 1000000))
+      problems.push(`the DFG JIT did not compile (numberOfDFGCompiles: ${facts.dfg})`);
     if (problems.length) throw new Error(`${name} smoke test failed:\n  ${problems.join("\n  ")}`);
-    console.log(`${name}: ${run([exe, "--revision"], {}).trim()}, WebKit ${facts.webkit}, JIT loop ok`);
+    console.log(`${name}: ${run([exe, "--revision"], {}).trim()}, WebKit ${facts.webkit}, DFG compiles: ${facts.dfg}`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
