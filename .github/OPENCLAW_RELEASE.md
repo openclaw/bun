@@ -169,13 +169,14 @@ executable memory, library validation off for native addons), notarizes each
 zip and records the result in the manifest. A bare executable cannot have a
 ticket stapled; Gatekeeper looks the notarization up online by its cdhash.
 
-It uses the secrets of the `openclaw-release` environment, with the names the
-`mac-release` environment of `openclaw/releases` uses:
-`MACOS_DEVELOPER_ID_P12_BASE64`, `MACOS_DEVELOPER_ID_P12_PASSWORD`,
-`APP_STORE_CONNECT_API_KEY_P8`, `APP_STORE_CONNECT_KEY_ID`,
-`APP_STORE_CONNECT_ISSUER_ID`. Without them the executables keep the linker's
-ad-hoc signature and the manifest says `"kind": "adhoc", "notarized": false`;
-setting `vars.OPENCLAW_RELEASE_REQUIRE_SIGNING` to `true` makes a publish fail
+It reads the secrets the OpenClaw release fleet uses (`openclaw/release-workflows`):
+`MACOS_SIGNING_P12`, `MACOS_SIGNING_P12_PASSWORD`, `ASC_KEY_ID`,
+`ASC_ISSUER_ID` and `ASC_PRIVATE_KEY_P8`, from the `openclaw-release`
+environment when publishing (which can then require an approval) or from the
+repository. Pull requests never see them. Without them the executables keep
+the linker's ad-hoc signature and the manifest says
+`"kind": "adhoc", "notarized": false`; setting
+`vars.OPENCLAW_RELEASE_REQUIRE_SIGNING` to `true` makes a publish fail
 instead. `sign-macos.sh` runs the same way on a maintainer's Mac with the
 Foundation identity in the release keychain and `NOTARYTOOL_PROFILE` or the
 `NOTARYTOOL_KEY*` variables of `openclaw`'s `scripts/notarize-mac-artifact.sh`.

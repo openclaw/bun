@@ -159,7 +159,7 @@ jobs:
     if: needs.plan.outputs.darwin == 'true'
     runs-on: macos-15
     timeout-minutes: 90
-    # Signing secrets live only in this environment; without them the executables keep the linker's ad-hoc signature.
+    # A publish runs in this environment, which can hold the signing secrets and require an approval.
     environment: ${{ needs.plan.outputs.publish == 'true' && 'openclaw-release' || '' }}
     steps:
       - name: Checkout pipeline
@@ -183,11 +183,12 @@ jobs:
           merge-multiple: true
       - name: Sign and notarize
         env:
-          P12_BASE64: ${{ secrets.MACOS_DEVELOPER_ID_P12_BASE64 }}
-          P12_PASSWORD: ${{ secrets.MACOS_DEVELOPER_ID_P12_PASSWORD }}
-          NOTARY_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
-          NOTARYTOOL_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-          NOTARYTOOL_ISSUER: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          # The OpenClaw release fleet's names (openclaw/release-workflows). Pull requests never see them.
+          P12_BASE64: ${{ github.event_name != 'pull_request' && secrets.MACOS_SIGNING_P12 || '' }}
+          P12_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.MACOS_SIGNING_P12_PASSWORD || '' }}
+          NOTARY_KEY_P8: ${{ github.event_name != 'pull_request' && secrets.ASC_PRIVATE_KEY_P8 || '' }}
+          NOTARYTOOL_KEY_ID: ${{ github.event_name != 'pull_request' && secrets.ASC_KEY_ID || '' }}
+          NOTARYTOOL_ISSUER: ${{ github.event_name != 'pull_request' && secrets.ASC_ISSUER_ID || '' }}
           PUBLISH: ${{ needs.plan.outputs.publish }}
           REQUIRE_SIGNING: ${{ vars.OPENCLAW_RELEASE_REQUIRE_SIGNING }}
         run: |
@@ -200,7 +201,7 @@ jobs:
           done
           if [ -z "$P12_BASE64" ]; then
             if [ "$PUBLISH" = true ] && [ "$REQUIRE_SIGNING" = true ]; then
-              echo "::error::OPENCLAW_RELEASE_REQUIRE_SIGNING is set but the openclaw-release environment has no signing secrets"
+              echo "::error::OPENCLAW_RELEASE_REQUIRE_SIGNING is set but no MACOS_SIGNING_P12 secret is available"
               exit 1
             fi
             echo "::notice::No Developer ID configured: darwin executables keep the linker's ad-hoc signature."
