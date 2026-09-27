@@ -1761,7 +1761,8 @@ impl RunCommand {
     pub(crate) fn bun_node_file_utf8() -> crate::Result<&'static ZStr> {
         #[cfg(not(windows))]
         {
-            Ok(bun_install::RunCommand::bun_node_dir())
+            Ok(bun_install::RunCommand::node_shim_dir_in_use()
+                .unwrap_or_else(bun_install::RunCommand::bun_node_dir))
         }
         #[cfg(windows)]
         {
@@ -1944,16 +1945,20 @@ impl RunCommand {
                 ),
             }
 
+            // With `--bun`, `load_node_js_config` above set these before the
+            // shim dir was chosen; point them at the dir actually in use.
+            #[cfg(not(windows))]
+            let bun_node_exe = Self::bun_node_file_utf8()?;
+            let env_mut = this_transpiler.env_mut();
+            env_mut
+                .map
+                .put(b"NODE", bun_node_exe.as_bytes())
+                .unwrap_or_oom();
+            env_mut
+                .map
+                .put(b"npm_node_execpath", bun_node_exe.as_bytes())
+                .unwrap_or_oom();
             if !force_using_bun {
-                let env_mut = this_transpiler.env_mut();
-                env_mut
-                    .map
-                    .put(b"NODE", bun_node_exe.as_bytes())
-                    .unwrap_or_oom();
-                env_mut
-                    .map
-                    .put(b"npm_node_execpath", bun_node_exe.as_bytes())
-                    .unwrap_or_oom();
                 env_mut
                     .map
                     .put(b"npm_execpath", optional_bun_self_path)

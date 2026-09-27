@@ -399,12 +399,16 @@ pub static PRETEND_TO_BE_NODE: core::sync::atomic::AtomicBool =
 #[cfg(not(windows))]
 use bun_core::ZStr;
 
+#[cfg(not(windows))]
+static NODE_SHIM_DIR: std::sync::OnceLock<Option<Vec<u8>>> = std::sync::OnceLock::new();
+
 impl RunCommand {
     #[cfg(not(windows))]
     const SHELLS_TO_SEARCH: &'static [&'static [u8]] = &[b"bash", b"sh", b"zsh"];
 
-    /// `/tmp/bun-node-<uid>-<sha>` (or debug variant). POSIX-only; Windows
-    /// computes the path at runtime via GetTempPathW. Keyed on the uid like
+    /// `<BUN_TMPDIR or platform temp>/bun-node-<uid>-<sha>` (or debug variant),
+    /// the preferred shim dir. POSIX-only; Windows computes the path at
+    /// runtime via GetTempPathW. Keyed on the uid like
     /// the `bunx-<uid>-*` cache: a shared name lets the first user's `0700`
     /// dir fail the ownership check for everyone else, dropping `node` from
     /// PATH.
@@ -414,6 +418,8 @@ impl RunCommand {
     /// therefore re-points a stale link on EEXIST instead of trusting it.
     #[cfg(not(windows))]
     pub fn bun_node_dir() -> &'static ZStr {
+        // Fork superset of upstream #35565 (same name) plus BUN_TMPDIR and a
+        // private fallback; keep the fork side when syncing upstream.
         use const_format::concatcp;
         static ONCE: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
         const TMP: &str = if cfg!(target_os = "macos") {
@@ -431,8 +437,76 @@ impl RunCommand {
             concatcp!("-", bun_core::env::GIT_SHA_SHORT)
         };
         ZStr::from_slice_with_nul(ONCE.get_or_init(|| {
-            format!("{TMP}/bun-node-{}{SUFFIX}\0", bun_sys::c::getuid()).into_bytes()
+            let mut tmp = bun_core::env_var::BUN_TMPDIR
+                .get_not_empty()
+                .filter(|dir| dir.starts_with(b"/") && !bun_core::strings::contains_char(dir, b':'))
+                .unwrap_or(TMP.as_bytes());
+            while tmp.ends_with(b"/") {
+                tmp = &tmp[..tmp.len() - 1];
+            }
+            [
+                tmp,
+                format!("/bun-node-{}{SUFFIX}\0", bun_sys::c::getuid()).as_bytes(),
+            ]
+            .concat()
         }))
+    }
+
+    #[cfg(not(windows))]
+    pub fn node_shim_dir_in_use() -> Option<&'static ZStr> {
+        NODE_SHIM_DIR
+            .get()?
+            .as_deref()
+            .map(ZStr::from_slice_with_nul)
+    }
+
+    #[cfg(not(windows))]
+    fn ensure_shim_dir() -> Option<&'static ZStr> {
+        NODE_SHIM_DIR
+            .get_or_init(|| {
+                let preferred = Self::bun_node_dir();
+                // Don't trust attacker-created entries in a shared temp dir.
+                let usable = match bun_sys::mkdir(preferred, 0o700) {
+                    Ok(()) => true,
+                    Err(e) if e.get_errno() == bun_sys::E::EEXIST => bun_sys::lstat(preferred)
+                        .is_ok_and(|st| {
+                            bun_sys::kind_from_mode(st.st_mode as bun_sys::Mode)
+                                == bun_sys::FileKind::Directory
+                                && st.st_uid == bun_sys::c::getuid()
+                                && (st.st_mode as bun_sys::Mode) & 0o022 == 0
+                        }),
+                    Err(_) => false,
+                };
+                if usable {
+                    return Some(preferred.as_bytes_with_nul().to_vec());
+                }
+
+                for _ in 0..8 {
+                    let mut random = [0u8; 8];
+                    bun_boringssl_sys::rand_bytes(&mut random);
+                    let fallback = [
+                        preferred.as_bytes(),
+                        format!("-{}\0", bun_core::fmt::hex_lower(&random)).as_bytes(),
+                    ]
+                    .concat();
+                    match bun_sys::mkdir(ZStr::from_slice_with_nul(&fallback), 0o700) {
+                        Ok(()) => return Some(fallback),
+                        Err(e) if e.get_errno() == bun_sys::E::EEXIST => continue,
+                        Err(_) => return None,
+                    }
+                }
+                None
+            })
+            .as_deref()
+            .map(ZStr::from_slice_with_nul)
+    }
+
+    #[cfg(not(windows))]
+    fn warn_node_shim_unavailable(dir: &ZStr) {
+        bun_core::warn!(
+            "Unable to create node shim in {}; set BUN_TMPDIR to a writable directory",
+            bun_core::fmt::quote(dir.as_bytes())
+        );
     }
 
     #[cfg(not(windows))]
@@ -510,7 +584,7 @@ impl RunCommand {
 
         #[cfg(not(windows))]
         {
-            let dir_z = Self::bun_node_dir();
+            let preferred_dir = Self::bun_node_dir();
 
             let argv0: &ZStr = bun_core::argv().get(0).unwrap_or(bun_core::zstr!("bun"));
 
@@ -543,7 +617,7 @@ impl RunCommand {
                     }
                     result => {
                         let argv0_bytes = argv0.as_bytes();
-                        if argv0_bytes.starts_with(dir_z.as_bytes()) {
+                        if argv0_bytes.starts_with(preferred_dir.as_bytes()) {
                             // `self_exe_path()` failed and `argv[0]` is the shim
                             // under the shim dir (nested `--bun`). Using it as
                             // the target would recreate the #30711 self-loop; the
@@ -566,25 +640,12 @@ impl RunCommand {
                 }
             };
 
-            let node_link = [dir_z.as_bytes(), b"/node\0"].concat();
-            let bun_link = [dir_z.as_bytes(), b"/bun\0"].concat();
-
-            // Don't trust attacker-created entries in a shared temp dir
-            // (the shim dir lives under e.g. `/tmp`). Create it `0700`; if it
-            // already exists, refuse to use it unless it's a directory we own
-            // with no group/other write bits.
-            match bun_sys::mkdir(dir_z, 0o700) {
-                Ok(()) => {}
-                Err(e) if e.get_errno() == bun_sys::E::EEXIST => match bun_sys::lstat(dir_z) {
-                    Ok(st)
-                        if bun_sys::kind_from_mode(st.st_mode as bun_sys::Mode)
-                            == bun_sys::FileKind::Directory
-                            && st.st_uid == bun_sys::c::getuid()
-                            && (st.st_mode as bun_sys::Mode) & 0o022 == 0 => {}
-                    _ => return Ok(()),
-                },
-                Err(_) => return Ok(()),
-            }
+            let Some(shim_dir) = Self::ensure_shim_dir() else {
+                Self::warn_node_shim_unavailable(preferred_dir);
+                return Ok(());
+            };
+            let node_link = [shim_dir.as_bytes(), b"/node\0"].concat();
+            let bun_link = [shim_dir.as_bytes(), b"/bun\0"].concat();
 
             for dest in [&node_link, &bun_link] {
                 let dest = ZStr::from_slice_with_nul(dest);
@@ -610,7 +671,10 @@ impl RunCommand {
                             let _ = bun_sys::unlink(dest);
                             replaced = true;
                         }
-                        Err(_) => return Ok(()),
+                        Err(_) => {
+                            Self::warn_node_shim_unavailable(shim_dir);
+                            return Ok(());
+                        }
                     }
                 }
             }
@@ -622,7 +686,7 @@ impl RunCommand {
             // The reason for the extra delim is because we are going to append the system PATH
             // later on. this is done by the caller, and explains why we are adding bun_node_dir
             // to the end of the path slice rather than the start.
-            path.extend_from_slice(dir_z.as_bytes());
+            path.extend_from_slice(shim_dir.as_bytes());
             path.push(bun_paths::DELIMITER);
             Ok(())
         }

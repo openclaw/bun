@@ -1,7 +1,7 @@
 import { file, spawn, write } from "bun";
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { statSync } from "fs";
-import { exists, mkdir, rm, writeFile } from "fs/promises";
+import { chmod, exists, mkdir, rm, writeFile } from "fs/promises";
 import {
   VerdaccioRegistry,
   assertManifestsPopulated,
@@ -341,6 +341,72 @@ test
     expect(stat.mode & 0o777).toBe(0o700);
     expect(exitCode).toBe(0);
   });
+
+const nodeShimProbeFiles = {
+  "package.json": JSON.stringify({
+    name: "lifecycle-node-shim",
+    version: "1.0.0",
+    scripts: { postinstall: "node probe.mjs" },
+  }),
+  "probe.mjs": `
+    import { writeFileSync } from "node:fs";
+    writeFileSync("probe.json", JSON.stringify({
+      bun: typeof Bun !== "undefined",
+      shim: process.env.PATH.split(":").find(entry => entry.includes("bun-node")),
+    }));
+  `,
+  "empty-bin": {},
+};
+
+async function runNodeShimProbe(dir: string) {
+  await using proc = spawn({
+    cmd: [bunExe(), "install"],
+    cwd: dir,
+    env: { ...baseEnv, BUN_TMPDIR: dir, PATH: join(dir, "empty-bin"), NODE: undefined, npm_node_execpath: undefined },
+    stdout: "pipe",
+    stderr: "pipe",
+    stdin: "ignore",
+  });
+  const [out, err, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect(out).toContain("bun install");
+  expect(err).toContain("$ node probe.mjs");
+  expect(exitCode).toBe(0);
+  const probe = await file(join(dir, "probe.json")).json();
+  expect(probe.bun).toBe(true);
+  expect(probe.shim.startsWith(dir + "/")).toBe(true);
+  expect(basename(probe.shim)).toMatch(new RegExp(`^bun-node-${process.getuid()}(-|$)`));
+  return probe.shim as string;
+}
+
+test.skipIf(isWindows).concurrent("node shim directory honors BUN_TMPDIR", async () => {
+  using dir = tempDir("lifecycle-node-tmpdir", nodeShimProbeFiles);
+  await runNodeShimProbe(String(dir));
+});
+
+test.skipIf(isWindows).concurrent.each(["writable directory", "regular file"])(
+  "node shim falls back to a private directory when the preferred one is unusable (%s)",
+  async kind => {
+    using dir = tempDir("lifecycle-node-fallback", nodeShimProbeFiles);
+    const preferred = await runNodeShimProbe(String(dir));
+    if (kind === "writable directory") {
+      await chmod(preferred, 0o777);
+      expect(statSync(preferred).mode & 0o777).toBe(0o777);
+    } else {
+      await rm(preferred, { recursive: true });
+      await writeFile(preferred, "not a directory");
+      expect(statSync(preferred).isFile()).toBe(true);
+    }
+    await rm(join(String(dir), "probe.json"));
+
+    const shim = await runNodeShimProbe(String(dir));
+    expect(shim).not.toBe(preferred);
+    expect(shim.startsWith(preferred + "-")).toBe(true);
+    expect(shim.slice(preferred.length + 1)).toMatch(/^[0-9a-f]{16}$/);
+    const stat = statSync(shim);
+    expect(stat.uid).toBe(process.getuid());
+    expect(stat.mode & 0o777).toBe(0o700);
+  },
+);
 
 test.concurrent("default trusted dependencies require the canonical registry tarball URL", async () => {
   using ctx = await setupTest();
