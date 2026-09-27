@@ -807,3 +807,78 @@ describe("Bun.Terminal output flow control", () => {
     expect(code).toBe(0);
   });
 });
+
+// macOS can reject EVFILT_PROC while a PTY session leader is still draining in exit().
+// Delay the real registration until exit starts; do not synthesize ESRCH.
+test.skipIf(process.platform !== "darwin")("ESRCH while a terminal child exits does not block PTY reads", async () => {
+  using dir = tempDir("terminal-esrch", {
+    "delay-watch.c": `
+#include <sys/event.h>
+#include <libproc.h>
+#include <sys/proc_info.h>
+#include <time.h>
+#include <unistd.h>
+#include <errno.h>
+
+static int delayed_kevent64(int kq, const struct kevent64_s *changes, int count,
+    struct kevent64_s *events, int capacity, unsigned int flags, const struct timespec *timeout) {
+  for (int i = 0; i < count; i++) {
+    if (changes[i].filter != EVFILT_PROC || !(changes[i].flags & EV_ADD)) continue;
+    struct timespec start, now;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    for (;;) {
+      struct proc_bsdinfo info;
+      int size = proc_pidinfo((int)changes[i].ident, PROC_PIDTBSDINFO, 0, &info, sizeof(info));
+      if (size != sizeof(info) || (info.pbi_flags & PROC_FLAG_INEXIT)) break;
+      clock_gettime(CLOCK_MONOTONIC, &now);
+      if (now.tv_sec - start.tv_sec >= 2) break;
+      struct timespec pause = {0, 100000};
+      nanosleep(&pause, NULL);
+    }
+  }
+  int result = kevent64(kq, changes, count, events, capacity, flags, timeout);
+  if (result == -1 && errno == ESRCH) {
+    int saved = errno;
+    write(2, "ESRCH-before-reap\\n", 18);
+    errno = saved;
+  }
+  return result;
+}
+__attribute__((used, section("__DATA,__interpose")))
+static const struct { const void *replacement; const void *original; } interpose = {
+  (const void *)delayed_kevent64, (const void *)kevent64
+};
+`,
+    "fixture.js": `
+      let output = "";
+      const proc = Bun.spawn(["/bin/sh", "-c", 'printf "%0512d" 0; exit 3'], {
+        terminal: { data(_, bytes) { output += new TextDecoder().decode(bytes); } },
+      });
+      const code = await proc.exited;
+      proc.terminal.close();
+      console.log(JSON.stringify({ length: output.length, code }));
+    `,
+  });
+  const library = `${dir}/delay-watch.dylib`;
+  await using compiler = Bun.spawn({
+    cmd: ["cc", "-dynamiclib", `${dir}/delay-watch.c`, "-o", library],
+    env: bunEnv,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const compilerError = await compiler.stderr.text();
+  expect(compilerError).toBe("");
+  expect(await compiler.exited).toBe(0);
+  await using proc = Bun.spawn({
+    cmd: [bunExe(), `${dir}/fixture.js`],
+    env: { ...bunEnv, DYLD_INSERT_LIBRARIES: library },
+    stdout: "pipe",
+    stderr: "pipe",
+    timeout: 3000,
+    killSignal: "SIGKILL",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect(stderr).toContain("ESRCH-before-reap");
+  expect(JSON.parse(stdout)).toEqual({ length: 512, code: 3 });
+  expect(exitCode).toBe(0);
+});
