@@ -1,0 +1,399 @@
+name: OpenClaw release
+
+# Pipeline, tag scheme, manifest, signing and the infrastructure choices behind
+# them: .github/OPENCLAW_RELEASE.md
+
+on:
+  push:
+    tags:
+      - "openclaw-v*"
+  pull_request:
+    paths:
+      - .github/workflows/openclaw-release.yml
+      - scripts/openclaw-release/**
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (openclaw-v…) to build; empty builds the dispatched ref as a dry run"
+        type: string
+        default: ""
+      publish:
+        description: "Publish the GitHub release (needs a tag of a commit on main)"
+        type: boolean
+        default: false
+      targets:
+        description: "Comma-separated targets; empty = the release targets. Also: linux-x64-musl, linux-arm64-musl, windows-x64"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: openclaw-release-${{ github.event_name == 'pull_request' && github.head_ref || github.ref }}-${{ inputs.tag }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+  PUBLISH: ${{ github.event_name == 'push' || inputs.publish == true }}
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      commit: ${{ steps.plan.outputs.commit }}
+      tag: ${{ steps.plan.outputs.tag }}
+      webkit: ${{ steps.plan.outputs.webkit }}
+      publish: ${{ steps.plan.outputs.publish }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+      darwin: ${{ steps.plan.outputs.darwin }}
+    steps:
+      - name: Checkout pipeline
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: pipeline
+          persist-credentials: false
+      - name: Checkout source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: source
+          ref: ${{ env.RELEASE_TAG && format('refs/tags/{0}', env.RELEASE_TAG) || github.sha }}
+          # History for the ancestry check against main; blobs are fetched on demand.
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+      - name: Setup Bun
+        uses: ./pipeline/.github/actions/setup-bun
+        with:
+          bun-version: "1.4.2"
+      - name: Test pipeline
+        working-directory: pipeline
+        run: bun test test/internal/source-lints/openclaw-release.test.ts
+      - name: Plan
+        id: plan
+        env:
+          TARGETS: ${{ inputs.targets }}
+        run: |
+          args=(--source source --main origin/main)
+          [ -n "$RELEASE_TAG" ] && args+=(--tag "$RELEASE_TAG")
+          [ "$PUBLISH" = true ] && args+=(--publish)
+          [ -n "$TARGETS" ] && args+=(--targets "$TARGETS")
+          bun pipeline/scripts/openclaw-release/release.ts plan "${args[@]}"
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: plan
+    # Every target is cross-compiled on upstream's build image (debian 13 arm64); see OPENCLAW_RELEASE.md for runner choices.
+    runs-on: ${{ vars.OPENCLAW_RELEASE_BUILD_RUNNER || 'ubuntu-24.04-arm' }}
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - name: Checkout pipeline
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: pipeline
+          persist-credentials: false
+      - name: Checkout source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: source
+          ref: ${{ needs.plan.outputs.commit }}
+          persist-credentials: false
+      - name: Free disk space
+        if: runner.environment == 'github-hosted'
+        run: |
+          df -h /
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache /usr/local/share/boost /usr/share/swift /usr/local/julia* /opt/microsoft
+          sudo docker image prune --all --force > /dev/null
+          df -h /
+      - name: Setup Bun
+        uses: ./pipeline/.github/actions/setup-bun
+        with:
+          bun-version: "1.4.2"
+      - name: Generate provisioning script
+        id: provision
+        env:
+          TARGET: ${{ matrix.target }}
+        run: echo "script=$(bun pipeline/scripts/openclaw-release/release.ts provision --source source --target "$TARGET" | tail -1)" >> "$GITHUB_OUTPUT"
+      - name: Provision
+        env:
+          COMMIT: ${{ needs.plan.outputs.commit }}
+          SCRIPT: ${{ steps.provision.outputs.script }}
+        run: |
+          # The toolchain is the upstream build image's, installed into a container of its distro. The bootstrap
+          # downloads from a dozen hosts and cannot be rerun in place, so a failed attempt starts from a fresh container.
+          # CI=true without GITHUB_ACTIONS: the build's GitHub integration reads run context the container lacks.
+          script="${SCRIPT#"$GITHUB_WORKSPACE"/}"
+          for attempt in 1 2 3 4; do
+            docker rm --force builder > /dev/null 2>&1 || true
+            docker run --detach --name builder -e CI=true -v "$GITHUB_WORKSPACE:/work" -w /work \
+              docker.io/library/debian:13@sha256:9cc080028c43b27d2074d63a5f9caf7166d731494965616c1a6d2827a004585c \
+              sleep infinity > /dev/null
+            if docker exec -e COMMIT -e SCRIPT="$script" builder sh -euc \
+              'sh "$SCRIPT" "$COMMIT" openclaw-release && apt-get install --yes --no-install-recommends zip > /dev/null'; then
+              exit 0
+            fi
+            echo "::warning::Provisioning attempt $attempt failed"
+            [ "$attempt" = 4 ] && exit 1
+            # Hosts like apt.llvm.org fail for minutes at a time, not seconds.
+            sleep $((attempt * 120))
+          done
+      - name: Build
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          docker exec -e TARGET builder bash -euo pipefail -c '
+            . /etc/profile.d/bun-ci.sh
+            git config --global --add safe.directory "*"
+            bun pipeline/scripts/openclaw-release/release.ts build --source source --target "$TARGET" --out dist
+          '
+          docker rm --force builder > /dev/null
+          sudo chown -R "$(id -u):$(id -g)" dist
+          ls -l dist
+          df -h /
+      - name: Upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: build-${{ matrix.target }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+  sign-macos:
+    name: Sign macOS
+    needs: [plan, build]
+    if: needs.plan.outputs.darwin == 'true'
+    runs-on: macos-15
+    timeout-minutes: 90
+    # A publish runs in this environment, which can hold the signing secrets and require an approval.
+    environment: ${{ needs.plan.outputs.publish == 'true' && 'openclaw-release' || '' }}
+    steps:
+      - name: Checkout pipeline
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: pipeline
+          persist-credentials: false
+      - name: Checkout source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: source
+          ref: ${{ needs.plan.outputs.commit }}
+          sparse-checkout: /entitlements.plist
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Download
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: build-darwin-*
+          path: dist
+          merge-multiple: true
+      - name: Sign and notarize
+        env:
+          # The OpenClaw release fleet's names (openclaw/release-workflows). Pull requests never see them.
+          P12_BASE64: ${{ github.event_name != 'pull_request' && secrets.MACOS_SIGNING_P12 || '' }}
+          P12_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.MACOS_SIGNING_P12_PASSWORD || '' }}
+          NOTARY_KEY_P8: ${{ github.event_name != 'pull_request' && secrets.ASC_PRIVATE_KEY_P8 || '' }}
+          NOTARYTOOL_KEY_ID: ${{ github.event_name != 'pull_request' && secrets.ASC_KEY_ID || '' }}
+          NOTARYTOOL_ISSUER: ${{ github.event_name != 'pull_request' && secrets.ASC_ISSUER_ID || '' }}
+          PUBLISH: ${{ needs.plan.outputs.publish }}
+          REQUIRE_SIGNING: ${{ vars.OPENCLAW_RELEASE_REQUIRE_SIGNING }}
+        run: |
+          targets=()
+          for zip in dist/bun-darwin-*.zip; do
+            case "$zip" in
+              */bun-darwin-aarch64.zip) targets+=(darwin-arm64) ;;
+              */bun-darwin-x64.zip) targets+=(darwin-x64) ;;
+            esac
+          done
+          if [ -z "$P12_BASE64" ]; then
+            if [ "$PUBLISH" = true ] && [ "$REQUIRE_SIGNING" = true ]; then
+              echo "::error::OPENCLAW_RELEASE_REQUIRE_SIGNING is set but no MACOS_SIGNING_P12 secret is available"
+              exit 1
+            fi
+            echo "::notice::No Developer ID configured: darwin executables keep the linker's ad-hoc signature."
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          keychain_password="$(uuidgen)"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          printf '%s' "$P12_BASE64" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
+          security import "$RUNNER_TEMP/developer-id.p12" -k "$keychain" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/developer-id.p12"
+          security set-key-partition-list -S apple-tool:,apple: -k "$keychain_password" "$keychain" > /dev/null
+          keychains=("$keychain")
+          while read -r existing; do keychains+=("$(echo "$existing" | tr -d '"')"); done < <(security list-keychains -d user)
+          security list-keychains -d user -s "${keychains[@]}"
+          export NOTARYTOOL_KEY="$RUNNER_TEMP/notary.p8"
+          printf '%s' "$NOTARY_KEY_P8" > "$NOTARYTOOL_KEY"
+          SIGN_KEYCHAIN="$keychain" pipeline/scripts/openclaw-release/sign-macos.sh --dist dist --entitlements source/entitlements.plist "${targets[@]}"
+          rm -f "$NOTARYTOOL_KEY"
+          security delete-keychain "$keychain"
+      - name: Upload darwin-arm64
+        if: hashFiles('dist/bun-darwin-aarch64.zip') != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: signed-darwin-arm64
+          path: |
+            dist/bun-darwin-aarch64*.zip
+            dist/darwin-arm64.*.json
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+      - name: Upload darwin-x64
+        if: hashFiles('dist/bun-darwin-x64.zip') != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: signed-darwin-x64
+          path: |
+            dist/bun-darwin-x64*.zip
+            dist/darwin-x64.*.json
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+  smoke:
+    name: Smoke ${{ matrix.target }}
+    needs: [plan, build, sign-macos]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.sign-macos.result != 'failure' }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - name: Checkout pipeline
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: pipeline
+          persist-credentials: false
+      - name: Download
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist
+      - name: Smoke test
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          TRIPLET: ${{ matrix.triplet }}
+          CONTAINER: ${{ matrix.container }}
+          COMMIT: ${{ needs.plan.outputs.commit }}
+          WEBKIT: ${{ needs.plan.outputs.webkit }}
+        run: |
+          # The release's own executable runs the checks, so the runner needs no other Bun.
+          unzip -q "dist/$TRIPLET.zip" -d unpacked
+          exe="unpacked/$TRIPLET/bun"
+          [ -f "$exe.exe" ] && exe="$exe.exe"
+          smoke=("$exe" pipeline/scripts/openclaw-release/release.ts smoke --zip "dist/$TRIPLET.zip" --target "$TARGET" --commit "$COMMIT" --webkit "$WEBKIT")
+          if [ -n "$CONTAINER" ]; then
+            docker run --rm -v "$PWD:/work" -w /work "$CONTAINER" sh -c 'apk add --no-cache libgcc libstdc++ unzip > /dev/null && "$@"' sh "${smoke[@]}"
+          else
+            "${smoke[@]}"
+          fi
+          # Upstream links darwin-x64 unsigned; everything else carries a signature that must verify.
+          if [ "$RUNNER_OS" = macOS ] && { [ "$TARGET" = darwin-arm64 ] || [ -f "dist/$TARGET.signing.json" ]; }; then
+            codesign --verify --strict --verbose=2 "$exe"
+            codesign -dv "$exe" 2>&1 | grep -E '^(Authority|TeamIdentifier|CodeDirectory)' || true
+          fi
+
+  manifest:
+    name: Manifest
+    needs: [plan, build, sign-macos, smoke]
+    if: ${{ !cancelled() && needs.smoke.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout pipeline
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: pipeline
+          persist-credentials: false
+      - name: Checkout source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: source
+          ref: ${{ needs.plan.outputs.commit }}
+          persist-credentials: false
+      - name: Setup Bun
+        uses: ./pipeline/.github/actions/setup-bun
+        with:
+          bun-version: "1.4.2"
+      - name: Download
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: "{build-linux-*,build-windows-*,signed-*}"
+          path: dist
+          merge-multiple: true
+      - name: Write manifest
+        env:
+          TAG: ${{ needs.plan.outputs.tag }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          revision=""
+          if [ -f dist/bun-linux-x64.zip ]; then
+            unzip -q dist/bun-linux-x64.zip -d "$RUNNER_TEMP"
+            revision="$("$RUNNER_TEMP/bun-linux-x64/bun" --revision)"
+          fi
+          bun pipeline/scripts/openclaw-release/release.ts manifest --source source --commit HEAD \
+            --dist dist --out release --tag "$TAG" --workflow-run "$RUN_URL" ${revision:+--revision "$revision"}
+          cp dist/*.zip release/
+          cat release/manifest.json
+          cat release/release-notes.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release
+          path: release/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+  publish:
+    name: Publish
+    needs: [plan, manifest]
+    if: ${{ !cancelled() && needs.manifest.result == 'success' && needs.plan.outputs.publish == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Download
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release
+          path: release
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            release/*.zip
+            release/manifest.json
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          PRERELEASE: ${{ vars.OPENCLAW_RELEASE_PRERELEASE || 'true' }}
+          COMMIT: ${{ needs.plan.outputs.commit }}
+        run: |
+          # The tag may have moved since the plan job read it; the release must name the commit that was built.
+          tagged="$(git ls-remote "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "refs/tags/$TAG" "refs/tags/$TAG^{}" | sort -k2 | tail -1 | cut -f1)"
+          if [ "$tagged" != "$COMMIT" ]; then
+            echo "::error::$TAG points at ${tagged:-nothing}, but $COMMIT was built"
+            exit 1
+          fi
+          cd release
+          sha256sum --check SHA256SUMS
+          flags=(--repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --notes-file release-notes.md --latest=false)
+          [ "$PRERELEASE" = true ] && flags+=(--prerelease)
+          gh release create "$TAG" "${flags[@]}" ./*.zip manifest.json SHA256SUMS

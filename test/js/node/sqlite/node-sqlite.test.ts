@@ -1,7 +1,7 @@
 import { heapStats } from "bun:jsc";
 import { describe, expect, test } from "bun:test";
-import { bunEnv, bunExe, isWindows, tempDir } from "harness";
-import { existsSync, statSync } from "node:fs";
+import { bunEnv, bunExe, isLinux, isMacOS, isMusl, isWindows, tempDir } from "harness";
+import { existsSync, readdirSync, readlinkSync, rmSync, statSync } from "node:fs";
 import { builtinModules, isBuiltin } from "node:module";
 import path from "node:path";
 import { DatabaseSync, Session, StatementSync, backup, constants } from "node:sqlite";
@@ -104,6 +104,117 @@ describe("DatabaseSync", () => {
     expect(db.isOpen).toBe(true);
     expect(() => db.open()).toThrow(/database is already open/);
     db.close();
+  });
+
+  test.each([
+    ["close", "unused"],
+    ["close", "get"],
+    ["close", "all"],
+    ["dispose", "unused"],
+    ["dispose", "get"],
+    ["dispose", "all"],
+  ] as const)("%s releases WAL sidecars with a retained %s statement", (closeMethod, method) => {
+    using dir = tempDir("node-sqlite-close-statement", {});
+    const file = path.join(String(dir), "db.sqlite");
+    using db = new DatabaseSync(file);
+    db.exec("PRAGMA journal_mode = WAL; CREATE TABLE t (n INTEGER); INSERT INTO t VALUES (1), (2)");
+    const stmt = db.prepare("SELECT n FROM t ORDER BY n");
+    if (method === "get") {
+      expect(stmt.get()).toEqual({ n: 1 });
+    } else if (method === "all") {
+      expect(stmt.all()).toEqual([{ n: 1 }, { n: 2 }]);
+    }
+    expect([existsSync(`${file}-wal`), existsSync(`${file}-shm`)]).toEqual([true, true]);
+
+    if (closeMethod === "close") db.close();
+    else db[Symbol.dispose]();
+
+    expect([existsSync(`${file}-wal`), existsSync(`${file}-shm`)]).toEqual([false, false]);
+    expect(() => stmt.get()).toThrow(
+      expect.objectContaining({ code: "ERR_INVALID_STATE", message: "statement has been finalized" }),
+    );
+  });
+
+  test("close() leaves virtual-table-owned statements to the module", () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec("CREATE VIRTUAL TABLE docs USING fts5(body); INSERT INTO docs VALUES ('alpha beta')");
+    const statement = db.prepare("SELECT rowid FROM docs WHERE docs MATCH ?");
+    expect(statement.all("alpha")).toEqual([{ rowid: 1 }]);
+
+    db.close();
+
+    expect(() => statement.all("alpha")).toThrow(
+      expect.objectContaining({ code: "ERR_INVALID_STATE", message: "statement has been finalized" }),
+    );
+  });
+
+  test("close() finalizes outstanding prepared statements and releases the file", () => {
+    using dir = tempDir("node-sqlite-close-finalize", {});
+    const dbPath = path.join(String(dir), "x.db");
+    const db = new DatabaseSync(dbPath);
+    db.exec("CREATE TABLE t (a INTEGER)");
+    const neverRun = db.prepare("INSERT INTO t VALUES (?)");
+    const ran = db.prepare("INSERT INTO t VALUES (?)");
+    ran.run(1);
+    db.close();
+
+    if (isLinux) {
+      // The connection must actually be closed: no fd may still point at
+      // the database file. (The references to the statements below keep
+      // their wrappers alive through this check, so GC cannot mask a
+      // zombified connection by finalizing them early.)
+      const stillOpen = readdirSync("/proc/self/fd").some(fd => {
+        try {
+          return readlinkSync(`/proc/self/fd/${fd}`) === dbPath;
+        } catch {
+          return false;
+        }
+      });
+      expect(stillOpen).toBe(false);
+    }
+    if (isWindows) {
+      // The reported symptom: an open handle blocks deletion on Windows.
+      expect(() => rmSync(dbPath)).not.toThrow();
+    }
+
+    expect(() => neverRun.run(1)).toThrow(/statement has been finalized/);
+    expect(() => ran.run(2)).toThrow(/statement has been finalized/);
+  });
+
+  test("sweeping statement wrappers after close() does not double-finalize", () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec("CREATE TABLE t (a INTEGER)");
+    {
+      let stmt: StatementSync | null = db.prepare("INSERT INTO t VALUES (?)");
+      stmt.run(1);
+      db.close();
+      stmt = null;
+    }
+    // Sweep the wrapper; a double sqlite3_finalize would crash ASAN builds.
+    Bun.gc(true);
+    expect(db.isOpen).toBe(false);
+  });
+
+  test("close() finalizes statements parked mid-aggregate", () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec("CREATE TABLE t (x INTEGER)");
+    db.exec("INSERT INTO t VALUES (1), (2), (3)");
+    db.aggregate("agg_sum", {
+      start: 0,
+      step: (a: number, x: number) => a + x,
+      inverse: (a: number, x: number) => a - x,
+      result: (a: number) => a,
+    });
+    // Park both iterators between rows so the finalize walk runs over
+    // statements with live aggregate state.
+    const grouped = db.prepare("SELECT agg_sum(x) AS v FROM t GROUP BY x").iterate();
+    const windowed = db.prepare("SELECT agg_sum(x) OVER (ORDER BY x) AS v FROM t").iterate();
+    expect(grouped.next().value).toEqual({ __proto__: null, v: 1 });
+    expect(windowed.next().value).toEqual({ __proto__: null, v: 1 });
+    db.close();
+    Bun.gc(true);
+    expect(db.isOpen).toBe(false);
+    expect(() => grouped.next()).toThrow(/statement has been finalized/);
   });
 
   test("Symbol.dispose swallows errors on closed databases", () => {
@@ -2414,6 +2525,285 @@ test("worker-owned unclosed database is checkpointed on worker exit", async () =
   expect(stdout).toBe("0\n99\n");
   void stderr;
   expect(exitCode).toBe(0);
+});
+
+// Expected values match Node v26.9.0 running the same sequences.
+describe("close() and Symbol.dispose() with outstanding statements", () => {
+  const finalized = expect.objectContaining({ code: "ERR_INVALID_STATE", message: "statement has been finalized" });
+  const sidecars = (file: string) => [existsSync(`${file}-wal`), existsSync(`${file}-shm`)];
+  function openWal(file: string) {
+    const db = new DatabaseSync(file);
+    db.exec("PRAGMA journal_mode = WAL; CREATE TABLE t (n INTEGER); INSERT INTO t VALUES (1), (2), (3)");
+    return db;
+  }
+
+  const outstanding = [
+    "run() statement",
+    "live iterate() cursor",
+    "exhausted iterate() cursor",
+    "tag store",
+    "mix of them",
+  ] as const;
+  test.each((["close", "dispose"] as const).flatMap(how => outstanding.map(kind => [how, kind] as const)))(
+    "%s releases WAL sidecars with a retained %s",
+    (how, kind) => {
+      using dir = tempDir("node-sqlite-close-outstanding", {});
+      const file = path.join(String(dir), "db.sqlite");
+      const db = openWal(file);
+      const insert = db.prepare("INSERT INTO t VALUES (?)");
+      const select = db.prepare("SELECT n FROM t ORDER BY n");
+      const cursor = select.iterate();
+      const sql = db.createTagStore();
+      const mixed = kind === "mix of them";
+      if (kind === "run() statement" || mixed) expect(insert.run(4).changes).toBe(1);
+      if (kind === "live iterate() cursor" || mixed) expect(cursor.next().value).toEqual({ __proto__: null, n: 1 });
+      if (kind === "exhausted iterate() cursor") while (!cursor.next().done);
+      if (kind === "tag store" || mixed) expect(sql.get`SELECT n FROM t WHERE n = ${2}`).toEqual({ n: 2 });
+      expect(sidecars(file)).toEqual([true, true]);
+
+      if (how === "close") db.close();
+      else db[Symbol.dispose]();
+
+      expect(sidecars(file)).toEqual([false, false]);
+      expect(db.isOpen).toBe(false);
+      expect(() => insert.run(5)).toThrow(finalized);
+      expect(() => select.get()).toThrow(finalized);
+      if (kind === "live iterate() cursor" || mixed) expect(() => cursor.next()).toThrow(finalized);
+      expect(() => sql.get`SELECT n FROM t WHERE n = ${2}`).toThrow(
+        expect.objectContaining({ code: "ERR_INVALID_STATE", message: "database is not open" }),
+      );
+    },
+  );
+
+  test("close() with a live cursor checkpoints the WAL into the main database file", () => {
+    using dir = tempDir("node-sqlite-close-checkpoint", {});
+    const file = path.join(String(dir), "db.sqlite");
+    const db = new DatabaseSync(file);
+    db.exec("PRAGMA journal_mode = WAL; PRAGMA wal_autocheckpoint = 0; CREATE TABLE t (v TEXT)");
+    db.exec(
+      "WITH RECURSIVE c(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM c WHERE i < 200) INSERT INTO t SELECT printf('%0100d', i) FROM c",
+    );
+    const { page_count } = db.prepare("PRAGMA page_count").get() as { page_count: number };
+    const { page_size } = db.prepare("PRAGMA page_size").get() as { page_size: number };
+    const cursor = db.prepare("SELECT v FROM t").iterate();
+    cursor.next();
+    expect(statSync(file).size).toBeLessThan(page_count * page_size);
+
+    db.close();
+
+    expect(sidecars(file)).toEqual([false, false]);
+    expect(statSync(file).size).toBe(page_count * page_size);
+    expect(() => cursor.next()).toThrow(finalized);
+  });
+
+  test("close() with live statements releases file locks to another process", async () => {
+    using dir = tempDir("node-sqlite-close-locks", {});
+    const file = path.join(String(dir), "db.sqlite");
+    const db = openWal(file);
+    const cursor = db.prepare("SELECT n FROM t").iterate();
+    cursor.next();
+    db.prepare("INSERT INTO t VALUES (?)").run(4);
+    db.close();
+
+    await using proc = Bun.spawn({
+      cmd: [
+        bunExe(),
+        "-e",
+        `const { DatabaseSync } = require("node:sqlite");
+         const db = new DatabaseSync(process.env.DB_FILE, { timeout: 0 });
+         const attempt = fn => { try { return fn(); } catch (e) { return e.message; } };
+         console.log(JSON.stringify([
+           attempt(() => db.prepare("PRAGMA journal_mode = DELETE").get().journal_mode),
+           attempt(() => db.exec("PRAGMA locking_mode = EXCLUSIVE; BEGIN EXCLUSIVE; INSERT INTO t VALUES (5); COMMIT")),
+           attempt(() => db.prepare("SELECT count(*) AS n FROM t").get().n),
+         ]));
+         db.close();`,
+      ],
+      env: { ...bunEnv, DB_FILE: file },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, , exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect(stdout).toBe('["delete",null,5]\n');
+    rmSync(file);
+    expect(readdirSync(String(dir))).toEqual([]);
+    expect(exitCode).toBe(0);
+  });
+
+  test("a worker's close() releases its database while the worker keeps running", async () => {
+    using dir = tempDir("node-sqlite-close-worker", {
+      "worker.mjs": `import { DatabaseSync } from "node:sqlite";
+        import { parentPort } from "node:worker_threads";
+        const open = name => {
+          const db = new DatabaseSync(name);
+          db.exec("PRAGMA journal_mode = WAL; CREATE TABLE t (n INTEGER); INSERT INTO t VALUES (1), (2)");
+          const cursor = db.prepare("SELECT n FROM t").iterate();
+          cursor.next();
+          return { db, cursor };
+        };
+        const a = open("a.db");
+        const b = open("b.db");
+        a.db.close();
+        parentPort.postMessage("a closed");
+        parentPort.once("message", () => {
+          b.db.close();
+          parentPort.postMessage([a.cursor, b.cursor].map(c => { try { c.next(); return "open"; } catch (e) { return e.message; } }));
+        });`,
+      "main.mjs": `import { Worker } from "node:worker_threads";
+        import { readdirSync } from "node:fs";
+        import { DatabaseSync } from "node:sqlite";
+        const worker = new Worker("./worker.mjs");
+        const next = () => new Promise((resolve, reject) => { worker.once("message", resolve); worker.once("error", reject); });
+        const databaseFiles = () => JSON.stringify(readdirSync(".").filter(f => f.includes(".db")).sort());
+        console.log(await next());
+        const other = new DatabaseSync("a.db", { timeout: 0 });
+        try {
+          other.exec("PRAGMA journal_mode = DELETE; PRAGMA locking_mode = EXCLUSIVE; BEGIN EXCLUSIVE; COMMIT");
+          console.log("exclusive");
+        } catch (e) {
+          console.log(e.message);
+        }
+        other.close();
+        console.log(databaseFiles());
+        worker.postMessage("close b");
+        console.log(JSON.stringify(await next()));
+        await new Promise(resolve => worker.once("exit", resolve));
+        console.log(databaseFiles());`,
+    });
+    await using proc = Bun.spawn({
+      cmd: [bunExe(), "main.mjs"],
+      env: bunEnv,
+      cwd: String(dir),
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, , exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect(stdout.split("\n")).toEqual([
+      "a closed",
+      "exclusive",
+      '["a.db","b.db","b.db-shm","b.db-wal"]',
+      '["statement has been finalized","statement has been finalized"]',
+      '["a.db","b.db"]',
+      "",
+    ]);
+    expect(exitCode).toBe(0);
+  });
+
+  test.each([
+    [
+      "fts5",
+      "CREATE VIRTUAL TABLE v USING fts5(body); INSERT INTO v VALUES ('alpha beta'), ('alpha gamma'), ('delta')",
+      "SELECT rowid FROM v WHERE v MATCH 'alpha' ORDER BY rowid",
+      [1, 2],
+    ],
+    [
+      "rtree",
+      "CREATE VIRTUAL TABLE v USING rtree(id, x0, x1); INSERT INTO v VALUES (1, 0, 1), (2, 0, 2), (3, 5, 6)",
+      "SELECT id AS rowid FROM v WHERE x1 >= 2 ORDER BY id",
+      [2, 3],
+    ],
+  ] as const)("%s tables keep their private statements across close() and reopen", (_, ddl, query, rowids) => {
+    using dir = tempDir("node-sqlite-close-vtab", {});
+    const file = path.join(String(dir), "db.sqlite");
+    for (let cycle = 0; cycle < 3; cycle++) {
+      const db = new DatabaseSync(file);
+      if (cycle === 0) db.exec(`PRAGMA journal_mode = WAL; ${ddl}`);
+      expect(
+        db
+          .prepare(query)
+          .all()
+          .map(row => row.rowid),
+      ).toEqual([...rowids]);
+      const cursor = db.prepare(query).iterate();
+      cursor.next();
+      db.close();
+      expect(sidecars(file)).toEqual([false, false]);
+      expect(() => cursor.next()).toThrow(finalized);
+    }
+  });
+
+  // sqlite-vec's Linux builds link glibc, and there is no windows-arm64 build.
+  // Apple's system SQLite cannot load extensions, so macOS needs another library.
+  const sqliteVec = (() => {
+    try {
+      return require("sqlite-vec").getLoadablePath() as string;
+    } catch {
+      return undefined;
+    }
+  })();
+  const extensionLibrary = sqliteHasLoadExtension
+    ? undefined
+    : ["/opt/homebrew/opt/sqlite/lib/libsqlite3.dylib", "/usr/local/opt/sqlite/lib/libsqlite3.dylib"].find(
+        lib => isMacOS && existsSync(lib),
+      );
+  test.skipIf(!sqliteVec || isMusl || (!sqliteHasLoadExtension && !extensionLibrary))(
+    "sqlite-vec vec0 tables keep their private statements across close() and reopen",
+    async () => {
+      using dir = tempDir("node-sqlite-close-vec0", {});
+      await using proc = Bun.spawn({
+        cmd: [
+          bunExe(),
+          "-e",
+          `if (process.env.SQLITE_LIBRARY) require("bun:sqlite").Database.setCustomSQLite(process.env.SQLITE_LIBRARY);
+           const { existsSync } = require("node:fs");
+           const { DatabaseSync } = require("node:sqlite");
+           const knn = "SELECT rowid FROM v WHERE embedding MATCH '[1,0,0,0]' AND k = 3 ORDER BY distance";
+           const cycles = [];
+           for (let cycle = 0; cycle < 3; cycle++) {
+             const db = new DatabaseSync("db.sqlite", { allowExtension: true });
+             db.loadExtension(process.env.SQLITE_VEC);
+             if (cycle === 0) {
+               db.exec("PRAGMA journal_mode = WAL; CREATE VIRTUAL TABLE v USING vec0(embedding float[4])");
+               db.exec("INSERT INTO v(rowid, embedding) VALUES (1, '[1,0,0,0]'), (2, '[0.9,0.1,0,0]'), (3, '[0,0,1,0]')");
+             }
+             const rows = db.prepare(knn).all().map(row => row.rowid);
+             // A rowid lookup makes vec0 cache a private statement on the connection.
+             const point = db.prepare("SELECT rowid FROM v WHERE rowid = 2").get().rowid;
+             const cursor = db.prepare(knn).iterate();
+             cursor.next();
+             db.close();
+             cycles.push([rows, point, existsSync("db.sqlite-wal"), existsSync("db.sqlite-shm")]);
+           }
+           console.log(JSON.stringify(cycles));`,
+        ],
+        env: { ...bunEnv, SQLITE_VEC: sqliteVec, SQLITE_LIBRARY: extensionLibrary ?? "" },
+        cwd: String(dir),
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, , exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      expect(stdout).toBe(JSON.stringify(Array(3).fill([[1, 2, 3], 2, false, false])) + "\n");
+      expect(exitCode).toBe(0);
+    },
+  );
+
+  test("repeated open/close cycles with retained statements release every descriptor", () => {
+    using dir = tempDir("node-sqlite-close-cycles", {});
+    const file = path.join(String(dir), "db.sqlite");
+    openWal(file).close();
+    // /dev/fd lists this process's descriptors on macOS and Linux. On Windows a
+    // leaked connection keeps the database handle open and rmSync() below throws.
+    const openFds = () => (isWindows ? 0 : readdirSync("/dev/fd").length);
+    const retained: unknown[] = [];
+    let cyclesWithSidecars = 0;
+    const fdsBefore = openFds();
+    for (let i = 0; i < 50; i++) {
+      const db = new DatabaseSync(file);
+      const unused = db.prepare("SELECT n FROM t");
+      const read = db.prepare("SELECT n FROM t");
+      read.get();
+      const cursor = db.prepare("SELECT n FROM t").iterate();
+      cursor.next();
+      db.prepare("INSERT INTO t VALUES (?)").run(i);
+      retained.push(unused, read, cursor);
+      if (i % 2) db.close();
+      else db[Symbol.dispose]();
+      if (sidecars(file).some(Boolean)) cyclesWithSidecars++;
+    }
+    expect({ cyclesWithSidecars, leakedFds: openFds() - fdsBefore }).toEqual({ cyclesWithSidecars: 0, leakedFds: 0 });
+    expect(retained).toHaveLength(150);
+    rmSync(file);
+  });
 });
 
 describe("GC stress", () => {
