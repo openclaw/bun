@@ -1,6 +1,6 @@
 import { $ } from "bun";
 import { describe, expect, it } from "bun:test";
-import { chmodSync } from "fs";
+import { chmodSync, statSync } from "fs";
 import { bunEnv as bunEnv_, bunExe, isWindows, tempDir, tempDirWithFiles } from "harness";
 import { basename, join } from "path";
 
@@ -1146,6 +1146,55 @@ describe.concurrent("bun run", () => {
       expect(exitCode).toBe(0);
     },
   );
+
+  it.skipIf(isWindows)("node shim fallback keeps NODE and npm_node_execpath aligned with PATH", async () => {
+    using dir = tempDir("bun-run-node-fallback", {
+      "package.json": JSON.stringify({ name: "node-fallback", scripts: { probe: "node probe.mjs" } }),
+      "probe.mjs": `
+        console.log(JSON.stringify({
+          bun: typeof Bun !== "undefined",
+          node: process.env.NODE,
+          npmNodeExecpath: process.env.npm_node_execpath,
+          shim: process.env.PATH.split(":").find(entry => entry.includes("bun-node")),
+        }));
+      `,
+      "empty-bin": {},
+    });
+    const tmpdir = String(dir);
+    async function probe(...flags: string[]) {
+      await using proc = Bun.spawn({
+        cmd: [bunExe(), ...flags, "run", "probe"],
+        cwd: tmpdir,
+        env: {
+          ...bunEnv,
+          BUN_TMPDIR: tmpdir,
+          PATH: join(tmpdir, "empty-bin"),
+          NODE: undefined,
+          npm_node_execpath: undefined,
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      expect(stderr).toContain("$ node probe.mjs");
+      const result = JSON.parse(stdout);
+      expect(result.bun).toBe(true);
+      expect(result.shim.startsWith(tmpdir + "/")).toBe(true);
+      expect(result.node).toBe(result.shim);
+      expect(result.npmNodeExecpath).toBe(result.shim);
+      expect(exitCode).toBe(0);
+      return result.shim as string;
+    }
+
+    const preferred = await probe();
+    chmodSync(preferred, 0o777);
+    expect(statSync(preferred).mode & 0o777).toBe(0o777);
+    for (const flags of [[], ["--bun"]]) {
+      const shim = await probe(...flags);
+      expect(shim).not.toBe(preferred);
+      expect(shim.startsWith(preferred + "-")).toBe(true);
+    }
+  });
 
   // https://github.com/oven-sh/bun/issues/30711 — nested `--bun` used to rewrite
   // the BUN_NODE_DIR/{bun,node} shim to point at ITSELF. After the OUTER `--bun`
