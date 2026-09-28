@@ -486,7 +486,6 @@ impl Linker {
         }
         // Vec drop at scope end frees.
         externals.clear();
-        let _ = externals;
         Ok(())
     }
 

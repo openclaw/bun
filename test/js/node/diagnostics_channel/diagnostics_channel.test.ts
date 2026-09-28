@@ -60,6 +60,168 @@ describe("Channel", () => {
     checkCalls();
   });
 
+  test("self-unsubscribe preserves the current publication's subscribers", () => {
+    const name = Symbol("self-unsubscribe");
+    const dc = channel(name);
+    const calls: string[] = [];
+    const first = (message: unknown) => {
+      calls.push(`first:${message}`);
+      unsubscribe(name, first);
+    };
+    const second = (message: unknown) => calls.push(`second:${message}`);
+    subscribe(name, first);
+    subscribe(name, second);
+
+    try {
+      dc.publish("current");
+      expect(calls).toEqual(["first:current", "second:current"]);
+      dc.publish("next");
+      expect(calls).toEqual(["first:current", "second:current", "second:next"]);
+    } finally {
+      unsubscribe(name, first);
+      unsubscribe(name, second);
+    }
+  });
+
+  test("unsubscribing a later subscriber takes effect on the next publication", () => {
+    const dc = channel(Symbol("unsubscribe-later"));
+    const calls: string[] = [];
+    const second = (message: unknown) => calls.push(`second:${message}`);
+    const first = (message: unknown) => {
+      calls.push(`first:${message}`);
+      dc.unsubscribe(second);
+    };
+    dc.subscribe(first);
+    dc.subscribe(second);
+
+    try {
+      dc.publish("current");
+      expect(calls).toEqual(["first:current", "second:current"]);
+      dc.publish("next");
+      expect(calls).toEqual(["first:current", "second:current", "first:next"]);
+    } finally {
+      dc.unsubscribe(first);
+      dc.unsubscribe(second);
+    }
+  });
+
+  test("a subscriber added during publication starts with the next publication", () => {
+    const dc = channel(Symbol("subscribe-during-publish"));
+    const calls: string[] = [];
+    const third = (message: unknown) => calls.push(`third:${message}`);
+    const first = (message: unknown) => {
+      calls.push(`first:${message}`);
+      if (message === "current") dc.subscribe(third);
+    };
+    const second = (message: unknown) => calls.push(`second:${message}`);
+    dc.subscribe(first);
+    dc.subscribe(second);
+
+    try {
+      dc.publish("current");
+      expect(calls).toEqual(["first:current", "second:current"]);
+      calls.length = 0;
+      dc.publish("next");
+      expect(calls).toEqual(["first:next", "second:next", "third:next"]);
+    } finally {
+      dc.unsubscribe(first);
+      dc.unsubscribe(second);
+      dc.unsubscribe(third);
+    }
+  });
+
+  test("recursive publication sees updated subscribers without changing the outer publication", () => {
+    const dc = channel(Symbol("recursive-publish"));
+    const calls: string[] = [];
+    const first = (message: unknown) => {
+      calls.push(`first:${message}`);
+      dc.unsubscribe(first);
+      dc.publish("inner");
+    };
+    const second = (message: unknown) => {
+      calls.push(`second:${message}`);
+      if (message === "inner") dc.unsubscribe(second);
+    };
+    dc.subscribe(first);
+    dc.subscribe(second);
+
+    try {
+      dc.publish("outer");
+      expect(calls).toEqual(["first:outer", "second:inner", "second:outer"]);
+      expect(dc.hasSubscribers).toBeFalse();
+      dc.publish("next");
+      expect(calls).toEqual(["first:outer", "second:inner", "second:outer"]);
+    } finally {
+      dc.unsubscribe(first);
+      dc.unsubscribe(second);
+    }
+  });
+
+  test("an in-flight subscriber can reactivate an emptied channel", () => {
+    const dc = channel(Symbol("reactivate-during-publish"));
+    const calls: string[] = [];
+    const third = () => calls.push("third");
+    const first = () => {
+      calls.push("first");
+      dc.unsubscribe(first);
+      dc.unsubscribe(second);
+    };
+    const second = () => {
+      calls.push("second");
+      dc.subscribe(third);
+    };
+    dc.subscribe(first);
+    dc.subscribe(second);
+
+    try {
+      dc.publish("current");
+      expect(calls).toEqual(["first", "second"]);
+      expect(dc.hasSubscribers).toBeTrue();
+      dc.publish("next");
+      expect(calls).toEqual(["first", "second", "third"]);
+    } finally {
+      dc.unsubscribe(first);
+      dc.unsubscribe(second);
+      dc.unsubscribe(third);
+    }
+  });
+
+  test("runStores preserves the publication snapshot and bound context", () => {
+    const dc = channel(Symbol("run-stores-snapshot"));
+    const store = new AsyncLocalStorage();
+    const message = { value: 42 };
+    const calls: [string, unknown][] = [];
+    const first = () => {
+      calls.push(["first", store.getStore()]);
+      dc.unsubscribe(first);
+    };
+    const second = () => calls.push(["second", store.getStore()]);
+    dc.subscribe(first);
+    dc.subscribe(second);
+    dc.bindStore(store);
+
+    try {
+      dc.runStores(message, () => calls.push(["run", store.getStore()]));
+      expect(calls).toEqual([
+        ["first", message],
+        ["second", message],
+        ["run", message],
+      ]);
+      expect(store.getStore()).toBeUndefined();
+      calls.length = 0;
+      dc.runStores(message, () => calls.push(["run", store.getStore()]));
+      expect(calls).toEqual([
+        ["second", message],
+        ["run", message],
+      ]);
+    } finally {
+      dc.unsubscribe(first);
+      dc.unsubscribe(second);
+      dc.unbindStore(store);
+      store.disable();
+    }
+  });
+
   // test-diagnostics-channel-pub-sub.js
   test("can publish and subscribe", () => {
     const name = "channel4";

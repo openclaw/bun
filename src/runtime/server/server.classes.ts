@@ -173,8 +173,8 @@ export default [
         fn: "pauseSocketReads",
         length: 0,
       },
-      drainRequestBody: {
-        fn: "drainRequestBody",
+      notifyWhenReadParsed: {
+        fn: "notifyWhenReadParsed",
         length: 0,
       },
       takeRequestTrailers: {
@@ -217,10 +217,6 @@ export default [
         getter: "getOnAbort",
         setter: "setOnAbort",
         this: true,
-      },
-      hasCustomOnData: {
-        getter: "getHasCustomOnData",
-        setter: "setHasCustomOnData",
       },
       upgraded: {
         getter: "getUpgraded",

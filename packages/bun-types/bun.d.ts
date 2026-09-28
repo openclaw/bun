@@ -3210,6 +3210,7 @@ declare module "bun" {
      * that absorbs a folded chunk exports the symbols other chunks import
      * from it. Requires `splitting: true`. CLI: `--min-chunk-size`. For browser
      * builds, where every chunk is a request, 16384 is a good value.
+     * Nothing folds into an entry point without `[hash]` in its name.
      *
      * @default 0 (disabled)
      */
@@ -8781,6 +8782,7 @@ declare module "bun" {
      * Callback invoked when the PTY stream closes (EOF or read error).
      * `exitCode` is a PTY lifecycle status (0 = clean EOF, 1 = error), NOT the subprocess exit code.
      * Use {@link Subprocess.exited} or the `onExit` callback for the process exit information.
+     * While output is paused, EOF waits for `resume()` and delivery of the remaining output.
      * @param terminal The terminal instance
      * @param exitCode PTY lifecycle status (0 for EOF, 1 for error)
      * @param signal Always `null`; reserved for future signal reporting
@@ -8838,6 +8840,23 @@ declare module "bun" {
      * @returns The number of bytes accepted (the byte length of `data`)
      */
     write(data: string | BufferSource): number;
+
+    /**
+     * Stop reading PTY output and invoking `data`, including from inside a `data` callback.
+     * Once the OS output buffer fills, the child's writes block. Input writes, `drain`,
+     * terminal settings, and the ref/unref choice are unchanged.
+     * Pausing preserves whether the terminal keeps the event loop alive while its child runs.
+     * Idempotent; has no effect after close or EOF.
+     */
+    pause(): void;
+
+    /**
+     * Restart reading PTY output on a later event-loop turn; never invokes `data` synchronously.
+     * The PTY `exit` callback fires after output resumes and drains.
+     * Whether `Subprocess.exited` resolves before resume depends on the operating system.
+     * Idempotent; has no effect after close or EOF.
+     */
+    resume(): void;
 
     /**
      * Resize the terminal.

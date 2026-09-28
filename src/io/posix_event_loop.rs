@@ -1,6 +1,8 @@
 #[cfg(unix)]
 use core::ffi::c_int;
+#[cfg(not(windows))]
 use core::ffi::c_void;
+#[cfg(not(windows))]
 use core::fmt;
 #[cfg(unix)]
 use core::ptr;
@@ -153,6 +155,9 @@ static MAX_GENERATION_NUMBER: core::sync::atomic::AtomicUsize =
 /// generation number); FreeBSD only has the plain `struct kevent`.
 #[cfg(target_os = "macos")]
 type KQueueEvent = bun_sys::darwin::kevent64_s;
+
+#[cfg(target_os = "macos")]
+const PROCESS_REAP_RETRY_MS: i64 = 10;
 #[cfg(target_os = "freebsd")]
 type KQueueEvent = bun_sys::freebsd::Kevent;
 
@@ -691,9 +696,21 @@ impl FilePoll {
                 },
                 Flags::Process => kevent64_s {
                     ident: u64::try_from(fd.native()).expect("int cast"),
-                    filter: EVFILT::PROC,
-                    data: 0,
-                    fflags: NOTE::EXIT,
+                    filter: if self.flags.contains(Flags::ProcessRetry) {
+                        libc::EVFILT_TIMER
+                    } else {
+                        EVFILT::PROC
+                    },
+                    data: if self.flags.contains(Flags::ProcessRetry) {
+                        PROCESS_REAP_RETRY_MS
+                    } else {
+                        0
+                    },
+                    fflags: if self.flags.contains(Flags::ProcessRetry) {
+                        0
+                    } else {
+                        NOTE::EXIT
+                    },
                     udata: Pollable::init(self).ptr() as u64,
                     flags: EV::ADD | one_shot_flag,
                     ext: [self.generation_number as u64, 0],
@@ -743,7 +760,17 @@ impl FilePoll {
                         &raw const TIMEOUT,
                     )
                 };
-                if sys::get_errno(rc) == sys::E::EINTR {
+                let errno = sys::get_errno(rc);
+                if errno == sys::E::EINTR {
+                    continue;
+                }
+                if errno == sys::E::ESRCH && changelist[0].filter == EVFILT::PROC {
+                    // An exiting PTY session leader may need this loop to drain output before wait4 can reap it.
+                    self.flags.insert(Flags::ProcessRetry);
+                    changelist[0].filter = libc::EVFILT_TIMER;
+                    changelist[0].flags = EV::ADD | EV::ONESHOT;
+                    changelist[0].fflags = 0;
+                    changelist[0].data = PROCESS_REAP_RETRY_MS;
                     continue;
                 }
                 break 'rc rc;
@@ -977,7 +1004,7 @@ impl FilePoll {
         }
         #[cfg(target_os = "macos")]
         {
-            use bun_sys::darwin::{EV, EVFILT, NOTE, kevent64, kevent64_s};
+            use bun_sys::darwin::{EV, EVFILT, kevent64, kevent64_s};
             // SAFETY: all-zero is a valid kevent64_s
             let mut changelist: [kevent64_s; 2] = bun_core::ffi::zeroed();
 
@@ -1011,9 +1038,13 @@ impl FilePoll {
                 },
                 Flags::Process => kevent64_s {
                     ident: u64::try_from(fd.native()).expect("int cast"),
-                    filter: EVFILT::PROC,
+                    filter: if self.flags.contains(Flags::ProcessRetry) {
+                        libc::EVFILT_TIMER
+                    } else {
+                        EVFILT::PROC
+                    },
                     data: 0,
-                    fflags: NOTE::EXIT,
+                    fflags: 0,
                     udata: Pollable::init(self).ptr() as u64,
                     flags: EV::DELETE,
                     ext: [0, 0],
@@ -1146,6 +1177,8 @@ impl FilePoll {
         self.flags.remove(Flags::PollProcess);
         self.flags.remove(Flags::PollMachport);
         self.flags.remove(Flags::PollMemoryPressure);
+        #[cfg(target_os = "macos")]
+        self.flags.remove(Flags::ProcessRetry);
 
         sys::Result::Ok(())
     }
@@ -1210,6 +1243,9 @@ pub enum Flags {
     IgnoreUpdates,
 
     Socket,
+
+    #[cfg(target_os = "macos")]
+    ProcessRetry,
 }
 
 pub type FlagsSet = enumset::EnumSet<Flags>;
@@ -1270,9 +1306,10 @@ impl Flags {
     }
 }
 
-#[allow(dead_code)]
+#[cfg(not(windows))]
 pub(crate) struct FlagsFormatter(pub FlagsSet);
 
+#[cfg(not(windows))]
 impl fmt::Display for FlagsFormatter {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut is_first = true;
@@ -1411,19 +1448,18 @@ impl Store {
 // `impl TypeList for (FilePoll,)`, which trips the orphan rule (foreign trait
 // on a tuple). Since the union has exactly one variant, wrap the raw
 // `TaggedPtr` directly with the same tag scheme (`1024 - index`).
+#[cfg(not(windows))]
 #[derive(Copy, Clone)]
-#[allow(dead_code)]
 pub(crate) struct Pollable {
     repr: bun_collections::TaggedPtr,
 }
 
+#[cfg(not(windows))]
 impl Pollable {
     /// Tag value for `FilePoll` (index 0 → `1024 - 0`).
-    #[allow(dead_code)]
     pub(crate) const FILE_POLL_TAG: u16 = 1024;
 
     #[inline]
-    #[allow(dead_code)]
     pub(crate) fn init(ptr: *const crate::FilePoll) -> Self {
         Self {
             repr: bun_collections::TaggedPtr::init(ptr, Self::FILE_POLL_TAG),
@@ -1431,7 +1467,6 @@ impl Pollable {
     }
 
     #[inline]
-    #[allow(dead_code)]
     pub(crate) fn from(val: *mut c_void) -> Self {
         Self {
             repr: bun_collections::TaggedPtr::from(val),
@@ -1439,19 +1474,16 @@ impl Pollable {
     }
 
     #[inline]
-    #[allow(dead_code)]
     pub(crate) fn tag(self) -> u16 {
         self.repr.data()
     }
 
     #[inline]
-    #[allow(dead_code)]
     pub(crate) fn as_file_poll(self) -> *mut crate::FilePoll {
         self.repr.get::<crate::FilePoll>()
     }
 
     #[inline]
-    #[allow(dead_code)]
     pub(crate) fn ptr(self) -> *mut c_void {
         self.repr.to()
     }

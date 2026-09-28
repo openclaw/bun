@@ -1756,23 +1756,13 @@ impl RunCommand {
         Global::exit(1);
     }
 
-    // This path is almost always a path to a user directory. So it cannot be
-    // inlined like our uses of /tmp. On Windows use `GetTempPathW` /
-    // `RealFS.platformTempDir` instead — this const is POSIX-only and
-    // referencing it on Windows is a compile error.
-    //
-    // Canonical definition lives in `bun_install::RunCommand` (lower tier so
-    // the package manager can use it without depending on `bun_runtime`).
-    #[cfg(not(windows))]
-    pub(crate) const BUN_NODE_DIR: &'static str = bun_install::RunCommand::BUN_NODE_DIR;
-
     /// Returns the path to the
     /// fake `node` shim that points back at the running `bun` binary.
     pub(crate) fn bun_node_file_utf8() -> crate::Result<&'static ZStr> {
         #[cfg(not(windows))]
         {
-            const BUN_NODE_DIR_Z: &str = const_format::concatcp!(RunCommand::BUN_NODE_DIR, "\0");
-            Ok(ZStr::from_static(BUN_NODE_DIR_Z.as_bytes()))
+            Ok(bun_install::RunCommand::node_shim_dir_in_use()
+                .unwrap_or_else(bun_install::RunCommand::bun_node_dir))
         }
         #[cfg(windows)]
         {
@@ -1955,16 +1945,20 @@ impl RunCommand {
                 ),
             }
 
+            // With `--bun`, `load_node_js_config` above set these before the
+            // shim dir was chosen; point them at the dir actually in use.
+            #[cfg(not(windows))]
+            let bun_node_exe = Self::bun_node_file_utf8()?;
+            let env_mut = this_transpiler.env_mut();
+            env_mut
+                .map
+                .put(b"NODE", bun_node_exe.as_bytes())
+                .unwrap_or_oom();
+            env_mut
+                .map
+                .put(b"npm_node_execpath", bun_node_exe.as_bytes())
+                .unwrap_or_oom();
             if !force_using_bun {
-                let env_mut = this_transpiler.env_mut();
-                env_mut
-                    .map
-                    .put(b"NODE", bun_node_exe.as_bytes())
-                    .unwrap_or_oom();
-                env_mut
-                    .map
-                    .put(b"npm_node_execpath", bun_node_exe.as_bytes())
-                    .unwrap_or_oom();
                 env_mut
                     .map
                     .put(b"npm_execpath", optional_bun_self_path)
@@ -2633,7 +2627,6 @@ impl RunCommand {
         // (PATH minus ORIGINAL_PATH) unless `--bun` was passed, in which case
         // search the whole stitched PATH.
         {
-            let _ = force_using_bun;
             // SAFETY: `Transpiler::init` always sets `fs`; resolver-cache lifetime.
             let fs = unsafe { &mut *this_transpiler.fs };
             let top_level_dir = fs.top_level_dir;

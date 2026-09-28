@@ -3,7 +3,16 @@
 ## Unreleased
 
 - Keep runtime plugin resolution out of the content-addressed transpiler cache so changed plugin answers and temporary module generations cannot reuse stale import paths.
+- Sync upstream through `a4f1429148114ddc3bccc13764781be27a7a9523`, preserving the fork's compatibility patches and contributor histories. Reconcile HTTP body, pipeline, close, and TLS lifecycles with upstream Node compatibility changes.
+- Preserve child signal masks when Worker threads spawn terminals concurrently, so terminal Ctrl-C continues to interrupt foreground processes.
+- Restore default Ctrl+C handling before spawning a Windows `Bun.Terminal` ConPTY child, as node-pty does, so `\x03` interrupts the foreground program even when Bun was started with Ctrl+C ignored (SSH, services, `detached: true`). Like node-pty, this also re-enables Ctrl+C handling in the Bun process itself.
+- Add `Bun.Terminal.pause()` and `resume()` for output backpressure: child writes block when the PTY queue fills, and PTY exit follows resumed output delivery.
+- Keep macOS subprocess exit handling non-blocking when kqueue reports ESRCH before a terminal child can be reaped.
+- Use a private fallback for unusable POSIX `node` shim directories instead of silently dropping `node`, warn when no shim can be created, and honor `BUN_TMPDIR` for the shim like the node-gyp directory.
+- Adapt upstream [#35565](https://github.com/oven-sh/bun/pull/35565): key the lifecycle-script and `--bun` `node` shim directory on the user id (`/tmp/bun-node-<uid>-<sha>`), so a shim directory another user created on the same host no longer drops `node` from lifecycle-script `PATH` (upstream [#42048](https://github.com/oven-sh/bun/issues/42048)).
+- Adapt upstream [#33288](https://github.com/oven-sh/bun/pull/33288) to preserve `node:diagnostics_channel` subscribers for an in-flight publication when callbacks subscribe, unsubscribe, or publish recursively.
 - Mark inherited POSIX descriptors close-on-exec at startup like Node, preventing native-spawned children from keeping stdio pipes open after Bun exits.
+- Adapt upstream [#34980](https://github.com/oven-sh/bun/pull/34980): read explicit `--tsconfig-override` paths without borrowing an unrelated directory descriptor, avoiding spurious directory-mismatch diagnostics while preserving override resolution.
 - Integrate upstream [#40005](https://github.com/oven-sh/bun/pull/40005) at `900eae3`: `node:sqlite` `DatabaseSync.close()` and `Symbol.dispose()` finalize outstanding statements, so WAL/shared-memory files, file locks, and descriptors are released immediately. Virtual-table modules such as FTS5 and sqlite-vec keep ownership of their private statements.
 - Publish tagged `main` commits as GitHub releases: release builds for darwin-arm64, darwin-x64, linux-x64 and linux-arm64, smoke-tested on their own platforms, with SHA-256 checksums, a pinnable `manifest.json` naming the fork commit and WebKit revision, and build provenance attestations. See `.github/OPENCLAW_RELEASE.md`.
 - Preserve file-URL entry identity and literal `?` paths in `Bun.ModuleGraph`, and avoid retaining GC-backed string views across macro transpilation.

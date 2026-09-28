@@ -11,10 +11,8 @@ const {
   abortedSymbol,
   eofInProgress,
   kHandle,
+  kHandoffResponse,
   noBodySymbol,
-  typeSymbol,
-  NodeHTTPIncomingRequestType,
-  fakeSocketSymbol,
   emitErrorNextTickIfErrorListenerNT,
   NodeHTTPBodyReadState,
   emitEOFIncomingMessage,
@@ -22,10 +20,7 @@ const {
   kAbortController,
 } = require("internal/http");
 
-const { FakeSocket } = require("internal/http/FakeSocket");
-
 const ObjectDefineProperty = Object.defineProperty;
-const ArrayPrototypeSlice = Array.prototype.slice;
 
 const kHeaders = Symbol("kHeaders");
 // Cache slot for the server dispatcher's keep-alive decision (stamped once
@@ -42,7 +37,7 @@ const kTrailers = Symbol("kTrailers");
 const kTrailersDistinct = Symbol("kTrailersDistinct");
 const kTrailersCount = Symbol("kTrailersCount");
 
-type IncomingMessage = import("node:http").IncomingMessage & { _dumped: boolean };
+type IncomingMessage = import("node:http").IncomingMessage;
 
 function readStart(socket) {
   if (socket && !socket._paused && socket.readable) socket.resume();
@@ -52,43 +47,9 @@ function readStop(socket) {
   if (socket) socket.pause();
 }
 
-function onIncomingMessagePauseNodeHTTPResponse(this: IncomingMessage) {
-  const handle = this[kHandle];
-  if (handle && !this.destroyed) {
-    handle.pause();
-  }
-}
-
 function onIncomingMessageResumeNodeHTTPResponse(this: IncomingMessage) {
   const handle = this[kHandle];
-  if (!handle || this.destroyed) return;
-  handle.resume();
-
-  if (this[eofInProgress]) return;
-  if (this[noBodySymbol]) {
-    emitEOFIncomingMessage(this);
-    return;
-  }
-
-  const bodyReadState = handle.hasBody;
-  if ((bodyReadState & NodeHTTPBodyReadState.cancelled) !== 0) return;
-  if ((bodyReadState & NodeHTTPBodyReadState.done) !== 0 || bodyReadState === NodeHTTPBodyReadState.none) {
-    emitEOFIncomingMessage(this);
-  }
-
-  // A completed response or closed socket can still leave this request's
-  // buffered wire-fin tail readable. Only its own handle may deliver it.
-  if ((bodyReadState & NodeHTTPBodyReadState.hasBufferedDataDuringPause) !== 0) {
-    const drained = handle.drainRequestBody();
-    if (drained && !this._dumped) {
-      this.push(drained);
-    }
-  }
-
-  if (!handle.ondata) {
-    handle.ondata = onDataIncomingMessage.bind(this);
-    handle.hasCustomOnData = false;
-  }
+  if (handle && !this.destroyed) handle.resume();
 }
 
 /* Abstract base class for ServerRequest and ClientResponse. */
@@ -113,7 +74,6 @@ function IncomingMessage(socket) {
 
   if (socket === kHandle) {
     // Native server fast-path: (kHandle, url, method, headers, rawHeaders, handle, hasBody, socket)
-    this[typeSymbol] = NodeHTTPIncomingRequestType.NodeHTTPResponse;
     this.url = arguments[1];
     this.method = arguments[2];
     // arguments[3] carries no headers object and arguments[4] no rawHeaders
@@ -123,7 +83,7 @@ function IncomingMessage(socket) {
     this[kHeaderSource] = arguments[5];
     this[kHandle] = arguments[5];
     this[noBodySymbol] = !arguments[6];
-    this[fakeSocketSymbol] = arguments[7];
+    this.socket = arguments[7];
     // Node.js exposes the connection as req.client as well (it predates
     // req.socket and some code still reaches for it).
     this.client = arguments[7];
@@ -131,12 +91,6 @@ function IncomingMessage(socket) {
     // Like Node's IncomingMessage: the readable side inherits the connection
     // socket's highWaterMark (which carries createServer({ highWaterMark })).
     Readable.$call(this, arguments[7] ? { highWaterMark: arguments[7].readableHighWaterMark } : undefined);
-
-    // If there's a body, pay attention to pause/resume events
-    if (arguments[6]) {
-      this.on("pause", onIncomingMessagePauseNodeHTTPResponse);
-      this.on("resume", onIncomingMessageResumeNodeHTTPResponse);
-    }
   } else {
     // Node.js-style construction from a net.Socket (used by the HTTP client
     // and anything driving the llhttp parser through node:_http_common).
@@ -150,7 +104,7 @@ function IncomingMessage(socket) {
 
     Readable.$call(this, streamOptions);
 
-    this[fakeSocketSymbol] = socket;
+    this.socket = socket;
 
     this.httpVersionMajor = null;
     this.httpVersionMinor = null;
@@ -187,23 +141,6 @@ IncomingMessage.prototype.statusMessage = null;
 IncomingMessage.prototype.upgrade = null;
 IncomingMessage.prototype.joinDuplicateHeaders = false;
 
-ObjectDefineProperty(IncomingMessage.prototype, "socket", {
-  __proto__: null,
-  get: function () {
-    let socket = this[fakeSocketSymbol];
-    if (socket === undefined && this[typeSymbol] === NodeHTTPIncomingRequestType.NodeHTTPResponse) {
-      // The native server path historically always exposed a socket object.
-      socket = this[fakeSocketSymbol] = new FakeSocket(this);
-    }
-    // Like Node.js, a bare `new IncomingMessage()` reports an undefined
-    // socket (not null) until one is assigned.
-    return socket;
-  },
-  set: function (val) {
-    this[fakeSocketSymbol] = val;
-  },
-});
-
 ObjectDefineProperty(IncomingMessage.prototype, "connection", {
   __proto__: null,
   get: function () {
@@ -238,13 +175,6 @@ ObjectDefineProperty(IncomingMessage.prototype, "rawHeaders", {
       const source = this[kHeaderSource];
       let built = source != null ? source.takeRawHeaders() : undefined;
       if (built === undefined) built = [];
-      // Node.js's parser keeps at most server.maxHeadersCount header pairs
-      // (parser.maxHeaderPairs); the native parser does not enforce it, so
-      // truncate here.
-      const maxHeadersCount = this[fakeSocketSymbol]?.server?.maxHeadersCount;
-      if (typeof maxHeadersCount === "number" && maxHeadersCount > 0 && built.length > maxHeadersCount * 2) {
-        built = ArrayPrototypeSlice.$call(built, 0, maxHeadersCount * 2);
-      }
       raw = this[kRawHeaders] = built;
       this[kHeadersCount] = built.length;
     }
@@ -384,12 +314,40 @@ IncomingMessage.prototype._read = function _read(_n) {
 
   // Native server path.
   const socket = this.socket;
-  // Upgrade body reads must not put the raw tunnel into flowing mode before
-  // its own reader attaches, or buffered tunnel bytes would be discarded.
-  if (socket && socket.readable && !this.upgrade) {
-    socket.resume();
+  if (socket && socket.readable) {
+    if (this.upgrade || socket[kHandoffResponse] !== undefined) {
+      // Upgrade request with a body (Node 26 semantics): reading the request
+      // must not flip the raw socket into flowing mode - tunnel bytes pushed
+      // to the socket before the 'upgrade' listener attaches its own 'data'
+      // handler would be discarded by a flowing stream with no readers.
+      // Resume the native body source directly instead.
+      // Same for a request ahead of a pipelined CONNECT: res.end() dumps it after the handoff.
+      onIncomingMessageResumeNodeHTTPResponse.$call(this);
+    } else {
+      readStart(socket);
+    }
   }
-  onIncomingMessageResumeNodeHTTPResponse.$call(this);
+
+  if (this[eofInProgress]) {
+    // There is a nextTick pending that will emit EOF
+    return;
+  }
+
+  if (this[noBodySymbol]) {
+    emitEOFIncomingMessage(this);
+    return;
+  }
+
+  const bodyReadState = handle.hasBody;
+
+  // A dumped or aborted request is not complete: it ends only at its real last chunk, like Node.
+  if ((bodyReadState & NodeHTTPBodyReadState.done) !== 0 || bodyReadState === NodeHTTPBodyReadState.none) {
+    emitEOFIncomingMessage(this);
+  }
+
+  if (!handle.ondata) {
+    handle.ondata = onDataIncomingMessage.bind(this);
+  }
 };
 
 // It's possible that the socket will be destroyed, and removed from
@@ -741,6 +699,7 @@ IncomingMessage.prototype._dump = function _dump() {
     // If there is buffered data, it may trigger 'data' events.
     // Remove 'data' event listeners explicitly.
     this.removeAllListeners("data");
+    // ondata stays armed: it drops the chunks and still delivers the last one, which completes the request.
     this.resume();
   }
 };

@@ -1063,8 +1063,6 @@ unsafe fn auto_tick(vm: *mut VirtualMachine) {
         // field address is stable for the VM lifetime.
         unsafe { timer::All::drain_timers(&mut (*state).timer, vm.cast()) };
     }
-    #[cfg(not(unix))]
-    let _ = state;
 
     // SAFETY: per fn contract.
     unsafe { (*vm).on_after_event_loop() };
@@ -1185,8 +1183,6 @@ unsafe fn auto_tick_active(vm: *mut VirtualMachine) {
         // on `auto_tick` re: aliased-&mut across `fire()`.
         unsafe { timer::All::drain_timers(&mut (*state).timer, vm.cast()) };
     }
-    #[cfg(not(unix))]
-    let _ = state;
 
     // SAFETY: per fn contract.
     unsafe { (*vm).on_after_event_loop() };
@@ -2485,7 +2481,6 @@ fn transpile_source_code_inner(
                         };
                         virtual_source = Some(&fallback_source);
                     }
-                    let _ = code;
                 }
             }
 
@@ -3453,7 +3448,6 @@ fn transpile_source_code_inner(
 /// with the dev-server watcher (if enabled, absolute, and not in
 /// `node_modules`). Factored out of the two call sites.
 #[inline]
-#[allow(clippy::too_many_arguments)]
 fn maybe_watch_file(
     jsc_vm: *mut VirtualMachine,
     should_close_input_file_fd: &mut bool,
@@ -4304,7 +4298,6 @@ pub(crate) unsafe extern "C" fn Bun__transpileFile(
                 )
             };
         }
-        let _ = concurrent_loader;
     }
 
     // ── Synchronous-loader fallback ────────────────────────────────────────
