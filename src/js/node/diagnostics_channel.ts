@@ -8,6 +8,7 @@ const SafeFinalizationRegistry = FinalizationRegistry;
 
 const ArrayPrototypeAt = Array.prototype.at;
 const ArrayPrototypeIndexOf = Array.prototype.indexOf;
+const ArrayPrototypeSlice = Array.prototype.slice;
 const ArrayPrototypeSplice = Array.prototype.splice;
 const ObjectGetPrototypeOf = Object.getPrototypeOf;
 const ObjectSetPrototypeOf = Object.setPrototypeOf;
@@ -99,6 +100,8 @@ class ActiveChannel {
   subscribe(subscription) {
     validateFunction(subscription, "subscription");
 
+    // Copy on write keeps callbacks from changing an in-flight publication's recipients.
+    this._subscribers = ArrayPrototypeSlice.$call(this._subscribers);
     $arrayPush(this._subscribers, subscription);
     channels.incRef(this.name);
   }
@@ -107,7 +110,9 @@ class ActiveChannel {
     const index = ArrayPrototypeIndexOf.$call(this._subscribers, subscription);
     if (index === -1) return false;
 
-    ArrayPrototypeSplice.$call(this._subscribers, index, 1);
+    const subscribers = ArrayPrototypeSlice.$call(this._subscribers);
+    ArrayPrototypeSplice.$call(subscribers, index, 1);
+    this._subscribers = subscribers;
 
     channels.decRef(this.name);
     maybeMarkInactive(this);
@@ -139,9 +144,10 @@ class ActiveChannel {
   }
 
   publish(data) {
-    for (let i = 0; i < (this._subscribers?.length || 0); i++) {
+    const subscribers = this._subscribers;
+    for (let i = 0; i < (subscribers?.length || 0); i++) {
       try {
-        const onMessage = this._subscribers[i];
+        const onMessage = subscribers[i];
         onMessage(data, this.name);
       } catch (err) {
         process.nextTick(() => reportError(err));

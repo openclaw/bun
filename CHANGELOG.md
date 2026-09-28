@@ -4,7 +4,13 @@
 
 - Add `Bun.Terminal.pause()` and `resume()` for output backpressure: child writes block when the PTY queue fills, and PTY exit follows resumed output delivery.
 - Keep macOS subprocess exit handling non-blocking when kqueue reports ESRCH before a terminal child can be reaped.
-
+- Use a private fallback for unusable POSIX `node` shim directories instead of silently dropping `node`, warn when no shim can be created, and honor `BUN_TMPDIR` for the shim like the node-gyp directory.
+- Adapt upstream [#35565](https://github.com/oven-sh/bun/pull/35565): key the lifecycle-script and `--bun` `node` shim directory on the user id (`/tmp/bun-node-<uid>-<sha>`), so a shim directory another user created on the same host no longer drops `node` from lifecycle-script `PATH` (upstream [#42048](https://github.com/oven-sh/bun/issues/42048)).
+- Adapt upstream [#33288](https://github.com/oven-sh/bun/pull/33288) to preserve `node:diagnostics_channel` subscribers for an in-flight publication when callbacks subscribe, unsubscribe, or publish recursively.
+- Mark inherited POSIX descriptors close-on-exec at startup like Node, preventing native-spawned children from keeping stdio pipes open after Bun exits.
+- Adapt upstream [#34980](https://github.com/oven-sh/bun/pull/34980): read explicit `--tsconfig-override` paths without borrowing an unrelated directory descriptor, avoiding spurious directory-mismatch diagnostics while preserving override resolution.
+- Integrate upstream [#40005](https://github.com/oven-sh/bun/pull/40005) at `900eae3`: `node:sqlite` `DatabaseSync.close()` and `Symbol.dispose()` finalize outstanding statements, so WAL/shared-memory files, file locks, and descriptors are released immediately. Virtual-table modules such as FTS5 and sqlite-vec keep ownership of their private statements.
+- Publish tagged `main` commits as GitHub releases: release builds for darwin-arm64, darwin-x64, linux-x64 and linux-arm64, smoke-tested on their own platforms, with SHA-256 checksums, a pinnable `manifest.json` naming the fork commit and WebKit revision, and build provenance attestations. See `.github/OPENCLAW_RELEASE.md`.
 - Preserve file-URL entry identity and literal `?` paths in `Bun.ModuleGraph`, and avoid retaining GC-backed string views across macro transpilation.
 - Prepare daily or manually requested upstream merges as frozen draft PRs, preserving fork history and stopping visibly on conflicts or permission failures.
 - Deliver `node:http` write callbacks when uncorking introduces transport backpressure, and retain error callbacks when the peer resets before the buffered write drains.

@@ -85,3 +85,8 @@ branch ownership, conflicts and permission failures. They do not prove live
 token write permissions. Read-only API checks and the first activated run
 are separate evidence; activation must not be described as complete until
 that run is observed.
+
+A landed sync reaches OpenClaw through a fork release. Dispatching the release
+workflow on `automation/sync-upstream` without a tag builds and smoke-tests every
+release target as a dry run; the release cadence and security-patch policy are in
+[OPENCLAW_RELEASE.md](OPENCLAW_RELEASE.md#upstream-sync-and-security-patches).

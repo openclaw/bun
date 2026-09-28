@@ -63,9 +63,7 @@ describe("bun run --tsconfig-override", () => {
 
     expect(successStdout).toContain("success from custom tsconfig");
 
-    if (!successStderr.includes("Internal error: directory mismatch")) {
-      expect(successStderr).toBe("");
-    }
+    expect(successStderr).toBe("");
     expect(successExitCode).toBe(0);
   });
 
@@ -104,9 +102,7 @@ describe("bun run --tsconfig-override", () => {
 
     expect(stdout).toContain("42");
 
-    if (!stderr.includes("Internal error: directory mismatch")) {
-      expect(stderr).toBe("");
-    }
+    expect(stderr).toBe("");
     expect(exitCode).toBe(0);
   });
 
@@ -151,9 +147,7 @@ describe("bun run --tsconfig-override", () => {
     expect(stdout).toContain("Button component");
     expect(stdout).toContain("monorepo-app");
 
-    if (!stderr.includes("Internal error: directory mismatch")) {
-      expect(stderr).toBe("");
-    }
+    expect(stderr).toBe("");
     expect(exitCode).toBe(0);
   });
 
@@ -200,9 +194,7 @@ describe("bun run --tsconfig-override", () => {
     expect(stdout).toContain("home-data");
     expect(stdout).toContain("formatted-test");
 
-    if (!stderr.includes("Internal error: directory mismatch")) {
-      expect(stderr).toBe("");
-    }
+    expect(stderr).toBe("");
     expect(exitCode).toBe(0);
   });
 
@@ -256,9 +248,7 @@ describe("bun run --tsconfig-override", () => {
     expect(stdout).toContain("core-module");
     expect(stdout).toContain("auth-feature");
 
-    if (!stderr.includes("Internal error: directory mismatch")) {
-      expect(stderr).toBe("");
-    }
+    expect(stderr).toBe("");
     expect(exitCode).toBe(0);
   });
 
@@ -297,9 +287,7 @@ describe("bun run --tsconfig-override", () => {
 
     expect(stdout).toContain("Result: 8");
 
-    if (!stderr.includes("Internal error: directory mismatch")) {
-      expect(stderr).toBe("");
-    }
+    expect(stderr).toBe("");
     expect(exitCode).toBe(0);
   });
 
@@ -328,5 +316,37 @@ describe("bun run --tsconfig-override", () => {
         expect(exitCode).toBe(0);
       });
     }
+  });
+});
+
+describe.each(["run", "build"])("bun %s --tsconfig-override", command => {
+  test.concurrent.each(["valid", "malformed"])("ignores an unused %s disk config", async diskConfig => {
+    await using dir = tempDir("tsconfig-override-directory-fd", {
+      "src/index.ts": `import { value } from "@selected"; console.log(value);`,
+      "src/selected.ts": `export const value = "selected through the override";`,
+      "src/wrong.ts": `export const value = "selected through the disk config";`,
+      "tsconfig.json":
+        diskConfig === "malformed"
+          ? "{"
+          : JSON.stringify({ compilerOptions: { baseUrl: ".", paths: { "@selected": ["./src/wrong.ts"] } } }),
+      "config/tsconfig.json": JSON.stringify({
+        compilerOptions: { baseUrl: "..", paths: { "@selected": ["./src/selected.ts"] } },
+      }),
+    });
+
+    await using proc = Bun.spawn({
+      cmd: [bunExe(), command, "--tsconfig-override", "./config/tsconfig.json", "./src/index.ts"],
+      env: bunEnv,
+      cwd: dir,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+
+    expect(stdout).toContain("selected through the override");
+    expect(stdout).not.toContain("selected through the disk config");
+    expect(stderr).toBe("");
+    expect(exitCode).toBe(0);
   });
 });
