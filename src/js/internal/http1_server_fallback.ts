@@ -367,6 +367,7 @@ function connectionListenerHTTP1(server, socket, options) {
     maybePauseFallbackReads,
     resumeFallbackReadsOnDrain,
     finishDrainedResponse,
+    publishResponseFinish,
     kMustCloseConnection,
   } = http1ServerPipeline;
   const { allMethods } = process.binding("http_parser");
@@ -508,6 +509,7 @@ function connectionListenerHTTP1(server, socket, options) {
     // response, replaying whatever it buffered.
     res.on("finish", function onFallbackResponseFinish() {
       const finishedReq = this.req;
+      publishResponseFinish(finishedReq, this, socket, server);
       if (!finishedReq._consuming && !finishedReq._readableState.resumeScheduled) finishedReq._dump();
       this.detachSocket(socket);
       // `_last`: onHttp1SocketEnd saw the client's FIN while this response owned the socket.
