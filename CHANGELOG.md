@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Point `NODE` and `npm_node_execpath` at the selected executable Node shim, including private fallback directories.
 - Avoid allocator handoffs during nonblocking event-loop polls.
 - Close idle Node HTTP connections after bodyless responses finish inside their handlers, while preserving pending request bodies, queued responses, and tunnels.
 - Report the actual stat error when an install patch file cannot be read, including symlink-loop errors. Thanks @SebTardif!

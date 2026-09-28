@@ -1147,15 +1147,24 @@ describe.concurrent("bun run", () => {
     },
   );
 
-  it.skipIf(isWindows)("node shim fallback keeps NODE and npm_node_execpath aligned with PATH", async () => {
+  it.skipIf(isWindows)("node shim fallback keeps NODE and npm_node_execpath executable", async () => {
     using dir = tempDir("bun-run-node-fallback", {
       "package.json": JSON.stringify({ name: "node-fallback", scripts: { probe: "node probe.mjs" } }),
       "probe.mjs": `
+        import { spawnSync } from "node:child_process";
+        const executables = {};
+        for (const name of ["NODE", "npm_node_execpath"]) {
+          const child = spawnSync(process.env[name], ["--eval", "process.stdout.write(String(Boolean(process.versions.bun)))"], {
+            encoding: "utf8",
+          });
+          executables[name] = { status: child.status, stdout: child.stdout, stderr: child.stderr, error: child.error?.code ?? null };
+        }
         console.log(JSON.stringify({
           bun: typeof Bun !== "undefined",
           node: process.env.NODE,
           npmNodeExecpath: process.env.npm_node_execpath,
           shim: process.env.PATH.split(":").find(entry => entry.includes("bun-node")),
+          executables,
         }));
       `,
       "empty-bin": {},
@@ -1180,8 +1189,11 @@ describe.concurrent("bun run", () => {
       const result = JSON.parse(stdout);
       expect(result.bun).toBe(true);
       expect(result.shim.startsWith(tmpdir + "/")).toBe(true);
-      expect(result.node).toBe(result.shim);
-      expect(result.npmNodeExecpath).toBe(result.shim);
+      expect(result.node).toBe(join(result.shim, "node"));
+      expect(result.npmNodeExecpath).toBe(join(result.shim, "node"));
+      for (const name of ["NODE", "npm_node_execpath"]) {
+        expect(result.executables[name]).toEqual({ status: 0, stdout: "true", stderr: "", error: null });
+      }
       expect(exitCode).toBe(0);
       return result.shim as string;
     }

@@ -1761,8 +1761,12 @@ impl RunCommand {
     pub(crate) fn bun_node_file_utf8() -> crate::Result<&'static ZStr> {
         #[cfg(not(windows))]
         {
-            Ok(bun_install::RunCommand::node_shim_dir_in_use()
-                .unwrap_or_else(bun_install::RunCommand::bun_node_dir))
+            let directory = bun_install::RunCommand::node_shim_dir_in_use()
+                .unwrap_or_else(bun_install::RunCommand::bun_node_dir);
+            let node_path = [directory.as_bytes(), b"/node\0"].concat();
+            let len = node_path.len() - 1;
+            let stored: &'static [u8] = runner_arena().alloc_slice_copy(&node_path);
+            Ok(ZStr::from_buf(stored, len))
         }
         #[cfg(windows)]
         {
