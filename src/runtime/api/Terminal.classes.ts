@@ -16,6 +16,14 @@ export default [
         fn: "write",
         length: 1,
       },
+      pause: {
+        fn: "pause",
+        length: 0,
+      },
+      resume: {
+        fn: "resume",
+        length: 0,
+      },
       resize: {
         fn: "resize",
         length: 2,

@@ -841,7 +841,7 @@ impl PosixBufferedReader {
             }
             // Re-entrant JS inside on_read_chunk can close the reader (nested on_pull -> read -> EOF); the captured `fd` is then stale.
             // SAFETY: caller contract (re-entry never frees `*this`).
-            if unsafe { (*this).is_done() } {
+            if unsafe { (*this).is_done() || (*this).flags.contains(PosixFlags::IS_PAUSED) } {
                 return;
             }
             if let Some(Stop::WouldBlock) = stop {

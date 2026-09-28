@@ -3,6 +3,8 @@
 ## Unreleased
 
 - Restore default Ctrl+C handling before spawning a Windows `Bun.Terminal` ConPTY child, as node-pty does, so `\x03` interrupts the foreground program even when Bun was started with Ctrl+C ignored (SSH, services, `detached: true`). Like node-pty, this also re-enables Ctrl+C handling in the Bun process itself.
+- Add `Bun.Terminal.pause()` and `resume()` for output backpressure: child writes block when the PTY queue fills, and PTY exit follows resumed output delivery.
+- Keep macOS subprocess exit handling non-blocking when kqueue reports ESRCH before a terminal child can be reaped.
 - Use a private fallback for unusable POSIX `node` shim directories instead of silently dropping `node`, warn when no shim can be created, and honor `BUN_TMPDIR` for the shim like the node-gyp directory.
 - Adapt upstream [#35565](https://github.com/oven-sh/bun/pull/35565): key the lifecycle-script and `--bun` `node` shim directory on the user id (`/tmp/bun-node-<uid>-<sha>`), so a shim directory another user created on the same host no longer drops `node` from lifecycle-script `PATH` (upstream [#42048](https://github.com/oven-sh/bun/issues/42048)).
 - Adapt upstream [#33288](https://github.com/oven-sh/bun/pull/33288) to preserve `node:diagnostics_channel` subscribers for an in-flight publication when callbacks subscribe, unsubscribe, or publish recursively.

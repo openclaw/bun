@@ -362,44 +362,10 @@ impl Process {
 
     #[cfg(unix)]
     fn on_wait_pid(&mut self, waitpid_result: &bun_sys::Result<WaitPidResult>, rusage: &Rusage) {
-        let pid = self.pid;
-        // Mutated only on the macOS ESRCH retry path below.
-        #[cfg(target_os = "macos")]
-        let mut rusage_result = *rusage;
-        #[cfg(not(target_os = "macos"))]
-        let rusage_result = *rusage;
-
-        let status: Option<Status> = Status::from(pid, waitpid_result).or_else(|| 'brk: {
-            match self.rewatch_posix() {
-                Ok(()) => {}
-                Err(err_) => {
-                    #[cfg(target_os = "macos")]
-                    if err_.get_errno() == bun_sys::E::ESRCH {
-                        break 'brk Status::from(
-                            pid,
-                            &posix_spawn::wait4(
-                                pid,
-                                // Normally we would use WNOHANG to avoid blocking the event loop.
-                                // However, there seems to be a race condition where the operating system
-                                // tells us that the process has already exited (ESRCH) but the waitpid
-                                // call with WNOHANG doesn't return the status yet.
-                                // As a workaround, we use 0 to block the event loop until the status is available.
-                                // This should be fine because the process has already exited, so the data
-                                // should become available basically immediately. Also, testing has shown that this
-                                // occurs extremely rarely and only under high load.
-                                0,
-                                Some(&mut rusage_result),
-                            ),
-                        );
-                    }
-                    break 'brk Some(Status::Err(err_));
-                }
-            }
-            None
-        });
-
+        let status = Status::from(self.pid, waitpid_result)
+            .or_else(|| self.rewatch_posix().err().map(Status::Err));
         let Some(status) = status else { return };
-        self.on_exit(status, &rusage_result);
+        self.on_exit(status, rusage);
     }
 
     pub fn watch_or_reap(&mut self) -> bun_sys::Result<bool> {
@@ -413,7 +379,7 @@ impl Process {
             Err(err) => {
                 #[cfg(unix)]
                 if err.get_errno() == bun_sys::E::ESRCH {
-                    self.wait(true);
+                    self.wait(!cfg!(target_os = "macos"));
                     return Ok(self.has_exited());
                 }
                 Err(err)
