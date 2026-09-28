@@ -4,6 +4,7 @@ import { once } from "node:events";
 import fs from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { Readable } from "node:stream";
+import { pathToFileURL } from "node:url";
 import wt, {
   BroadcastChannel,
   getEnvironmentData,
@@ -436,6 +437,10 @@ describe("execArgv preloads", () => {
         globalThis.execArgvPreloads ??= [];
         globalThis.execArgvPreloads.push("require");
       `,
+      "spaced dir/import.mjs": `
+        globalThis.execArgvPreloads ??= [];
+        globalThis.execArgvPreloads.push("url-import");
+      `,
       "node_modules/worker-preload-conditions/package.json": JSON.stringify({
         name: "worker-preload-conditions",
         exports: { import: "./import.mjs", require: "./require.cjs" },
@@ -500,6 +505,29 @@ describe("execArgv preloads", () => {
         workerData: { from: "parent" },
       });
     });
+  });
+
+  test("resolves file: URL preloads like import() specifiers", async () => {
+    // Percent-escapes decode on every platform; on Windows the drive letter must survive too.
+    const url = pathToFileURL(join(String(fixtureDir), "spaced dir", "import.mjs")).href;
+    expect(url).toContain("%20");
+    const execArgv = ["--import", url];
+    expect(await runWorker(execArgv)).toEqual({
+      argv: ["worker-arg"],
+      execArgv,
+      preloads: ["url-import"],
+      workerData: { from: "parent" },
+    });
+    await using proc = Bun.spawn({
+      cmd: [bunExe(), "--preload", url, "-e", "console.log(JSON.stringify(globalThis.execArgvPreloads))"],
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect(stderr).toBe("");
+    expect(stdout).toBe('["url-import"]\n');
+    expect(exitCode).toBe(0);
   });
 
   test("inherits parent preloads unless execArgv is explicitly empty", async () => {
