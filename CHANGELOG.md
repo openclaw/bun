@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Preserve child signals and inherited stdio in `bun run --silent` on macOS when startup marks descriptors close-on-exec.
 - Publish Node-compatible `http.server.response.finish` diagnostics with request, response, socket, and server identities before advancing queued HTTP responses.
 - Resolve `file:` URL preloads (`--preload`, `--import`, and Worker `execArgv`) like `import()` specifiers, so percent-encoded paths and Windows drive letters load instead of failing with "preload not found".
 - Sync upstream through `a4f1429148114ddc3bccc13764781be27a7a9523`, preserving the fork's compatibility patches and contributor histories. Reconcile HTTP body, pipeline, close, and TLS lifecycles with upstream Node compatibility changes.
