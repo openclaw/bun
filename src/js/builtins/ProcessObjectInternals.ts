@@ -446,7 +446,19 @@ export function windowsEnv(
   editWindowsEnvVar: EditWindowsEnvVarCb,
   coerceForWrite,
   resetForDelete,
+  getSharedEnv,
 ) {
+  let sharedEnv;
+  const shared = () => {
+    if (sharedEnv === undefined) {
+      const env = getSharedEnv();
+      if (env) {
+        Reflect.setPrototypeOf(env, Reflect.getPrototypeOf(internalEnv));
+        sharedEnv = env;
+      }
+    }
+    return sharedEnv;
+  };
   (internalEnv as any)[Bun.inspect.custom] = () => {
     let o = {};
     for (let k of envMapList) {
@@ -486,7 +498,9 @@ export function windowsEnv(
   }
 
   const envProxy = new Proxy(internalEnv, {
-    get(_, p) {
+    get(_, p, receiver) {
+      const env = shared();
+      if (env) return Reflect.get(env, p, receiver);
       if (typeof p !== "string") {
         // Symbol keys (e.g. Bun.inspect.custom) live on internalEnv as-is.
         return (internalEnv as any)[p];
@@ -508,6 +522,8 @@ export function windowsEnv(
       if (receiver !== envProxy) {
         return Reflect.set({ __proto__: null }, p, value, receiver);
       }
+      const env = shared();
+      if (env) return Reflect.set(env, p, value);
       // Node's process.env throws a TypeError for symbol keys and symbol
       // values (ToString on a Symbol throws).
       if (typeof p === "symbol" || typeof value === "symbol") {
@@ -524,6 +540,8 @@ export function windowsEnv(
       return true;
     },
     has(_, p) {
+      const env = shared();
+      if (env) return Reflect.has(env, p);
       // Case-insensitive env-var query first, then ordinary lookup so own
       // as-is properties and Object.prototype methods answer `in` like node
       // (`'hasOwnProperty' in process.env` is true on all platforms).
@@ -533,6 +551,8 @@ export function windowsEnv(
       return p in internalEnv;
     },
     deleteProperty(_, p) {
+      const env = shared();
+      if (env) return Reflect.deleteProperty(env, p);
       // Deleting a symbol key is a no-op that reports success in Node.
       if (typeof p === "symbol") {
         return true;
@@ -549,6 +569,8 @@ export function windowsEnv(
       return delete internalEnv[k];
     },
     defineProperty(_, p, attributes) {
+      const env = shared();
+      if (env) return Reflect.defineProperty(env, p, attributes);
       // String(symbol) does not throw (it returns the descriptive string), so
       // reject symbol keys explicitly like the set trap does.
       if (typeof p === "symbol") {
@@ -587,6 +609,8 @@ export function windowsEnv(
       return true;
     },
     getOwnPropertyDescriptor(target, p) {
+      const env = shared();
+      if (env) return Reflect.getOwnPropertyDescriptor(env, p);
       if (typeof p === "string") {
         const desc = Reflect.getOwnPropertyDescriptor(target, p.toUpperCase());
         if (desc) return desc;
@@ -594,7 +618,14 @@ export function windowsEnv(
       // Own as-is properties (toJSON, Bun.inspect.custom symbol).
       return Reflect.getOwnPropertyDescriptor(target, p);
     },
+    setPrototypeOf(target, prototype) {
+      const changed = Reflect.setPrototypeOf(target, prototype);
+      if (changed && sharedEnv) Reflect.setPrototypeOf(sharedEnv, prototype);
+      return changed;
+    },
     ownKeys() {
+      const env = shared();
+      if (env) return Reflect.ownKeys(env);
       // .slice() because paranoia that there is a way to call this without the engine cloning it for us
       return envMapList.slice();
     },

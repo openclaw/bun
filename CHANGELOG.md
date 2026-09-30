@@ -64,3 +64,4 @@
 - Keep recursive `fs.promises.readdir` Dirent traversal out of directory symlink targets and preserve the immutable full startup argv in `process.report` on every platform.
 
 - Match Node minimatch semantics in `path.matchesGlob()`, including negated extglobs and dot-segment normalization, using the existing filesystem glob matcher.
+- Preserve cached `process.env` and `Bun.env` references when the first `SHARE_ENV` worker starts, including shared writes, deletes, property definitions, and enumeration.
