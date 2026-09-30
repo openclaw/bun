@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Restore fast realpath lookup without releasing POSIX locks: use O_PATH on Linux and fd-free full-path attributes on macOS, preserving symlink, firmlink, and literal-path behavior.
 - Return undefined from filesystem access operations and null on successful symlink callbacks. Thanks @robobun!
 - Keep empty-histogram NaN values and macOS SDK signpost attributes portable across supported compilers.
 - Preserve custom Headers iterators and copy server.fetch header ownership. Thanks @robobun!
