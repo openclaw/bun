@@ -9,6 +9,7 @@
 - Copy regular-file `/dev/fd` sources on macOS with `fs.copyFile` and `fs.cp` above 128 KiB, preserving the source descriptor's offset at every size.
 - Keep runtime plugin resolution out of the content-addressed transpiler cache so changed plugin answers and temporary module generations cannot reuse stale import paths. Thanks @vincentkoc!
 - Preserve child signals and inherited stdio in `bun run --silent` on macOS when startup marks descriptors close-on-exec.
+- Expose live parent-end child stdio descriptors through `_handle.fd` and blocking-mode control, with idempotent stdin `ref()`/`unref()`, so TypeScript's synchronous native API can use piped IPC. Ports [oven-sh/bun#39760](https://github.com/oven-sh/bun/pull/39760). Thanks @robobun!
 - Publish Node-compatible `http.server.response.finish` diagnostics with request, response, socket, and server identities before advancing queued HTTP responses.
 - Resolve `file:` URL preloads (`--preload`, `--import`, and Worker `execArgv`) like `import()` specifiers, so percent-encoded paths and Windows drive letters load instead of failing with "preload not found".
 - Sync upstream through `a4f1429148114ddc3bccc13764781be27a7a9523`, preserving the fork's compatibility patches and contributor histories. Reconcile HTTP body, pipeline, close, and TLS lifecycles with upstream Node compatibility changes.
