@@ -26,6 +26,52 @@ use crate::webcore::blob::store::Data as StoreData;
 
 pub(crate) use bun_http::ssl_config::SSLConfig;
 
+#[bun_jsc::host_fn]
+pub(crate) fn set_default_ca_certificates(
+    global: &JSGlobalObject,
+    frame: &jsc::CallFrame,
+) -> JsResult<JSValue> {
+    jsc::mark_binding!();
+    let [options] = frame.arguments_as_array::<1>();
+    let config = SSLConfig::from_js(VirtualMachine::get(), global, options)?
+        .ok_or_else(|| global.throw_invalid_arguments(format_args!("Expected CA certificates")))?;
+    let config = bun_http::ssl_config::global_registry::intern(config);
+    // SAFETY: called on this VM's JS thread after runtime-state initialization.
+    // Parsing above can enter JS; no state borrow is held across it.
+    unsafe {
+        (*crate::jsc_hooks::runtime_state())
+            .default_ca_config
+            .set(Some(config));
+    }
+    Ok(JSValue::UNDEFINED)
+}
+
+pub(crate) fn with_default_ca(
+    config: Option<bun_http::ssl_config::SharedPtr>,
+) -> Option<bun_http::ssl_config::SharedPtr> {
+    // SAFETY: fetch runs on the owning VM's JS thread; cloning the Arc cannot enter JS.
+    let defaults = unsafe {
+        (*crate::jsc_hooks::runtime_state())
+            .default_ca_config
+            .get()
+            .clone()
+    };
+    let Some(defaults) = defaults else {
+        return config;
+    };
+    let Some(config) = config else {
+        return Some(defaults);
+    };
+    if config.ca.is_some() || !config.ca_file_name.is_null() {
+        return Some(config);
+    }
+    let mut config = (*config).clone();
+    let mut defaults = (*defaults).clone();
+    config.ca = defaults.ca.take();
+    config.requires_custom_request_ctx = true;
+    Some(bun_http::ssl_config::global_registry::intern(config))
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // ReadFromBlobError
 // ──────────────────────────────────────────────────────────────────────────
@@ -333,6 +379,13 @@ fn handle_file_for_field(
     field: &'static str,
     file: &jsc::generated::SSLConfigFile,
 ) -> JsResult<CStrSlice> {
+    // A present empty CA list means trust nothing, not use the bundled roots.
+    if field == "ca"
+        && let jsc::generated::SSLConfigFile::Array(list) = file
+        && list.items().is_empty()
+    {
+        return Ok(Some(Vec::new().into_boxed_slice()));
+    }
     match handle_file(global, file) {
         Ok(v) => Ok(v),
         Err(ReadFromBlobError::Js(e)) => Err(e),

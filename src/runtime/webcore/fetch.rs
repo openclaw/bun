@@ -1979,7 +1979,7 @@ fn fetch_impl<const ALLOW_GET_BODY: bool>(
         proxy_headers: proxy_headers.take(),
         url_proxy_buffer: url_proxy_boxed,
         signal,
-        ssl_config: ssl_config.take(),
+        ssl_config: crate::socket::ssl_config::with_default_ca(ssl_config.take()),
         upgraded_connection,
         forced_protocol,
         is_node_http_client: ALLOW_GET_BODY,

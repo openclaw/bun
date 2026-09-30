@@ -1292,7 +1292,8 @@ SSL_CTX *us_ssl_ctx_build_raw(struct us_bun_socket_context_options_t options,
                                     : SSL_VERIFY_PEER,
         us_verify_callback);
 
-  } else if (options.ca && options.ca_count > 0) {
+  } else if (options.ca) {
+    /* A present empty CA list selects an empty trust store. */
     us_ex_idx_ensure();
     SSL_CTX_set_ex_data(ssl_context, us_ctx_user_ca_ex_idx, (void *)1);
     /* As above: user CAs only, into the SSL_CTX's own initially-empty store —

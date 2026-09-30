@@ -153,6 +153,8 @@ Socket close notifications use internal scheduling and continue to run when user
 
 ### [`node:tls`](https://nodejs.org/api/tls.html)
 
+Native `fetch()` uses `tls.setDefaultCACertificates()` overrides for new TLS connections. Explicit request or `FetchSession` CAs take precedence; an empty CA list trusts no certificates. Overrides are local to the calling thread, like Node.
+
 TLS starts reading paused Duplex and HTTP CONNECT transports after installing its listeners, including handshake bytes buffered before adoption.
 
 🟡 Missing `pskCallback`, OCSP stapling (`requestOCSP`), the server `'newSession'`/`'resumeSession'` events and session ticket keys (`ticketKeys` is ignored). As a result, session resumption does not work across processes. Bun uses BoringSSL, so `tlsSocket.renegotiate()` always fails and `getEphemeralKeyInfo()`/`getSharedSigalgs()` return no information.

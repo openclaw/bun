@@ -31,6 +31,7 @@ const getExtraCACertificates = $newCppFunction("NodeTLS.cpp", "getExtraCACertifi
 const getSystemCACertificates = $newCppFunction("NodeTLS.cpp", "getSystemCACertificates", 1);
 const canonicalizeIP = $newCppFunction("NodeTLS.cpp", "Bun__canonicalizeIP", 1);
 const parseCACertificates = $newCppFunction("NodeTLS.cpp", "parseCACertificates", 1);
+const setDefaultCACertificatesNative = $newRustFunction("runtime/socket/SSLConfig.rs", "setDefaultCACertificates", 1);
 
 const getTLSDefaultCiphers = $newCppFunction("NodeTLS.cpp", "getDefaultCiphers", 0);
 const setTLSDefaultCiphers = $newCppFunction("NodeTLS.cpp", "setDefaultCiphers", 1);
@@ -1809,9 +1810,8 @@ type CACertInput = string | NodeJS.ArrayBufferView;
 // Node validates `certs` as an Array (its ERR_INVALID_ARG_TYPE renders the
 // 'Array' name as "an instance of Array"; Bun's validateArray renders the same
 // name as "of type Array", so build the error directly to match Node here),
-// then hands the certs to the native root store. Bun has no equivalent native
-// store override, so keep a JS-side override that getCACertificates('default')
-// and createSecureContext() read.
+// then hands the certs to the native root store. Keep native fetch's owned
+// configuration in sync with the JS default used by node:tls.
 function setDefaultCACertificates(certs: ReadonlyArray<CACertInput>): void {
   if (!$isArray(certs)) {
     let received: string;
@@ -1837,6 +1837,7 @@ function setDefaultCACertificates(certs: ReadonlyArray<CACertInput>): void {
   if (normalized.length === 0 && snapshot.length > 0) {
     throw $ERR_CRYPTO_OPERATION_FAILED("No valid certificates found in the provided array");
   }
+  setDefaultCACertificatesNative({ __proto__: null, ca: normalized });
   _defaultCACertificatesOverride = normalized;
 }
 

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { bunEnv, bunExe, isASAN, isIPv6, isWindows, tmpdirSync } from "harness";
+import { bunEnv, bunExe, isASAN, isIPv6, isWindows, tempDir, tmpdirSync } from "harness";
 import { once } from "node:events";
 import { readFileSync } from "node:fs";
 import net from "node:net";
@@ -1596,4 +1596,24 @@ describe.concurrent("fetch-tls", () => {
       expect(stderr).toContain("ignoring extra certs");
     }
   });
+});
+
+it.each(["override", "empty"])("fetch honors default CA certificates (%s)", async mode => {
+  using dir = tempDir("fetch-default-ca", {
+    "cert.pem": validTls.cert,
+    "key.pem": validTls.key,
+    "other-cert.pem": CERT_LOCALHOST_ONLY.cert,
+    "other-key.pem": CERT_LOCALHOST_ONLY.key,
+  });
+  await using proc = Bun.spawn({
+    cmd: [bunExe(), join(import.meta.dir, "fixture-default-ca.js"), String(dir), mode],
+    env: {
+      ...bunEnv,
+      NODE_EXTRA_CA_CERTS: mode === "empty" ? join(String(dir), "cert.pem") : undefined,
+      NODE_TLS_REJECT_UNAUTHORIZED: undefined,
+    },
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect({ stdout, stderr, exitCode }).toEqual({ stdout: "ok\n", stderr: "", exitCode: 0 });
 });

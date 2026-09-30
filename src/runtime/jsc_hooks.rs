@@ -31,7 +31,7 @@ use bun_jsc::virtual_machine::{
 };
 use bun_jsc::{
     AnyPromise, ErrorableResolvedSource, JSGlobalObject, JSInternalPromise, JSModuleLoader,
-    JSValue, JsResult, ResolvedSource, StringJsc as _,
+    JSValue, JsCell, JsResult, ResolvedSource, StringJsc as _,
 };
 
 use bun_ast::ImportKind;
@@ -71,6 +71,8 @@ pub(crate) struct RuntimeState {
     /// `RareData.ssl_ctx_cache` — concrete digest-keyed weak `SSL_CTX*` cache.
     /// Same cycle-break story as `sql_rare`.
     pub(crate) ssl_ctx_cache: crate::api::SSLContextCache::SSLContextCache,
+    /// Immutable default roots for this VM; requests retain their own shared reference.
+    pub(crate) default_ca_config: JsCell<Option<bun_http::ssl_config::SharedPtr>>,
     /// `RareData.global_dns_data` — per-VM resolver + c-ares channel.
     /// Lazy-init by [`crate::dns_jsc::global_resolver`]; freed when this box
     /// drops in [`deinit_runtime_state`].
@@ -327,6 +329,7 @@ unsafe fn init_runtime_state(
             postgresql_context: Default::default(),
         },
         ssl_ctx_cache: Default::default(),
+        default_ca_config: JsCell::new(None),
         global_dns_data: core::cell::OnceCell::new(),
         entry_point: ServerEntryPoint::default(),
         // `borrowing_default()` wraps `mi_heap_main()` so `Transpiler`-level
