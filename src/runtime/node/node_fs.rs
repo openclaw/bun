@@ -4802,7 +4802,12 @@ impl NodeFS {
         let mut broke = false;
         'toplevel: while remain > 0 {
             let read_len = (buf.len() as u64).min(remain) as usize;
-            let amt = match Syscall::read(src_fd, &mut buf[..read_len]) {
+            // Opening /dev/fd/N on macOS shares the caller's offset; copy from zero without consuming it.
+            #[cfg(target_os = "macos")]
+            let read_result = Syscall::pread(src_fd, &mut buf[..read_len], *wrote as i64);
+            #[cfg(not(target_os = "macos"))]
+            let read_result = Syscall::read(src_fd, &mut buf[..read_len]);
+            let amt = match read_result {
                 Ok(result) => result,
                 Err(err) => {
                     return Err(if !src.is_empty() {
@@ -4841,7 +4846,11 @@ impl NodeFS {
         }
         if !broke {
             'outer: loop {
-                let amt = match Syscall::read(src_fd, buf) {
+                #[cfg(target_os = "macos")]
+                let read_result = Syscall::pread(src_fd, buf, *wrote as i64);
+                #[cfg(not(target_os = "macos"))]
+                let read_result = Syscall::read(src_fd, buf);
+                let amt = match read_result {
                     Ok(result) => result,
                     Err(err) => {
                         return Err(if !src.is_empty() {
@@ -4925,6 +4934,16 @@ impl NodeFS {
         }
     }
 
+    #[cfg(target_os = "macos")]
+    fn is_devfs_path(path: &ZStr) -> bool {
+        // Darwin copyfile rejects /dev/fd paths because stat and fstat report different device IDs.
+        sys::statfs(path).is_ok_and(|fs| {
+            fs.f_fstypename
+                .map(|byte| byte as u8)
+                .starts_with(b"devfs\0")
+        })
+    }
+
     /// https://github.com/libuv/libuv/pull/2233
     /// https://github.com/pnpm/pnpm/issues/2761
     /// https://github.com/libuv/libuv/pull/2578
@@ -4962,7 +4981,8 @@ impl NodeFS {
 
                 // 64 KB is about the break-even point for clonefile() to be worth it
                 // at least, on an M1 with an NVME SSD.
-                if stat_.st_size > 128 * 1024 {
+                let mut use_read_write = stat_.st_size <= 128 * 1024;
+                if !use_read_write {
                     if !args.mode.shouldnt_overwrite() {
                         // clonefile() will fail if it already exists
                         let _ = Syscall::unlink(dest);
@@ -4977,7 +4997,9 @@ impl NodeFS {
                         let _ = Syscall::chmod(dest, stat_.st_mode as u32);
                         return Ok(());
                     }
-                } else {
+                    use_read_write = Self::is_devfs_path(src);
+                }
+                if use_read_write {
                     let src_fd = match Syscall::open(src, sys::O::RDONLY, 0o644) {
                         Ok(result) => result,
                         Err(err) => return Err(err.with_path(args.src.slice())),
@@ -8523,7 +8545,8 @@ impl NodeFS {
 
             // 64 KB is about the break-even point for clonefile() to be worth it
             // at least, on an M1 with an NVME SSD.
-            if stat_.st_size > 128 * 1024 {
+            let mut use_read_write = stat_.st_size <= 128 * 1024;
+            if !use_read_write {
                 if !mode.shouldnt_overwrite() {
                     // clonefile() will fail if it already exists
                     let _ = Syscall::unlink(dest);
@@ -8538,7 +8561,9 @@ impl NodeFS {
                     let _ = Syscall::chmod(dest, stat_.st_mode as u32);
                     return Ok(());
                 }
-            } else {
+                use_read_write = Self::is_devfs_path(src);
+            }
+            if use_read_write {
                 let src_fd = match Syscall::open(src, sys::O::RDONLY, 0o644) {
                     Ok(result) => result,
                     Err(err) => {

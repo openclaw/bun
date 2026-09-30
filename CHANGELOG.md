@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Copy regular-file `/dev/fd` sources on macOS with `fs.copyFile` and `fs.cp` above 128 KiB, preserving the source descriptor's offset at every size.
 - Preserve child signals and inherited stdio in `bun run --silent` on macOS when startup marks descriptors close-on-exec.
 - Publish Node-compatible `http.server.response.finish` diagnostics with request, response, socket, and server identities before advancing queued HTTP responses.
 - Resolve `file:` URL preloads (`--preload`, `--import`, and Worker `execArgv`) like `import()` specifiers, so percent-encoded paths and Windows drive letters load instead of failing with "preload not found".

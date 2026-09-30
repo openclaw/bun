@@ -1,6 +1,6 @@
 import { describe, expect, jest, test } from "bun:test";
 import fs from "fs";
-import { bunEnv, bunExe, isLinux, isPosix, isWindows, tempDir } from "harness";
+import { bunEnv, bunExe, isLinux, isMacOS, isPosix, isWindows, tempDir } from "harness";
 import { mkfifo } from "mkfifo";
 import { isAbsolute, join } from "path";
 
@@ -27,6 +27,46 @@ for (const [name, copy] of impls) {
   }
 
   describe("fs." + name, () => {
+    test.skipIf(!isMacOS)("does not fall back from forced cloning of /dev/fd", async () => {
+      using dir = tempDir("cp-devfd-force", { source: Buffer.alloc(172832, 0x5a) });
+      const fd = fs.openSync(join(String(dir), "source"), "r");
+      try {
+        const destination = join(String(dir), "destination");
+        await expect(
+          Promise.resolve().then(() =>
+            copy(`/dev/fd/${fd}`, destination, { mode: fs.constants.COPYFILE_FICLONE_FORCE }),
+          ),
+        ).rejects.toThrow(expect.objectContaining({ code: "EINVAL" }));
+        expect(fs.existsSync(destination)).toBe(false);
+        expect(fs.fstatSync(fd).size).toBe(172832);
+      } finally {
+        fs.closeSync(fd);
+      }
+    });
+
+    test.skipIf(!isMacOS).each([131072, 131073, 172832])(
+      "copies a /dev/fd source at %i bytes without consuming its offset",
+      async size => {
+        const contents = Buffer.alloc(size, 0x5a);
+        contents[0] = 0x41;
+        contents[1] = 0x42;
+        using dir = tempDir("cp-devfd", { source: contents });
+        const fd = fs.openSync(join(String(dir), "source"), "r");
+        try {
+          expect(fs.readSync(fd, Buffer.alloc(1), 0, 1, null)).toBe(1);
+          const destination = join(String(dir), "destination");
+          await copy(`/dev/fd/${fd}`, destination);
+          expect(fs.readFileSync(destination)).toEqual(contents);
+          expect(fs.fstatSync(fd).size).toBe(size);
+          const next = Buffer.alloc(1);
+          expect(fs.readSync(fd, next, 0, 1, null)).toBe(1);
+          expect(next[0]).toBe(contents[1]);
+        } finally {
+          fs.closeSync(fd);
+        }
+      },
+    );
+
     test("single file", async () => {
       await using basename = tempDir("cp", {
         "from/a.txt": "a",
