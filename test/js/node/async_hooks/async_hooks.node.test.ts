@@ -577,3 +577,13 @@ test("timer hooks survive a replaced global Promise", async () => {
   const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
   expect({ stdout, stderr, exitCode }).toEqual({ stdout: "1", stderr: "", exitCode: 0 });
 });
+
+test("WORKER destroy follows native exit exactly once and snapshots hook changes", async () => {
+  await using proc = Bun.spawn({
+    cmd: [bunExe(), `${import.meta.dir}/fixture-worker-destroy.js`],
+    env: bunEnv,
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect({ stdout, stderr, exitCode }).toEqual({ stdout: "ok\n", stderr: "", exitCode: 0 });
+});

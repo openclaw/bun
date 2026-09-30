@@ -6,6 +6,7 @@ const allocateAsyncHooksId = $newRustFunction("runtime/timer/Timer.rs", "interna
 let hookDispatchDepth = 0;
 let pendingTickInitHooks;
 let deferredHookMutations;
+let destroyDispatcher: ((asyncId: number) => void) | undefined;
 
 function mutableTickInitHooks() {
   if (hookDispatchDepth === 0) return tickInitHooks;
@@ -27,6 +28,12 @@ function removeFromArray(array, value) {
 
 export default {
   tickInitHooks,
+  setDestroyDispatcher(dispatcher: (asyncId: number) => void) {
+    destroyDispatcher = dispatcher;
+  },
+  queueDestroy(asyncId: number) {
+    destroyDispatcher?.(asyncId);
+  },
   addInitHook(hook) {
     $arrayPush(mutableTickInitHooks(), hook);
   },

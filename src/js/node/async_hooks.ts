@@ -487,7 +487,7 @@ function isEmptyFunction(f: Function) {
 }
 
 const createHookPartialWarning = createWarning(
-  "async_hooks.createHook in Bun emits init for TickObject and WORKER, and init/destroy for timers. " +
+  "async_hooks.createHook in Bun emits init for TickObject, and init/destroy for WORKER and timers. " +
     "before, after, promiseResolve, and other resource events are not implemented.",
   true,
 );
@@ -499,7 +499,7 @@ type TimerHook = { init?: Function; destroy?: Function; hook: object };
 let timerHooks: TimerHook[] = [];
 const asyncHooksTick = require("internal/async_hooks_tick");
 let timerDispatchInstalled = false;
-let pendingTimerDestroys: number[] | undefined;
+let pendingResourceDestroys: number[] | undefined;
 let pendingTimerHooks: typeof timerHooks | undefined;
 
 function fatalTimerHookError(err) {
@@ -550,7 +550,7 @@ function emitTimerInit(asyncId: number, type: string, resource: object) {
   }
 }
 
-function emitTimerDestroy(asyncId: number) {
+function emitResourceDestroy(asyncId: number) {
   asyncHooksTick.beginHookDispatch();
   try {
     for (var i = 0, n = timerHooks.length; i < n; i++) {
@@ -567,34 +567,38 @@ function emitTimerDestroy(asyncId: number) {
   }
 }
 
-function timerDestroyHooksExist() {
+function destroyHooksExist() {
   for (var i = 0, n = timerHooks.length; i < n; i++) {
     if (timerHooks[i].destroy !== undefined) return true;
   }
   return false;
 }
 
-function flushTimerDestroys() {
-  const pending = pendingTimerDestroys;
-  pendingTimerDestroys = undefined;
+function flushResourceDestroys() {
+  const pending = pendingResourceDestroys;
+  pendingResourceDestroys = undefined;
   if (pending === undefined) return;
-  for (var i = 0, n = pending.length; i < n; i++) emitTimerDestroy(pending[i]);
+  for (var i = 0, n = pending.length; i < n; i++) emitResourceDestroy(pending[i]);
 }
 
-function queueTimerDestroy(asyncId: number) {
-  if (pendingTimerDestroys === undefined) {
-    pendingTimerDestroys = [asyncId];
-    queueAsyncHooksMicrotask(flushTimerDestroys);
+function queueResourceDestroy(asyncId: number) {
+  if (pendingResourceDestroys === undefined) {
+    pendingResourceDestroys = [asyncId];
+    queueAsyncHooksMicrotask(flushResourceDestroys);
   } else {
-    $arrayPush(pendingTimerDestroys, asyncId);
+    $arrayPush(pendingResourceDestroys, asyncId);
   }
 }
+
+asyncHooksTick.setDestroyDispatcher((asyncId: number) => {
+  if (destroyHooksExist()) queueResourceDestroy(asyncId);
+});
 
 // Called by the native timer owner. event is 0 for Timeout init, 1 for
 // Immediate init, and 2 when either kind reaches a terminal state.
 function dispatchTimerHook(event: number, resource: object, asyncId: number) {
   if (event === 2) {
-    if (timerDestroyHooksExist()) queueTimerDestroy(asyncId);
+    if (destroyHooksExist()) queueResourceDestroy(asyncId);
     return;
   }
 

@@ -824,6 +824,7 @@ class Worker extends EventEmitter {
   #performance;
   #name: string;
   #exited = false;
+  #asyncId = 0;
   #stdinPort;
   #stdoutPort;
   // node's kPublicPort: parent end of the parentPort channel.
@@ -1032,6 +1033,7 @@ class Worker extends EventEmitter {
   #emitAsyncHooksInit() {
     const asyncHooksTick = require("internal/async_hooks_tick");
     const { tickInitHooks, newAsyncId } = asyncHooksTick;
+    const asyncId = (this.#asyncId = newAsyncId());
     const count = tickInitHooks.length;
     if (count === 0) return;
     const worker = this;
@@ -1042,7 +1044,6 @@ class Worker extends EventEmitter {
         return _workerHasRef(worker.#worker);
       },
     };
-    const asyncId = newAsyncId();
     // Snapshot: enable()/disable() from inside a hook must not affect the
     // in-flight dispatch (node stages such mutations in tmp_array).
     const snapshot = $newArrayWithSize<Function>(count);
@@ -1233,46 +1234,55 @@ class Worker extends EventEmitter {
   }
 
   #onClose(e) {
+    if (this.#exited) return;
     this.#exited = true;
-    // Revoke the eval blob: URL now that the worker has exited; the
-    // FinalizationRegistry remains only as a GC safety net.
-    if (this.#urlToRevoke) {
-      URL.revokeObjectURL(this.#urlToRevoke);
-      this.#urlToRevoke = "";
-    }
-    if (this.#messagingThreadId !== undefined) {
-      messaging.destroyMainThreadPort(this.#messagingThreadId);
-      this.#messagingThreadId = undefined;
-    }
-    // End captured stdio readables when the worker exits, even if it was
-    // terminated before its own streams finished.
-    if (this.#stdout) {
-      this.#stdout.endFromOwner();
-    }
-    if (this.#stderr) {
-      this.#stderr.endFromOwner();
-    }
-    // Close the captured stdout/stderr control ports so worker.ref() can't pin the
-    // parent loop after exit (mirrors #stdinPort below).
-    this.#stdoutPort?.close();
-    this.#stderrPort?.close();
-    // Tear down the parent-side stdin Writable + port so post-exit writes fail
-    // (ERR_STREAM_DESTROYED) instead of silently no-oping into a closed peer.
-    if (this.#stdin) {
-      this.#stdin.destroy();
-    }
-    this.#stdinPort?.close();
-    // node delivers everything the worker posted before it exited ahead of
-    // 'exit' (kOnExit drains the public port), then closes the port.
-    {
-      let entry;
-      while ((entry = _receiveMessageOnPort(this.#publicPort)) !== undefined) {
-        this.emit("message", entry.message);
+    const asyncId = this.#asyncId;
+    this.#asyncId = 0;
+    try {
+      // Revoke the eval blob: URL now that the worker has exited; the
+      // FinalizationRegistry remains only as a GC safety net.
+      if (this.#urlToRevoke) {
+        URL.revokeObjectURL(this.#urlToRevoke);
+        this.#urlToRevoke = "";
       }
-      this.#publicPort.close();
+      if (this.#messagingThreadId !== undefined) {
+        messaging.destroyMainThreadPort(this.#messagingThreadId);
+        this.#messagingThreadId = undefined;
+      }
+      // End captured stdio readables when the worker exits, even if it was
+      // terminated before its own streams finished.
+      if (this.#stdout) {
+        this.#stdout.endFromOwner();
+      }
+      if (this.#stderr) {
+        this.#stderr.endFromOwner();
+      }
+      // Close the captured stdout/stderr control ports so worker.ref() can't pin the
+      // parent loop after exit (mirrors #stdinPort below).
+      this.#stdoutPort?.close();
+      this.#stderrPort?.close();
+      // Tear down the parent-side stdin Writable + port so post-exit writes fail
+      // (ERR_STREAM_DESTROYED) instead of silently no-oping into a closed peer.
+      if (this.#stdin) {
+        this.#stdin.destroy();
+      }
+      this.#stdinPort?.close();
+      // node delivers everything the worker posted before it exited ahead of
+      // 'exit' (kOnExit drains the public port), then closes the port.
+      {
+        let entry;
+        while ((entry = _receiveMessageOnPort(this.#publicPort)) !== undefined) {
+          this.emit("message", entry.message);
+        }
+        this.#publicPort.close();
+      }
+      this.#onExitPromise = e.code;
+      this.emit("exit", e.code);
+    } finally {
+      // Native exit releases the handle after this callback; dispatch later,
+      // including when an exit listener throws or calls terminate() again.
+      if (asyncId !== 0) require("internal/async_hooks_tick").queueDestroy(asyncId);
     }
-    this.#onExitPromise = e.code;
-    this.emit("exit", e.code);
   }
 
   #onError(event: ErrorEvent) {
