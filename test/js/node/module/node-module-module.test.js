@@ -718,8 +718,16 @@ console.log("survived", require("./late.js"));`,
           /^[0-9a-f]{16}$/.test(path.basename(f)),
         ).length;
       const waitForFiles = async minimum => {
-        const deadline = Date.now() + 10_000;
-        while (files() < minimum) {
+        let deadline = Date.now() + 10_000;
+        let previous = 0;
+        while (true) {
+          const current = files();
+          if (current >= minimum) return;
+          // Detect stranded work without timing out slow, low-priority compilation.
+          if (current > previous) {
+            previous = current;
+            deadline = Date.now() + 10_000;
+          }
           if (Date.now() >= deadline || proc.exitCode !== null) throw new Error("idle persistence stalled");
           await Bun.sleep(10);
         }
