@@ -3002,7 +3002,17 @@ mod posix_impl {
                         && result.length as usize >= core::mem::offset_of!(FullPath, path) + len
                         && result.path[len - 1] == 0
                     {
-                        buf.0[..len - 1].copy_from_slice(&result.path[..len - 1]);
+                        let full_path = &result.path[..len - 1];
+                        if full_path != path.as_bytes() {
+                            // FULLPATH can name another hard link; directory link counts include children.
+                            match stat(path) {
+                                Ok(metadata)
+                                    if metadata.st_nlink <= 1
+                                        || super::posix::s_isdir(metadata.st_mode.into()) => {}
+                                _ => return realpath(path, buf),
+                            }
+                        }
+                        buf.0[..len - 1].copy_from_slice(full_path);
                         return Ok(&buf.0[..len - 1]);
                     }
                     break;

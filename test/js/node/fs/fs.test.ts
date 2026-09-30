@@ -3519,6 +3519,74 @@ describe.each(realpathImplementations)("realpath %s POSIX paths", (_name, realpa
   });
 });
 
+it.skipIf(process.platform !== "darwin" || !posixCc)(
+  "realpath preserves a hard-link name when full-path attributes select another link",
+  async () => {
+    using dir = tempDir("fs-realpath-hardlink-attributes", {
+      "original": "same inode",
+      "attributes.c": `
+      #include <unistd.h>
+      #include <sys/attr.h>
+      #include <stdlib.h>
+      #include <string.h>
+      __attribute__((constructor)) static void loaded(void) {
+        setenv("BUN_TEST_REALPATH_INTERPOSED", "1", 1);
+      }
+      static int alias_getattrlist(const char *path, void *attrs, void *buffer, size_t size, unsigned long options) {
+        const char *target = getenv("BUN_TEST_REALPATH_LINK");
+        const char *original = getenv("BUN_TEST_REALPATH_ORIGINAL");
+        if (target && original && strcmp(path, target) == 0 && (((struct attrlist *)attrs)->commonattr & ATTR_CMN_FULLPATH)) path = original;
+        return getattrlist(path, attrs, buffer, size, options);
+      }
+      __attribute__((used, section("__DATA,__interpose"))) static const struct {
+        const void *replacement;
+        const void *original;
+      } interpose = { (const void *)alias_getattrlist, (const void *)getattrlist };
+    `,
+    });
+    const root = String(dir);
+    const original = join(root, "original");
+    const hardlink = join(root, "hardlink");
+    fs.linkSync(original, hardlink);
+    const libraryPath = join(root, "attributes.dylib");
+    const compile = spawnSync({
+      cmd: [posixCc!, "-dynamiclib", "-o", libraryPath, join(root, "attributes.c")],
+      env: bunEnv,
+    });
+    expect(compile.stderr.toString()).toBe("");
+    expect(compile.exitCode).toBe(0);
+    await using proc = Bun.spawn({
+      cmd: [
+        bunExe(),
+        "-e",
+        `
+      const assert = require("node:assert/strict");
+      const fs = require("node:fs");
+      const { promisify } = require("node:util");
+      assert.strictEqual(process.env.BUN_TEST_REALPATH_INTERPOSED, "1");
+      const input = process.env.BUN_TEST_REALPATH_LINK;
+      assert.strictEqual(fs.statSync(input).nlink, 2);
+      for (const realpath of [fs.realpathSync, fs.realpathSync.native, fs.promises.realpath, promisify(fs.realpath), promisify(fs.realpath.native)]) {
+        assert.strictEqual(await realpath(input), input);
+      }
+      console.log("ok");
+    `,
+      ],
+      env: {
+        ...bunEnv,
+        DYLD_INSERT_LIBRARIES: libraryPath,
+        BUN_TEST_REALPATH_LINK: hardlink,
+        BUN_TEST_REALPATH_ORIGINAL: original,
+        BUN_TEST_REALPATH_INTERPOSED: undefined,
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect({ stdout, stderr, exitCode }).toEqual({ stdout: "ok\n", stderr: "", exitCode: 0 });
+  },
+);
+
 describe.each(realpathImplementations)("realpath %s POSIX locks", (_name, realpath) => {
   it.skipIf(!posixCc)("preserves process-owned POSIX locks", async () => {
     using dir = tempDir("fs-realpath-posix-lock", {
@@ -3581,16 +3649,28 @@ describe.each(realpathImplementations)("realpath %s POSIX locks", (_name, realpa
       writeFileSync(filePath, "lock target");
       const linkPath = join(String(dir), "link.lock");
       symlinkSync(filePath, linkPath);
+      const hardlinkPath = join(String(dir), "hardlink.lock");
+      fs.linkSync(filePath, hardlinkPath);
+      const hardlinkSymlink = join(String(dir), "hardlink-symlink.lock");
+      symlinkSync(hardlinkPath, hardlinkSymlink);
+      expect(statSync(filePath).nlink).toBe(2);
       const fd = openSync(filePath, "r+");
       try {
         expect(library.symbols.lock_file(fd)).toBe(0);
         expect(probeWriter(filePath)).toBe("busy");
-        for (const input of [filePath, linkPath]) {
-          expect(await realpath(input)).toBe(filePath);
+        for (const [input, expected] of [
+          [filePath, filePath],
+          [linkPath, filePath],
+          [hardlinkPath, hardlinkPath],
+          [hardlinkSymlink, hardlinkPath],
+          [path.relative(process.cwd(), hardlinkPath), hardlinkPath],
+          [path.relative(process.cwd(), hardlinkSymlink), hardlinkPath],
+        ]) {
+          expect(await realpath(input)).toBe(expected);
           expect(probeWriter(filePath)).toBe("busy");
         }
         // Closing any ordinary descriptor for this inode must make the probe succeed.
-        closeSync(openSync(filePath, "r"));
+        closeSync(openSync(hardlinkPath, "r"));
         expect(probeWriter(filePath)).toBe("acquired");
       } finally {
         closeSync(fd);
