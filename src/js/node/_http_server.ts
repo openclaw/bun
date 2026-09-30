@@ -395,6 +395,7 @@ interface Server extends NodeHTTPServer {
   httpValidation?: "strict" | "relaxed" | "insecure";
   requireHostHeader: boolean;
   httpAllowHalfOpen: boolean;
+  allowHalfOpen: boolean;
 }
 function Server(options, callback): void {
   if (!(this instanceof Server)) return new Server(options, callback);

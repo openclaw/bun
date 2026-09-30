@@ -521,7 +521,7 @@ const { shouldUseEnvProxy } = require("node:_http_agent");
 // normalized protocol list / callback on the server instance the way
 // tls.Server does (test-https-argument-of-creating.js).
 // https://github.com/nodejs/node/blob/v26.3.0/lib/https.js#L82-L97
-function Server(options, requestListener) {
+function Server(options, requestListener): void {
   if (!(this instanceof Server)) return new Server(options, requestListener);
 
   if (typeof options === "function") {
