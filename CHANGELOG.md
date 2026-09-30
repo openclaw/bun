@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Start TLS reads after adopting paused Duplex and HTTP CONNECT transports, including buffered handshake bytes and pending plaintext acknowledgements.
+- Clone only Map and Set entries, ignoring custom own properties without invoking getters, while retaining compatibility with existing serialized records.
 
 - Support independent IPC channel references, writable child stdio properties, and failed-spawn exit codes. Thanks @robobun!
 - Await buffered FileSink writes before completing Writable callbacks, preserving cork, drain, error, final-flush, and parent-end descriptor behavior.

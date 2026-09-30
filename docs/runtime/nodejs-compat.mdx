@@ -155,6 +155,8 @@ TLS starts reading paused Duplex and HTTP CONNECT transports after installing it
 
 ### [`node:v8`](https://nodejs.org/api/v8.html)
 
+Map and Set serialization copies entries and ignores custom own properties, like `structuredClone`. Existing Bun records with own-property sections remain readable.
+
 🟡 `writeHeapSnapshot`, `getHeapSnapshot`, `getHeapStatistics`, `getHeapSpaceStatistics`, `GCProfiler` and `startupSnapshot` are implemented. The heap statistics describe JavaScriptCore's single heap, and `setFlagsFromString` ignores the flags it is given. `serialize` and `deserialize` use JavaScriptCore's wire format instead of V8's. Missing `queryObjects`, `startCpuProfile`, `startHeapProfile`, `Serializer`/`Deserializer`, `takeCoverage`/`stopCoverage` and `promiseHooks`. For profiling, use [`bun:jsc`](/project/benchmarking#javascript-heap-stats) instead.
 
 ### [`node:vm`](https://nodejs.org/api/vm.html)
