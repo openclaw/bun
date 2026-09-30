@@ -2226,6 +2226,7 @@ Socket.prototype.connect = function connect(...args) {
           connection.on("close", events[3]);
           forwardUpgradedError(this, connection);
           this._handle = result;
+          connection.resume();
         } else {
           // upgradeTLS requires an established socket; a socket that is still
           // connecting (e.g. tls.connect({ socket: net.connect(port) })) must be
@@ -2280,6 +2281,7 @@ Socket.prototype.connect = function connect(...args) {
                 connection.on("close", events[3]);
                 forwardUpgradedError(this, connection);
                 this._handle = result;
+                connection.resume();
               } else {
                 this[kupgraded] = connection;
                 const result = upgradeTLSDeferred(socket, {
@@ -2591,6 +2593,8 @@ Socket.prototype[Symbol.for("::bunUpgradeServerTLS::")] = function (connection, 
     forwardUpgradedError(this, connection);
     this[kupgraded] = connection;
     this._handle = result;
+    // TLS owns the transport now; a pause by the previous owner must not stall the handshake.
+    connection.resume();
     return;
   }
   this[kupgraded] = connection;
@@ -2621,6 +2625,7 @@ Socket.prototype[Symbol.for("::bunUpgradeServerTLS::")] = function (connection, 
       connection.on("close", events[3]);
       forwardUpgradedError(this, connection);
       this._handle = result;
+      connection.resume();
       // Node starts the TLSWrap read side even when the injected transport was
       // paused by its previous owner. The TLS handshake must not inherit that
       // application-level pause.

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Start TLS reads after adopting paused Duplex and HTTP CONNECT transports, including buffered handshake bytes and pending plaintext acknowledgements.
+
 - Support independent IPC channel references, writable child stdio properties, and failed-spawn exit codes. Thanks @robobun!
 - Await buffered FileSink writes before completing Writable callbacks, preserving cork, drain, error, final-flush, and parent-end descriptor behavior.
 - Preserve inferred function and class names, format captured stacks for object targets, and retain query/fragment identity in file-URL preloads.
