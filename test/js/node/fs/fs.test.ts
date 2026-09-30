@@ -6731,7 +6731,7 @@ describe('kernel32 long path conversion does not mangle "../../path" into "path"
   ];
   const existTests = [
     ["existsSync", 'assert.strictEqual(fs.existsSync("../../config"), true)'],
-    ["accessSync", 'assert.strictEqual(fs.accessSync("../../config"), null)'],
+    ["accessSync", 'assert.strictEqual(fs.accessSync("../../config"), undefined)'],
   ];
 
   for (const [name, code] of nonExistTests) {
