@@ -39,6 +39,10 @@ interface NativeReadable extends NodeReadable {
     length: number;
   };
   $bunNativePtr: NativePtr | undefined;
+  _handle?: {
+    readonly fd: number;
+    setBlocking(blocking: boolean): boolean;
+  };
   $start?: typeof ensureConstructed;
   ref: typeof ref;
   unref: typeof unref;
@@ -61,6 +65,7 @@ interface NativePtr {
   updateRef: (ref: boolean) => void;
   cancel: (error: any) => void;
   setFlowing?: (flowing: boolean) => void;
+  getFd?: () => number;
 }
 
 let debugId = 0;
