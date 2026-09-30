@@ -65,6 +65,8 @@ Destroying an unfinished request or response closes its connection, including as
 
 ### [`node:path`](https://nodejs.org/api/path.html)
 
+`matchesGlob()` uses Node-compatible minimatch semantics, including negated extglobs, dot-segment normalization, and distinct POSIX and Windows separators.
+
 🟢 Fully implemented. `matchesGlob()` uses `Bun.Glob` semantics rather than minimatch (`*` matches dotfiles, no extglobs). `path.win32` differs from Node in a few edge cases involving device paths and reserved names.
 
 ### [`node:punycode`](https://nodejs.org/api/punycode.html)

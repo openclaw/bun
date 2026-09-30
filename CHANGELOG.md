@@ -62,3 +62,5 @@
 - Match Node child-process diagnostics, unspawned getters, failed-spawn EOF and IPC, exit-before-drain ordering, and POSIX PATH permission errors. Adapts the diagnostics proposal in [oven-sh/bun#30080](https://github.com/oven-sh/bun/pull/30080). Thanks @robobun!
 
 - Keep recursive `fs.promises.readdir` Dirent traversal out of directory symlink targets and preserve the immutable full startup argv in `process.report` on every platform.
+
+- Match Node minimatch semantics in `path.matchesGlob()`, including negated extglobs and dot-segment normalization, using the existing filesystem glob matcher.

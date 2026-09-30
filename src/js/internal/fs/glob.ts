@@ -1005,7 +1005,20 @@ function globSync(pattern, options) {
   return new Glob(pattern, options).globSync();
 }
 
-export default { glob, globSync, Glob };
+// Keep the last matcher per platform: POSIX backslashes are literal characters.
+const patternCache = [undefined, undefined];
+function matchGlobPattern(path, pattern, windows) {
+  validateString(path, "path");
+  validateString(pattern, "pattern");
+  const index = windows ? 1 : 0;
+  let matcher = patternCache[index];
+  if (matcher?.pattern !== pattern) {
+    matcher = patternCache[index] = createMatcher(pattern, { platform: windows ? "win32" : "posix" });
+  }
+  return matcher.match(path);
+}
+
+export default { glob, globSync, Glob, matchGlobPattern };
 
 let _minimatch: any;
 // ─────────────────────────────────────────────────────────────────────────
