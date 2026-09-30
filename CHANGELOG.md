@@ -56,3 +56,4 @@
 - Resolve interactions between worker and timer hooks, pending HTTPS listen configuration, forceful shutdown after graceful close, and literal filename delimiters in module resolution and lookup paths.
 - Generate Node compile-cache entries after idle periods and bound automatic persistence to 250 ms after SIGTERM, SIGINT, or SIGHUP; preserve full persistence on normal exits and explicit flushes, with atomic cache writes.
 - Emit exactly one `async_hooks` destroy event after a Worker exits, including termination and errors, while preserving hook dispatch snapshots.
+- Abort HTTP connections when a request or response is destroyed asynchronously, preserving pending-write and pipelined-response cleanup without sending an empty success response.

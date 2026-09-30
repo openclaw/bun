@@ -84,8 +84,7 @@ static void flushPartialResponseBeforeClose(us_socket_t* socket)
     // Only flush when an in-flight response wrote part of its body but never
     // ended: Node has already handed those res.write() bytes to the kernel by
     // the time destroy() runs, so they reach the client there. Ended
-    // responses (including the synthetic terminator written by abort()) keep
-    // the old behavior of being discarded with the close.
+    // responses are discarded with the close.
     if ((httpResponseData->state & uWS::HttpResponseData<SSL>::HTTP_WRITE_CALLED)
         && !(httpResponseData->state & uWS::HttpResponseData<SSL>::HTTP_END_CALLED)) {
         reinterpret_cast<uWS::AsyncSocket<SSL>*>(socket)->uncork();
@@ -1012,6 +1011,15 @@ static WebCore::JSNodeHTTPResponse* getNodeHTTPResponse(us_socket_t* socket)
         return nullptr;
     }
     return serverSocket->currentResponseObject.get();
+}
+
+extern "C" void Bun__NodeHTTP__close(bool is_ssl, us_socket_t* socket)
+{
+    if (us_socket_is_closed(socket))
+        return;
+    auto* serverSocket = is_ssl ? getNodeHTTPServerSocket<true>(socket) : getNodeHTTPServerSocket<false>(socket);
+    if (serverSocket)
+        serverSocket->close();
 }
 
 extern "C" JSC::EncodedJSValue Bun__getNodeHTTPResponseThisValue(bool is_ssl, us_socket_t* socket)

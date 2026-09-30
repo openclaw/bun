@@ -1438,3 +1438,69 @@ describe("req.socket reports how the client closed the connection", () => {
     );
   }
 });
+
+describe("destroy aborts the connection without completing a response", () => {
+  for (const timing of ["sync", "immediate", "microtask"] as const) {
+    for (const headers of [false, true]) {
+      test.each(["request", "response", "socket"] as const)(`${timing}, headers=${headers}, %s`, async target => {
+        let finished = false;
+        await using server = createServer((req, res) => {
+          res.on("finish", () => (finished = true));
+          if (headers) res.writeHead(200);
+          const abort = () => ({ request: req, response: res, socket: req.socket })[target].destroy();
+          if (timing === "sync") abort();
+          else if (timing === "immediate") setImmediate(abort);
+          else Promise.resolve().then(abort);
+        });
+        await once(server.listen(0, "127.0.0.1"), "listening");
+        const result = await fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}/`).then(
+          async response => ({ status: response.status, body: await response.text() }),
+          () => ({ aborted: true }),
+        );
+        expect(result).toEqual({ aborted: true });
+        expect(finished).toBe(false);
+      });
+    }
+  }
+
+  test("aborting the active response closes queued pipelined responses", async () => {
+    let requests = 0;
+    let closes = 0;
+    let finishes = 0;
+    let firstResponse: ServerResponse;
+    const allClosed = Promise.withResolvers<void>();
+    await using server = createServer((req, res) => {
+      req.on("error", () => {});
+      res.on("finish", () => finishes++);
+      res.on("close", () => {
+        globalThis.Bun?.gc(true);
+        if (++closes === 4) allClosed.resolve();
+      });
+      if (++requests === 1) firstResponse = res;
+      if (requests === 4) setImmediate(() => firstResponse.destroy());
+    });
+    await once(server.listen(0, "127.0.0.1"), "listening");
+    const client = connect((server.address() as AddressInfo).port, "127.0.0.1");
+    const chunks: Buffer[] = [];
+    const closed = new Promise<void>((resolve, reject) => {
+      client.on("data", chunk => chunks.push(chunk));
+      client.on("error", error => {
+        if ((error as NodeJS.ErrnoException).code !== "ECONNRESET") reject(error);
+      });
+      client.on("close", () => resolve());
+    });
+    try {
+      client.write(Array.from({ length: 4 }, () => "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n").join(""));
+      await Promise.all([closed, allClosed.promise]);
+      expect({ requests, closes, finishes, wire: Buffer.concat(chunks).toString() }).toEqual({
+        requests: 4,
+        closes: 4,
+        finishes: 0,
+        wire: "",
+      });
+    } finally {
+      client.destroy();
+      server.closeAllConnections();
+    }
+  });
+});

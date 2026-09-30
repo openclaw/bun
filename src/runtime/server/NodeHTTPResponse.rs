@@ -185,10 +185,11 @@ pub(crate) enum BodyReadState {
 
 unsafe extern "C" {
     // `socket` is the opaque uSockets handle from `AnyResponse::socket()`; C++
-    // only reads its ext slot. Module-private — the sole callers below pass a
+    // locates the node:http wrapper through its ext slot. The callers pass a
     // live handle, so no caller-side precondition remains.
     safe fn Bun__getNodeHTTPResponseThisValue(is_ssl: bool, socket: *mut c_void) -> JSValue;
     safe fn Bun__getNodeHTTPServerSocketThisValue(is_ssl: bool, socket: *mut c_void) -> JSValue;
+    safe fn Bun__NodeHTTP__close(is_ssl: bool, socket: *mut c_void);
 
     // node:http flood prevention (JSNodeHTTPServerSocket.cpp): unsent response bytes and queued responses hold a paused socket.
     safe fn Bun__NodeHTTP__onReadsPaused(ssl: core::ffi::c_int, socket: *mut c_void);
@@ -1561,27 +1562,21 @@ impl NodeHTTPResponse {
             return Ok(JSValue::UNDEFINED);
         }
 
-        // Re-arm the poll before marking SOCKET_CLOSED (resume_socket is a no-op
-        // once that flag is set) so a paused socket's deferred EOF can fire.
+        // Re-arm a paused body before marking it closed, and release pinned
+        // storage while its JS wrapper can still be found through the socket.
         self.resume_socket();
-        // Release the zero-copy pin + owner + GC root while the wrapper is
-        // still reachable via the socket (get_this_value() returns ZERO once
-        // SOCKET_CLOSED is set).
         self.clear_pending_pinned_write(global_object, JSValue::ZERO);
         self.release_body_slot();
         self.mark_socket_closed();
+        // Notify active and queued responses through transport teardown, without
+        // synthesizing a successful HTTP response.
         if let Some(raw_response) = self.raw_response.get() {
-            let state = raw_response.state();
-            if state.is_http_end_called() {
-                return Ok(JSValue::UNDEFINED);
-            }
+            Bun__NodeHTTP__close(
+                any_response_is_ssl(&raw_response),
+                raw_response.socket().cast(),
+            );
         }
-        if let Some(raw_response) = self.raw_response.get() {
-            raw_response.clear_on_writable();
-            raw_response.clear_timeout();
-            raw_response.end_without_body(true);
-        }
-        self.on_request_complete();
+        self.mark_request_as_done_if_necessary();
         Ok(JSValue::UNDEFINED)
     }
 

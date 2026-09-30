@@ -1,6 +1,7 @@
 // Hardcoded module "node:_http_server"
 const EventEmitter: typeof import("node:events").EventEmitter = require("node:events");
 const { Stream } = require("node:stream");
+const setImmediate = $newCppFunction("node/NodeTimers.cpp", "functionSetImmediate", 1);
 const {
   _checkInvalidHeaderChar: checkInvalidHeaderChar,
   chunkExpression,
@@ -2152,10 +2153,16 @@ function getNodeHTTPServerSocket() {
       if (handle.closed) {
         const onclose = handle.onclose;
         handle.onclose = undefined;
-        if ($isCallable(onclose)) {
-          onclose.$call(handle);
-        }
-        if ($isCallable(callback)) callback(err ?? this.#closeError);
+        this.#pendingAbortMessage = this._httpMessage;
+        // Close can arrive during native response notification, after its JS
+        // callback was captured. Own this callback instead of replacing it.
+        setImmediate(() => {
+          try {
+            if ($isCallable(onclose)) onclose.$call(handle);
+          } finally {
+            if ($isCallable(callback)) callback(err ?? this.#closeError);
+          }
+        });
         return;
       }
 
