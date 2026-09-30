@@ -459,6 +459,8 @@ impl Linker {
                                     BunPluginTarget::Node
                                 },
                             )? {
+                                // Plugin answers are not part of the content-addressed cache key.
+                                result.runtime_transpiler_cache = None;
                                 import_record.path = self.generate_import_path(
                                     source_dir,
                                     path.text,

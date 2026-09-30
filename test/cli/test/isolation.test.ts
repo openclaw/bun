@@ -446,12 +446,24 @@ describe.concurrent("bun test --isolate", () => {
     expect(exitCode).toBe(0);
   });
 
-  // The on-disk transpiler cache stores the module record next to the output. reexport-clause.ts
-  // is padded past the 4 KiB floor of that cache, so the second run rebuilds its record from the entry.
-  test("with --isolate, the on-disk transpiler cache keeps that namespace in the stored module record", async () => {
+  // Only the source-written namespace is cacheable; runtime onResolve answers must be linked afresh.
+  test("with --isolate, the disk cache preserves source namespaces but excludes plugin-rewritten imports", async () => {
     using dir = tempDir("isolate-plugin-namespace-disk-cache", {
       ...pluginNamespaceFixture,
       "reexport-clause.ts": `export { named } from "./data.bar?custom";\n//${Buffer.alloc(5 * 1024, "f").toString()}\n`,
+      "cache-namespace.ts": `export { named } from "cache-only:stable";\n//${Buffer.alloc(5 * 1024, "f").toString()}\n`,
+      "plugin.ts": `${pluginNamespaceFixture["plugin.ts"]}
+        Bun.plugin({ name: "cache-namespace", setup(build) {
+          build.onLoad({ filter: /.*/, namespace: "cache-only" }, () => ({
+            contents: 'export const named = "CACHED_NAMESPACE";',
+            loader: "js",
+          }));
+        }});
+      `,
+      "a.test.ts": `${pluginNamespaceTestFile}
+        import { named as cached } from "./cache-namespace.ts";
+        expect(cached).toBe("CACHED_NAMESPACE");
+      `,
     });
     const cacheDir = join(String(dir), ".cache");
     const env = {

@@ -12,7 +12,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "fs";
-import { bunEnv, bunExe, bunRun, isWindows, tmpdirSync } from "harness";
+import { bunEnv, bunExe, bunRun, isWindows, tempDir, tmpdirSync } from "harness";
 import { mkfifo } from "mkfifo";
 import { join } from "path";
 
@@ -136,6 +136,137 @@ describe("transpiler cache", () => {
     expect(await bunRun(join(temp_dir, "b.js"), env)).toSpawn("b");
     expect(newCacheCount()).toBe(0);
   });
+
+  describe("runtime plugins", () => {
+    const filler = "\n//" + Buffer.alloc(5 * 1024, "f").toString();
+
+    test.each([
+      ["import", "entry.mjs", 'import value from "./dependency.js"; export default value;'],
+      ["reexport", "entry.mjs", 'export { default } from "./dependency.js";'],
+      ["require", "entry.cjs", 'module.exports = require("./dependency.js");'],
+    ])("does not retain a previous onResolve answer (%s)", async (_, entry, source) => {
+      using dir = tempDir("transpiler-cache-plugin", {
+        "package.json": '{"type":"module"}',
+        [entry]: source + filler,
+        "a.js": 'export default "A";',
+        "b.js": 'export default "B";',
+        "main.js": `
+          import { resolve } from "node:path";
+          let seen = false;
+          Bun.plugin({ name: "redirect", setup(build) {
+            build.onResolve({ filter: /^\\.\\/dependency\\.js$/ }, () => {
+              seen = true;
+              return { path: resolve(import.meta.dir, process.argv[2] + ".js") };
+            });
+          }});
+          const { default: value } = require(${JSON.stringify("./" + entry)});
+          console.log(JSON.stringify({ value, seen }));
+        `,
+      });
+      const cache = join(String(dir), ".cache");
+      const childEnv = { ...env, BUN_RUNTIME_TRANSPILER_CACHE_PATH: cache };
+      const run = (target: string) => bunRun([join(String(dir), "main.js"), target], childEnv);
+
+      expect(await run("a")).toSpawn(JSON.stringify({ value: "A", seen: true }));
+      expect(await run("b")).toSpawn(JSON.stringify({ value: "B", seen: true }));
+      unlinkSync(join(String(dir), "a.js"));
+      expect(await run("b")).toSpawn(JSON.stringify({ value: "B", seen: true }));
+      expect(existsSync(cache) ? readdirSync(cache) : []).toEqual([]);
+    });
+
+    test("resolves identical source in a new module generation", async () => {
+      const source = 'import value from "./dependency.js"; export default value;' + filler;
+      using dir = tempDir("transpiler-cache-generation", {
+        "package.json": '{"type":"module"}',
+        "a/entry.mjs": source,
+        "a/dependency.js": 'export default "A";',
+        "b/entry.mjs": source,
+        "b/dependency.js": 'export default "B";',
+        "main.js": `
+          import { dirname, resolve } from "node:path";
+          let seen = false;
+          Bun.plugin({ name: "generation", setup(build) {
+            build.onResolve({ filter: /^\\.\\/dependency\\.js$/ }, args => {
+              seen = true;
+              return { path: resolve(dirname(args.importer), args.path) };
+            });
+          }});
+          const { default: value } = require("./" + process.argv[2] + "/entry.mjs");
+          console.log(JSON.stringify({ value, seen }));
+        `,
+      });
+      const childEnv = { ...env, BUN_RUNTIME_TRANSPILER_CACHE_PATH: join(String(dir), ".cache") };
+      const run = (generation: string) => bunRun([join(String(dir), "main.js"), generation], childEnv);
+      expect(await run("a")).toSpawn(JSON.stringify({ value: "A", seen: true }));
+      rmSync(join(String(dir), "a"), { recursive: true });
+      expect(await run("b")).toSpawn(JSON.stringify({ value: "B", seen: true }));
+    });
+
+    test.each(["absent", "declined"])("a cache populated with an %s hook uses the current resolver", async mode => {
+      using dir = tempDir("transpiler-cache-ordinary", {
+        "package.json": '{"type":"module"}',
+        "entry.mjs": 'import value from "./dependency.js"; export default value;' + filler,
+        "dependency.js": 'export default "A";',
+        "other.js": 'export default "B";',
+        "main.js": `
+          import { resolve } from "node:path";
+          let seen = false;
+          if (process.argv[2] !== "absent") {
+            Bun.plugin({ name: "optional", setup(build) {
+              build.onResolve({ filter: /^\\.\\/dependency\\.js$/ }, () => {
+                seen = true;
+                if (process.argv[2] !== "declined") return { path: resolve(import.meta.dir, "other.js") };
+              });
+            }});
+          }
+          const { default: value } = require("./entry.mjs");
+          console.log(JSON.stringify({ value, seen }));
+        `,
+      });
+      const cache = join(String(dir), ".cache");
+      const childEnv = { ...env, BUN_RUNTIME_TRANSPILER_CACHE_PATH: cache };
+      const run = (mode: string) => bunRun([join(String(dir), "main.js"), mode], childEnv);
+      expect(await run(mode)).toSpawn(JSON.stringify({ value: "A", seen: mode === "declined" }));
+      const entries = readdirSync(cache);
+      expect(entries).toHaveLength(1);
+      const filename = join(cache, entries[0]);
+      const original = readFileSync(filename);
+      expect(await run("claimed")).toSpawn(JSON.stringify({ value: "B", seen: true }));
+      expect(readdirSync(cache)).toEqual(entries);
+      expect(readFileSync(filename).equals(original)).toBeTrue();
+    });
+
+    test("does not cache an accepted onResolve answer that leaves the path unchanged", async () => {
+      using dir = tempDir("transpiler-cache-identity", {
+        "dependency.mjs": 'export default "A";',
+        "main.mjs": `
+          import { resolve } from "node:path";
+          const target = resolve(import.meta.dir, "dependency.mjs");
+          let seen = false;
+          Bun.plugin({ name: "identity", setup(build) {
+            build.onResolve({ filter: /.*/ }, args => {
+              if (args.path === target) {
+                seen = true;
+                return { path: args.path };
+              }
+            });
+          }});
+          const { default: value } = require("./entry.mjs");
+          console.log(JSON.stringify({ value, seen }));
+        `,
+      });
+      writeFileSync(
+        join(String(dir), "entry.mjs"),
+        `export { default } from ${JSON.stringify(join(String(dir), "dependency.mjs"))};${filler}`,
+      );
+      const cache = join(String(dir), ".cache");
+      expect(await bunRun(join(String(dir), "main.mjs"), { ...env, BUN_RUNTIME_TRANSPILER_CACHE_PATH: cache })).toSpawn(
+        JSON.stringify({ value: "A", seen: true }),
+      );
+      expect(existsSync(cache) ? readdirSync(cache) : []).toEqual([]);
+    });
+  });
+
   test("doing 50 buns at once does not crash", async () => {
     writeFileSync(join(temp_dir, "a.js"), dummyFile(50 * 1024, "1", "b"));
     writeFileSync(join(temp_dir, "b.js"), dummyFile(50 * 1024, "2", "b"));
