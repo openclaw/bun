@@ -669,7 +669,7 @@ it("createServer registers the callback as a regular 'secureConnection' listener
 it("connectionListener should emit the right amount of times, and with alpnProtocol available", async () => {
   let count = 0;
   const promises = [];
-  const server: Server = createServer(
+  await using server: Server = createServer(
     {
       ...COMMON_CERT,
       ALPNProtocols: ["bun"],
@@ -697,8 +697,8 @@ it("connectionListener should emit the right amount of times, and with alpnProto
       },
       () => {
         socket.on("close", resolve);
+        // The client handshake can finish before the server dispatches secureConnection.
         socket.resume();
-        socket.end();
       },
     );
   }
