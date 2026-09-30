@@ -41,6 +41,8 @@ We update this page regularly. It reflects the latest version of Bun's compatibi
 
 ### [`node:fs`](https://nodejs.org/api/fs.html)
 
+The `read`, `readv`, `write`, and `writev` callbacks receive the error, zero bytes, and the original buffer or buffers when an I/O operation fails.
+
 🟢 Fully implemented. 98% of Node.js's test suite passes. `Stats` objects lack the `Temporal.Instant` getters (`atimeInstant` and friends).
 
 On macOS, `fs.copyFile` and `fs.cp` accept regular-file `/dev/fd` sources without advancing the original descriptor's offset.
