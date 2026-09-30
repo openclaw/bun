@@ -2,7 +2,9 @@
 //! version-tagged subdir store the post-transpile source + JSC bytecode; the
 //! stored source is byte-compared on load so stale caches recompile normally.
 
-use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
+use std::sync::{OnceLock, mpsc};
+use std::time::{Duration, Instant};
 
 use bstr::ByteSlice;
 use bun_boringssl::c as boring;
@@ -616,6 +618,16 @@ pub fn fetch(
             RETIRED_BLOBS.lock().push(blob);
         }
     }
+    drop(guard);
+    if result.is_none() {
+        LAST_FETCH_NS.store(bun_uws::us_loop_idle_clock_ns(), Ordering::Relaxed);
+        if !BACKGROUND_NEEDED.swap(true, Ordering::Relaxed) {
+            wake_main_loop();
+            if let Some(Some(worker)) = WORKER.get() {
+                let _ = worker.send(PersistRequest::ObserveIdle);
+            }
+        }
+    }
     result
 }
 
@@ -885,62 +897,146 @@ fn read_cache_file(state: &CacheState, key: u64, entry: &mut Entry, code: Option
 // Persist (exit + flush)
 // ──────────────────────────────────────────────────────────────────────────
 
-/// Bytecode generation runs on one long-lived worker thread with its own JSC
-/// VM (`getVMForBytecodeCache`), mirroring `bun build --bytecode`'s bundler
-/// threads, so only a single extra VM ever exists.
-struct GenJob {
-    format: Format,
-    code: Box<[u8]>,
-    url: Box<[u8]>,
-    resp: std::sync::mpsc::SyncSender<Option<Box<[u8]>>>,
+/// Background notifications are coalesced: at most one is queued while the worker
+/// owns a batch. Sources stay in `STATE` until the worker takes ownership.
+static BACKGROUND_PENDING: AtomicBool = AtomicBool::new(false);
+static BACKGROUND_NEEDED: AtomicBool = AtomicBool::new(false);
+static LAST_FETCH_NS: AtomicU64 = AtomicU64::new(0);
+static TERMINATION_SIGNAL_RECEIVED: AtomicBool = AtomicBool::new(false);
+const BACKGROUND_QUIET_NS: u64 = 1_000_000_000;
+const BACKGROUND_IDLE_PERCENT: u64 = 90;
+static MAIN_VM: OnceLock<crate::VmHandle> = OnceLock::new();
+#[thread_local]
+static IDLE_WINDOW: core::cell::Cell<(u64, u64)> = core::cell::Cell::new((0, 0));
+
+/// Only atomics: called from native signal dispatch before JS can handle it.
+#[unsafe(no_mangle)]
+pub extern "C" fn Bun__NodeCompileCache__onTerminationSignal() {
+    TERMINATION_SIGNAL_RECEIVED.store(true, Ordering::Relaxed);
 }
 
-fn generate_bytecode(format: Format, code: &[u8], url: &[u8]) -> Option<Box<[u8]>> {
-    use std::sync::mpsc;
-    static WORKER: Mutex<Option<mpsc::Sender<GenJob>>> = Mutex::new(None);
+/// The weak handle can wake a parked main loop without keeping its VM alive.
+fn wake_main_loop() {
+    if let Some(main) = MAIN_VM.get() {
+        main.wake();
+    }
+}
 
-    let (resp_tx, resp_rx) = mpsc::sync_channel(1);
+/// Register the weak wakeup target before parking. The worker only creates
+/// its JSC VM after an idle observation or an explicit/exit flush requests it.
+pub fn prepare_idle(vm: &crate::virtual_machine::VirtualMachine) -> bool {
+    MAIN_VM.get_or_init(|| vm.handle());
+    if !is_enabled()
+        || !(BACKGROUND_NEEDED.load(Ordering::Relaxed)
+            || BACKGROUND_PENDING.load(Ordering::Relaxed))
     {
-        let mut guard = WORKER.lock();
-        if guard.is_none() {
-            let (tx, rx) = mpsc::channel::<GenJob>();
-            let spawned = std::thread::Builder::new()
+        return false;
+    }
+    let _ = persist_worker();
+    true
+}
+
+/// Cumulative kernel wait time excludes JS callbacks, including libuv's.
+/// Accumulate a window: periodic timers must not starve an otherwise idle VM.
+pub fn on_idle(total_idle_ns: u64) {
+    let now = bun_uws::us_loop_idle_clock_ns();
+    let (since, idle_before) = IDLE_WINDOW.get();
+    if since == 0 || LAST_FETCH_NS.load(Ordering::Relaxed) > since {
+        IDLE_WINDOW.set((now, total_idle_ns));
+        return;
+    }
+    let elapsed = now.saturating_sub(since);
+    if elapsed >= BACKGROUND_QUIET_NS {
+        IDLE_WINDOW.set((now, total_idle_ns));
+        if total_idle_ns.saturating_sub(idle_before) >= elapsed / 100 * BACKGROUND_IDLE_PERCENT
+            && BACKGROUND_NEEDED.load(Ordering::Relaxed)
+            && can_persist_in_background()
+        {
+            schedule_persist();
+        }
+    }
+}
+
+fn can_persist_in_background() -> bool {
+    bun_uws::us_loop_idle_clock_ns().saturating_sub(LAST_FETCH_NS.load(Ordering::Relaxed))
+        >= BACKGROUND_QUIET_NS
+}
+
+unsafe extern "C" {
+    safe fn Bun__NodeCompileCache__setWorkerPriority(background: bool);
+}
+static WORKER: OnceLock<Option<mpsc::Sender<PersistRequest>>> = OnceLock::new();
+const EXIT_PERSIST_BUDGET: Duration = Duration::from_millis(250);
+
+enum PersistRequest {
+    ObserveIdle,
+    Background,
+    Flush(mpsc::SyncSender<()>),
+}
+
+fn persist_worker() -> Option<&'static mpsc::Sender<PersistRequest>> {
+    WORKER
+        .get_or_init(|| {
+            let (tx, rx) = mpsc::channel();
+            std::thread::Builder::new()
                 .name("BunCompileCache".to_string())
                 // JSC parsing of large modules needs a deep stack.
                 .stack_size(16 * 1024 * 1024)
                 .spawn(move || {
-                    for job in rx {
-                        let url = BunString::clone_utf8(&job.url);
-                        let result = crate::cached_bytecode::__bun_jsc_generate_cached_bytecode(
-                            job.format,
-                            &job.code,
-                            &url,
-                            u32::MAX,
-                            true,
-                            None,
-                        );
-                        let _ = job.resp.send(result);
+                    loop {
+                        let request = if BACKGROUND_NEEDED.load(Ordering::Relaxed) {
+                            match rx.recv_timeout(Duration::from_secs(1)) {
+                                Ok(request) => request,
+                                Err(mpsc::RecvTimeoutError::Timeout) => {
+                                    // libuv does not use the caller's poll timeout. Wake through
+                                    // the VM door so both backends observe idle without a JS timer.
+                                    wake_main_loop();
+                                    continue;
+                                }
+                                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                            }
+                        } else {
+                            let Ok(request) = rx.recv() else { break };
+                            request
+                        };
+                        match request {
+                            PersistRequest::ObserveIdle => {}
+                            PersistRequest::Background => {
+                                Bun__NodeCompileCache__setWorkerPriority(true);
+                                persist_pass(true);
+                                BACKGROUND_PENDING.store(false, Ordering::Relaxed);
+                                if BACKGROUND_NEEDED.load(Ordering::Relaxed) {
+                                    wake_main_loop();
+                                }
+                            }
+                            PersistRequest::Flush(done) => {
+                                Bun__NodeCompileCache__setWorkerPriority(false);
+                                persist_pass(false);
+                                let _ = done.send(());
+                            }
+                        }
                     }
-                });
-            match spawned {
-                Ok(_) => *guard = Some(tx),
-                Err(_) => return None,
-            }
-        }
-        let tx = guard.as_ref().expect("set above");
-        if tx
-            .send(GenJob {
-                format,
-                code: code.into(),
-                url: url.into(),
-                resp: resp_tx,
-            })
-            .is_err()
-        {
-            return None;
-        }
+                })
+                .ok()
+                .map(|_| tx)
+        })
+        .as_ref()
+}
+
+fn schedule_persist() {
+    if BACKGROUND_PENDING.swap(true, Ordering::Relaxed) {
+        return;
     }
-    resp_rx.recv().ok().flatten()
+    if persist_worker().is_none_or(|worker| worker.send(PersistRequest::Background).is_err()) {
+        BACKGROUND_PENDING.store(false, Ordering::Relaxed);
+    }
+}
+
+fn request_flush() -> Option<mpsc::Receiver<()>> {
+    let worker = persist_worker()?;
+    let (tx, rx) = mpsc::sync_channel(1);
+    worker.send(PersistRequest::Flush(tx)).ok()?;
+    Some(rx)
 }
 
 /// One unit of persist work, snapshotted out of `STATE` so bytecode generation runs with the lock
@@ -1002,11 +1098,10 @@ fn collect_persist_jobs(state: &mut CacheState) -> Vec<PersistJob> {
     jobs
 }
 
-/// Phase 3 (locked): write one generated blob to disk. `Ok(())` on success;
-/// on any I/O failure returns `Err(())` and the caller restores the taken
-/// `entry.code` and leaves `persisted` false so a later pass may retry.
-fn write_persist_job_locked(
-    state: &mut CacheState,
+/// Publish outside `STATE`: a slow cache disk must not stall module fetches.
+fn write_persist_job(
+    dir: &[u8],
+    dir_handle: &sys::Dir,
     job: &PersistJob,
     blob: &[u8],
 ) -> Result<(), ()> {
@@ -1032,20 +1127,19 @@ fn write_persist_job_locked(
     cclog!("[compile cache] Creating temporary file for cache of {name} ({tname})...");
 
     // 0600 like Node: entries contain the module's post-transpile source.
-    let mut tmpfile =
-        match sys::Tmpfile::create_with_mode(state.dir_handle.fd(), tmpname_zstr, 0o600) {
-            Ok(t) => t,
-            Err(e) => {
-                cclog!("failed. {}\n", errno_name(&e));
-                return Err(());
-            }
-        };
+    let mut tmpfile = match sys::Tmpfile::create_with_mode(dir_handle.fd(), tmpname_zstr, 0o600) {
+        Ok(t) => t,
+        Err(e) => {
+            cclog!("failed. {}\n", errno_name(&e));
+            return Err(());
+        }
+    };
     let _close = sys::CloseOnDrop::new(tmpfile.fd);
 
     let tmp_display = if logging {
         format!(
             "{}{}{}",
-            state.dir.as_bstr(),
+            dir.as_bstr(),
             SEP as char,
             tmpname_zstr.as_bytes().as_bstr()
         )
@@ -1077,7 +1171,7 @@ fn write_persist_job_locked(
     };
     if let Err(e) = write_all() {
         cclog!("failed: {}\n", errno_name(&e));
-        let _ = sys::unlinkat(state.dir_handle.fd(), tmpname_zstr);
+        let _ = sys::unlinkat(dir_handle.fd(), tmpname_zstr);
         return Err(());
     }
     cclog!("success\n");
@@ -1088,7 +1182,7 @@ fn write_persist_job_locked(
     let final_display = if logging {
         format!(
             "{}{}{}",
-            state.dir.as_bstr(),
+            dir.as_bstr(),
             SEP as char,
             core::str::from_utf8(&basename).expect("hex")
         )
@@ -1098,42 +1192,69 @@ fn write_persist_job_locked(
     cclog!("[compile cache] Renaming {tmp_display} to {final_display}...");
     if let Err(e) = tmpfile.finish(dest_zstr) {
         cclog!("failed: {}\n", errno_name(&e));
-        let _ = sys::unlinkat(state.dir_handle.fd(), tmpname_zstr);
+        let _ = sys::unlinkat(dir_handle.fd(), tmpname_zstr);
         return Err(());
     }
     cclog!("success\n");
     Ok(())
 }
 
-/// Full persist pass. `STATE` is held only for snapshot and file-write phases; bytecode
-/// generation runs with the lock dropped so concurrent module loads are not stalled.
-fn persist_pass() {
-    // Phase 1: snapshot under the lock.
-    let jobs = {
+/// Generation and disk I/O both run outside the module-fetch lock.
+fn persist_pass(background: bool) {
+    let (mut jobs, dir, dir_handle) = {
         let mut guard = STATE.lock();
         let Some(state) = guard.as_mut() else { return };
-        collect_persist_jobs(state)
+        let Ok(fd) = sys::dup(state.dir_handle.fd()) else {
+            return;
+        };
+        BACKGROUND_NEEDED.store(false, Ordering::Relaxed);
+        (
+            collect_persist_jobs(state).into_iter(),
+            state.dir.clone(),
+            sys::Dir::from_fd(fd),
+        )
     };
 
-    // Phase 2: generate bytecode, unlocked.
-    let mut generated: Vec<(PersistJob, Option<Box<[u8]>>)> = Vec::with_capacity(jobs.len());
-    for job in jobs {
-        let blob = generate_bytecode(job.format, &job.code, &job.filename);
-        if blob.is_none() {
+    // Generate and atomically publish each blob as it becomes ready. Exit can
+    // stop waiting even in the middle of a single expensive JSC compilation.
+    while let Some(job) = jobs.next() {
+        if background && !can_persist_in_background() {
+            let mut guard = STATE.lock();
+            let Some(state) = guard.as_mut() else { return };
+            for job in std::iter::once(job).chain(jobs) {
+                if let Some(entry) = state.entries.get_mut(&job.key) {
+                    if entry.code_hash == job.code_hash
+                        && entry.code_size == job.code_size
+                        && entry.code.is_none()
+                        && !entry.persisted
+                    {
+                        entry.code = Some(job.code);
+                        BACKGROUND_NEEDED.store(true, Ordering::Relaxed);
+                    }
+                }
+            }
+            return;
+        }
+        let url = BunString::clone_utf8(&job.filename);
+        let blob = crate::cached_bytecode::__bun_jsc_generate_cached_bytecode(
+            job.format,
+            &job.code,
+            &url,
+            u32::MAX,
+            true,
+            None,
+        );
+        let wrote = blob
+            .as_ref()
+            .map(|blob| write_persist_job(&dir, &dir_handle, &job, blob));
+        let mut guard = STATE.lock();
+        let Some(state) = guard.as_mut() else { return };
+        let Some(wrote) = wrote else {
             cclog!(
                 "[compile cache] generating cache for {} {} failed, skipping\n",
                 type_name(job.is_cjs),
                 display_name(&job.filename, job.is_cjs)
             );
-        }
-        generated.push((job, blob));
-    }
-
-    // Phase 3: write files and update entries under the lock.
-    let mut guard = STATE.lock();
-    let Some(state) = guard.as_mut() else { return };
-    for (job, blob) in generated {
-        let Some(blob) = blob else {
             // Do not retry on the next persist pass. Skip if the entry now
             // holds different content (file changed and was re-fetched).
             if let Some(entry) = state.entries.get_mut(&job.key) {
@@ -1143,7 +1264,6 @@ fn persist_pass() {
             }
             continue;
         };
-        let wrote = write_persist_job_locked(state, &job, &blob);
         let Some(entry) = state.entries.get_mut(&job.key) else {
             continue;
         };
@@ -1154,23 +1274,17 @@ fn persist_pass() {
             continue;
         }
         match wrote {
-            Ok(()) => entry.persisted = true,
-            // Keep the source so a later pass can retry, matching the old
-            // in-place behavior for failed writes.
+            Ok(()) => {
+                entry.persisted = true;
+                entry.code = None;
+            }
+            // Retry on a later flush or module miss, not an idle timer: an
+            // unwritable cache must not continuously recompile the same code.
             Err(()) => {
                 if entry.code.is_none() {
                     entry.code = Some(job.code);
                 }
             }
-        }
-    }
-
-    cclog!("[compile cache] Clear deserialized cache.\n");
-    // Drop persisted code copies; blobs stay alive (JSC providers reference
-    // them) and entries stay so unchanged re-fetches keep hitting in memory.
-    for entry in state.entries.values_mut() {
-        if entry.persisted {
-            entry.code = None;
         }
     }
 }
@@ -1181,7 +1295,9 @@ pub fn flush() {
         return;
     }
     cclog!("[compile cache] module.flushCompileCache() requested.\n");
-    persist_pass();
+    if let Some(done) = request_flush() {
+        let _ = done.recv();
+    }
     cclog!("[compile cache] module.flushCompileCache() finished.\n");
 }
 
@@ -1201,7 +1317,41 @@ pub fn persist_now() {
     if !is_enabled() {
         return;
     }
-    persist_pass();
+    persist_with_signal_budget(TERMINATION_SIGNAL_RECEIVED.load(Ordering::Relaxed));
+}
+
+/// A self-directed fatal signal is delivered only after the pre-kill flush.
+/// Do not latch it here: a failed kill must not affect a later normal exit.
+pub fn persist_before_self_signal(termination_signal: bool) {
+    if is_enabled() {
+        persist_with_signal_budget(
+            termination_signal || TERMINATION_SIGNAL_RECEIVED.load(Ordering::Relaxed),
+        );
+    }
+}
+
+fn persist_with_signal_budget(bounded: bool) {
+    let started = Instant::now();
+    let mut deadline = bounded.then_some(started + EXIT_PERSIST_BUDGET);
+    if let Some(done) = request_flush() {
+        loop {
+            if deadline.is_none() && TERMINATION_SIGNAL_RECEIVED.load(Ordering::Relaxed) {
+                deadline = Some(started + EXIT_PERSIST_BUDGET);
+            }
+            // Also notice a native signal delivered while a normal exit is already waiting.
+            let wait = deadline.map_or(Duration::from_millis(10), |end| {
+                end.saturating_duration_since(Instant::now())
+            });
+            match done.recv_timeout(wait) {
+                Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    if deadline.is_some_and(|end| Instant::now() >= end) {
+                        break;
+                    }
+                }
+            }
+        }
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────

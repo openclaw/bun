@@ -632,9 +632,12 @@ extern "C" void bun_restore_stdio()
 #endif
 }
 
+extern "C" void Bun__NodeCompileCache__onTerminationSignal();
 #if !OS(WINDOWS)
 extern "C" void onExitSignal(int sig)
 {
+    if (sig == SIGTERM || sig == SIGINT || sig == SIGHUP)
+        Bun__NodeCompileCache__onTerminationSignal();
     bun_restore_stdio();
     signal(sig, SIG_DFL);
     raise(sig);
@@ -645,6 +648,8 @@ extern "C" void onExitSignal(int sig)
 extern "C" void Bun__restoreWindowsStdio();
 BOOL WINAPI Ctrlhandler(DWORD signal)
 {
+    if (signal == CTRL_C_EVENT || signal == CTRL_CLOSE_EVENT)
+        Bun__NodeCompileCache__onTerminationSignal();
 
     if (signal == CTRL_C_EVENT) {
         Bun__restoreWindowsStdio();

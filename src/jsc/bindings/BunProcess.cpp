@@ -148,7 +148,8 @@ extern "C" size_t Bun__Node__getDisabledWarnings(const uint8_t** bufs, size_t* l
 extern "C" bool Bun__getEnvValue(JSC::JSGlobalObject* globalObject, const EncodedSlice* name, EncodedSlice* value);
 extern "C" bool Bun__Node__ProcessThrowDeprecation;
 extern "C" bool Bun__Node__ProcessPendingDeprecation;
-extern "C" void Bun__writeProfilesBeforeSelfKill(bool signalEndsProcess);
+extern "C" void Bun__writeProfilesBeforeSelfKill(bool signalEndsProcess, bool terminationSignal);
+extern "C" void Bun__NodeCompileCache__onTerminationSignal();
 #if !OS(WINDOWS)
 extern "C" void onExitSignal(int);
 #endif
@@ -1309,6 +1310,8 @@ void signalHandler(uv_signal_t* signal, int signalNumber)
 #endif
 {
 #if OS(WINDOWS)
+    if (signalNumber == SIGTERM || signalNumber == SIGINT || signalNumber == SIGHUP)
+        Bun__NodeCompileCache__onTerminationSignal();
     if (signalNumberToNameMap->find(signalNumber) == signalNumberToNameMap->end()) [[unlikely]]
         return;
 
@@ -4866,7 +4869,7 @@ JSC_DEFINE_HOST_FUNCTION(Process_functionReallyKill, (JSC::JSGlobalObject * glob
     // profiler configs, so skipping the flush there avoids a rehash race.
     if (signal > 0 && (pid == 0 || pid == -1 || pid == ownPid || pid == -ownPid)
         && !(Bun__isMainThreadVM() && signalToContextIdsMap && signalToContextIdsMap->contains(signal))) {
-        Bun__writeProfilesBeforeSelfKill(selfSentSignalEndsProcess(pid, ownPid, signal));
+        Bun__writeProfilesBeforeSelfKill(selfSentSignalEndsProcess(pid, ownPid, signal), signal == SIGTERM || signal == SIGINT || signal == SIGHUP);
     }
 
 #if !OS(WINDOWS)

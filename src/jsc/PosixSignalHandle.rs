@@ -49,6 +49,9 @@ impl PosixSignalHandle {
 extern "C" fn Bun__onPosixSignal(number: i32) {
     #[cfg(unix)]
     {
+        if matches!(number, libc::SIGTERM | libc::SIGINT | libc::SIGHUP) {
+            crate::node_compile_cache::Bun__NodeCompileCache__onTerminationSignal();
+        }
         // Watch-mode SIGINT with no JS listener: node's watcher (its own
         // process, idle loop) exits 0 immediately even when the script is
         // busy; `_exit` is async-signal-safe, the queued path would not run.

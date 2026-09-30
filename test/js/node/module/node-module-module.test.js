@@ -480,6 +480,266 @@ console.log("survived", require("./late.js"));`,
     expect(exitCode).toBe(0);
   });
 
+  for (const mode of [
+    "natural",
+    "exit",
+    ...(isWindows ? [] : ["SIGTERM", "SIGINT", "SIGHUP", "SIGUSR1", "SIGTERM-self", "SIGTERM-during-exit"]),
+  ]) {
+    test.serial(
+      `compile cache persists correctly on ${mode} exit with uncached modules`,
+      async () => {
+        const signaled = mode.startsWith("SIG");
+        const signalName = mode.split("-")[0];
+        const selfSignal = mode === "SIGTERM-self";
+        const duringExit = mode === "SIGTERM-during-exit";
+        const bounded = ["SIGTERM", "SIGINT", "SIGHUP"].includes(signalName);
+        const count = 2_000;
+        const functions = Array.from({ length: 64 }, (_, i) => `function f${i}(x) { return x + ${i}; }`).join("\n");
+        using dir = tempDir("compile-cache-exit-budget", {
+          ...Object.fromEntries(
+            Array.from({ length: count }, (_, i) => [`mod${i}.cjs`, `${functions}\nmodule.exports = f63(${i});`]),
+          ),
+          "main.cjs": `
+          let sum = 0;
+          for (let i = 0; i < ${count}; i++) sum += require("./mod" + i + ".cjs");
+          if (sum !== ${((count - 1) * count) / 2 + count * 63}) throw new Error("wrong modules");
+          const done = () => {
+            require("node:fs").writeSync(1, Date.now() + "\\n");
+            if (${JSON.stringify(mode)} !== "natural") process.exit(0);
+          };
+          if (${selfSignal}) {
+            require("node:fs").writeSync(1, Date.now() + "\\n");
+            process.kill(process.pid, "SIGTERM");
+          } else if (${duringExit}) {
+            process.on("SIGTERM", () => {});
+            console.log("ready");
+            done();
+          } else if (${signaled}) {
+            process.on(${JSON.stringify(signalName)}, () => setImmediate(done));
+            setInterval(() => {}, 1000);
+            console.log("ready");
+          } else {
+            done();
+          }
+        `,
+        });
+        const cacheDir = path.join(String(dir), "cc");
+        await using proc = Bun.spawn({
+          cmd: [bunExe(), "main.cjs"],
+          cwd: String(dir),
+          env: { ...bunEnv, NODE_COMPILE_CACHE: cacheDir, NODE_DISABLE_COMPILE_CACHE: undefined },
+          stderr: "pipe",
+        });
+        let sentSignalAt;
+        const stdoutPromise = (async () => {
+          let text = "";
+          for await (const chunk of proc.stdout) {
+            text += Buffer.from(chunk).toString();
+            if (signaled && !selfSignal && sentSignalAt === undefined && text.startsWith("ready\n")) {
+              if (duringExit) {
+                // No idle poll occurred: the first file proves the normal exit's persist began.
+                const deadline = Date.now() + 5_000;
+                while (![...new Bun.Glob("**/*").scanSync({ cwd: cacheDir, onlyFiles: true })].length) {
+                  if (Date.now() >= deadline || proc.exitCode !== null) throw new Error("exit persistence never began");
+                  await Bun.sleep(5);
+                }
+              }
+              sentSignalAt = Date.now();
+              proc.kill(signalName);
+            }
+          }
+          return text;
+        })();
+        const [stdout, stderr, exitCode, exitedAt] = await Promise.all([
+          stdoutPromise,
+          proc.stderr.text(),
+          proc.exited,
+          proc.exited.then(() => Date.now()),
+        ]);
+        expect(stderr).toBe("");
+        expect(stdout).toMatch(signaled && !selfSignal ? /^ready\n\d+\n$/ : /^\d+\n$/);
+        const startedExit = Number(stdout.trim().split("\n").at(-1));
+        // 250ms cache budget plus scheduler/ASAN/process-teardown slack; excludes module loading.
+        if (bounded) expect(exitedAt - (sentSignalAt ?? startedExit)).toBeLessThan(1_500);
+        expect(proc.signalCode).toBe(selfSignal ? "SIGTERM" : null);
+        expect(exitCode).toBe(selfSignal ? 143 : 0);
+
+        // Any published entry must be complete even if exit interrupted a generation/write.
+        const files = [...new Bun.Glob("**/*").scanSync({ cwd: cacheDir, onlyFiles: true })].filter(f =>
+          /^[0-9a-f]{16}$/.test(path.basename(f)),
+        );
+        expect(files.length).toBeGreaterThan(0);
+        if (!bounded) expect(files.length).toBe(count + 1);
+        const { createHash } = await import("node:crypto");
+        for (const file of files) {
+          const bytes = fs.readFileSync(path.join(cacheDir, file));
+          expect(bytes.readUInt32LE(0)).toBe(0xb0bcace2);
+          const sourceSize = bytes.readUInt32LE(4);
+          const blobSize = bytes.readUInt32LE(8);
+          const blobOffset = Math.ceil((76 + sourceSize) / 128) * 128;
+          expect(bytes.length).toBe(blobOffset + blobSize);
+          expect(
+            createHash("sha256")
+              .update(bytes.subarray(76, 76 + sourceSize))
+              .digest(),
+          ).toEqual(bytes.subarray(12, 44));
+          expect(createHash("sha256").update(bytes.subarray(blobOffset)).digest()).toEqual(bytes.subarray(44, 76));
+        }
+
+        await using warm = Bun.spawn({
+          cmd: [
+            bunExe(),
+            "-e",
+            `
+          for (let i = 0; i < ${count}; i++) require("./mod" + i + ".cjs");
+          require("node:module").flushCompileCache();
+          console.log("flushed");
+        `,
+          ],
+          cwd: String(dir),
+          env: {
+            ...bunEnv,
+            NODE_COMPILE_CACHE: cacheDir,
+            NODE_DISABLE_COMPILE_CACHE: undefined,
+            NODE_DEBUG_NATIVE: "COMPILE_CACHE",
+          },
+          stderr: "pipe",
+        });
+        const [warmOut, warmErr, warmExit] = await Promise.all([warm.stdout.text(), warm.stderr.text(), warm.exited]);
+        expect(warmOut.trim()).toBe("flushed");
+        expect(warmErr).toContain("was accepted");
+        expect(warmExit).toBe(0);
+        const complete = [...new Bun.Glob("**/*").scanSync({ cwd: cacheDir, onlyFiles: true })].filter(f =>
+          /^[0-9a-f]{16}$/.test(path.basename(f)),
+        );
+        expect(complete.length).toBeGreaterThanOrEqual(count);
+      },
+      30_000,
+    );
+  }
+
+  test.serial("compile cache waits for idle before background persistence", async () => {
+    using dir = tempDir("compile-cache-background", { "dep.cjs": "module.exports = 42;" });
+    const cacheDir = path.join(String(dir), "cc");
+    await using proc = Bun.spawn({
+      cmd: [
+        bunExe(),
+        "-e",
+        `
+        const fs = require("node:fs");
+        const { getCompileCacheDir } = require("node:module");
+        console.log(require("./dep.cjs"));
+        // Simulate synchronous startup: background work must not start here.
+        const busyUntil = Date.now() + 500;
+        while (Date.now() < busyUntil) {}
+        if (fs.readdirSync(getCompileCacheDir()).some(name => /^[0-9a-f]{16}$/.test(name))) {
+          throw new Error("persisted during synchronous startup");
+        }
+        const deadline = Date.now() + 3000;
+        const poll = setInterval(() => {
+          if (fs.readdirSync(getCompileCacheDir()).some(name => /^[0-9a-f]{16}$/.test(name))) {
+            clearInterval(poll);
+            console.log("persisted while running");
+          } else if (Date.now() > deadline) {
+            process.exit(1);
+          }
+        }, 20);
+      `,
+      ],
+      cwd: String(dir),
+      env: { ...bunEnv, NODE_COMPILE_CACHE: cacheDir, NODE_DISABLE_COMPILE_CACHE: undefined },
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect(stdout.trim()).toBe("42\npersisted while running");
+    expect(stderr).toBe("");
+    expect(exitCode).toBe(0);
+  });
+
+  test.serial(
+    "compile cache wakes an idle loop for deferred modules",
+    async () => {
+      const count = 2_000;
+      const functions = Array.from({ length: 64 }, (_, i) => `function f${i}(x) { return x + ${i}; }`).join("\n");
+      using dir = tempDir("compile-cache-deferred-idle", {
+        ...Object.fromEntries(
+          Array.from({ length: count }, (_, i) => [`mod${i}.cjs`, `${functions}\nmodule.exports = f63(${i});`]),
+        ),
+        "late.cjs": "module.exports = 42;",
+        "main.cjs": `
+        for (let i = 0; i < ${count}; i++) require("./mod" + i + ".cjs");
+        const timer = setInterval(() => {}, 1100);
+        process.stdin.on("data", data => {
+          if (data.toString().trim() === "late") {
+            clearInterval(timer);
+            if (require("./late.cjs") !== 42) throw new Error("late module");
+            console.log("late");
+          } else {
+            console.log("complete");
+            process.exit(0);
+          }
+        });
+        console.log("ready");
+      `,
+      });
+      const cacheDir = path.join(String(dir), "cc");
+      await using proc = Bun.spawn({
+        cmd: [bunExe(), "main.cjs"],
+        cwd: String(dir),
+        env: {
+          ...bunEnv,
+          NODE_COMPILE_CACHE: cacheDir,
+          NODE_DISABLE_COMPILE_CACHE: undefined,
+          BUN_GC_TIMER_DISABLE: "1",
+          BUN_IDLE_GC_SECONDS: "0",
+        },
+        stdin: "pipe",
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const ready = Promise.withResolvers();
+      const stdoutPromise = (async () => {
+        let text = "";
+        for await (const chunk of proc.stdout) {
+          text += Buffer.from(chunk).toString();
+          if (text.startsWith("ready\n")) ready.resolve();
+        }
+        return text;
+      })();
+      const stderrPromise = proc.stderr.text();
+      await Promise.race([
+        ready.promise,
+        proc.exited.then(() => {
+          throw new Error("exited before ready");
+        }),
+      ]);
+      const files = () =>
+        [...new Bun.Glob("**/*").scanSync({ cwd: cacheDir, onlyFiles: true })].filter(f =>
+          /^[0-9a-f]{16}$/.test(path.basename(f)),
+        ).length;
+      const waitForFiles = async minimum => {
+        const deadline = Date.now() + 10_000;
+        while (files() < minimum) {
+          if (Date.now() >= deadline || proc.exitCode !== null) throw new Error("idle persistence stalled");
+          await Bun.sleep(10);
+        }
+      };
+      await waitForFiles(1);
+      expect(files()).toBeLessThan(count + 1);
+      proc.stdin.write("late\n");
+      await proc.stdin.flush();
+      // The child now has no JS timers. The new module must wake/resume deferred persistence.
+      await waitForFiles(count + 2);
+      proc.stdin.write("stop\n");
+      await proc.stdin.flush();
+      const [stdout, stderr, exitCode] = await Promise.all([stdoutPromise, stderrPromise, proc.exited]);
+      expect(stdout.trim()).toBe("ready\nlate\ncomplete");
+      expect(stderr).toBe("");
+      expect(exitCode).toBe(0);
+    },
+    30_000,
+  );
+
   const compileCacheEnv = { ...bunEnv };
   delete compileCacheEnv.NODE_COMPILE_CACHE;
   delete compileCacheEnv.NODE_COMPILE_CACHE_PORTABLE;

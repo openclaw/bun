@@ -125,6 +125,8 @@ On macOS, `fs.copyFile` and `fs.cp` accept regular-file `/dev/fd` sources withou
 
 🟡 Missing `Module#load()`, `registerHooks`, `findPackageJSON`, `stripTypeScriptTypes`, `getSourceMapsSupport`/`setSourceMapsSupport`. Overriding `require.cache`, `require.extensions` and `module._resolveFilename` is supported. `syncBuiltinESMExports`, `module._load`, `module._pathCache` and `module.register` are no-ops (we recommend [`Bun.plugin`](/runtime/plugins) instead). `findSourceMap` always returns `undefined`.
 
+`NODE_COMPILE_CACHE` and `module.enableCompileCache()` generate and atomically write cache entries during idle time. Normal exits wait for pending cache work. After a native SIGTERM, SIGINT, or SIGHUP, Bun limits automatic exit-time cache waiting to 250 ms, including when JavaScript handled the signal. Unfinished entries compile normally on the next run. Explicit `module.flushCompileCache()` calls always wait for persistence to finish. Standalone executables ignore `NODE_COMPILE_CACHE`.
+
 ### [`node:net`](https://nodejs.org/api/net.html)
 
 🟢 Fully implemented, including `BlockList`, `SocketAddress`, `autoSelectFamily`, Unix domain sockets and `server.listen({ fd })`. `new net.Socket({ fd })` cannot read from an existing file descriptor (only write-only wrapping works). `server.listen(handle)` only accepts `{ fd }`. Missing `blockList.toJSON()`/`fromJSON()`.

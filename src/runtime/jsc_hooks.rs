@@ -1083,11 +1083,19 @@ unsafe fn auto_tick(vm: *mut VirtualMachine) {
                 )
             };
             let now_ns = now.map_or(bun_uws::NOW_NS_UNKNOWN, |t| t.ns());
+            // SAFETY: this thread owns `vm`, and prepare_idle does not enter JS.
+            let observe_cache_idle =
+                unsafe { (*vm).is_main_thread && bun_jsc::node_compile_cache::prepare_idle(&*vm) };
             // SAFETY: `loop_` is the live per-thread uws loop.
             unsafe {
                 (*loop_)
                     .tick_with_timeout(if have_timeout { Some(&timespec) } else { None }, now_ns)
             };
+            if observe_cache_idle {
+                // SAFETY: the poll has returned and `loop_` is still live.
+                let idle_ns = unsafe { bun_uws::us_loop_idle_ns(loop_) };
+                bun_jsc::node_compile_cache::on_idle(idle_ns);
+            }
         } else {
             // SAFETY: `loop_` is the live per-thread uws loop.
             unsafe { (*loop_).tick_without_idle() };
@@ -1208,11 +1216,19 @@ unsafe fn auto_tick_active(vm: *mut VirtualMachine) {
                 )
             };
             let now_ns = now.map_or(bun_uws::NOW_NS_UNKNOWN, |t| t.ns());
+            // SAFETY: this thread owns `vm`, and prepare_idle does not enter JS.
+            let observe_cache_idle =
+                unsafe { (*vm).is_main_thread && bun_jsc::node_compile_cache::prepare_idle(&*vm) };
             // SAFETY: `loop_` is the live per-thread uws loop.
             unsafe {
                 (*loop_)
                     .tick_with_timeout(if have_timeout { Some(&timespec) } else { None }, now_ns)
             };
+            if observe_cache_idle {
+                // SAFETY: the poll has returned and `loop_` is still live.
+                let idle_ns = unsafe { bun_uws::us_loop_idle_ns(loop_) };
+                bun_jsc::node_compile_cache::on_idle(idle_ns);
+            }
         } else {
             // SAFETY: `loop_` is the live per-thread uws loop.
             unsafe { (*loop_).tick_without_idle() };

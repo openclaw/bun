@@ -1,4 +1,12 @@
 #include "root.h"
+
+#if OS(DARWIN)
+#include <pthread/qos.h>
+#elif OS(LINUX)
+#include <sys/resource.h>
+#elif OS(WINDOWS)
+#include <windows.h>
+#endif
 #include "headers-handwritten.h"
 #include "NodeModuleModule.h"
 #include "CodeGenerationFromStrings.h"
@@ -978,6 +986,19 @@ JSC_DEFINE_HOST_FUNCTION(jsFunctionSyncBuiltinESMExports,
 JSC_DEFINE_HOST_FUNCTION(jsFunctionRegister, (JSGlobalObject * globalObject, JSC::CallFrame* callFrame))
 {
     return JSC::JSValue::encode(JSC::jsUndefined());
+}
+
+extern "C" void Bun__NodeCompileCache__setWorkerPriority(bool background)
+{
+#if OS(DARWIN)
+    pthread_set_qos_class_self_np(background ? QOS_CLASS_UTILITY : QOS_CLASS_USER_INITIATED, 0);
+#elif OS(WINDOWS)
+    SetThreadPriority(GetCurrentThread(), background ? THREAD_PRIORITY_BELOW_NORMAL : THREAD_PRIORITY_NORMAL);
+#elif OS(LINUX)
+    // Linux nice applies to this worker only. Raising it again may require a capability.
+    if (background)
+        setpriority(PRIO_PROCESS, 0, 10);
+#endif
 }
 
 extern "C" int32_t Bun__NodeCompileCache__enable(const BunString* dir, int32_t portable, BunString* outDirectory, BunString* outMessage);

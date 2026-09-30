@@ -744,7 +744,10 @@ impl VMHolder {
     /// recording is written once and ends there). The recording is the main
     /// thread's to write: a Worker that sends the signal leaves none.
     #[unsafe(no_mangle)]
-    pub(crate) extern "C" fn Bun__writeProfilesBeforeSelfKill(signal_ends_process: bool) {
+    pub(crate) extern "C" fn Bun__writeProfilesBeforeSelfKill(
+        signal_ends_process: bool,
+        termination_signal: bool,
+    ) {
         let Some(vm_ptr) = VM.get() else { return };
         // SAFETY: called on the JS thread that owns this VM (process._kill).
         let vm = unsafe { &mut *vm_ptr };
@@ -765,7 +768,9 @@ impl VMHolder {
         // Node runs RunAtExit (incl. compile cache) on self-directed fatal signals. Non-latching:
         // the signal may prove non-fatal, and latching here would no-op the real exit's persist.
         // https://github.com/nodejs/node/blob/main/src/env.cc (AtExit(FlushCompileCache))
-        crate::node_compile_cache::persist_now();
+        crate::node_compile_cache::persist_before_self_signal(
+            signal_ends_process && termination_signal,
+        );
         // Written once, and writing it ends the recording: only before a signal that is sure to end the process, not
         // one a program sends itself along the way (SIGTSTP on Ctrl-Z, SIGWINCH, one that is being ignored, ...).
         if signal_ends_process && vm.is_main_thread() {
