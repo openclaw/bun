@@ -6,6 +6,7 @@
 
 - Start TLS reads after adopting paused Duplex and HTTP CONNECT transports, including buffered handshake bytes and pending plaintext acknowledgements.
 - Clone only Map and Set entries, ignoring custom own properties without invoking getters, while retaining compatibility with existing serialized records.
+- Deliver socket close events through the native immediate scheduler even when fake timers replace user-visible timer APIs, preserving end/finish/close ordering.
 
 - Support independent IPC channel references, writable child stdio properties, and failed-spawn exit codes. Thanks @robobun!
 - Await buffered FileSink writes before completing Writable callbacks, preserving cork, drain, error, final-flush, and parent-end descriptor behavior.
