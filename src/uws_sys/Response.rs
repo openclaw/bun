@@ -1138,11 +1138,6 @@ impl State {
     }
 
     #[inline]
-    pub fn is_http_end_called(self) -> bool {
-        self.bits() & State::HTTP_END_CALLED.bits() != 0
-    }
-
-    #[inline]
     pub fn is_http_write_called(self) -> bool {
         self.bits() & State::HTTP_WRITE_CALLED.bits() != 0
     }
