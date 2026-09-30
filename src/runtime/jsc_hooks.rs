@@ -720,10 +720,18 @@ unsafe fn load_preloads(vm: *mut VirtualMachine) -> bun_jsc::CrateResult<*mut JS
         // SAFETY: `preload` points at a live boxed slice for this iteration
         // (heap-stable `Box<[u8]>` payload; nothing below mutates `vm.preload`).
         let preload_slice: &[u8] = unsafe { &*preload };
-        // Strip "file://".
-        let normalized: &[u8] = preload_slice
-            .strip_prefix(b"file://".as_slice())
-            .unwrap_or(preload_slice);
+        // Convert a `file:` URL like an `import()` specifier: decode percent-escapes
+        // and keep Windows drive letters (`file:///C:/x` is `C:\x`, not `/C:/x`).
+        let decoded_path;
+        let decoded_utf8;
+        let normalized: &[u8] = if preload_slice.starts_with(b"file://") {
+            decoded_path =
+                bun_url::path_from_file_url(&bun_core::String::from_bytes(preload_slice));
+            decoded_utf8 = decoded_path.to_utf8();
+            decoded_utf8.slice()
+        } else {
+            preload_slice
+        };
 
         // node: builtin specifiers bypass the file resolver — JSModuleLoader
         // resolves them internally, so `bun --import node:*` works like Node's.

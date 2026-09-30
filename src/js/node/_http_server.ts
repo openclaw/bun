@@ -29,6 +29,7 @@ const {
   isStoppedModuleGraphRunning,
 } = require("internal/shared");
 const kServerResponseStatistics = Symbol("ServerResponseStatistics");
+const onResponseFinishChannel = require("node:diagnostics_channel").channel("http.server.response.finish");
 
 const { isPrimary } = require("internal/cluster/isPrimary");
 const { addServerAbortSignalOption } = require("internal/net/server_abort_signal");
@@ -1266,14 +1267,7 @@ Server.prototype[kRealListen] = function (tls, port, host, socketPath, reusePort
         if (handle.finished || didFinish) {
           handle = undefined;
           http_res[kCloseCallback] = undefined;
-          // Set in time only because end() defers the 'finish' emit to a
-          // process.nextTick (see ServerResponse.prototype.end) and nothing
-          // between the 'request' emit and here drains the tick queue.
-          http_res[kDispatcherDetached] = true;
-          http_res.detachSocket(socket);
-          if (socket[kPipelinedResponses] !== undefined) {
-            advanceResponsePipeline(server, socket);
-          }
+          // Detach in the finish listener: a nextTick can subscribe before it runs.
           return;
         }
 
@@ -1655,9 +1649,6 @@ const kPipelinedQueuedState = Symbol("kPipelinedQueuedState");
 const kOutgoingData = Symbol("kOutgoingData");
 const kReplayingPipelinedOps = Symbol("kReplayingPipelinedOps");
 const kStopParsingOnCloseListener = Symbol("kStopParsingOnCloseListener");
-// Set when the dispatcher already detached a synchronously-finished response,
-// so the 'finish' listener does not detach/advance the pipeline a second time.
-const kDispatcherDetached = Symbol("kDispatcherDetached");
 
 // https://github.com/nodejs/node/blob/v26.3.0/lib/_http_server.js (socketOnError)
 const badRequestResponse = Buffer.from(`HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n`, "latin1");
@@ -2790,26 +2781,28 @@ function stopServerResponsePerf(this: any) {
   }
 }
 
+function publishResponseFinish(request, response, socket, server) {
+  if (onResponseFinishChannel.hasSubscribers) {
+    onResponseFinishChannel.publish({ request, response, socket, server });
+  }
+}
+
 // Node.js's resOnFinish as one shared listener: connection handling (close or
 // arm keep-alive) runs first because onResponseFinishHandleSocket's guards
 // read pre-detach state, then detach the socket and advance the pipeline.
 function emitResponseFinish() {
   const req = this.req;
+  // req.socket can be cleared by stream cleanup before the response finishes.
+  const socket = req?.socket ?? this.socket;
+  publishResponseFinish(req, this, socket, socket?.server);
   // Node's resOnFinish: dump a body that nobody consumed or resumed.
   if (req && !req._consuming && !req._readableState?.resumeScheduled) {
     req._dump();
   }
-  // req.socket is nulled by the stream destroyer (pipeline/compose cleanup);
-  // the response's own socket (set by assignSocket, cleared only by
-  // detachSocket) still references the connection then.
-  const socket = this.req?.socket ?? this.socket;
   // Node's clearIncoming: a request that ended before its response did. Any other one is cleared at its EOF.
   const parser = socket?.parser;
   if (parser != null && parser.incoming === req && req.readableEnded) parser.incoming = null;
   onResponseFinishHandleSocket(socket?.server, socket, this);
-  // The dispatcher detached a synchronously-finished response itself;
-  // advancing the pipeline again here would skip a queued response.
-  if (this[kDispatcherDetached]) return;
   if (socket != null) this.detachSocket(socket);
   advanceResponsePipeline(socket?.server, socket);
 }
@@ -3759,7 +3752,6 @@ ServerResponse.prototype.end = function (chunk, encoding, callback) {
   return this;
 };
 
-// 'finish' waits a tick: the dispatcher sets kDispatcherDetached after a sync handler returns, and 'finish' reads it.
 function queueResponseFinished(res, callback) {
   res._callPendingCallbacks();
   process.nextTick(emitResponseFinished, res, callback);
@@ -4429,6 +4421,7 @@ http1ServerPipeline.lastPipelinedResponse = lastPipelinedResponse;
 http1ServerPipeline.maybePauseFallbackReads = maybePauseFallbackReads;
 http1ServerPipeline.resumeFallbackReadsOnDrain = resumeFallbackReadsOnDrain;
 http1ServerPipeline.finishDrainedResponse = finishDrainedResponse;
+http1ServerPipeline.publishResponseFinish = publishResponseFinish;
 http1ServerPipeline.kMustCloseConnection = kMustCloseConnection;
 
 export default {

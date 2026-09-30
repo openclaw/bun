@@ -1,5 +1,6 @@
 import { gc } from "bun";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { bunEnv, bunExe } from "harness";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { channel, Channel, hasSubscribers, subscribe, unsubscribe } from "node:diagnostics_channel";
 
@@ -546,3 +547,118 @@ function checkCalls() {
 beforeEach(() => {
   mocks.clear();
 });
+
+const httpServerFinishScript = String.raw`
+const assert = require("node:assert/strict");
+const { channel } = require("node:diagnostics_channel");
+const { once } = require("node:events");
+const http = require("node:http");
+const net = require("node:net");
+const [transport, mode] = process.argv.slice(1);
+const dc = channel("http.server.response.finish");
+const events = [];
+const requests = [];
+const responses = [];
+const messages = [];
+let first;
+let queuedWithoutSocket = false;
+let publishCalls = 0;
+const subscriber = (message, name) => {
+  assert.equal(name, "http.server.response.finish");
+  const { request, response, socket, server: owner } = message;
+  const index = requests.indexOf(request);
+  assert.deepEqual(Object.keys(message).sort(), ["request", "response", "server", "socket"]);
+  assert.notEqual(index, -1);
+  assert.equal(response, responses[index]);
+  assert.equal(socket, request.socket);
+  assert.equal(socket, response.socket);
+  assert.equal(owner, server);
+  assert.equal(response.writableFinished, true);
+  events.push("diagnostic:" + index);
+  messages.push(message);
+};
+if (mode !== "none" && mode !== "late" && mode !== "late-tick") dc.subscribe(subscriber);
+const server = http.createServer((req, res) => {
+  const index = requests.length;
+  requests.push(req);
+  responses.push(res);
+  res.on("finish", () => events.push("finish:" + index));
+  res.on("close", () => events.push("close:" + index));
+  if (mode === "late") dc.subscribe(subscriber);
+  if (mode === "late-tick") process.nextTick(() => dc.subscribe(subscriber));
+  if (mode === "unsubscribe") dc.unsubscribe(subscriber);
+  if (mode === "none" || mode === "unsubscribe") {
+    assert.equal(dc.hasSubscribers, false);
+    dc.publish = () => publishCalls++;
+  }
+  if (mode === "abort") {
+    res.destroy();
+  } else if (mode === "queued" && index === 0) {
+    first = res;
+  } else {
+    if (mode === "queued") {
+      queuedWithoutSocket = res.socket === null;
+      res.on("socket", () => events.push("assigned:" + index));
+    }
+    res.end("ok");
+    if (first) first.end("ok");
+  }
+});
+const listener = transport === "native" ? server : net.createServer(socket => server.emit("connection", socket));
+(async () => {
+  let client;
+  try {
+    listener.listen(0, "127.0.0.1");
+    await once(listener, "listening");
+    client = net.connect(listener.address().port, "127.0.0.1");
+    const closed = once(client, "close");
+    let received = "";
+    client.on("data", chunk => received += chunk);
+    const payload = mode === "queued"
+      ? "GET /first HTTP/1.1\r\nHost: localhost\r\n\r\nHEAD /second HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
+      : "GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n";
+    client.write(payload);
+    await closed;
+    assert.equal(requests.length, mode === "queued" ? 2 : 1);
+    if (mode === "none" || mode === "unsubscribe" || mode === "abort") {
+      assert.equal(messages.length, 0);
+      assert.equal(publishCalls, 0);
+    } else {
+      assert.equal(messages.length, requests.length);
+      for (let i = 0; i < requests.length; i++) {
+        assert.equal(messages[i].request, requests[i]);
+        assert.ok(events.indexOf("diagnostic:" + i) < events.indexOf("finish:" + i));
+        assert.ok(events.indexOf("finish:" + i) < events.indexOf("close:" + i));
+      }
+    }
+    if (mode === "queued") {
+      assert.equal(queuedWithoutSocket, true);
+      assert.equal(messages[0].socket, messages[1].socket);
+      assert.ok(events.indexOf("diagnostic:0") < events.indexOf("assigned:1"));
+      assert.deepEqual(events.filter(event => event.startsWith("diagnostic:")), ["diagnostic:0", "diagnostic:1"]);
+    }
+    assert.equal((received.match(/HTTP\/1.1 200 OK/g) || []).length, mode === "abort" ? 0 : requests.length);
+    console.log("ok");
+  } finally {
+    dc.unsubscribe(subscriber);
+    client?.destroy();
+    server.closeAllConnections();
+    if (listener.listening) await new Promise(resolve => listener.close(resolve));
+  }
+})().catch(error => { console.error(error); process.exitCode = 1; });
+`;
+
+for (const transport of ["native", "injected"]) {
+  for (const mode of ["sync", "queued", "late", "late-tick", "none", "unsubscribe", "abort"]) {
+    test.concurrent(`http.server.response.finish: ${transport} ${mode}`, async () => {
+      await using proc = Bun.spawn({
+        cmd: [bunExe(), "-e", httpServerFinishScript, transport, mode],
+        env: bunEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      expect({ stdout, stderr, exitCode }).toEqual({ stdout: "ok\n", stderr: "", exitCode: 0 });
+    });
+  }
+}
