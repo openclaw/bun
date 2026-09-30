@@ -852,11 +852,7 @@ Server.prototype.listen = function () {
           serverNameHost,
         );
       } catch (err) {
-        process.nextTick(
-          emitListenErrorNextTick,
-          server,
-          formatListenError(err, port, address, socketPath),
-        );
+        process.nextTick(emitListenErrorNextTick, server, formatListenError(err, port, address, socketPath));
       }
     });
     return this;
