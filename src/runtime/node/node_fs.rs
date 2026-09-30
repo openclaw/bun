@@ -4748,10 +4748,39 @@ impl NodeFS {
         Ok(())
     }
 
+    #[cfg(not(windows))]
+    pub(crate) fn copy_file_using_read_write_loop(
+        src: &ZStr,
+        dest: &ZStr,
+        src_fd: FD,
+        dest_fd: FD,
+        stat_size: usize,
+        wrote: &mut u64,
+    ) -> Maybe<ret::CopyFile> {
+        Self::copy_file_using_read_write_loop_impl::<false>(
+            src, dest, src_fd, dest_fd, stat_size, wrote,
+        )
+    }
+
+    #[cfg(target_os = "macos")]
+    fn copy_file_using_pread_write_loop(
+        src: &ZStr,
+        dest: &ZStr,
+        src_fd: FD,
+        dest_fd: FD,
+        stat_size: usize,
+        wrote: &mut u64,
+    ) -> Maybe<ret::CopyFile> {
+        // Opening /dev/fd/N shares the caller's offset; path copies must not consume it.
+        Self::copy_file_using_read_write_loop_impl::<true>(
+            src, dest, src_fd, dest_fd, stat_size, wrote,
+        )
+    }
+
     // since we use a 64 KB stack buffer, we should not let this function get inlined
     #[inline(never)]
     #[cfg(not(windows))]
-    pub(crate) fn copy_file_using_read_write_loop(
+    fn copy_file_using_read_write_loop_impl<const POSITIONAL: bool>(
         src: &ZStr,
         dest: &ZStr,
         src_fd: FD,
@@ -4771,7 +4800,7 @@ impl NodeFS {
         const STACK_BUF_LEN: usize = 64 * 1024;
         let mut stack_buf = bun_core::vec::UninitBuf::<STACK_BUF_LEN>::uninit();
         let mut buf_to_free: Vec<u8> = Vec::new();
-        // SAFETY: `Syscall::read` is the only writer of `buf`; each iteration reads back only `buf[..amt]`.
+        // SAFETY: read/pread initialize `buf`; each iteration reads back only `buf[..amt]`.
         let mut buf: &mut [u8] = unsafe { stack_buf.as_bytes_mut() };
 
         'maybe_allocate_large_temp_buf: {
@@ -4802,11 +4831,11 @@ impl NodeFS {
         let mut broke = false;
         'toplevel: while remain > 0 {
             let read_len = (buf.len() as u64).min(remain) as usize;
-            // Opening /dev/fd/N on macOS shares the caller's offset; copy from zero without consuming it.
-            #[cfg(target_os = "macos")]
-            let read_result = Syscall::pread(src_fd, &mut buf[..read_len], *wrote as i64);
-            #[cfg(not(target_os = "macos"))]
-            let read_result = Syscall::read(src_fd, &mut buf[..read_len]);
+            let read_result = if POSITIONAL {
+                Syscall::pread(src_fd, &mut buf[..read_len], *wrote as i64)
+            } else {
+                Syscall::read(src_fd, &mut buf[..read_len])
+            };
             let amt = match read_result {
                 Ok(result) => result,
                 Err(err) => {
@@ -4846,10 +4875,11 @@ impl NodeFS {
         }
         if !broke {
             'outer: loop {
-                #[cfg(target_os = "macos")]
-                let read_result = Syscall::pread(src_fd, buf, *wrote as i64);
-                #[cfg(not(target_os = "macos"))]
-                let read_result = Syscall::read(src_fd, buf);
+                let read_result = if POSITIONAL {
+                    Syscall::pread(src_fd, buf, *wrote as i64)
+                } else {
+                    Syscall::read(src_fd, buf)
+                };
                 let amt = match read_result {
                     Ok(result) => result,
                     Err(err) => {
@@ -5023,7 +5053,7 @@ impl NodeFS {
                         Err(err) => return Err(err.with_path(args.dest.slice())),
                     };
 
-                    let result = Self::copy_file_using_read_write_loop(
+                    let result = Self::copy_file_using_pread_write_loop(
                         src,
                         dest,
                         src_fd,
@@ -8589,7 +8619,7 @@ impl NodeFS {
                     });
 
                 let mut w = wrote.get();
-                let r = Self::copy_file_using_read_write_loop(
+                let r = Self::copy_file_using_pread_write_loop(
                     src,
                     dest,
                     src_fd,
