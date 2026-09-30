@@ -1,6 +1,6 @@
 // Hardcoded module "node:child_process"
 const EventEmitter = require("node:events");
-const { kHandle } = require("internal/shared");
+const { kHandle, ErrnoException } = require("internal/shared");
 const {
   validateBoolean,
   validateFunction,
@@ -69,6 +69,7 @@ interface SpawnSyncResult {
 }
 
 const kFromNode = Symbol("kFromNode");
+let childProcessChannel;
 
 const setStdioBlocking = $newRustFunction("subprocess.rs", "setStdioBlocking", 2);
 
@@ -1165,6 +1166,13 @@ class ChildProcess extends EventEmitter {
   #handle;
   #closesNeeded = 1;
   #closesGot = 0;
+  #failedIpcPending = false;
+
+  constructor() {
+    super();
+    childProcessChannel ??= require("node:diagnostics_channel").channel("child_process");
+    if (childProcessChannel.hasSubscribers) childProcessChannel.publish({ process: this });
+  }
 
   declare send?: (message, handle?, options?, callback?) => boolean;
   declare disconnect?: () => void;
@@ -1191,34 +1199,10 @@ class ChildProcess extends EventEmitter {
       this.exitCode = typeof signalCode === "number" ? 0 : exitCode;
     }
 
-    // Drain stdio streams
-    {
-      if (this.#stdin) {
-        this.#stdin.destroy();
-      } else if (this.#stdioOptions[0] === "pipe") {
-        this.#stdioOptions[0] = "destroyed";
-      }
-
-      // If there was an error while spawning the subprocess, then we will never have any IO to drain.
-      if (err) {
-        if (this.#stdioOptions[1] === "pipe") this.#stdioOptions[1] = "destroyed";
-        if (this.#stdioOptions[2] === "pipe") this.#stdioOptions[2] = "destroyed";
-      }
-
-      const stdout = this.#stdout,
-        stderr = this.#stderr;
-
-      if (stdout === undefined) {
-        this.#stdout = this.#getBunSpawnIo(1, true);
-      } else if (stdout && this.#stdioOptions[1] === "pipe" && !stdout.destroyed && stdout.readable) {
-        stdout.resume?.();
-      }
-
-      if (stderr === undefined) {
-        this.#stderr = this.#getBunSpawnIo(2, true);
-      } else if (stderr && this.#stdioOptions[2] === "pipe" && !stderr.destroyed && stderr.readable) {
-        stderr.resume?.();
-      }
+    if (this.#stdin) {
+      this.#stdin.destroy();
+    } else if (this.#stdioOptions[0] === "pipe") {
+      this.#stdioOptions[0] = "destroyed";
     }
 
     const spawnfile = this.spawnfile;
@@ -1241,14 +1225,25 @@ class ChildProcess extends EventEmitter {
 
       err.spawnargs = ArrayPrototypeSlice.$call(this.spawnargs, 1);
       this.emit("error", err);
+    } else {
+      this.emit("exit", this.exitCode, this.signalCode);
     }
 
-    this.emit("exit", this.exitCode, this.signalCode);
-
+    // Node gives exit listeners and their nextTicks a final chance to consume output.
+    process.nextTick(() => this.#flushStdio());
     this.#maybeClose();
   }
 
+  #flushStdio() {
+    const stdio = this.stdio;
+    if (stdio === undefined) return;
+    for (const stream of stdio) {
+      if (stream?.readable) stream.resume();
+    }
+  }
+
   #getBunSpawnIo(i, autoResume = false) {
+    if (this.#stdioOptions === undefined) return undefined;
     if ($debug && !this.#handle) {
       if (this.#handle === null) {
         $debug("ChildProcess: getBunSpawnIo: this.#handle is null. This means the subprocess already exited");
@@ -1333,8 +1328,10 @@ class ChildProcess extends EventEmitter {
             if (!value) {
               const Readable = require("internal/streams/readable");
               const stream = new Readable({ read() {} });
-              // Mark as destroyed to indicate it's not usable
-              stream.destroy();
+              this.#closesNeeded++;
+              stream.once("close", () => this.#maybeClose());
+              stream.push(null);
+              if (autoResume) stream.resume();
               return stream;
             }
 
@@ -1387,6 +1384,7 @@ class ChildProcess extends EventEmitter {
 
   #createStdioObject() {
     const opts = this.#stdioOptions;
+    if (opts === undefined) return undefined;
     const length = opts.length;
     let result = new Array(length);
     for (let i = 0; i < length; i++) {
@@ -1435,8 +1433,7 @@ class ChildProcess extends EventEmitter {
 
   get connected() {
     const handle = this.#handle;
-    if (handle === null) return false;
-    return handle.connected ?? false;
+    return this.#failedIpcPending || (handle?.connected ?? false);
   }
 
   get [kHandle]() {
@@ -1479,8 +1476,7 @@ class ChildProcess extends EventEmitter {
 
     const detachedOption = options.detached;
     this.#stdioOptions = bunStdio;
-    const stdioCount = stdio.length;
-    const hasSocketsToEagerlyLoad = stdioCount >= 3;
+    const hasSocketsToEagerlyLoad = bunStdio.length >= 3;
 
     validateString(options.file, "options.file");
     var file;
@@ -1593,16 +1589,32 @@ class ChildProcess extends EventEmitter {
         (ex as SystemError).spawnargs = Array.prototype.slice.$call(this.spawnargs, 1);
         const exitCode = (ex as SystemError).errno ?? -1;
         this.exitCode = exitCode;
-        process.nextTick(() => {
-          this.emit("error", ex);
-          this.emit("close", exitCode);
-        });
         if (exCode === "EMFILE" || exCode === "ENFILE") {
-          // emfile/enfile error; in this case node does not initialize stdio streams.
+          // Node cannot initialize stdio or IPC when descriptors are exhausted.
           this.#stdioOptions[0] = "undefined";
           this.#stdioOptions[1] = "undefined";
           this.#stdioOptions[2] = "undefined";
+        } else {
+          void this.stdio;
+          if (has_ipc) {
+            this.send = this.#send;
+            this.disconnect = this.#disconnect;
+            this.#failedIpcPending = true;
+            this.channel = new Control(null);
+            this.#closesNeeded++;
+          }
         }
+        process.nextTick(() => {
+          this.#stdin?.destroy();
+          this.emit("error", ex);
+          process.nextTick(() => this.#flushStdio());
+          if (this.#failedIpcPending) {
+            process.nextTick(() => {
+              if (this.#failedIpcPending) this.#disconnect();
+            });
+          }
+          this.#maybeClose();
+        });
       } else {
         if (exCode !== undefined) {
           // Node throws errors that are not in the deferred list above
@@ -1633,12 +1645,17 @@ class ChildProcess extends EventEmitter {
     }
 
     if (!this.#handle) {
-      if (callback) {
-        process.nextTick(callback, new TypeError("Process was closed while trying to send message"));
-      } else {
-        this.emit("error", new TypeError("Process was closed while trying to send message"));
+      if (message === undefined) throw $ERR_MISSING_ARGS("message");
+      if (!["string", "object", "number", "boolean"].includes(typeof message)) {
+        throw $ERR_INVALID_ARG_TYPE("message", ["string", "object", "number", "boolean"], message);
       }
-      return false;
+      const pending = this.#failedIpcPending;
+      const error = pending
+        ? new ErrnoException(process.binding("uv").UV_EPIPE, "write")
+        : $ERR_IPC_CHANNEL_CLOSED("Channel closed");
+      if (callback) process.nextTick(callback, error);
+      else process.nextTick(() => this.emit("error", error));
+      return pending;
     }
 
     // We still need this send function because
@@ -1665,6 +1682,12 @@ class ChildProcess extends EventEmitter {
   #disconnect() {
     if (!this.connected) {
       this.emit("error", $ERR_IPC_DISCONNECTED());
+      return;
+    }
+    if (this.#failedIpcPending) {
+      this.#failedIpcPending = false;
+      this.channel = null;
+      this.#onDisconnect(true);
       return;
     }
     this.#handle.disconnect();
@@ -1717,6 +1740,7 @@ class ChildProcess extends EventEmitter {
     Object.defineProperties(this.prototype, {
       stdin: {
         get: function () {
+          if (this.#stdioOptions === undefined) return undefined;
           const value = (this.#stdin ??= this.#getBunSpawnIo(0, false));
           // Define as own enumerable property on first access
           Object.defineProperty(this, "stdin", {
@@ -1741,6 +1765,7 @@ class ChildProcess extends EventEmitter {
       },
       stdout: {
         get: function () {
+          if (this.#stdioOptions === undefined) return undefined;
           const value = (this.#stdout ??= this.#getBunSpawnIo(1, false));
           // Define as own enumerable property on first access
           Object.defineProperty(this, "stdout", {
@@ -1765,6 +1790,7 @@ class ChildProcess extends EventEmitter {
       },
       stderr: {
         get: function () {
+          if (this.#stdioOptions === undefined) return undefined;
           const value = (this.#stderr ??= this.#getBunSpawnIo(2, false));
           // Define as own enumerable property on first access
           Object.defineProperty(this, "stderr", {
@@ -1789,6 +1815,7 @@ class ChildProcess extends EventEmitter {
       },
       stdio: {
         get: function () {
+          if (this.#stdioOptions === undefined) return undefined;
           const value = (this.#stdioObject ??= this.#createStdioObject());
           // Define as own enumerable property on first access
           Object.defineProperty(this, "stdio", {
@@ -2011,24 +2038,24 @@ class Control extends EventEmitter {
 
   refCounted() {
     if (++this.#refs === 1 && !this.#refExplicitlySet) {
-      this.#handle.$setChannelRef(true);
+      this.#handle?.$setChannelRef(true);
     }
   }
 
   unrefCounted() {
     if (--this.#refs === 0 && !this.#refExplicitlySet) {
-      this.#handle.$setChannelRef(false);
+      this.#handle?.$setChannelRef(false);
     }
   }
 
   ref() {
     this.#refExplicitlySet = true;
-    this.#handle.$setChannelRef(true);
+    this.#handle?.$setChannelRef(true);
   }
 
   unref() {
     this.#refExplicitlySet = true;
-    this.#handle.$setChannelRef(false);
+    this.#handle?.$setChannelRef(false);
   }
 }
 

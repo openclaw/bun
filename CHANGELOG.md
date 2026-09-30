@@ -58,3 +58,5 @@
 - Emit exactly one `async_hooks` destroy event after a Worker exits, including termination and errors, while preserving hook dispatch snapshots.
 - Abort HTTP connections when a request or response is destroyed asynchronously, preserving pending-write and pipelined-response cleanup without sending an empty success response.
 - Honor `tls.setDefaultCACertificates()` in native fetch, including empty trust sets, while preserving explicit request/session CAs and matching TLS pool configuration.
+
+- Match Node child-process diagnostics, unspawned getters, failed-spawn EOF and IPC, exit-before-drain ordering, and POSIX PATH permission errors. Adapts the diagnostics proposal in [oven-sh/bun#30080](https://github.com/oven-sh/bun/pull/30080). Thanks @robobun!

@@ -29,7 +29,7 @@ We update this page regularly. It reflects the latest version of Bun's compatibi
 
 ### [`node:diagnostics_channel`](https://nodejs.org/api/diagnostics_channel.html)
 
-🟡 `channel()`, `subscribe()`, `tracingChannel()` and the `http` client, `http.server.response.finish`, `http2` and `dgram` built-in channels are implemented. Missing `boundedChannel()` and the `http.server.request.start`, `http.server.response.created`, `net`, `module`, `console`, `child_process` and `worker_threads` built-in channels. Subscribers do not keep a `Channel` alive, so hold a reference to it.
+🟡 `channel()`, `subscribe()`, `tracingChannel()` and the `http` client, `http.server.response.finish`, `http2`, `dgram` and `child_process` built-in channels are implemented. Missing `boundedChannel()` and the `http.server.request.start`, `http.server.response.created`, `net`, `module`, `console` and `worker_threads` built-in channels. Subscribers do not keep a `Channel` alive, so hold a reference to it.
 
 ### [`node:dns`](https://nodejs.org/api/dns.html)
 
@@ -108,6 +108,8 @@ Destroying an unfinished request or response closes its connection, including as
 🟡 `createHook()` emits `init` for `TickObject`, `WORKER`, `Timeout`, and `Immediate`, and `destroy` for workers and timers. The `before`, `after`, `promiseResolve`, and other resource events are not implemented. `executionAsyncId()` and `triggerAsyncId()` return `0`. Node.js [strongly discourages](https://nodejs.org/docs/latest/api/async_hooks.html#async-hooks) these APIs in favor of `AsyncLocalStorage`.
 
 ### [`node:child_process`](https://nodejs.org/api/child_process.html)
+
+Child construction publishes the `child_process` diagnostics channel with the exact child object. Unspawned stdio getters are safe; failed spawns drain readable pipes to EOF and retain fork IPC methods. Exit listeners run before stdio resumes, and POSIX PATH permission failures report `EACCES`.
 
 🟡 IPC can send `net.Socket`, `net.Server` and `dgram.Socket` handles (including to and from Node.js processes), but not `http` server sockets. `serialization: "advanced"` only works between Bun processes, so use JSON serialization for Node.js ↔ Bun IPC. Missing `subprocess.channel.ref()`/`unref()`. You cannot pass a child's `stdout`/`stderr` as another child's `stdio`, and `spawnSync` does not return extra `stdio` pipes in `output`.
 

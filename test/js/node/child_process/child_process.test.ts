@@ -2101,3 +2101,155 @@ describe("fork IPC channel ref/unref", () => {
     expect(exitCode).toBe(0);
   });
 });
+
+describe("Node child lifecycle parity", () => {
+  it("allows reading stdio and connected before spawn", () => {
+    const child = new ChildProcess();
+    expect([child.stdin, child.stdout, child.stderr, child.stdio, child.connected]).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      false,
+    ]);
+  });
+
+  it("publishes the exact child once during construction, including a failed spawn", async () => {
+    const dc = require("node:diagnostics_channel");
+    const received: ChildProcess[] = [];
+    const listener = ({ process: child }: { process: ChildProcess }) => {
+      received.push(child);
+      expect(child.pid).toBeUndefined();
+      expect(child.connected).toBe(false);
+      expect([child.stdin, child.stdout, child.stderr, child.stdio]).toEqual([
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+      ]);
+    };
+    dc.subscribe("child_process", listener);
+    try {
+      const empty = new ChildProcess();
+      const child = spawn(bunExe(), ["-e", ""], { env: bunEnv, stdio: "ignore" });
+      expect(received).toEqual([empty, child]);
+      await once(child, "close");
+      const failed = spawn("missing-w18b-diagnostics-executable");
+      failed.on("error", () => {});
+      await new Promise(resolve => failed.once("close", resolve));
+      expect(received).toEqual([empty, child, failed]);
+      spawnSync(bunExe(), ["-e", ""], { env: bunEnv });
+      expect(received).toEqual([empty, child, failed]);
+    } finally {
+      dc.unsubscribe("child_process", listener);
+    }
+  });
+
+  it.each(["command", "cwd"])("failed spawn %s readable pipes deliver EOF before child close", async failure => {
+    using dir = tempDir("child-failed-eof", {});
+    const child =
+      failure === "command"
+        ? spawn(path.join(String(dir), "missing"))
+        : spawn(bunExe(), ["-e", ""], { cwd: path.join(String(dir), "missing"), env: bunEnv });
+    const events: string[] = [];
+    child.on("error", (error: NodeJS.ErrnoException) => events.push(error.code!));
+    child.on("exit", () => events.push("exit"));
+    for (const [name, stream] of [
+      ["stdout", child.stdout],
+      ["stderr", child.stderr],
+    ] as const) {
+      stream!.on("end", () => events.push(name));
+    }
+    await new Promise<void>(resolve =>
+      child.once("close", () => {
+        events.push("close");
+        resolve();
+      }),
+    );
+    expect(events[0]).toBe("ENOENT");
+    expect(events.slice(1, -1).sort()).toEqual(["stderr", "stdout"]);
+    expect(events.at(-1)).toBe("close");
+    expect(child.stdout!.readableEnded).toBe(true);
+    expect(child.stderr!.readableEnded).toBe(true);
+  });
+
+  it("keeps failed fork send callable through asynchronous startup failure", async () => {
+    using dir = tempDir("fork-failed-send", {});
+    const child = fork(path.join(String(dir), "missing.js"), [], {
+      cwd: path.join(String(dir), "missing"),
+      silent: true,
+      env: bunEnv,
+    });
+    const errors: string[] = [];
+    child.on("error", (error: NodeJS.ErrnoException) => errors.push(error.code!));
+    const closed = new Promise<void>(resolve => child.once("close", resolve));
+    expect(typeof child.send).toBe("function");
+    let synchronous = true;
+    const sent = new Promise<Error | null>((resolve, reject) => {
+      expect(
+        child.send!({}, error => {
+          if (synchronous) reject(new Error("send callback ran synchronously"));
+          resolve(error);
+        }),
+      ).toBe(true);
+    });
+    synchronous = false;
+    expect(await sent).toMatchObject({ code: "EPIPE", message: "write EPIPE" });
+    await closed;
+    expect(errors).toEqual(["ENOENT"]);
+    expect(child.connected).toBe(false);
+    const disconnected = new Promise<Error | null>(resolve => {
+      expect(child.send!({}, resolve)).toBe(false);
+    });
+    expect(await disconnected).toMatchObject({ code: "ERR_IPC_CHANNEL_CLOSED" });
+  });
+
+  it("leaves stderr paused through exit listeners and their nextTicks, then drains its tail", async () => {
+    const child = spawn(bunExe(), ["-e", 'process.stderr.write("final tail")'], { env: bunEnv });
+    const observations: boolean[] = [];
+    let tail = "";
+    child.stderr!.on("data", chunk => {
+      tail += chunk;
+    });
+    child.stderr!.pause();
+    child.on("exit", () => {
+      observations.push(child.stderr!.isPaused());
+      process.nextTick(() => observations.push(child.stderr!.isPaused()));
+    });
+    await once(child, "close");
+    expect(observations).toEqual([true, true]);
+    expect(tail).toBe("final tail");
+    expect(child.stderr!.readableEnded).toBe(true);
+  });
+
+  it.each([[[]], [["ignore"]], [["ignore", "pipe"]]] as [StdioOptions][])(
+    "drains shorthand stdio %j before emitting close once",
+    async stdio => {
+      const child = spawn(bunExe(), ["-e", 'process.stdout.write("out"); process.stderr.write("err")'], {
+        stdio,
+        env: bunEnv,
+      });
+      const observations: unknown[] = [];
+      child.on("close", () => observations.push([child.stdout?.readableEnded, child.stderr?.readableEnded]));
+      await once(child, "close");
+      await new Promise(resolve => setImmediate(resolve));
+      expect(observations).toEqual([[true, true]]);
+    },
+  );
+
+  // POSIX execute permission bits do not govern executable access on Windows.
+  it.skipIf(isWindows)("retains EACCES from PATH and continues to later executable candidates", async () => {
+    using dir = tempDir("spawn-path-permission", { "denied/tool": "no execute permission", "allowed/.keep": "" });
+    const denied = path.join(String(dir), "denied");
+    const allowed = path.join(String(dir), "allowed");
+    fs.chmodSync(path.join(denied, "tool"), 0o600);
+    fs.symlinkSync(bunExe(), path.join(allowed, "tool"));
+    const env = { ...bunEnv, PATH: `${denied}${path.delimiter}${path.join(String(dir), "missing")}` };
+    expect(spawnSync("tool", [], { env }).error).toMatchObject({ code: "EACCES" });
+    const error = await new Promise<Error | null>(resolve => execFile("tool", [], { env }, resolve));
+    expect(error).toMatchObject({ code: "EACCES" });
+    const child = spawn("tool", ["-e", ""], { env: { ...env, PATH: `${denied}${path.delimiter}${allowed}` } });
+    expect(await once(child, "close")).toEqual([0, null]);
+    expect(spawnSync("absent-w18b", [], { env }).error).toMatchObject({ code: "ENOENT" });
+  });
+});
