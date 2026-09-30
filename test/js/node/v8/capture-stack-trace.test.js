@@ -939,7 +939,7 @@ test("default Error.prepareStackTrace accepts object targets", () => {
     [new Error("native"), "Error: native"],
     [{ message: "plain" }, "Error: plain"],
     [new PrototypeError(), "Error: prototype"],
-    [function target() {}, "Error"],
+    [function target() {}, "target"],
   ]) {
     expect(Error.prepareStackTrace(target, [])).toBe(expected);
   }
