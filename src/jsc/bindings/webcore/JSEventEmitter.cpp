@@ -555,7 +555,7 @@ static inline JSC::EncodedJSValue jsEventEmitterPrototypeFunction_listenersBody(
             auto* raw = wrapper ? wrapper : listener;
             auto original = raw->get(lexicalGlobalObject, listenerName);
             RETURN_IF_EXCEPTION(throwScope, {});
-            args.append(original.toBoolean(vm) ? original : JSValue(raw));
+            args.append(original.toBoolean(lexicalGlobalObject) ? original : JSValue(raw));
             continue;
         }
         if (!registration->isOnce()) {
