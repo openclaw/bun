@@ -104,7 +104,7 @@ first PR run with an empty-commit push on the same PR to measure cold and warm
 builds. Source mtimes still invalidate native build outputs after checkout;
 cache reuse does not bypass the build graph or reuse a finished executable.
 
-The seven-day `bun-linux-x64-<merge SHA>` artifact contains a tarball preserving
+The seven-day `bun-linux-x64-<merge SHA>-attempt<n>` artifact contains a tarball preserving
 the executable bit, a SHA-256 checksum and the built commit. It is uploaded
 before tests, so a failing test can be reproduced with the exact binary. Check
 the run's test result before using it. Download the artifact, unpack the tarball
@@ -116,3 +116,18 @@ change. GitHub's `ubuntu-24.04` is the fallback if the owner later removes
 Blacksmith access. Larger GitHub runners could not be enumerated with the
 current token; no new runner or runner group is provisioned. Neither the sync
 nor release workflow changes.
+
+## Initial measurements and known failure
+
+On the 16-vCPU Blacksmith runner, [run 36846964479](https://github.com/openclaw/bun/actions/runs/36846964479)
+built in 6m 00s cold and 3m 19s with restored caches. The warm attempt reused
+all 1,146 cacheable C/C++ compilations. Tests finished within a minute in both
+attempts. These are build-step times, excluding provisioning and artifact upload.
+
+The first test attempt failed `compile cache wakes an idle loop for deferred
+modules` in `test/js/node/module/node-module-module.test.js` with `idle
+persistence stalled`; the unchanged rerun passed every selected file. Keep
+this intermittent failure visible: the lane has no automatic test retries or
+exclusion for it. Investigate idle persistence separately if it recurs; a
+green rerun does not establish the cause. Artifact names include the run
+attempt so a download cannot confuse an earlier failed report with a later one.

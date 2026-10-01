@@ -119,7 +119,7 @@ jobs:
           git rev-parse HEAD > build/openclaw-ci/commit.txt
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: bun-linux-x64-${{ github.sha }}
+          name: bun-linux-x64-${{ github.sha }}-attempt${{ github.run_attempt }}
           path: |
             build/openclaw-ci/bun-linux-x64.tar.gz
             build/openclaw-ci/SHA256SUMS
@@ -147,7 +147,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: build-test-report-${{ github.sha }}
+          name: build-test-report-${{ github.sha }}-attempt${{ github.run_attempt }}
           path: |
             build/openclaw-ci/*.json
             build/release/timings.html
