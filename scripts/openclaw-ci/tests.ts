@@ -109,7 +109,7 @@ if (import.meta.main) {
   } else if (command === "test") {
     const selected: string[] = JSON.parse(readFileSync(selectionPath, "utf8"));
     if (!selected.length) throw new Error("Refusing an empty test selection");
-    // The build wrapper runs this script with the new executable; the upstream runner uses it for every test.
+    // CI invokes this script with the built executable; the upstream runner uses it for every test.
     const result = spawnSync(
       "node",
       [
@@ -142,7 +142,9 @@ if (import.meta.main) {
         `| File | Result | Seconds |\n| --- | --- | --- |\n${results.map(result => `| ${result.testPath} | ${result.status} | ${(result.duration / 1000).toFixed(1)} |`).join("\n")}\n`,
       );
     } else {
-      summary("No completed test report. Inspect the failed setup/build step or the test deadline in the log.\n");
+      const message = "No completed test report. Inspect the failed setup/build step or the test deadline in the log.";
+      summary(message + "\n");
+      if (process.env.TEST_OUTCOME === "success") throw new Error(message);
     }
   } else {
     throw new Error("Usage: tests.ts select|test|summary");

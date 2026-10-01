@@ -134,7 +134,9 @@ jobs:
           started=$SECONDS
           timing() { echo "Tests: $((SECONDS - started)) seconds" >> "$GITHUB_STEP_SUMMARY"; }
           trap timing EXIT
-          bun run build:release --lto=off scripts/openclaw-ci/tests.ts test
+          # build.ts only executes trailing arguments outside CI.
+          ./build/release/bun scripts/openclaw-ci/tests.ts test
+          test -s build/openclaw-ci/results.json
       - name: Summarize
         if: always()
         env:

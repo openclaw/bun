@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { bunExe, tempDir } from "harness";
+import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync, renameSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { execFileSync } from "node:child_process";
 import { broader, isTest, selectTests, smoke } from "../../../scripts/openclaw-ci/tests.ts";
 
 const tracked = execFileSync("git", ["ls-files", "-z", "test"], { encoding: "utf8" }).split("\0").filter(Boolean);
@@ -98,4 +98,15 @@ test("CLI diff selects owners at both ends of a moved fixture", () => {
   });
   const selected = JSON.parse(readFileSync(join(String(dir), "build/openclaw-ci/selected.json"), "utf8"));
   expect(selected).toEqual([...smoke, oldTest, newTest].sort());
+});
+
+test("a successful test step without a completed report cannot produce a green summary", () => {
+  using dir = tempDir("openclaw-ci-missing-report", {});
+  const result = spawnSync(bunExe(), [resolve(import.meta.dir, "../../../scripts/openclaw-ci/tests.ts"), "summary"], {
+    cwd: String(dir),
+    encoding: "utf8",
+    env: { ...process.env, GITHUB_STEP_SUMMARY: "", BUILD_OUTCOME: "success", TEST_OUTCOME: "success" },
+  });
+  expect(result.stderr).toContain("No completed test report");
+  expect(result.status).toBe(1);
 });

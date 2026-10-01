@@ -35,7 +35,10 @@ build and tests use GitHub's merge commit:
   compatibility coverage, not a complete dependency graph or the full upstream
   test suite. Extend the mapping when a new fork fix needs a different boundary.
 
-The upstream `scripts/runner.node.ts` runs each file against the built binary
+The workflow invokes the built executable explicitly: `build.ts` ignores
+trailing execution arguments in CI. A missing completed results file fails the
+lane even if the test command exits zero. The upstream `scripts/runner.node.ts`
+runs each file against the built binary
 with crash isolation and its normal per-file deadlines. Vendor suites are off,
 retries are zero, and the whole test step has a 20-minute deadline. A missing,
 failed or expectation-skipped selected file fails the lane; the selection is
