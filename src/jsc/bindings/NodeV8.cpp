@@ -29,6 +29,8 @@ JSC_DEFINE_HOST_FUNCTION(functionQueryObjects, (JSGlobalObject * globalObject, C
     if (!prototype.isObject())
         RELEASE_AND_RETURN(scope, JSValue::encode(constructEmptyArray(globalObject, nullptr)));
 
+    // In-flight compiler plans temporarily root values that are no longer JS-reachable.
+    vm.heap.completeAllJITPlans();
     vm.heap.collectNow(Sync, CollectionScope::Full);
 
     // Root the matches until the result array owns them, without allocating JS
