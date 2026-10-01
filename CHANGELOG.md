@@ -4,6 +4,7 @@
 
 - Implement `node:v8.queryObjects()` with full garbage collection, prototype-chain matching, and count or shallow-summary results for retention diagnostics.
 - Make child stdout/stderr `ref()` and `unref()` idempotent so idle subprocess pipes release parent liveness, and return the stream for chaining. Adapts the return-value fix from [oven-sh/bun#36316](https://github.com/oven-sh/bun/pull/36316). Thanks @robobun!
+- Enable the Node-compatible `module-sync` condition for Bun and Node package resolution while preserving target module kind and export-key precedence. Ports [oven-sh/bun#20770](https://github.com/oven-sh/bun/pull/20770). Thanks @RiskyMH!
 
 - Keep deferred Node compile-cache generation progressing on idle Linux event loops after native wakeups, without changing the idle-generation window or signal-exit budget.
 

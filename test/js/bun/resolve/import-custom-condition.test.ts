@@ -1,6 +1,98 @@
 import { beforeAll, expect, it } from "bun:test";
 import { writeFileSync } from "fs";
-import { bunEnv, bunExe, tempDirWithFiles } from "harness";
+import { bunEnv, bunExe, tempDir, tempDirWithFiles } from "harness";
+
+function moduleSyncFiles() {
+  const selection = { "module-sync": "./sync.mjs", import: "./other.mjs", require: "./other.cjs" };
+  return {
+    "package.json": JSON.stringify({
+      name: "condition-owner",
+      type: "commonjs",
+      imports: { "#selected": selection },
+      exports: {
+        "./selected": selection,
+        "./commonjs": { "module-sync": "./commonjs.js", default: "./other.cjs" },
+        "./nested": { node: selection, default: "./other.mjs" },
+        "./ordered": { import: "./other.mjs", require: "./other.cjs", "module-sync": "./sync.mjs" },
+        "./custom": { custom: "./custom.mjs", "module-sync": "./sync.mjs", default: "./other.mjs" },
+        "./bun-first": { bun: "./bun.mjs", "module-sync": "./sync.mjs", default: "./other.mjs" },
+        "./async": { "module-sync": "./async.mjs", default: "./other.mjs" },
+        "./bundle": { "module-sync": "./sync.mjs", default: "./other.mjs" },
+      },
+    }),
+    "sync.mjs": 'export const value = "sync";',
+    "other.mjs": 'export const value = "other";',
+    "other.cjs": 'exports.value = "other";',
+    "commonjs.js": 'module.exports = { value: "commonjs" };',
+    "custom.mjs": 'export const value = "custom";',
+    "bun.mjs": 'export const value = "bun";',
+    "async.mjs": 'await new Promise(() => {}); export const value = "async";',
+    "bundle.mjs": 'import { value } from "condition-owner/bundle"; console.log(value);',
+    "entry.mjs": `
+      import assert from "node:assert/strict";
+      import { createRequire } from "node:module";
+      import { value as staticValue } from "condition-owner/selected";
+      const require = createRequire(import.meta.url);
+      assert.equal(staticValue, "sync");
+      for (const specifier of ["#selected", "condition-owner/selected", "condition-owner/nested"]) {
+        assert.equal(require(specifier).value, "sync");
+        assert.equal((await import(specifier)).value, "sync");
+      }
+      assert.equal(require("condition-owner/commonjs").value, "commonjs");
+      assert.equal((await import("condition-owner/commonjs")).default.value, "commonjs");
+      assert.equal(require("condition-owner/ordered").value, "other");
+      assert.equal((await import("condition-owner/ordered")).value, "other");
+      assert.equal(require("condition-owner/custom").value, process.argv[2]);
+      assert.equal((await import("condition-owner/custom")).value, process.argv[2]);
+      assert.equal(require("condition-owner/bun-first").value, process.argv[3]);
+      assert.equal((await import("condition-owner/bun-first")).value, process.argv[3]);
+      assert.throws(() => require("condition-owner/async"), /require[(][)].*import[(][)]/);
+      console.log("module-sync runtime selection passed");
+    `,
+  };
+}
+
+it.concurrent.each([false, true])(
+  "module-sync default condition preserves import/require selection (custom=%s)",
+  async custom => {
+    using fixture = tempDir("module-sync-condition", moduleSyncFiles());
+    await using proc = Bun.spawn({
+      cmd: [bunExe(), ...(custom ? ["--conditions=custom"] : []), "entry.mjs", custom ? "custom" : "sync", "bun"],
+      cwd: String(fixture),
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect({ stdout, stderr, exitCode }).toEqual({
+      stdout: "module-sync runtime selection passed\n",
+      stderr: "",
+      exitCode: 0,
+    });
+  },
+);
+
+it.concurrent.each(["bun", "node", "browser"] as const)(
+  "module-sync default condition follows the %s build target",
+  async target => {
+    using fixture = tempDir("module-sync-build", moduleSyncFiles());
+    const result = await Bun.build({ entrypoints: [`${fixture}/bundle.mjs`], target });
+    expect(result.success).toBe(true);
+    expect(result.outputs).toHaveLength(1);
+    await using proc = Bun.spawn({
+      cmd: [bunExe(), "-e", await result.outputs[0].text()],
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect({ stdout, stderr, exitCode }).toEqual({
+      stdout: target === "browser" ? "other\n" : "sync\n",
+      stderr: "",
+      exitCode: 0,
+    });
+  },
+);
 
 let dir: string;
 
