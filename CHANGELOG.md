@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Implement `node:v8.queryObjects()` with full garbage collection, prototype-chain matching, and count or shallow-summary results for retention diagnostics.
+
 - Keep deferred Node compile-cache generation progressing on idle Linux event loops after native wakeups, without changing the idle-generation window or signal-exit budget.
 
 - Keep CommonJS and ESM module keys aligned for literal `#` paths, preventing duplicate evaluation and split-bundle namespace crashes.
