@@ -1206,3 +1206,274 @@ describe("native EventEmitter propagates an exception from a `_events` getter", 
     expect(fired).toBe(1);
   });
 });
+
+describe("process.rawListeners", () => {
+  test.each(["once", "prependOnceListener"] as const)("%s returns its callable once wrapper", method => {
+    const event = Symbol("process.rawListeners");
+    const calls: unknown[] = [];
+    const listener = function (this: unknown, ...args: unknown[]) {
+      calls.push({ receiver: this === process, args, count: process.listenerCount(event) });
+      return "listener-result";
+    };
+    try {
+      process[method](event, listener);
+      const [wrapper] = process.rawListeners(event);
+      expect(wrapper).not.toBe(listener);
+      expect(wrapper.listener).toBe(listener);
+      expect(process.listeners(event)).toEqual([listener]);
+      expect(process.rawListeners(event)).toEqual([wrapper]);
+      expect(wrapper.call({}, 1, "two")).toBe("listener-result");
+      expect(wrapper()).toBeUndefined();
+      expect(process.emit(event)).toBe(false);
+      expect(calls).toEqual([{ receiver: true, args: [1, "two"], count: 0 }]);
+    } finally {
+      process.removeAllListeners(event);
+    }
+  });
+
+  test("a throwing raw wrapper is consumed before calling the listener", () => {
+    const event = Symbol("process.rawListeners.throw");
+    const failure = new Error("once callback failed");
+    const listener = mock(() => {
+      throw failure;
+    });
+    try {
+      process.once(event, listener);
+      const [wrapper] = process.rawListeners(event);
+      expect(() => wrapper()).toThrow(failure);
+      expect(wrapper()).toBeUndefined();
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(process.listenerCount(event)).toBe(0);
+    } finally {
+      process.removeAllListeners(event);
+    }
+  });
+
+  test("normal dispatch consumes a held wrapper", () => {
+    const event = Symbol("process.rawListeners.emit");
+    const listener = mock(() => {});
+    try {
+      process.once(event, listener);
+      const [wrapper] = process.rawListeners(event);
+      process.emit(event);
+      wrapper();
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(process.listenerCount(event)).toBe(0);
+    } finally {
+      process.removeAllListeners(event);
+    }
+  });
+
+  test.each(["removeListener", "removeAllListeners"] as const)("%s leaves an unfired held wrapper callable", method => {
+    const event = Symbol("process.rawListeners.remove");
+    const listener = mock(() => {});
+    try {
+      process.once(event, listener);
+      const [wrapper] = process.rawListeners(event);
+      if (method === "removeListener") process.removeListener(event, wrapper);
+      else process.removeAllListeners(event);
+      expect(process.listenerCount(event)).toBe(0);
+      wrapper();
+      wrapper();
+      expect(listener).toHaveBeenCalledTimes(1);
+    } finally {
+      process.removeAllListeners(event);
+    }
+  });
+
+  test("a wrapper re-registered as a plain listener still fires once", () => {
+    const event = Symbol("process.rawListeners.reinsert");
+    const listener = mock(() => {});
+    try {
+      process.once(event, listener);
+      const [wrapper] = process.rawListeners(event);
+      process.removeAllListeners(event);
+      process.on(event, wrapper);
+      expect(process.rawListeners(event)).toEqual([wrapper]);
+      process.emit(event);
+      process.emit(event);
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(process.listenerCount(event)).toBe(0);
+    } finally {
+      process.removeAllListeners(event);
+    }
+  });
+
+  test("an in-flight emit observes a manually consumed once wrapper", () => {
+    const event = Symbol("process.rawListeners.reentrant");
+    const listener = mock(() => {});
+    let wrapper: (...args: unknown[]) => unknown;
+    try {
+      process.on(event, () => wrapper());
+      process.once(event, listener);
+      wrapper = process.rawListeners(event)[1];
+      process.emit(event);
+      expect(listener).toHaveBeenCalledTimes(1);
+    } finally {
+      process.removeAllListeners(event);
+    }
+  });
+
+  test.each([
+    ["before", "invoke"],
+    ["before", "remove"],
+    ["during", "invoke"],
+    ["during", "remove"],
+  ] as const)("a wrapper exposed %s dispatch survives removal and collection after %s", (expose, action) => {
+    const event = Symbol("process.rawListeners.dispatch-gc");
+    const listener = mock(() => {});
+    try {
+      process.on(event, () => {
+        if (action === "invoke") process.rawListeners(event)[1]();
+        else process.removeListener(event, process.rawListeners(event)[1]);
+        Bun.gc(true);
+      });
+      process.once(event, listener);
+      if (expose === "before") process.rawListeners(event);
+      process.emit(event);
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(process.listenerCount(event)).toBe(1);
+    } finally {
+      process.removeAllListeners(event);
+    }
+  });
+
+  test("nested dispatch keeps the outer snapshot's consumed wrapper alive", () => {
+    const event = Symbol("process.rawListeners.nested-gc");
+    const listener = mock(() => {});
+    let nested = false;
+    try {
+      process.on(event, () => {
+        if (nested) {
+          process.rawListeners(event);
+          return;
+        }
+        nested = true;
+        process.emit(event);
+        Bun.gc(true);
+      });
+      process.once(event, listener);
+      process.emit(event);
+      expect(listener).toHaveBeenCalledTimes(1);
+    } finally {
+      process.removeAllListeners(event);
+    }
+  });
+
+  test.each([
+    ["once", "once"],
+    ["once", "prependOnceListener"],
+    ["prependOnceListener", "once"],
+    ["prependOnceListener", "prependOnceListener"],
+  ] as const)("%s and %s preserve duplicate callback registrations", (first, second) => {
+    const event = Symbol("process.rawListeners.duplicates");
+    const listener = mock(() => {});
+    try {
+      process[first](event, listener);
+      process[second](event, listener);
+      const wrappers = process.rawListeners(event);
+      expect(wrappers).toHaveLength(2);
+      expect(wrappers[0]).not.toBe(wrappers[1]);
+      wrappers[0]();
+      expect(process.rawListeners(event)).toEqual([wrappers[1]]);
+      process.emit(event);
+      expect(listener).toHaveBeenCalledTimes(2);
+      expect(process.listenerCount(event)).toBe(0);
+    } finally {
+      process.removeAllListeners(event);
+    }
+  });
+
+  test.each(["once", "prependOnceListener"] as const)("removeListener removes the last %s callback match", method => {
+    const event = Symbol("process.rawListeners.remove-duplicate");
+    const listener = mock(() => {});
+    try {
+      process[method](event, listener);
+      process[method](event, listener);
+      const wrappers = process.rawListeners(event);
+      expect(wrappers).toHaveLength(2);
+      process.removeListener(event, listener);
+      expect(process.rawListeners(event)).toEqual([wrappers[0]]);
+      process.emit(event);
+      wrappers[1]();
+      expect(listener).toHaveBeenCalledTimes(2);
+    } finally {
+      process.removeAllListeners(event);
+    }
+  });
+
+  test.each([
+    ["on", "once"],
+    ["once", "on"],
+    ["on", "on"],
+  ] as const)("%s and %s preserve duplicate callbacks and removal order", (first, second) => {
+    const event = Symbol("process.rawListeners.mixed-duplicate");
+    const listener = mock(() => {});
+    try {
+      process[first](event, listener);
+      process[second](event, listener);
+      const wrappers = process.rawListeners(event);
+      expect(wrappers).toHaveLength(2);
+      process.removeListener(event, listener);
+      expect(process.rawListeners(event)).toEqual([wrappers[0]]);
+      process.emit(event);
+      process.emit(event);
+      expect(listener).toHaveBeenCalledTimes(first === "once" ? 1 : 2);
+    } finally {
+      process.removeAllListeners(event);
+    }
+  });
+
+  test("removal during dispatch preserves duplicate callbacks in the active snapshot", () => {
+    const event = Symbol("process.rawListeners.remove-during-dispatch");
+    const listener = mock(() => process.removeListener(event, listener));
+    try {
+      process.on(event, listener);
+      process.on(event, listener);
+      process.emit(event);
+      expect(listener).toHaveBeenCalledTimes(2);
+      expect(process.listenerCount(event)).toBe(0);
+    } finally {
+      process.removeAllListeners(event);
+    }
+  });
+
+  test("nested emission consumes each duplicate once registration without exposing wrappers", () => {
+    const event = Symbol("process.rawListeners.duplicate-reentrant");
+    let calls = 0;
+    const listener = () => {
+      calls++;
+      if (calls === 1) process.emit(event);
+    };
+    try {
+      process.once(event, listener);
+      process.once(event, listener);
+      process.emit(event);
+      expect(calls).toBe(2);
+      expect(process.listenerCount(event)).toBe(0);
+    } finally {
+      process.removeAllListeners(event);
+    }
+  });
+
+  test("a registered wrapper survives collection when only its WeakRef is held", async () => {
+    const event = Symbol("process.rawListeners.gc");
+    const listener = mock(() => {});
+    try {
+      const weak = (() => {
+        process.once(event, listener);
+        return new WeakRef(process.rawListeners(event)[0]);
+      })();
+      await new Promise<void>(resolve => setImmediate(resolve));
+      Bun.gc(true);
+      const wrapper = weak.deref();
+      expect(wrapper).toBeDefined();
+      expect(process.rawListeners(event)[0]).toBe(wrapper);
+      process.emit(event);
+      wrapper!();
+      expect(listener).toHaveBeenCalledTimes(1);
+    } finally {
+      process.removeAllListeners(event);
+    }
+  });
+});

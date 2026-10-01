@@ -11,6 +11,7 @@
 #include <wtf/NeverDestroyed.h>
 #include <wtf/Ref.h>
 #include <wtf/SetForScope.h>
+#include <wtf/Scope.h>
 #include <wtf/StdLibExtras.h>
 #include <wtf/Vector.h>
 #include <wtf/TZoneMallocInlines.h>
@@ -64,6 +65,22 @@ bool EventEmitter::removeListener(const Identifier& eventType, EventListener& li
         return false;
 
     if (data->eventListenerMap.remove(eventType, listener)) {
+        eventListenersDidChange();
+
+        if (this->onDidChangeListener)
+            this->onDidChangeListener(*this, eventType, false);
+        return true;
+    }
+    return false;
+}
+
+bool EventEmitter::removeListener(const Identifier& eventType, SimpleRegisteredEventListener& registration)
+{
+    auto* data = eventTargetData();
+    if (!data)
+        return false;
+
+    if (data->eventListenerMap.remove(eventType, registration)) {
         eventListenersDidChange();
 
         if (this->onDidChangeListener)
@@ -222,6 +239,13 @@ bool EventEmitter::innerInvokeEventListeners(const Identifier& eventType, Simple
     auto& context = *scriptExecutionContext();
     VM& vm = context.vm();
 
+    for (auto& registration : listeners)
+        registration->beginDispatch(vm);
+    auto releaseDispatchWrappers = makeScopeExit([&] {
+        for (auto& registration : listeners)
+            registration->endDispatch();
+    });
+
     auto* thisObject = protectedThis->m_thisObject.get();
     JSC::JSValue thisValue = thisObject ? thisObject : JSC::jsUndefined();
     auto fired = false;
@@ -238,12 +262,21 @@ bool EventEmitter::innerInvokeEventListeners(const Identifier& eventType, Simple
         // event listeners with 'once' flag may get collected as soon as they get unregistered below,
         // before we call the js function.
         JSObject* jsFunction = callback.jsFunction();
+        // Consume the same fired guard exposed by rawListeners(), including held wrappers.
+        if (registeredListener->isOnce()) {
+            if (auto* wrapper = registeredListener->onceWrapper())
+                jsFunction = wrapper;
+        }
         JSC::EnsureStillAliveScope wrapperProtector(callback.wrapper());
         JSC::EnsureStillAliveScope jsFunctionProtector(jsFunction);
 
         // Do this before invocation to avoid reentrancy issues.
-        if (registeredListener->isOnce())
-            removeListener(eventType, callback);
+        if (registeredListener->isOnce()) {
+            if (registeredListener->hasFired())
+                continue;
+            registeredListener->markAsFired();
+            removeListener(eventType, *registeredListener);
+        }
 
         if (!jsFunction) [[unlikely]]
             continue;

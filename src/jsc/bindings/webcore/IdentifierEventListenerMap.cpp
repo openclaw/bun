@@ -36,23 +36,11 @@ Vector<JSC::Identifier> IdentifierEventListenerMap::eventTypes() const
     });
 }
 
-static inline size_t findListener(const SimpleEventListenerVector& listeners, EventListener& listener)
-{
-    for (size_t i = 0; i < listeners.size(); ++i) {
-        auto& registeredListener = listeners[i];
-        if (registeredListener->callback() == listener)
-            return i;
-    }
-    return notFound;
-}
-
 bool IdentifierEventListenerMap::add(const JSC::Identifier& eventType, Ref<EventListener>&& listener, bool once)
 {
     Locker locker { m_lock };
 
     if (auto* listeners = find(eventType)) {
-        if (findListener(*listeners, listener) != notFound)
-            return false; // Duplicate listener.
         listeners->append(SimpleRegisteredEventListener::create(WTF::move(listener), once));
         return true;
     }
@@ -66,8 +54,6 @@ bool IdentifierEventListenerMap::prepend(const JSC::Identifier& eventType, Ref<E
     Locker locker { m_lock };
 
     if (auto* listeners = find(eventType)) {
-        if (findListener(*listeners, listener) != notFound)
-            return false; // Duplicate listener.
         listeners->insert(0, SimpleRegisteredEventListener::create(WTF::move(listener), once));
         return true;
     }
@@ -76,31 +62,42 @@ bool IdentifierEventListenerMap::prepend(const JSC::Identifier& eventType, Ref<E
     return true;
 }
 
-static bool removeListenerFromVector(SimpleEventListenerVector& listeners, EventListener& listener)
+template<typename Matches>
+static bool removeMatchingListener(EntriesVector& entries, const JSC::Identifier& eventType, Matches&& matches)
 {
-    size_t indexOfRemovedListener = findListener(listeners, listener);
-    if (indexOfRemovedListener == notFound) [[unlikely]]
+    for (size_t i = 0; i < entries.size(); ++i) {
+        if (entries[i].first != eventType)
+            continue;
+        auto& listeners = entries[i].second;
+        for (size_t j = listeners.size(); j--;) {
+            if (!matches(*listeners[j]))
+                continue;
+            listeners[j]->markAsRemoved();
+            listeners.removeAt(j);
+            if (listeners.isEmpty())
+                entries.removeAt(i);
+            return true;
+        }
         return false;
-
-    listeners[indexOfRemovedListener]->markAsRemoved();
-    listeners.removeAt(indexOfRemovedListener);
-    return true;
+    }
+    return false;
 }
 
 bool IdentifierEventListenerMap::remove(const JSC::Identifier& eventType, EventListener& listener)
 {
     Locker locker { m_lock };
+    auto* function = listener.jsFunction();
+    return removeMatchingListener(m_entries, eventType, [&](auto& registration) {
+        return registration.callback() == listener || (function && registration.onceWrapper() == function);
+    });
+}
 
-    for (unsigned i = 0; i < m_entries.size(); ++i) {
-        if (m_entries[i].first == eventType) {
-            bool wasRemoved = removeListenerFromVector(m_entries[i].second, listener);
-            if (m_entries[i].second.isEmpty())
-                m_entries.removeAt(i);
-            return wasRemoved;
-        }
-    }
-
-    return false;
+bool IdentifierEventListenerMap::remove(const JSC::Identifier& eventType, SimpleRegisteredEventListener& registration)
+{
+    Locker locker { m_lock };
+    return removeMatchingListener(m_entries, eventType, [&](auto& candidate) {
+        return &candidate == &registration;
+    });
 }
 
 bool IdentifierEventListenerMap::removeAll(const JSC::Identifier& eventType)

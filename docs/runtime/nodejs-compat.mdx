@@ -157,6 +157,8 @@ Socket close notifications use internal scheduling and continue to run when user
 
 ### [`node:process`](https://nodejs.org/api/process.html)
 
+`process.rawListeners()` returns stable once wrappers with a `.listener` reference to the original callback. Calling or removing a wrapper uses the same registration as normal event dispatch. `process.listeners()` returns the original callbacks. Duplicate callbacks keep separate registrations, and removing a callback removes its last matching registration.
+
 `process.report` preserves the full original startup command line, including the executable, flags, script, and user arguments, independently of later `process.argv` or `process.execArgv` changes.
 
 🟡 See [`process`](#process) Global.

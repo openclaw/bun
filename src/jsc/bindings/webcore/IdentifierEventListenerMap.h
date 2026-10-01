@@ -6,6 +6,8 @@
 #include <wtf/Lock.h>
 #include <wtf/Ref.h>
 #include <JavaScriptCore/Identifier.h>
+#include <JavaScriptCore/StrongInlines.h>
+#include <JavaScriptCore/WriteBarrier.h>
 #include "EventListener.h"
 
 namespace WebCore {
@@ -20,20 +22,56 @@ public:
     EventListener& callback() const { return m_callback; }
     bool isOnce() const { return m_isOnce; }
     bool wasRemoved() const { return m_wasRemoved; }
+    bool hasFired() const { return m_hasFired; }
+    void markAsFired() { m_hasFired = true; }
 
     void markAsRemoved() { m_wasRemoved = true; }
+
+    JSC::JSObject* onceWrapper() const { return m_onceWrapper.get(); }
+    void setOnceWrapper(JSC::VM& vm, JSC::JSCell* owner, JSC::JSObject* wrapper)
+    {
+        m_onceWrapper.set(vm, owner, wrapper);
+        if (m_activeDispatchCount)
+            m_dispatchOnceWrapper.set(vm, wrapper);
+    }
+
+    void beginDispatch(JSC::VM& vm)
+    {
+        if (!m_activeDispatchCount++ && m_onceWrapper)
+            m_dispatchOnceWrapper.set(vm, m_onceWrapper.get());
+    }
+
+    void endDispatch()
+    {
+        ASSERT(m_activeDispatchCount);
+        if (!--m_activeDispatchCount)
+            m_dispatchOnceWrapper.clear();
+    }
+
+    template<typename Visitor> void visitJSFunctions(Visitor& visitor)
+    {
+        m_callback->visitJSFunction(visitor);
+        // The registration owns its exposed wrapper, including when callers only hold a WeakRef.
+        visitor.append(m_onceWrapper);
+    }
 
 private:
     SimpleRegisteredEventListener(Ref<EventListener>&& listener, bool once)
         : m_isOnce(once)
         , m_wasRemoved(false)
+        , m_hasFired(false)
         , m_callback(WTF::move(listener))
     {
     }
 
     bool m_isOnce : 1;
     bool m_wasRemoved : 1;
+    bool m_hasFired : 1;
     Ref<EventListener> m_callback;
+    JSC::WriteBarrier<JSC::JSObject> m_onceWrapper;
+    // A dispatch snapshot outlives map removal and must root wrappers exposed during callbacks.
+    JSC::Strong<JSC::JSObject> m_dispatchOnceWrapper;
+    unsigned m_activeDispatchCount { 0 };
 };
 
 using SimpleEventListenerVector = Vector<RefPtr<SimpleRegisteredEventListener>, 2, CrashOnOverflow, 6>;
@@ -54,6 +92,7 @@ public:
     bool add(const JSC::Identifier& eventType, Ref<EventListener>&&, bool once);
     bool prepend(const JSC::Identifier& eventType, Ref<EventListener>&&, bool once);
     bool remove(const JSC::Identifier& eventType, EventListener&);
+    bool remove(const JSC::Identifier& eventType, SimpleRegisteredEventListener&);
     bool removeAll(const JSC::Identifier& eventType);
     WEBCORE_EXPORT SimpleEventListenerVector* find(const JSC::Identifier& eventType);
     const SimpleEventListenerVector* find(const JSC::Identifier& eventType) const { return const_cast<IdentifierEventListenerMap*>(this)->find(eventType); }
@@ -73,7 +112,7 @@ void IdentifierEventListenerMap::visitJSEventListeners(Visitor& visitor)
     Locker locker { m_lock };
     for (auto& entry : m_entries) {
         for (auto& eventListener : entry.second)
-            eventListener->callback().visitJSFunction(visitor);
+            eventListener->visitJSFunctions(visitor);
     }
 }
 
