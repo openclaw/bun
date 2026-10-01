@@ -503,6 +503,11 @@ void us_loop_run_bun_tick(struct us_loop_t *loop, const struct timespec* timeout
     timeout = us_internal_clamp_to_sweep(loop, timeout, &sweep_ts);
 
     const unsigned int had_wakeups = __atomic_exchange_n(&loop->pending_wakeups, 0, __ATOMIC_ACQUIRE);
+    /* The preceding poll may have dispatched the wake already; do not park with idle accounting disabled. */
+    static const struct timespec zero_timeout = {0, 0};
+    if (had_wakeups) {
+        timeout = &zero_timeout;
+    }
     const int poll_may_block = !timeout || timeout->tv_nsec != 0 || timeout->tv_sec != 0;
     const int will_idle_inside_event_loop = had_wakeups == 0 && poll_may_block;
     /* `now_ns` is the reading the JS side took to pick `timeout`

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep deferred Node compile-cache generation progressing on idle Linux event loops after native wakeups, without changing the idle-generation window or signal-exit budget.
+
 - Keep CommonJS and ESM module keys aligned for literal `#` paths, preventing duplicate evaluation and split-bundle namespace crashes.
 
 - Sync upstream through `4b02e1031d6195d96fc0446dfbff49297f89f2d6`, preserving unfinished HTTP aborts and immediate header flushing on the server socket's response ownership contract, promise-aware console writes, and module URL cache identity.
