@@ -18,6 +18,33 @@ async function runNodeAlias(args: string[], stdin = "", files: Record<string, st
 }
 
 describe("fake node cli", () => {
+  describe.each([false, true])("post-script separators, node alias = %s", asNode => {
+    test.each([
+      { args: ["--"], pre: [] },
+      { args: ["--", "--", "sentinel"], pre: [] },
+      { args: ["--", "sentinel"], pre: ["--"] },
+      { args: ["--", "sentinel"], pre: ["--import", "./preload.mjs"] },
+      { args: ["--", "sentinel"], pre: ["--import", "data:text/javascript,globalThis.preloaded=true"] },
+    ])("preserves $args after $pre", async ({ args, pre }) => {
+      using dir = tempDir("script-separator", {
+        "entry.mjs": "console.log(JSON.stringify({ args: process.argv.slice(2), preloaded: !!globalThis.preloaded }))",
+        "preload.mjs": "globalThis.preloaded = true;",
+      });
+      await using proc = Bun.spawn({
+        cmd: [bunExe(), ...pre, "entry.mjs", ...args],
+        ...(asNode ? { argv0: "node" } : {}),
+        cwd: String(dir),
+        env: bunEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      expect(JSON.parse(stdout)).toEqual({ args, preloaded: pre[0] === "--import" });
+      expect(stderr).toBe("");
+      expect(exitCode).toBe(0);
+    });
+  });
+
   test("the node cli actually works", () => {
     using temp = tempDir("fake-node", {
       "index.ts": "console.log(Bun.version)",
