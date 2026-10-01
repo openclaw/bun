@@ -70,3 +70,4 @@
 - Match Node minimatch semantics in `path.matchesGlob()`, including negated extglobs and dot-segment normalization, using the existing filesystem glob matcher.
 - Preserve cached `process.env` and `Bun.env` references when the first `SHARE_ENV` worker starts, including shared writes, deletes, property definitions, and enumeration.
 - Route Windows environment writes to the shared store when value coercion starts the first `SHARE_ENV` worker, preserving symbol errors and descriptor validation.
+- Keep JIT-optimized environment deletes connected to the shared store after `SHARE_ENV` promotion. Adapts the property-cache guard from [oven-sh/bun#38871](https://github.com/oven-sh/bun/pull/38871). Thanks @robobun!

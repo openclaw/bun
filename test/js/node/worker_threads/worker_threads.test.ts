@@ -2060,6 +2060,17 @@ test("env: process.env reads in a worker module are evaluated at runtime against
 });
 
 describe("env: SHARE_ENV shares the spawning thread's env, not a process-wide one", () => {
+  it.each(["delete", "reflect"])("hot %s removes shared environment entries", async mode => {
+    await using proc = Bun.spawn({
+      cmd: [bunExe(), "fixture-share-env-delete.js", mode],
+      cwd: __dirname,
+      env: bunEnv,
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect({ stdout, stderr, exitCode }).toEqual({ stdout: "ok\n", stderr: "", exitCode: 0 });
+  });
+
   it.each(["main", "nested", "coercion", "coercion-define", "coercion-descriptor"])(
     "preserves cached env references when %s founds a shared store",
     async mode => {
