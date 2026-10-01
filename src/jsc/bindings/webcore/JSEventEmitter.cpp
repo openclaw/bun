@@ -390,8 +390,40 @@ inline JSC::EncodedJSValue JSEventEmitter::removeListener(JSC::JSGlobalObject* l
     EnsureStillAliveScope argument1 = callFrame->uncheckedArgument(1);
     auto listener = convert<IDLNullable<IDLEventListener<JSEventListener>>>(*lexicalGlobalObject, argument1.value(), *castedThis, [](JSC::JSGlobalObject& lexicalGlobalObject, JSC::ThrowScope& scope) { throwArgumentMustBeObjectError(lexicalGlobalObject, scope, 1, "listener"_s, "EventEmitter"_s, "removeListener"_s); });
     RETURN_IF_EXCEPTION(throwScope, {});
-    JSValue::encode(toJS<IDLUndefined>(*lexicalGlobalObject, throwScope, [&]() -> decltype(auto) { return impl.removeListenerForBindings(WTF::move(eventType), WTF::move(listener)); }));
-    RETURN_IF_EXCEPTION(throwScope, {});
+    if (listener) {
+        SimpleEventListenerVector registrations;
+        if (auto* found = impl.eventListenerMap().find(eventType))
+            registrations = *found;
+
+        // Reading .listener can run JS and remove registrations, so root the snapshot first.
+        JSC::MarkedArgumentBuffer callbacks;
+        for (auto& registration : registrations) {
+            auto* callback = registration->onceWrapper();
+            if (!callback)
+                callback = registration->callback().jsFunction();
+            callbacks.append(callback ? JSValue(callback) : jsUndefined());
+        }
+        if (callbacks.hasOverflowed()) [[unlikely]] {
+            throwOutOfMemoryError(lexicalGlobalObject, throwScope);
+            return {};
+        }
+        auto listenerName = JSC::Identifier::fromString(vm, "listener"_s);
+        for (size_t i = registrations.size(); i--;) {
+            auto callback = callbacks.at(i);
+            if (!callback.isObject())
+                continue;
+            bool matches = callback == argument1.value();
+            if (!matches && !(registrations[i]->isOnce() && !registrations[i]->onceWrapper())) {
+                auto original = callback.get(lexicalGlobalObject, listenerName);
+                RETURN_IF_EXCEPTION(throwScope, {});
+                matches = original == argument1.value();
+            }
+            if (matches) {
+                impl.removeListener(eventType, *registrations[i]);
+                break;
+            }
+        }
+    }
     vm.writeBarrier(&static_cast<JSObject&>(*castedThis), argument1.value());
     impl.setThisObject(actualThis);
     RELEASE_AND_RETURN(throwScope, JSValue::encode(actualThis));
@@ -486,30 +518,8 @@ JSC_DEFINE_HOST_FUNCTION(jsEventEmitterPrototypeFunction_listenerCount, (JSGloba
     return IDLOperation<JSEventEmitter>::call<jsEventEmitterPrototypeFunction_listenerCountBody>(*lexicalGlobalObject, *callFrame, "listeners");
 }
 
+template<bool unwrap>
 static inline JSC::EncodedJSValue jsEventEmitterPrototypeFunction_listenersBody(JSC::JSGlobalObject* lexicalGlobalObject, JSC::CallFrame* callFrame, typename IDLOperation<JSEventEmitter>::ClassParameter castedThis)
-{
-    auto& vm = JSC::getVM(lexicalGlobalObject);
-    auto throwScope = DECLARE_THROW_SCOPE(vm);
-    auto& impl = castedThis->wrapped();
-    if (callFrame->argumentCount() < 1) [[unlikely]]
-        return throwVMError(lexicalGlobalObject, throwScope, createNotEnoughArgumentsError(lexicalGlobalObject));
-    auto eventType = callFrame->uncheckedArgument(0).toPropertyKey(lexicalGlobalObject);
-    RETURN_IF_EXCEPTION(throwScope, {});
-    JSC::MarkedArgumentBuffer args;
-    for (auto* listener : impl.getListeners(eventType)) {
-        args.append(listener);
-    }
-    auto array = JSC::constructArray(lexicalGlobalObject, static_cast<JSC::ArrayAllocationProfile*>(nullptr), WTF::move(args));
-    RETURN_IF_EXCEPTION(throwScope, {});
-    RELEASE_AND_RETURN(throwScope, JSC::JSValue::encode(array));
-}
-
-JSC_DEFINE_HOST_FUNCTION(jsEventEmitterPrototypeFunction_listeners, (JSGlobalObject * lexicalGlobalObject, CallFrame* callFrame))
-{
-    return IDLOperation<JSEventEmitter>::call<jsEventEmitterPrototypeFunction_listenersBody>(*lexicalGlobalObject, *callFrame, "listeners");
-}
-
-static inline JSC::EncodedJSValue jsEventEmitterPrototypeFunction_rawListenersBody(JSC::JSGlobalObject* lexicalGlobalObject, JSC::CallFrame* callFrame, typename IDLOperation<JSEventEmitter>::ClassParameter castedThis)
 {
     auto& vm = JSC::getVM(lexicalGlobalObject);
     auto throwScope = DECLARE_THROW_SCOPE(vm);
@@ -523,20 +533,35 @@ static inline JSC::EncodedJSValue jsEventEmitterPrototypeFunction_rawListenersBo
     if (auto* found = impl.eventListenerMap().find(eventType))
         registrations = *found;
 
+    SimpleEventListenerSnapshot snapshot(vm, WTF::move(registrations));
+    if (snapshot.hasOverflowed()) [[unlikely]] {
+        throwOutOfMemoryError(lexicalGlobalObject, throwScope);
+        return {};
+    }
+    auto listenerName = JSC::Identifier::fromString(vm, "listener"_s);
     JSValue eventTypeKey = JSC::identifierToSafePublicJSValue(vm, eventType);
     JSC::Strong<JSC::JSFunction> createOnceWrapper;
     JSC::MarkedArgumentBuffer args;
-    for (auto& registration : registrations) {
-        if (registration->wasRemoved()) [[unlikely]]
-            continue;
+    for (auto& registration : snapshot.listeners()) {
         auto* listener = registration->callback().jsFunction();
         if (!listener)
             continue;
+        auto* wrapper = registration->onceWrapper();
+        if constexpr (unwrap) {
+            if (registration->isOnce() && !wrapper) {
+                args.append(listener);
+                continue;
+            }
+            auto* raw = wrapper ? wrapper : listener;
+            auto original = raw->get(lexicalGlobalObject, listenerName);
+            RETURN_IF_EXCEPTION(throwScope, {});
+            args.append(original.toBoolean(vm) ? original : JSValue(raw));
+            continue;
+        }
         if (!registration->isOnce()) {
             args.append(listener);
             continue;
         }
-        auto* wrapper = registration->onceWrapper();
         if (!wrapper) {
             if (!createOnceWrapper)
                 createOnceWrapper.set(vm, JSC::JSFunction::create(vm, lexicalGlobalObject, eventEmitterOnceCreateOnceWrapperCodeGenerator(vm), lexicalGlobalObject));
@@ -545,6 +570,7 @@ static inline JSC::EncodedJSValue jsEventEmitterPrototypeFunction_rawListenersBo
             wrapperArgs.append(callFrame->thisValue());
             wrapperArgs.append(eventTypeKey);
             wrapperArgs.append(listener);
+            wrapperArgs.append(jsBoolean(registration->hasFired()));
             ASSERT(!wrapperArgs.hasOverflowed());
             JSValue result = JSC::call(lexicalGlobalObject, createOnceWrapper.get(), JSC::getCallData(createOnceWrapper.get()), JSC::jsUndefined(), wrapperArgs);
             RETURN_IF_EXCEPTION(throwScope, {});
@@ -552,6 +578,10 @@ static inline JSC::EncodedJSValue jsEventEmitterPrototypeFunction_rawListenersBo
             if (!wrapper) [[unlikely]]
                 continue;
             registration->setOnceWrapper(vm, castedThis, wrapper);
+            // Publish the fired guard before an inherited .listener setter can emit again.
+            JSC::PutPropertySlot slot(wrapper);
+            wrapper->methodTable()->put(wrapper, lexicalGlobalObject, listenerName, listener, slot);
+            RETURN_IF_EXCEPTION(throwScope, {});
         }
         args.append(wrapper);
     }
@@ -564,9 +594,14 @@ static inline JSC::EncodedJSValue jsEventEmitterPrototypeFunction_rawListenersBo
     RELEASE_AND_RETURN(throwScope, JSC::JSValue::encode(array));
 }
 
+JSC_DEFINE_HOST_FUNCTION(jsEventEmitterPrototypeFunction_listeners, (JSGlobalObject * lexicalGlobalObject, CallFrame* callFrame))
+{
+    return IDLOperation<JSEventEmitter>::call<jsEventEmitterPrototypeFunction_listenersBody<true>>(*lexicalGlobalObject, *callFrame, "listeners");
+}
+
 JSC_DEFINE_HOST_FUNCTION(jsEventEmitterPrototypeFunction_rawListeners, (JSGlobalObject * lexicalGlobalObject, CallFrame* callFrame))
 {
-    return IDLOperation<JSEventEmitter>::call<jsEventEmitterPrototypeFunction_rawListenersBody>(*lexicalGlobalObject, *callFrame, "rawListeners");
+    return IDLOperation<JSEventEmitter>::call<jsEventEmitterPrototypeFunction_listenersBody<false>>(*lexicalGlobalObject, *callFrame, "rawListeners");
 }
 
 JSC::GCClient::IsoSubspace* JSEventEmitter::subspaceForImpl(JSC::VM& vm)

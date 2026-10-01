@@ -62,42 +62,25 @@ bool IdentifierEventListenerMap::prepend(const JSC::Identifier& eventType, Ref<E
     return true;
 }
 
-template<typename Matches>
-static bool removeMatchingListener(EntriesVector& entries, const JSC::Identifier& eventType, Matches&& matches)
+bool IdentifierEventListenerMap::remove(const JSC::Identifier& eventType, SimpleRegisteredEventListener& registration)
 {
-    for (size_t i = 0; i < entries.size(); ++i) {
-        if (entries[i].first != eventType)
+    Locker locker { m_lock };
+    for (size_t i = 0; i < m_entries.size(); ++i) {
+        if (m_entries[i].first != eventType)
             continue;
-        auto& listeners = entries[i].second;
+        auto& listeners = m_entries[i].second;
         for (size_t j = listeners.size(); j--;) {
-            if (!matches(*listeners[j]))
+            if (listeners[j].get() != &registration)
                 continue;
             listeners[j]->markAsRemoved();
             listeners.removeAt(j);
             if (listeners.isEmpty())
-                entries.removeAt(i);
+                m_entries.removeAt(i);
             return true;
         }
         return false;
     }
     return false;
-}
-
-bool IdentifierEventListenerMap::remove(const JSC::Identifier& eventType, EventListener& listener)
-{
-    Locker locker { m_lock };
-    auto* function = listener.jsFunction();
-    return removeMatchingListener(m_entries, eventType, [&](auto& registration) {
-        return registration.callback() == listener || (function && registration.onceWrapper() == function);
-    });
-}
-
-bool IdentifierEventListenerMap::remove(const JSC::Identifier& eventType, SimpleRegisteredEventListener& registration)
-{
-    Locker locker { m_lock };
-    return removeMatchingListener(m_entries, eventType, [&](auto& candidate) {
-        return &candidate == &registration;
-    });
 }
 
 bool IdentifierEventListenerMap::removeAll(const JSC::Identifier& eventType)

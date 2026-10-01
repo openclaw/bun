@@ -6,6 +6,7 @@
 #include <wtf/Lock.h>
 #include <wtf/Ref.h>
 #include <JavaScriptCore/Identifier.h>
+#include <JavaScriptCore/MarkedVector.h>
 #include <JavaScriptCore/StrongInlines.h>
 #include <JavaScriptCore/WriteBarrier.h>
 #include "EventListener.h"
@@ -77,6 +78,33 @@ private:
 using SimpleEventListenerVector = Vector<RefPtr<SimpleRegisteredEventListener>, 2, CrashOnOverflow, 6>;
 using EntriesVector = Vector<std::pair<JSC::Identifier, SimpleEventListenerVector>, 4, CrashOnOverflow, 8>;
 
+class SimpleEventListenerSnapshot {
+public:
+    // Reentrant JS can remove registrations or expose wrappers after this snapshot starts.
+    SimpleEventListenerSnapshot(JSC::VM& vm, SimpleEventListenerVector&& listeners)
+        : m_listeners(WTF::move(listeners))
+    {
+        for (auto& registration : m_listeners) {
+            registration->beginDispatch(vm);
+            if (auto* callback = registration->callback().jsFunction())
+                m_callbacks.append(callback);
+        }
+    }
+
+    ~SimpleEventListenerSnapshot()
+    {
+        for (auto& registration : m_listeners)
+            registration->endDispatch();
+    }
+
+    const SimpleEventListenerVector& listeners() const { return m_listeners; }
+    bool hasOverflowed() { return m_callbacks.hasOverflowed(); }
+
+private:
+    SimpleEventListenerVector m_listeners;
+    JSC::MarkedArgumentBuffer m_callbacks;
+};
+
 class IdentifierEventListenerMap {
 public:
     IdentifierEventListenerMap();
@@ -91,7 +119,6 @@ public:
 
     bool add(const JSC::Identifier& eventType, Ref<EventListener>&&, bool once);
     bool prepend(const JSC::Identifier& eventType, Ref<EventListener>&&, bool once);
-    bool remove(const JSC::Identifier& eventType, EventListener&);
     bool remove(const JSC::Identifier& eventType, SimpleRegisteredEventListener&);
     bool removeAll(const JSC::Identifier& eventType);
     WEBCORE_EXPORT SimpleEventListenerVector* find(const JSC::Identifier& eventType);

@@ -2,6 +2,7 @@ import { sleep } from "bun";
 import { describe, expect, mock, test } from "bun:test";
 import { bunEnv, bunExe } from "harness";
 import { createRequire } from "module";
+import assert from "node:assert/strict";
 
 // this is also testing that imports with default and named imports in the same statement work
 // our transpiler transform changes this to a var with import.meta.require
@@ -1208,6 +1209,138 @@ describe("native EventEmitter propagates an exception from a `_events` getter", 
 });
 
 describe("process.rawListeners", () => {
+  describe("re-registered raw once wrappers", () => {
+    test.each([
+      ["on", 1, "none"],
+      ["on", 2, "none"],
+      ["prependListener", 1, "none"],
+      ["prependListener", 2, "none"],
+      ["on", 1, "wrapper"],
+      ["on", 2, "wrapper"],
+      ["prependListener", 1, "wrapper"],
+      ["prependListener", 2, "wrapper"],
+      ["on", 1, "original"],
+      ["on", 2, "original"],
+      ["prependListener", 1, "original"],
+      ["prependListener", 2, "original"],
+    ] as const)("%s with %i extra registrations and %s removal", (method, copies, remove) => {
+      const event = Symbol("process.rawListeners.reregister");
+      const calls = [];
+      function listener(...args) {
+        calls.push({ receiver: this === process, args, count: process.listenerCount(event) });
+      }
+      try {
+        process.once(event, listener);
+        const [wrapper] = process.rawListeners(event);
+        for (let i = 0; i < copies; i++) process[method](event, wrapper);
+        assert.equal(process.listenerCount(event), copies + 1);
+        assert.deepEqual(process.listeners(event), Array(copies + 1).fill(listener));
+        if (remove !== "none") process.removeListener(event, remove === "wrapper" ? wrapper : listener);
+        const remaining = copies - (remove === "none" ? 0 : 1);
+        assert.equal(process.listenerCount(event), remaining + 1);
+        assert.equal(process.emit(event, "first"), true);
+        assert.equal(process.listenerCount(event), remaining);
+        assert.deepEqual(process.rawListeners(event), Array(remaining).fill(wrapper));
+        assert.deepEqual(process.listeners(event), Array(remaining).fill(listener));
+        assert.equal(process.emit(event, "second"), remaining > 0);
+        assert.equal(process.listenerCount(event), remaining);
+        assert.deepEqual(calls, [{ receiver: true, args: ["first"], count: remaining }]);
+        for (let count = remaining; count > 0; count--) {
+          process.removeListener(event, listener);
+          assert.equal(process.listenerCount(event), count - 1);
+        }
+        assert.equal(process.emit(event), false);
+        assert.equal(process.listenerCount(event), 0);
+      } finally {
+        process.removeAllListeners(event);
+      }
+    });
+
+    test("a throwing removal consumes the wrapper before calling its callback", () => {
+      const event = Symbol("process.rawListeners.removal-throws");
+      let calls = 0;
+      const listener = () => calls++;
+      const blocker = () => {};
+      const failure = new Error("removal failed");
+      try {
+        process.once(event, listener);
+        const [wrapper] = process.rawListeners(event);
+        process.on(event, blocker);
+        Object.defineProperty(blocker, "listener", {
+          configurable: true,
+          get() {
+            throw failure;
+          },
+        });
+        assert.throws(
+          () => wrapper(),
+          error => error === failure,
+        );
+        process.removeListener(event, blocker);
+        assert.equal(wrapper(), undefined);
+        assert.equal(process.emit(event), true);
+        assert.equal(process.listenerCount(event), 1);
+        assert.equal(calls, 0);
+      } finally {
+        delete blocker.listener;
+        process.removeAllListeners(event);
+      }
+    });
+
+    test("removal reads the wrapper's current listener property", () => {
+      const event = Symbol("process.rawListeners.listener-property");
+      const listener = () => {};
+      const replacement = () => {};
+      try {
+        process.once(event, listener);
+        const [wrapper] = process.rawListeners(event);
+        process.on(event, wrapper);
+        wrapper.listener = replacement;
+        assert.deepEqual(process.listeners(event), [replacement, replacement]);
+        process.removeListener(event, listener);
+        assert.equal(process.listenerCount(event), 2);
+        process.removeListener(event, replacement);
+        assert.equal(process.listenerCount(event), 1);
+        process.removeListener(event, wrapper);
+        assert.equal(process.listenerCount(event), 0);
+      } finally {
+        process.removeAllListeners(event);
+      }
+    });
+
+    test("removal propagates a throwing listener getter", () => {
+      const event = Symbol("process.rawListeners.listener-getter");
+      const listener = () => {};
+      const failure = new Error("listener getter failed");
+      try {
+        process.once(event, listener);
+        const [wrapper] = process.rawListeners(event);
+        process.on(event, wrapper);
+        Object.defineProperty(wrapper, "listener", {
+          configurable: true,
+          get() {
+            throw failure;
+          },
+        });
+        assert.throws(
+          () => process.removeListener(event, listener),
+          error => error === failure,
+        );
+        assert.throws(
+          () => process.listeners(event),
+          error => error === failure,
+        );
+        assert.equal(process.listenerCount(event), 2);
+        Object.defineProperty(wrapper, "listener", { value: listener });
+        process.removeListener(event, wrapper);
+        process.removeListener(event, wrapper);
+        assert.equal(process.listenerCount(event), 0);
+      } finally {
+        process.removeAllListeners(event);
+      }
+    });
+  });
+
   test.each(["once", "prependOnceListener"] as const)("%s returns its callable once wrapper", method => {
     const event = Symbol("process.rawListeners");
     const calls: unknown[] = [];
@@ -1452,6 +1585,44 @@ describe("process.rawListeners", () => {
       expect(calls).toBe(2);
       expect(process.listenerCount(event)).toBe(0);
     } finally {
+      process.removeAllListeners(event);
+    }
+  });
+
+  test.each([
+    ["cached", "remove"],
+    ["uncached", "remove"],
+    ["cached", "emit"],
+    ["uncached", "emit"],
+  ])("rawListeners roots %s wrappers during reentrant creation and %s", (expose, action) => {
+    const event = Symbol("process.rawListeners.creation-gc");
+    const first = mock(() => {});
+    const second = mock(() => {});
+    const descriptor = Object.getOwnPropertyDescriptor(Function.prototype, "listener");
+    let wrappers;
+    try {
+      process.once(event, second);
+      if (expose === "cached") process.rawListeners(event);
+      process.prependOnceListener(event, first);
+      Object.defineProperty(Function.prototype, "listener", {
+        configurable: true,
+        set(listener) {
+          Object.defineProperty(this, "listener", { value: listener, configurable: true, writable: true });
+          if (action === "remove") process.removeAllListeners(event);
+          else process.emit(event);
+          Bun.gc(true);
+        },
+      });
+      wrappers = process.rawListeners(event);
+      expect(wrappers).toHaveLength(2);
+      expect(wrappers.map(wrapper => wrapper.listener)).toEqual([first, second]);
+      wrappers[0]();
+      wrappers[1]();
+      expect(first).toHaveBeenCalledTimes(1);
+      expect(second).toHaveBeenCalledTimes(1);
+    } finally {
+      if (descriptor) Object.defineProperty(Function.prototype, "listener", descriptor);
+      else delete Function.prototype.listener;
       process.removeAllListeners(event);
     }
   });
