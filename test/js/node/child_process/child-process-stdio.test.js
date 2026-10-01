@@ -323,3 +323,60 @@ describe("stdio _handle", () => {
     await once(child, "exit");
   });
 });
+
+describe("child readable stdio references", () => {
+  it.each(["stdout", "stderr"])("repeated %s.ref() calls need only one unref()", async name => {
+    await using proc = Bun.spawn({
+      cmd: [
+        bunExe(),
+        "-e",
+        `
+        const { spawn } = require("node:child_process");
+        const child = spawn(process.execPath, ["-e", "process.stdin.resume(); process.stdin.on('end', () => process.exit(0)); process.stdout.write('ready')"], {
+          stdio: ["pipe", "pipe", "pipe"],
+        });
+        process.on("exit", () => child.kill());
+        child.on("error", error => { throw error; });
+        child.stderr.resume();
+        child.stdout.once("data", () => {
+          child[${JSON.stringify(name)}].ref();
+          child[${JSON.stringify(name)}].ref();
+          child.unref();
+          child.stdin.unref();
+          child.stdout.unref();
+          child.stderr.unref();
+          console.log("released");
+        });
+        `,
+      ],
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect({ stdout, stderr, exitCode }).toEqual({ stdout: "released\n", stderr: "", exitCode: 0 });
+  });
+
+  it("ref and unref return each readable stream before and after close", async () => {
+    const child = spawn(bunExe(), ["-e", "process.stdin.resume()"], {
+      env: bunEnv,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    const closed = once(child, "close");
+    try {
+      for (const stream of [child.stdout, child.stderr]) {
+        expect(stream.ref()).toBe(stream);
+        expect(stream.unref()).toBe(stream);
+        expect(stream.unref()).toBe(stream);
+        expect(stream.ref()).toBe(stream);
+      }
+    } finally {
+      child.kill();
+      await closed;
+    }
+    for (const stream of [child.stdout, child.stderr]) {
+      expect(stream.ref()).toBe(stream);
+      expect(stream.unref()).toBe(stream);
+    }
+  });
+});
