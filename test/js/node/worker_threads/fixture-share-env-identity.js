@@ -99,11 +99,11 @@ async function check() {
   }
 }
 
-if (process.argv[2] === "coercion") {
+if (process.argv[2]?.startsWith("coercion")) {
   (async () => {
     const env = process.env;
     let worker;
-    env.BUN_SHARE_REENTRANT = {
+    const value = {
       toString() {
         worker = new Worker(
           `const {parentPort}=require('node:worker_threads');parentPort.on('message',()=>parentPort.postMessage(process.env.BUN_SHARE_REENTRANT));`,
@@ -112,6 +112,25 @@ if (process.argv[2] === "coercion") {
         return "coerced";
       },
     };
+    if (process.argv[2] === "coercion-define") {
+      Object.defineProperty(env, "BUN_SHARE_REENTRANT", {
+        value,
+        writable: true,
+        enumerable: true,
+        configurable: true,
+      });
+    } else if (process.argv[2] === "coercion-descriptor") {
+      Object.defineProperty(env, "BUN_SHARE_REENTRANT", {
+        get value() {
+          return value.toString();
+        },
+        writable: true,
+        enumerable: true,
+        configurable: true,
+      });
+    } else {
+      env.BUN_SHARE_REENTRANT = value;
+    }
     try {
       assert.ok(env === process.env, "identity");
       assert.equal(env.BUN_SHARE_REENTRANT, "coerced");

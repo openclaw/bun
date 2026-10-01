@@ -2060,7 +2060,7 @@ test("env: process.env reads in a worker module are evaluated at runtime against
 });
 
 describe("env: SHARE_ENV shares the spawning thread's env, not a process-wide one", () => {
-  it.each(["main", "nested", "coercion"])(
+  it.each(["main", "nested", "coercion", "coercion-define", "coercion-descriptor"])(
     "preserves cached env references when %s founds a shared store",
     async mode => {
       await using proc = Bun.spawn({

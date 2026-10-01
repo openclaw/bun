@@ -485,6 +485,11 @@ export function windowsEnv(
     // Node's EnvSetter semantics (DEP0104 + ToString) and the TZ side effect;
     // name-matching TZ here survives a prior `delete process.env.TZ`.
     const coerced = coerceForWrite(k, value);
+    // Coercion can create the first SHARE_ENV worker on this thread.
+    const env = shared();
+    if (env) return Reflect.set(env, p, coerced);
+    // Node coerces the value even when it ignores an empty variable name.
+    if (k === "") return true;
     // Track the key for enumeration if it isn't already there. Don't gate on
     // `k in internalEnv`: the TZ and NODE_TLS_REJECT_UNAUTHORIZED accessors
     // always exist as DontEnum CustomAccessors even when the variable was never set.
@@ -495,6 +500,7 @@ export function windowsEnv(
       editWindowsEnvVar(k, coerced);
       internalEnv[k] = coerced;
     }
+    return true;
   }
 
   const envProxy = new Proxy(internalEnv, {
@@ -522,22 +528,14 @@ export function windowsEnv(
       if (receiver !== envProxy) {
         return Reflect.set({ __proto__: null }, p, value, receiver);
       }
-      const env = shared();
-      if (env) return Reflect.set(env, p, value);
       // Node's process.env throws a TypeError for symbol keys and symbol
       // values (ToString on a Symbol throws).
       if (typeof p === "symbol" || typeof value === "symbol") {
         throw new TypeError("Cannot convert a Symbol value to a string");
       }
       const k = p.toUpperCase();
-      // Node silently ignores assignments to an empty variable name
-      // (https://github.com/nodejs/node/issues/32920).
-      if (k === "") {
-        return true;
-      }
       // If toString() throws, we want to avoid the key existing in envMapList.
-      writeEnvVar(p, k, value);
-      return true;
+      return writeEnvVar(p, k, value);
     },
     has(_, p) {
       const env = shared();
@@ -569,8 +567,6 @@ export function windowsEnv(
       return delete internalEnv[k];
     },
     defineProperty(_, p, attributes) {
-      const env = shared();
-      if (env) return Reflect.defineProperty(env, p, attributes);
       // String(symbol) does not throw (it returns the descriptive string), so
       // reject symbol keys explicitly like the set trap does.
       if (typeof p === "symbol") {
@@ -599,14 +595,9 @@ export function windowsEnv(
         throw new TypeError("Cannot convert a Symbol value to a string");
       }
       const k = p.toUpperCase();
-      // Node silently ignores an empty variable name, like the set trap.
-      if (k === "") {
-        return true;
-      }
       // Node's EnvDefiner delegates the validated value to EnvSetter, i.e.
       // plain assignment — never a real defineProperty on the target.
-      writeEnvVar(p, k, attributes.value);
-      return true;
+      return writeEnvVar(p, k, attributes.value);
     },
     getOwnPropertyDescriptor(target, p) {
       const env = shared();
