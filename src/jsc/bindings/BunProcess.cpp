@@ -4711,6 +4711,10 @@ JSC_DEFINE_CUSTOM_SETTER(setProcessTitle, (JSC::JSGlobalObject * globalObject, J
     if (!thisObject || !jsString) {
         return false;
     }
+    if (!Bun__isMainThreadVM()) {
+        thisObject->putDirect(vm, Identifier::fromString(vm, "title"_s), jsString);
+        return true;
+    }
     WTF::String wtfStr = jsString->value(globalObject);
     RETURN_IF_EXCEPTION(scope, false);
 #if !OS(WINDOWS)
