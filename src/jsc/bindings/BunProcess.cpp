@@ -3027,8 +3027,8 @@ static JSValue constructStdioWriteStream(JSC::JSGlobalObject* globalObject, JSC:
     // Note: files are always sync anyway.
     // forceSync = fdType == BunProcessStdinFdType::file || bun_stdio_tty[fd];
 
-    // TODO: once console.* is wired up to write/read through the same buffering mechanism as FileSink for process.stdout, process.stderr, we can make this non-blocking for sockets on POSIX.
-    // Until then, we have to force it to be sync EVEN for sockets or else console.log() may flush at a different time than process.stdout.write.
+    // Flush immediately to preserve ordering with console output. Pollable POSIX
+    // descriptors remain nonblocking so full pipes can yield to their readers.
     forceSync = true;
 #endif
     if (forceSync) {

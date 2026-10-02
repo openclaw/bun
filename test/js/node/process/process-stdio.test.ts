@@ -5,6 +5,35 @@ import { release } from "node:os";
 import path from "path";
 import { isatty } from "tty";
 describe.concurrent("process-stdio", () => {
+  // POSIX stdio has socket/pipe descriptors; Windows stdio uses libuv handles.
+  test
+    .skipIf(isWindows)
+    .each(
+      ["socket", "pipe"].flatMap(kind =>
+        [1, 2].flatMap(fd => ["end", "pipeline", "destroy"].map(action => [kind, fd, action] as const)),
+      ),
+    )(
+    "%s stdio fd %i %s preserves descriptor ownership",
+    async (kind, fd, action) => {
+      await using proc = spawn({
+        cmd: [
+          bunExe(),
+          path.join(import.meta.dir, "process-stdio-shutdown-fixture.mjs"),
+          "parent",
+          kind,
+          String(fd),
+          action,
+        ],
+        env: bunEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      expect({ stdout, stderr, exitCode }).toEqual({ stdout: "ok\n", stderr: "", exitCode: 0 });
+    },
+    10000,
+  );
+
   test.skipIf(isWindows).each([1, 2])("setBlocking supports native writes on fd %i", async fd => {
     const source = `
       const assert = require("node:assert/strict");

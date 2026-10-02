@@ -212,10 +212,38 @@ impl FileSink {
     }
 }
 
+pub(crate) fn shutdown_stdio(_global: &JSGlobalObject, frame: &CallFrame) -> JsResult<JSValue> {
+    #[cfg(not(windows))]
+    {
+        let fd = frame.argument(0).as_int32();
+        debug_assert!(fd == 1 || fd == 2);
+        // Node's afterShutdown ignores the completion status, including ENOTSOCK
+        // for pipes: https://github.com/nodejs/node/blob/v24.21.0/lib/net.js
+        // SAFETY: shutdown accepts a descriptor by value and does not close it.
+        let _ = unsafe { libc::shutdown(fd, libc::SHUT_WR) };
+    }
+    #[cfg(windows)]
+    let _ = frame;
+    Ok(JSValue::UNDEFINED)
+}
+
 pub(crate) fn create_stdio(global: &JSGlobalObject, frame: &CallFrame) -> JsResult<JSValue> {
     let number = frame.argument(0).as_int32();
     debug_assert!(number == 1 || number == 2);
     let fd = Fd::from_uv(number);
+    #[cfg(not(windows))]
+    let mode = {
+        // Closed stdio still constructs; the first write reports EBADF.
+        let mode = match sys::fstat(fd) {
+            sys::Result::Ok(stat) => stat.st_mode as sys::Mode,
+            sys::Result::Err(_) => 0,
+        };
+        if is_pollable(mode) {
+            sys::update_nonblocking(fd, true)
+                .map_err(|err| global.throw_value(err.to_js(global)))?;
+        }
+        mode
+    };
     let sink = FileSink::init(
         fd,
         EventLoopHandle::init(global.bun_vm().as_mut().event_loop().cast::<()>()),
@@ -223,11 +251,6 @@ pub(crate) fn create_stdio(global: &JSGlobalObject, frame: &CallFrame) -> JsResu
 
     #[cfg(not(windows))]
     let result = {
-        // Closed stdio still constructs; the first write reports EBADF.
-        let mode = match sys::fstat(fd) {
-            sys::Result::Ok(stat) => stat.st_mode as sys::Mode,
-            sys::Result::Err(_) => 0,
-        };
         let pollable = is_pollable(mode);
         sink.pollable.set(pollable);
         sink.is_socket.set(sys::S::ISSOCK(mode));
@@ -278,7 +301,7 @@ pub(crate) extern "C" fn Bun__ForceFileSinkToBeSynchronousForProcessObjectStdio(
         this.force_sync.set(true);
         // SAFETY(JsCell): single-field write; does not call into JS.
         this.writer.with_mut(|w| w.force_sync = true);
-        if this.fd.get() != Fd::INVALID {
+        if !this.pollable.get() && this.fd.get() != Fd::INVALID {
             let _ = sys::update_nonblocking(this.fd.get(), false);
         }
     }
