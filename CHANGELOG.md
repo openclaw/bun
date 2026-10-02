@@ -100,3 +100,4 @@
 - Preserve MessagePort creation async context for message and close events, including transferred ports and garbage collection.
 - Borrow process stdout/stderr descriptors without duplicating them, so explicitly closing an initialized output fd publishes EOF while the process remains alive.
 - Read implemented Node runtime flags from `NODE_OPTIONS`, including ordered require/import preloads in children, while keeping injected flags out of `process.execArgv`. Ports [oven-sh/bun#40328](https://github.com/oven-sh/bun/pull/40328). Thanks @robobun!
+- Preserve emitted MessagePort and parentPort payloads and return listener presence from `emit()`. Ports [oven-sh/bun#35796](https://github.com/oven-sh/bun/pull/35796). Thanks @robobun!

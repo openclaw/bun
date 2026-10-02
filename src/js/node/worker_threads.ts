@@ -143,43 +143,40 @@ function injectFakeEmitter(Class) {
     return event.data;
   }
 
-  function errorEventHandler(event: ErrorEvent) {
-    return event.error;
+  // fakeParentPort routes self's native ErrorEvent (.error) here; emit() sends CustomEvent (.detail)
+  const _ErrorEvent = ErrorEvent;
+  function errorEventHandler(event) {
+    return event instanceof _ErrorEvent ? event.error : event.detail;
   }
 
   function customEventHandler(event) {
     return event.detail;
   }
 
+  const kEmittedValue = Symbol("emittedValue");
+  const defineProperty = Object.defineProperty;
   function wrapped(run, listener) {
     return function (event) {
-      return listener.$call(this, run(event));
+      return listener.$call(this, kEmittedValue in event ? event[kEmittedValue] : run(event));
     };
   }
 
+  // native messageerror is a MessageEvent (.data), not an ErrorEvent
   function functionForEventType(event, listener) {
     switch (event) {
-      case "error":
+      case "message":
       case "messageerror": {
-        return wrapped(errorEventHandler, listener);
+        return wrapped(messageEventHandler, listener);
       }
 
-      case "message": {
-        return wrapped(messageEventHandler, listener);
+      case "error": {
+        return wrapped(errorEventHandler, listener);
       }
 
       default: {
         return wrapped(customEventHandler, listener);
       }
     }
-  }
-
-  function EventClass(eventName) {
-    if (eventName === "error" || eventName === "messageerror") {
-      return ErrorEvent;
-    }
-
-    return MessageEvent;
   }
 
   // EventTarget dedupes on (type, callback), so in node the FIRST registration of
@@ -226,20 +223,16 @@ function injectFakeEmitter(Class) {
     return this;
   }
 
-  function emit(event, ...args) {
-    switch (event) {
-      case "error":
-      case "messageerror":
-      case "message":
-        this.dispatchEvent(new (EventClass(event))(event, ...args));
-        break;
-      default:
-        // Non-standard events surface as CustomEvent (detail = first arg) to
-        // addEventListener and as the raw argument to .on(), matching node.
-        this.dispatchEvent(new CustomEvent(event, { detail: args[0] }));
-        break;
-    }
-    return this;
+  function emit(event, arg) {
+    const hadListeners = listenerCount.$call(this, event) > 0;
+    const emitted =
+      event === "message" || event === "messageerror"
+        ? new MessageEvent(event, { __proto__: null, data: arg })
+        : new CustomEvent(event, { __proto__: null, detail: arg });
+    // Node listeners receive undefined unchanged; Web event dictionaries default it to null.
+    defineProperty(emitted, kEmittedValue, { __proto__: null, value: arg });
+    this.dispatchEvent(emitted);
+    return hadListeners;
   }
 
   const kMaxListeners = Symbol("kMaxListeners");
@@ -250,8 +243,18 @@ function injectFakeEmitter(Class) {
   function getMaxListeners() {
     return this[kMaxListeners] ?? 10;
   }
+  const getEventListenersForEventTarget = $newCppFunction(
+    "JSEventTargetNode.cpp",
+    "jsFunctionNodeEventsGetEventListeners",
+    1,
+  );
   function listenerCount(type) {
-    return registryFor(this, false)?.get(type)?.size ?? 0;
+    try {
+      return getEventListenersForEventTarget(this, type).length;
+    } catch {
+      // fakeParentPort has no EventTarget internal slot; fall back to the .on() registry.
+      return registryFor(this, false)?.get(type)?.size ?? 0;
+    }
   }
   function eventNames() {
     const map = registryFor(this, false);
