@@ -157,6 +157,8 @@ Deferred cache generation continues on idle event loops even after JavaScript ti
 
 ### [`node:net`](https://nodejs.org/api/net.html)
 
+Destroying a socket cancels in-flight writes with `ECANCELED` after the explicit destroy error and before `close`, preserving the owning error through forwarding streams.
+
 Socket close notifications use internal scheduling and continue to run when user code replaces `setImmediate`.
 
 🟢 Fully implemented, including `BlockList`, `SocketAddress`, `autoSelectFamily`, Unix domain sockets and `server.listen({ fd })`. `new net.Socket({ fd })` cannot read from an existing file descriptor (only write-only wrapping works). `server.listen(handle)` only accepts `{ fd }`. Missing `blockList.toJSON()`/`fromJSON()`.
