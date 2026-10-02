@@ -1831,7 +1831,7 @@ function getNodeHTTPServerSocket() {
     [kDispatcherCorkDepth] = 0;
     [kOnReadParsed] = undefined;
     [kHandoffResponse] = undefined;
-    [kPendingHandoff] = undefined;
+    [kPendingHandoff]: (() => void)[] | undefined = undefined;
     [kDestroySoon] = false;
     [kHandedOff] = false;
     server: Server;
