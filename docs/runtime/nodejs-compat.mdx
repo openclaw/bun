@@ -41,6 +41,8 @@ We update this page regularly. It reflects the latest version of Bun's compatibi
 
 ### [`node:fs`](https://nodejs.org/api/fs.html)
 
+On macOS, `fs.watch(file)` registers a kqueue watch before returning, including unlink and writes through an open descriptor. Directory watches use FSEvents. A new watch on a replaced file observes the new inode.
+
 Recursive `fs.promises.readdir` with `withFileTypes: true` lists directory symlinks without descending into their targets. Callback and synchronous overloads retain the Node symlink-following behavior.
 
 The `read`, `readv`, `write`, and `writev` callbacks receive the error, zero bytes, and the original buffer or buffers when an I/O operation fails.
