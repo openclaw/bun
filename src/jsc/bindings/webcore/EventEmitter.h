@@ -35,6 +35,9 @@ public:
 class EventEmitter final : public ScriptWrappable, public CanMakeWeakPtr<EventEmitter>, public RefCounted<EventEmitter>, public ContextDestructionObserver {
     WTF_MAKE_TZONE_ALLOCATED(EventEmitter);
 
+    enum class ExceptionHandling { Report,
+        Propagate };
+
 public:
     static Ref<EventEmitter> create(ScriptExecutionContext&);
     WEBCORE_EXPORT ~EventEmitter() = default;
@@ -71,7 +74,7 @@ public:
 
     void setMaxListeners(unsigned count);
 
-    bool fireEventListeners(const Identifier& eventName, const MarkedArgumentBuffer& arguments);
+    bool fireEventListeners(const Identifier& eventName, const MarkedArgumentBuffer& arguments, ExceptionHandling = ExceptionHandling::Report);
     bool isFiringEventListeners() const;
 
     const EventEmitterData* eventTargetData() const;
@@ -100,7 +103,7 @@ private:
     {
     }
 
-    bool innerInvokeEventListeners(const Identifier&, SimpleEventListenerVector, const MarkedArgumentBuffer& arguments);
+    bool innerInvokeEventListeners(const Identifier&, SimpleEventListenerVector, const MarkedArgumentBuffer& arguments, ExceptionHandling);
 
     EventEmitterData m_eventTargetData;
     unsigned m_maxListeners { 10 };

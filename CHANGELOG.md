@@ -90,3 +90,4 @@
 - Port [oven-sh/bun#44067](https://github.com/oven-sh/bun/pull/44067): register macOS file watches with kqueue before returning, deliver unlink and open-writer changes, and let new watchers observe replaced files. Directory watches retain FSEvents. Thanks @robobun!
 - Report allocated worker heap capacity in `Worker.getHeapStatistics().total_heap_size`, separately from occupied bytes in `used_heap_size`.
 - Make `process.title` and `--title` visible to OS process tools on Linux and macOS while preserving startup argv and worker-local assignments. Ports [oven-sh/bun#44318](https://github.com/oven-sh/bun/pull/44318). Thanks @tnrich!
+- Propagate synchronous `process.emit()` listener exceptions to the caller, preserving once-listener removal and stopping dispatch before later listeners.
