@@ -241,8 +241,8 @@ extern "C" fn Bun__fetchBuiltinModule(
             }
         }
     }
-    // SAFETY: the VM remains live, and the user hook has returned before this shared borrow.
     match __bun_fetch_builtin_module(
+        // SAFETY: the VM remains live, and the user hook has returned before this shared borrow.
         unsafe { &*jsc_vm },
         global_object,
         replacement.as_ref().unwrap_or(specifier),
