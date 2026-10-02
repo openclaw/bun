@@ -12,6 +12,18 @@ test("PR and nightly smoke lists exist and nightly includes every PR smoke file"
   expect(selectTests([], tracked, true)).toEqual([...smoke, ...broader].sort());
 });
 
+test("macOS selection includes file, directory, recursive, process and child-process coverage", () => {
+  const selected = selectTests([], tracked, false, "darwin");
+  expect(selected).toContain("test/js/node/watch/fs.watch.test.ts");
+  expect(selected).toContain("test/js/node/watch/fs.watch.close-exit.test.ts");
+  expect(selected).toContain("test/js/node/process/process.test.js");
+  expect(selected).toContain("test/js/node/child_process/child_process.test.ts");
+  expect(selected).not.toContain("test/js/bun/sqlite/sqlite.test.js");
+  const nightly = selectTests([], tracked, true, "darwin");
+  for (const path of selected) expect(nightly).toContain(path);
+  expect(() => selectTests([], tracked, false, "unsupported")).toThrow("Unsupported CI platform");
+});
+
 test("changed tests are added exactly once, renamed tests use the new path, deleted tests are omitted", () => {
   const added = "test/js/node/fs/new check.test.ts";
   const deleted = "test/js/node/fs/removed.test.ts";
@@ -92,6 +104,7 @@ test("CLI diff selects owners at both ends of a moved fixture", () => {
       ...process.env,
       GITHUB_STEP_SUMMARY: "",
       GITHUB_EVENT_NAME: "pull_request",
+      OPENCLAW_CI_PLATFORM: "linux",
       PR_BASE_SHA: base,
       PR_HEAD_SHA: git("rev-parse", "HEAD"),
     },

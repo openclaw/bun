@@ -153,3 +153,127 @@ jobs:
             build/release/timings.html
             build/release/ccache.log
           retention-days: 7
+
+  darwin-arm64:
+    if: github.repository == 'openclaw/bun'
+    runs-on: macos-15
+    timeout-minutes: 115
+    env:
+      BUN_BUILD_CACHE_DIR: ${{ github.workspace }}/.cache/openclaw-build
+      PUPPETEER_SKIP_DOWNLOAD: "1"
+      OPENCLAW_CI_PLATFORM: darwin
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: "1.4.2"
+      - name: Read toolchain pins
+        id: pins
+        run: |
+          echo "tree=$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_OUTPUT"
+          # shellcheck disable=SC2016
+          bun -e 'import { pins } from "./scripts/build/ci-images/spec.ts"; console.log(`llvm=${pins.llvm.version.split(".")[0]}\nnode=${pins.nodejs.version}\nrust=${pins.rust.channel}`)' >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ steps.pins.outputs.node }}
+      - name: Install native build tools
+        timeout-minutes: 15
+        env:
+          LLVM_MAJOR: ${{ steps.pins.outputs.llvm }}
+          RUST_TOOLCHAIN: ${{ steps.pins.outputs.rust }}
+        run: |
+          test "$(uname -m)" = arm64
+          brew install cmake ninja nasm ccache go llvm
+          llvm_bin="$(brew --prefix llvm)/bin"
+          "$llvm_bin/clang" --version | grep -F "clang version ${LLVM_MAJOR}."
+          echo "$llvm_bin" >> "$GITHUB_PATH"
+          echo "CC=$llvm_bin/clang" >> "$GITHUB_ENV"
+          echo "CXX=$llvm_bin/clang++" >> "$GITHUB_ENV"
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+          echo "RUSTUP_TOOLCHAIN=$RUST_TOOLCHAIN" >> "$GITHUB_ENV"
+          df -h /
+      - name: Restore build caches
+        id: cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .cache/openclaw-build
+            build/release/rust-target
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: openclaw-native-darwin-arm64-v1-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', 'bun.lock', 'test/bun.lock', 'rust-toolchain.toml', 'scripts/build/**', 'scripts/build.ts', '.github/workflows/openclaw-build-test.yml') }}-${{ steps.pins.outputs.tree }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            openclaw-native-darwin-arm64-v1-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', 'bun.lock', 'test/bun.lock', 'rust-toolchain.toml', 'scripts/build/**', 'scripts/build.ts', '.github/workflows/openclaw-build-test.yml') }}-${{ steps.pins.outputs.tree }}-
+      - name: Select tests
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bun scripts/openclaw-ci/tests.ts select
+      - name: Install build dependencies
+        run: bun install --frozen-lockfile
+      - name: Build native macOS arm64 (release, no LTO)
+        id: build
+        timeout-minutes: 75
+        env:
+          CACHE_MATCH: ${{ steps.cache.outputs.cache-matched-key }}
+        run: |
+          started=$SECONDS
+          timing() { echo "Build: $((SECONDS - started)) seconds; restored cache: ${CACHE_MATCH:-none}" >> "$GITHUB_STEP_SUMMARY"; }
+          trap timing EXIT
+          bun run build:release --lto=off --timings
+      - name: Save build caches
+        if: steps.build.outcome == 'success'
+        run: CCACHE_DIR="$BUN_BUILD_CACHE_DIR/ccache" ccache --max-size=3G --cleanup --show-stats
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: steps.build.outcome == 'success'
+        with:
+          path: |
+            .cache/openclaw-build
+            build/release/rust-target
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ steps.cache.outputs.cache-primary-key }}
+      - name: Package PR executable
+        run: |
+          tar -czf build/openclaw-ci/bun-darwin-arm64.tar.gz -C build/release bun
+          (cd build/openclaw-ci && shasum -a 256 bun-darwin-arm64.tar.gz > SHA256SUMS)
+          git rev-parse HEAD > build/openclaw-ci/commit.txt
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bun-darwin-arm64-${{ github.sha }}-attempt${{ github.run_attempt }}
+          path: |
+            build/openclaw-ci/bun-darwin-arm64.tar.gz
+            build/openclaw-ci/SHA256SUMS
+            build/openclaw-ci/commit.txt
+          retention-days: 7
+          compression-level: 0
+          if-no-files-found: error
+      - name: Run selected and compatibility tests
+        id: tests
+        timeout-minutes: 20
+        run: |
+          started=$SECONDS
+          timing() { echo "Tests: $((SECONDS - started)) seconds" >> "$GITHUB_STEP_SUMMARY"; }
+          trap timing EXIT
+          # build.ts only executes trailing arguments outside CI.
+          ./build/release/bun scripts/openclaw-ci/tests.ts test
+          test -s build/openclaw-ci/results.json
+      - name: Summarize
+        if: always()
+        env:
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          TEST_OUTCOME: ${{ steps.tests.outcome }}
+        run: bun scripts/openclaw-ci/tests.ts summary
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: build-test-report-darwin-arm64-${{ github.sha }}-attempt${{ github.run_attempt }}
+          path: |
+            build/openclaw-ci/*.json
+            build/release/timings.html
+            build/release/ccache.log
+          retention-days: 7

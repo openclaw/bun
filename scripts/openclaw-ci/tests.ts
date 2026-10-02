@@ -33,6 +33,18 @@ export const broader = [
   "test/js/bun/sqlite/column-types.test.js",
 ];
 
+export const darwinSmoke = [
+  "test/js/node/watch/fs.watch.test.ts",
+  "test/js/node/watch/fs.watch.close-exit.test.ts",
+  "test/js/node/watch/fs.watch.events-cb-race.test.ts",
+  "test/js/node/watch/fs.watch.rewrite.test.ts",
+  "test/js/node/process/process.test.js",
+  "test/js/node/process/process-signal-listener-count.test.ts",
+  "test/js/node/child_process/child_process.test.ts",
+  "test/js/node/child_process/child-process-exec.test.ts",
+  "test/js/node/child_process/child-process-stdio.test.js",
+];
+
 // Runtime implementations span JS, Rust and C++; keep their shared boundaries explicit.
 const sourceSuites: [RegExp, string[]][] = [
   [/child_process|subprocess|spawn/i, ["child_process"]],
@@ -48,9 +60,10 @@ export function isTest(path: string): boolean {
   return path.startsWith("test/") && /(?:\.test|\.spec)\.[cm]?[jt]sx?$/.test(path);
 }
 
-export function selectTests(changed: string[], tracked: string[], nightly: boolean): string[] {
+export function selectTests(changed: string[], tracked: string[], nightly: boolean, platform = "linux"): string[] {
+  if (platform !== "linux" && platform !== "darwin") throw new Error(`Unsupported CI platform: ${platform}`);
   const available = new Set(tracked);
-  const selected = new Set([...smoke, ...(nightly ? broader : [])]);
+  const selected = new Set([...(platform === "darwin" ? darwinSmoke : smoke), ...(nightly ? broader : [])]);
   const tests = tracked.filter(isTest);
   for (const path of changed) {
     if (isTest(path)) {
@@ -102,7 +115,7 @@ if (import.meta.main) {
     if (process.env.GITHUB_EVENT_NAME === "pull_request" && (!base || !head)) throw new Error("Missing PR commits");
     const changed =
       base && head ? git("diff", "--no-renames", "--name-only", "--diff-filter=ACMTD", "-z", `${base}...${head}`) : [];
-    const selected = selectTests(changed, git("ls-files", "-z", "test"), !base);
+    const selected = selectTests(changed, git("ls-files", "-z", "test"), !base, process.env.OPENCLAW_CI_PLATFORM);
     mkdirSync(dirname(selectionPath), { recursive: true });
     writeFileSync(selectionPath, JSON.stringify(selected, null, 2) + "\n");
     summary(`## Selected tests (${selected.length})\n\n${selected.map(test => `- \`${test}\``).join("\n")}\n`);
