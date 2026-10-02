@@ -212,21 +212,6 @@ impl FileSink {
     }
 }
 
-pub(crate) fn shutdown_stdio(_global: &JSGlobalObject, frame: &CallFrame) -> JsResult<JSValue> {
-    #[cfg(not(windows))]
-    {
-        let fd = frame.argument(0).as_int32();
-        debug_assert!(fd == 1 || fd == 2);
-        // Node's afterShutdown ignores the completion status, including ENOTSOCK
-        // for pipes: https://github.com/nodejs/node/blob/v24.21.0/lib/net.js
-        // SAFETY: shutdown accepts a descriptor by value and does not close it.
-        let _ = unsafe { libc::shutdown(fd, libc::SHUT_WR) };
-    }
-    #[cfg(windows)]
-    let _ = frame;
-    Ok(JSValue::UNDEFINED)
-}
-
 pub(crate) fn create_stdio(global: &JSGlobalObject, frame: &CallFrame) -> JsResult<JSValue> {
     let number = frame.argument(0).as_int32();
     debug_assert!(number == 1 || number == 2);

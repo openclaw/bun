@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { closeSync, fstatSync, readFileSync, writeSync } from "node:fs";
@@ -7,10 +8,27 @@ import { fileURLToPath } from "node:url";
 
 const [role, kind, fdArg, action] = process.argv.slice(2);
 const fd = Number(fdArg);
-const payload = Buffer.alloc(kind === "socket" && action !== "destroy" ? 1024 * 1024 : 7, "x");
+const payload = Buffer.alloc(role === "timing" ? 0 : kind === "socket" && action !== "destroy" ? 1024 * 1024 : 7, "x");
 const tail = Buffer.from("tail");
 
-if (role === "child") {
+if (role === "timing") {
+  const output = fd === 1 ? process.stdout : process.stderr;
+  assert.equal(fstatSync(fd).isSocket(), true);
+  setImmediate(() => assert.throws(() => writeSync(fd, "immediate"), { code: "EPIPE" }));
+  const context = new AsyncLocalStorage();
+  context.run("stdio", () => {
+    output.end("before", () => {
+      assert.equal(context.getStore(), "stdio");
+      fstatSync(fd);
+      assert.throws(() => writeSync(fd, "late"), { code: "EPIPE" });
+      writeSync(fd === 1 ? 2 : 1, "ok\n");
+    });
+  });
+  const write = () => writeSync(fd, "x");
+  write();
+  process.nextTick(write);
+  queueMicrotask(write);
+} else if (role === "child") {
   const output = fd === 1 ? process.stdout : process.stderr;
   output.on("error", () => {});
   const parentAck = once(process, "message");

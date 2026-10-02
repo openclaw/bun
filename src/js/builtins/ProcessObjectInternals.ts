@@ -62,7 +62,7 @@ export function getStdioWriteStream(
     // But when redirected to a file, they shouldn't have it
     if (fdType === BunProcessStdinFdType.pipe || fdType === BunProcessStdinFdType.socket) {
       if (process.platform !== "win32") {
-        const shutdownStdio = $newRustFunction("runtime/webcore/FileSink.rs", "shutdownStdio", 1);
+        const shutdownStdio = $newCppFunction("BunProcess.cpp", "jsFunctionShutdownStdio", 2);
         const { ErrnoException } = require("internal/shared");
         const epipe = process.binding("uv").UV_EPIPE;
         const write = stream._write;
@@ -84,8 +84,7 @@ export function getStdioWriteStream(
             // uv_shutdown clears UV_HANDLE_WRITABLE even for a non-socket pipe.
             // https://github.com/nodejs/node/blob/v24.21.0/deps/uv/src/unix/stream.c
             shutdown = true;
-            shutdownStdio(fd);
-            cb();
+            shutdownStdio(fd, cb);
           });
         };
       }
