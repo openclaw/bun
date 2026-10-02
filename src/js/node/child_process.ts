@@ -1580,9 +1580,10 @@ class ChildProcess extends EventEmitter {
       }
     } catch (ex) {
       if (childProcessSpawn.error.hasSubscribers) {
+        const errno = ex != null && typeof ex === "object" && "errno" in ex ? ex.errno : undefined;
         childProcessSpawn.error.publish({
           process: this,
-          error: typeof ex?.errno === "number" ? new ErrnoException(ex.errno, "spawn") : ex,
+          error: typeof errno === "number" ? new ErrnoException(errno, "spawn") : ex,
         });
       }
       const exCode =
