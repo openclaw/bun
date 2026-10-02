@@ -98,3 +98,4 @@
 - Publish `child_process.spawn` tracing start, end, and error events with Node-compatible timing and child identity.
 - Preserve socket destroy errors before canceling in-flight writes with `ECANCELED`, including TLS and corked writes. Ports [oven-sh/bun#43250](https://github.com/oven-sh/bun/pull/43250). Thanks @robobun!
 - Preserve MessagePort creation async context for message and close events, including transferred ports and garbage collection.
+- Borrow process stdout/stderr descriptors without duplicating them, so explicitly closing an initialized output fd publishes EOF while the process remains alive.

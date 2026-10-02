@@ -52,7 +52,8 @@ export function getStdioWriteStream(
     stream._type = "tty";
   } else {
     const fs = require("node:fs");
-    stream = new fs.WriteStream(null, { autoClose: false, fd, $fastPath: true });
+    const createStdioSink = $newRustFunction("runtime/webcore/FileSink.rs", "createStdio", 1);
+    stream = new fs.WriteStream(null, { autoClose: false, $fastPath: createStdioSink(fd) });
     stream.readable = false;
     stream._type = "fs";
 

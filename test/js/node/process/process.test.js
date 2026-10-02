@@ -3540,3 +3540,57 @@ it("process.report retains full startup argv independently of mutable process ar
   expect(stderr).toBe("");
   expect(exitCode).toBe(0);
 });
+
+it("initialized process stdout and stderr release EOF when their fd closes", async () => {
+  await using child = Bun.spawn({
+    cmd: [
+      bunExe(),
+      "-e",
+      /* js */ `
+      import assert from 'node:assert/strict';
+      import { spawn } from 'node:child_process';
+      import { once } from 'node:events';
+      const childCode = \`
+      const fs=require('node:fs');
+      const fd=Number(process.argv[1]);
+      const method=process.argv[2];
+      const write=process.argv[3]==='yes';
+      const stream=fd===1?process.stdout:process.stderr;
+      setInterval(()=>{},1000);
+      function close() {
+        if(method==='sync') {fs.closeSync(fd);process.send('closed');}
+        else fs.createWriteStream('',{fd,autoClose:true}).end(()=>{}).once('close',()=>process.send('closed'));
+      }
+      if(write) stream.write('x',close);else close();
+      \`;
+      const results = await Promise.all([1,2].flatMap(fd => ['sync','stream'].flatMap(method => [false,true].map(async write => {
+        const child=spawn(process.execPath,['-e',childCode,String(fd),method,write?'yes':'no'],{stdio:['ignore','pipe','pipe','ipc']});
+        const closed=once(child,'close');
+        const io=fd===1?child.stdout:child.stderr;
+        let output='';io.setEncoding('utf8');io.on('data',chunk=>output+=chunk);
+        (fd===1?child.stderr:child.stdout).resume();
+        let timer;
+        try {
+          const ended=once(io,'end').then(()=>true);
+          await once(child,'message');
+          const beforeExit=await Promise.race([ended,new Promise(resolve=>{timer=setTimeout(()=>resolve(false),1500)})]);
+          return {fd,method,write,beforeExit,alive:child.exitCode===null,output};
+        } finally {clearTimeout(timer);child.kill('SIGKILL');await closed;}
+      }))));
+
+      for(const result of results) {
+        assert.equal(result.beforeExit,true,JSON.stringify(result));
+        assert.equal(result.alive,true);
+        assert.equal(result.output,result.write?'x':'');
+      }
+
+      console.log('stdio lifetime passed');
+    `,
+    ],
+    env: bunEnv,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([child.stdout.text(), child.stderr.text(), child.exited]);
+  expect({ stdout, stderr, exitCode }).toEqual({ stdout: "stdio lifetime passed\n", stderr: "", exitCode: 0 });
+});

@@ -169,6 +169,8 @@ Socket close notifications use internal scheduling and continue to run when user
 
 ### [`node:process`](https://nodejs.org/api/process.html)
 
+Initializing `process.stdout` or `process.stderr` does not retain a duplicate pipe writer. Explicitly closing the underlying descriptor publishes EOF while the process remains alive.
+
 Direct file execution preserves a literal `--` after the script name in `process.argv`, including with `--import` preloads. Explicit `bun run` commands and package scripts consume one separator.
 
 On POSIX, piped and terminal `process.stdout` and `process.stderr` expose `_handle.fd` and `_handle.setBlocking()` for native writers. Regular-file output has no `_handle`.

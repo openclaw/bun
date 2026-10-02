@@ -4,7 +4,7 @@ use core::sync::atomic::{AtomicI32, Ordering};
 #[cfg(windows)]
 use bun_io::pipe_writer::BaseWindowsPipeWriter as _;
 use bun_io::{self, WriteResult, WriteStatus};
-use bun_jsc::JsCell;
+use bun_jsc::{JsCell, SysErrorJsc as _};
 use bun_ptr::RefPtr;
 use bun_sys::{self as sys, Fd, FdExt as _};
 
@@ -210,6 +210,54 @@ impl FileSink {
         // Since this is a JSSink, the NewJSSink function does @sizeOf(JSSink) which includes @sizeOf(FileSink).
         self.writer.get().memory_cost()
     }
+}
+
+pub(crate) fn create_stdio(global: &JSGlobalObject, frame: &CallFrame) -> JsResult<JSValue> {
+    let number = frame.argument(0).as_int32();
+    debug_assert!(number == 1 || number == 2);
+    let fd = Fd::from_uv(number);
+    let sink = FileSink::init(
+        fd,
+        EventLoopHandle::init(global.bun_vm().as_mut().event_loop().cast::<()>()),
+    );
+
+    #[cfg(not(windows))]
+    let result = {
+        // Closed stdio still constructs; the first write reports EBADF.
+        let mode = match sys::fstat(fd) {
+            sys::Result::Ok(stat) => stat.st_mode as sys::Mode,
+            sys::Result::Err(_) => 0,
+        };
+        let pollable = is_pollable(mode);
+        sink.pollable.set(pollable);
+        sink.is_socket.set(sys::S::ISSOCK(mode));
+        sink.force_sync.set(true);
+        sink.writer.with_mut(|writer| {
+            writer.force_sync = true;
+            let result = writer.start(fd, pollable);
+            if let Some(poll) = writer.get_poll() {
+                poll.set_flag(if sys::S::ISSOCK(mode) {
+                    bun_io::FilePollFlag::Socket
+                } else {
+                    bun_io::FilePollFlag::Fifo
+                });
+            }
+            result
+        })
+    };
+    #[cfg(windows)]
+    let result = sink.writer.with_mut(|writer| {
+        writer.owns_fd = false;
+        writer.start_sync(fd, false)
+    });
+    if let sys::Result::Err(err) = result {
+        return Err(global.throw_value(err.to_js(global)));
+    }
+    sink.writer
+        .with_mut(|writer| writer.update_ref(sink.io_evtloop(), false));
+    sink.started.set(true);
+    // SAFETY: the new sink is exclusively owned here; to_js takes the wrapper's reference.
+    Ok(unsafe { (*sink.as_ptr()).to_js(global) })
 }
 
 #[unsafe(no_mangle)]
