@@ -9,8 +9,8 @@ import {
   tls as COMMON_CERT_,
   isASAN,
   isLinux,
-  runtimesWithNode,
   nodeExe,
+  runtimesWithNode,
   tempDir,
 } from "harness";
 import https from "https";
