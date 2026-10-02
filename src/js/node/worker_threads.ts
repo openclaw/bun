@@ -227,8 +227,8 @@ function injectFakeEmitter(Class) {
     const hadListeners = listenerCount.$call(this, event) > 0;
     const emitted =
       event === "message" || event === "messageerror"
-        ? new MessageEvent(event, { __proto__: null, data: arg })
-        : new CustomEvent(event, { __proto__: null, detail: arg });
+        ? new MessageEvent(event, { __proto__: null, data: arg } as MessageEventInit)
+        : new CustomEvent(event, { __proto__: null, detail: arg } as ConstructorParameters<typeof CustomEvent>[1]);
     // Node listeners receive undefined unchanged; Web event dictionaries default it to null.
     defineProperty(emitted, kEmittedValue, { __proto__: null, value: arg });
     this.dispatchEvent(emitted);
