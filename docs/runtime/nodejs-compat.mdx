@@ -213,6 +213,8 @@ Map and Set serialization copies entries and ignores custom own properties, like
 
 ### [`node:worker_threads`](https://nodejs.org/api/worker_threads.html)
 
+MessagePort message and close events run in the port creation AsyncLocalStorage context. Transferred endpoints capture their receiving context.
+
 `Worker.getHeapStatistics()` reports JSC heap capacity as `total_heap_size` and occupied heap bytes as `used_heap_size`.
 
 Node-API threadsafe functions deliver or return every accepted native payload before finalization when a worker stops, including during a microtask between callbacks.

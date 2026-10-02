@@ -3472,3 +3472,74 @@ describe("no JS entry after a worker's termination has been thrown", () => {
     });
   }
 });
+
+test("MessagePort dispatch retains its creation context across GC and transfer", async () => {
+  await using child = Bun.spawn({
+    cmd: [
+      bunExe(),
+      "--expose-gc",
+      "-e",
+      /* js */ `
+      import assert from 'node:assert/strict';
+      import { AsyncLocalStorage } from 'node:async_hooks';
+      import { Worker, MessageChannel } from 'node:worker_threads';
+      const context = new AsyncLocalStorage();
+      const channels = Array.from({length: 1000}, (_, id) => context.run(id, () => new MessageChannel()));
+      try {
+        globalThis.gc?.();
+        await Promise.all(channels.map((channel, id) => new Promise((resolve, reject) => {
+          context.run('registration', () => channel.port1.once('message', () => {
+            try { assert.equal(context.getStore(), id); resolve(); } catch (error) { reject(error); }
+          }));
+          context.run('sender', () => channel.port2.postMessage('message'));
+        })));
+        assert.equal(context.getStore(), undefined);
+        const channel = channels[0];
+        context.run('manual', () => {
+          channel.port1.once('message', () => assert.equal(context.getStore(), 'manual'));
+          channel.port1.dispatchEvent(new MessageEvent('message', {data: 'manual'}));
+        });
+        const closed = new Promise((resolve, reject) => channel.port1.once('close', () => {
+          try { assert.equal(context.getStore(), 0); resolve(); } catch (error) { reject(error); }
+        }));
+        context.run('closer', () => channel.port1.close());
+        await closed;
+      } finally {
+        for (const {port1, port2} of channels) { port1.close(); port2.close(); }
+      }
+      const outside = new MessageChannel();
+      try {
+        const received = context.run('registration', () => new Promise((resolve, reject) => {
+          outside.port1.once('message', () => {
+            try { assert.equal(context.getStore(), undefined); resolve(); } catch (error) { reject(error); }
+          });
+        }));
+        context.run('sender', () => outside.port2.postMessage('message'));
+        await received;
+      } finally { outside.port1.close(); outside.port2.close(); }
+      const worker = new Worker(\`const {parentPort}=require('node:worker_threads');parentPort.on('message',({port})=>{port.postMessage('reply');port.close()});\`, {eval:true});
+      const channel = context.run('creation', () => new MessageChannel());
+      try {
+        const reply = new Promise((resolve, reject) => {
+          worker.once('error', reject);
+          context.run('registration', () => channel.port1.once('message', () => {
+            try { assert.equal(context.getStore(), 'creation'); resolve(); } catch (error) { reject(error); }
+          }));
+        });
+        worker.postMessage({port:channel.port2},[channel.port2]);
+        await reply;
+      } finally { channel.port1.close(); channel.port2.close(); await worker.terminate(); }
+      console.log('messageport creation context passed');
+    `,
+    ],
+    env: bunEnv,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([child.stdout.text(), child.stderr.text(), child.exited]);
+  expect({ stdout, stderr, exitCode }).toEqual({
+    stdout: "messageport creation context passed\n",
+    stderr: "",
+    exitCode: 0,
+  });
+});

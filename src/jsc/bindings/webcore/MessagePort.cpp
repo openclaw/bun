@@ -28,6 +28,7 @@
 #include "MessagePort.h"
 #include <wtf/SetForScope.h>
 #include <JavaScriptCore/JSArrayBuffer.h>
+#include <JavaScriptCore/InternalFieldTuple.h>
 
 #include "BunClientData.h"
 #include "EventNames.h"
@@ -36,6 +37,7 @@
 #include "MessageEvent.h"
 #include "MessagePortPipe.h"
 #include "MessageWithMessagePorts.h"
+#include "ModuleGraph.h"
 #include "StructuredSerializeOptions.h"
 #include "WebCoreOpaqueRoot.h"
 #include <wtf/TZoneMallocInlines.h>
@@ -43,6 +45,27 @@
 extern "C" void Bun__Process__emitWarning(Zig::GlobalObject*, JSC::EncodedJSValue warning, JSC::EncodedJSValue type, JSC::EncodedJSValue code, JSC::EncodedJSValue ctor);
 
 namespace WebCore {
+
+class MessagePortAsyncContextScope {
+    WTF_MAKE_NONCOPYABLE(MessagePortAsyncContextScope);
+
+public:
+    MessagePortAsyncContextScope(JSC::JSGlobalObject* globalObject, JSC::JSValue context)
+        : m_globalObject(globalObject)
+        , m_previous(globalObject->vm(), globalObject->m_asyncContextData.get()->getInternalField(0))
+    {
+        globalObject->m_asyncContextData.get()->putInternalField(globalObject->vm(), 0, context);
+    }
+
+    ~MessagePortAsyncContextScope()
+    {
+        m_globalObject->m_asyncContextData.get()->putInternalField(m_globalObject->vm(), 0, m_previous.get());
+    }
+
+private:
+    JSC::JSGlobalObject* m_globalObject;
+    JSC::Strong<JSC::Unknown> m_previous;
+};
 
 WTF_MAKE_TZONE_ALLOCATED_IMPL(MessagePort);
 
@@ -57,6 +80,7 @@ MessagePort::MessagePort(ScriptExecutionContext& context, Ref<MessagePortPipe>&&
     : ActiveDOMObject(&context)
     , m_pipe(WTF::move(pipe))
     , m_side(side)
+    , m_asyncContext(context.globalObject() ? context.globalObject()->m_asyncContextData.get()->getInternalField(0) : JSC::jsUndefined())
 {
     // The WeakPtrFactory must be initialized on the owning thread.
     EventTarget::initializeWeakPtrFactory();
@@ -266,8 +290,12 @@ void MessagePort::dispatchCloseEvent()
     auto* globalObject = defaultGlobalObject(context->globalObject());
     // Bypass the m_isDetached guard in MessagePort::dispatchEvent — the deferred
     // close task runs after m_isDetached is set.
-    if (Zig::GlobalObject::scriptExecutionStatus(globalObject, globalObject) == ScriptExecutionStatus::Running)
+    if (Zig::GlobalObject::scriptExecutionStatus(globalObject, globalObject) == ScriptExecutionStatus::Running
+        && !Bun::shouldDropCallbackOfStoppedModuleGraph(globalObject, m_asyncContext.getValue())) {
+        MessagePortAsyncContextScope asyncContextScope(globalObject, m_asyncContext.getValue());
         EventTarget::dispatchEvent(Event::create(eventNames().closeEvent, Event::CanBubble::No, Event::IsCancelable::No));
+    }
+    m_asyncContext.clear();
 }
 
 void MessagePort::peerClosed()
@@ -336,6 +364,7 @@ TransferredMessagePort MessagePort::disentangle()
         context->willDestroyDestructionObserver(*this);
     }
     observeContext(nullptr);
+    m_asyncContext.clear();
 
     return TransferredMessagePort { m_pipe.copyRef(), m_side };
 }
@@ -361,6 +390,9 @@ void MessagePort::dispatchOneMessage(ScriptExecutionContext& context, MessageWit
     if (Zig::GlobalObject::scriptExecutionStatus(globalObject, globalObject) != ScriptExecutionStatus::Running)
         return;
 
+    if (Bun::shouldDropCallbackOfStoppedModuleGraph(globalObject, m_asyncContext.getValue()))
+        return;
+    MessagePortAsyncContextScope asyncContextScope(globalObject, m_asyncContext.getValue());
     auto ports = MessagePort::entanglePorts(context, WTF::move(message.transferredPorts));
     if (scope.exception()) [[unlikely]] {
         RELEASE_ASSERT(vm->hasPendingTerminationException());
@@ -411,6 +443,7 @@ void MessagePort::contextDestroyed()
     ASSERT(scriptExecutionContext());
 
     close();
+    m_asyncContext.clear();
     ActiveDOMObject::contextDestroyed();
 }
 
