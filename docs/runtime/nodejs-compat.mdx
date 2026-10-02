@@ -203,6 +203,8 @@ Map and Set serialization copies entries and ignores custom own properties, like
 
 ### [`node:worker_threads`](https://nodejs.org/api/worker_threads.html)
 
+`Worker.getHeapStatistics()` reports JSC heap capacity as `total_heap_size` and occupied heap bytes as `used_heap_size`.
+
 Node-API threadsafe functions deliver or return every accepted native payload before finalization when a worker stops, including during a microtask between callbacks.
 
 Creating a `SHARE_ENV` worker preserves the parent's `process.env` identity. Cached references observe shared writes, deletes, property definitions, and enumeration.

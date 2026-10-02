@@ -1997,6 +1997,18 @@ test("close(cb) interleaves with other close listeners in registration order", a
   expect(order2).toEqual(["B", "C"]);
 });
 
+test("getHeapStatistics reports allocated capacity separately from used heap", async () => {
+  const worker = new Worker("require('node:worker_threads').parentPort.on('message', () => {})", { eval: true });
+  try {
+    await once(worker, "online");
+    const stats = await worker.getHeapStatistics();
+    expect(stats.used_heap_size).toBeGreaterThan(0);
+    expect(stats.total_heap_size).toBeGreaterThan(stats.used_heap_size);
+  } finally {
+    await worker.terminate();
+  }
+});
+
 test("getHeapStatistics settles when terminated mid-request", async () => {
   const w = new Worker("setInterval(() => {}, 1e6)", { eval: true });
   await once(w, "online");

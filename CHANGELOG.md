@@ -88,3 +88,4 @@
 - Include nonenumerable CommonJS data exports in modules with `__esModule` and accessors, matching Node without exposing nonenumerable getters.
 - Support POSIX `process.stdout` and `process.stderr` `_handle.setBlocking()` so native writers can clear nonblocking mode and avoid truncated pipe output.
 - Port [oven-sh/bun#44067](https://github.com/oven-sh/bun/pull/44067): register macOS file watches with kqueue before returning, deliver unlink and open-writer changes, and let new watchers observe replaced files. Directory watches retain FSEvents. Thanks @robobun!
+- Report allocated worker heap capacity in `Worker.getHeapStatistics().total_heap_size`, separately from occupied bytes in `used_heap_size`.
