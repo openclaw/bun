@@ -1,5 +1,5 @@
 import { expect, jest, test } from "bun:test";
-import { isWindows } from "harness";
+import { bunEnv, bunExe, isWindows } from "harness";
 import { windowsEnv } from "../../../src/js/builtins/ProcessObjectInternals";
 
 // Run the actual Windows proxy on every platform; only its native callbacks are substituted.
@@ -141,4 +141,49 @@ test.if(isWindows)("process.env is case insensitive on windows", () => {
   delete process.env.DOESNTEXISTAHAHAHAHAHA;
   expect(process.env.doesntexistahahahahaha).toBeUndefined();
   expect(Object.keys(process.env)).not.toInclude("doesntExistAHaHaHaHaHa");
+});
+
+for (const [name, write] of Object.entries(writes)) {
+  test(`windowsEnv ${name} makes a previously absent native accessor enumerable`, () => {
+    const internal = {};
+    let value;
+    const get = () => value;
+    const set = next => (value = next);
+    Object.defineProperty(internal, "TZ", { get, set, configurable: true });
+    const env = windowsEnv(
+      internal,
+      [],
+      jest.fn(),
+      (_key, next) => `${next}`,
+      jest.fn(),
+      () => undefined,
+    );
+    expect(Object.keys(env)).toEqual([]);
+    expect(write(env, "tz", "UTC")).toBe(true);
+    expect(Object.keys(env)).toEqual(["tz"]);
+    expect({ ...env }).toEqual({ tz: "UTC" });
+    expect(Object.getOwnPropertyDescriptor(internal, "TZ")).toEqual({
+      get,
+      set,
+      configurable: true,
+      enumerable: true,
+    });
+    expect(write(env, "TZ", "Asia/Tokyo")).toBe(true);
+    expect({ ...env }).toEqual({ tz: "Asia/Tokyo" });
+  });
+}
+
+test.if(isWindows)("new native environment variables survive copies, children, and SHARE_ENV promotion", () => {
+  const env = { ...bunEnv };
+  const keys = ["TZ", "NODE_TLS_REJECT_UNAUTHORIZED", "BUN_CONFIG_VERBOSE_FETCH"];
+  for (const key of Object.keys(env)) if (keys.includes(key.toUpperCase())) delete env[key];
+  const result = Bun.spawnSync({
+    cmd: [bunExe(), import.meta.dir + "/env-windows-enumeration-fixture.cjs"],
+    env,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  expect(result.stdout.toString()).toBe("ok\n");
+  expect(result.stderr.toString()).toBe("");
+  expect(result.exitCode).toBe(0);
 });

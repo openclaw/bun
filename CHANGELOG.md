@@ -115,3 +115,5 @@
 - Close silent pre-request `node:http` clients on Linux during `server.close()` plus `closeAllConnections()` by accepting them immediately. Ports [oven-sh/bun#36074](https://github.com/oven-sh/bun/pull/36074). Thanks @robobun!
 
 - Match Node read/write overload defaults and validation for explicit undefined/null arguments, zero-length reads, bigint positions, and buffer ranges. Adapts [oven-sh/bun#37647](https://github.com/oven-sh/bun/pull/37647). Thanks @robobun!
+
+- Make newly assigned Windows native environment variables enumerable so environment copies and children retain them. Adapts [oven-sh/bun#35254](https://github.com/oven-sh/bun/pull/35254). Thanks @robobun!

@@ -543,6 +543,12 @@ export function windowsEnv(
       editWindowsEnvVar(k, coerced);
       internalEnv[k] = coerced;
     }
+    // Launch-absent native accessors start hidden. Preserve their setters,
+    // but expose written values to Object.keys and environment copies.
+    const descriptor = Reflect.getOwnPropertyDescriptor(internalEnv, k);
+    if (descriptor && !descriptor.enumerable) {
+      Reflect.defineProperty(internalEnv, k, { enumerable: true });
+    }
     return true;
   }
 
