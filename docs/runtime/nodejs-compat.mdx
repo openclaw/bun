@@ -123,7 +123,7 @@ Upgrade requests emit `upgrade` while an earlier response on the connection is s
 
 Child stdout/stderr `ref()` and `unref()` set the pipe reference state and return the stream. Repeated calls are idempotent, so one `unref()` releases the reference after any number of `ref()` calls.
 
-Child construction publishes the `child_process` diagnostics channel with the exact child object. Unspawned stdio getters are safe; failed spawns drain readable pipes to EOF and retain fork IPC methods. Exit listeners run before stdio resumes, and POSIX PATH permission failures report `EACCES`.
+Child construction publishes the `child_process` diagnostics channel with the exact child object. Spawning publishes `child_process.spawn` tracing start, end, and error events before the corresponding child events. Unspawned stdio getters are safe; failed spawns drain readable pipes to EOF and retain fork IPC methods. Exit listeners run before stdio resumes, and POSIX PATH permission failures report `EACCES`.
 
 🟡 IPC can send `net.Socket`, `net.Server` and `dgram.Socket` handles (including to and from Node.js processes), but not `http` server sockets. `serialization: "advanced"` only works between Bun processes, so use JSON serialization for Node.js ↔ Bun IPC. Missing `subprocess.channel.ref()`/`unref()`. You cannot pass a child's `stdout`/`stderr` as another child's `stdio`, and `spawnSync` does not return extra `stdio` pipes in `output`.
 

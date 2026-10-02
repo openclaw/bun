@@ -662,3 +662,79 @@ for (const transport of ["native", "injected"]) {
     });
   }
 }
+
+test("child_process.spawn tracing matches synchronous spawn outcomes", async () => {
+  await using child = Bun.spawn({
+    cmd: [
+      bunExe(),
+      "-e",
+      /* js */ `
+      import assert from 'node:assert/strict';
+      import { ChildProcess, spawn, spawnSync } from 'node:child_process';
+      import { tracingChannel } from 'node:diagnostics_channel';
+      import { once } from 'node:events';
+
+      const trace = tracingChannel('child_process.spawn');
+      const events = [];
+      let observerOptions;
+      const listeners = {
+        start(message) {
+          events.push(['start', message]);
+          assert.equal(message.process.spawnfile, message.options.file);
+          assert.equal(message.process.spawnargs, message.options.args);
+          observerOptions = message.options;
+          message.process.once('spawn', () => events.push(['spawn']));
+        },
+        end(message) { events.push(['end', message]); },
+        error(message) { events.push(['error', message]); },
+        asyncStart() { events.push(['asyncStart']); },
+        asyncEnd() { events.push(['asyncEnd']); },
+      };
+      trace.subscribe(listeners);
+      try {
+        new ChildProcess();
+        assert.throws(() => spawn(null), { code: 'ERR_INVALID_ARG_TYPE' });
+        spawnSync(process.execPath, ['-e', ''], { stdio: 'ignore' });
+        assert.deepEqual(events, []);
+
+        const child = spawn(process.execPath, ['-e', ''], { stdio: 'ignore' });
+        assert.deepEqual(events.map(([name]) => name), ['start', 'end']);
+        assert.equal(events[0][1].process, child);
+        assert.equal(events[1][1].process, child);
+        assert.equal(observerOptions.file, process.execPath);
+        await once(child, 'close');
+        assert.deepEqual(events.map(([name]) => name), ['start', 'end', 'spawn']);
+
+        events.length = 0;
+        const missing = spawn('bun-nonexistent-tracing-executable', [], { stdio: 'ignore' });
+        const closed = new Promise(resolve => missing.once('close', resolve));
+        missing.on('error', () => events.push(['childError']));
+        assert.deepEqual(events.map(([name]) => name), ['start', 'error']);
+        assert.equal(events[1][1].process, missing);
+        assert.equal(events[1][1].error.code, 'ENOENT');
+        assert.equal(events[1][1].error.syscall, 'spawn');
+        assert.equal(events[1][1].error.message, 'spawn ENOENT');
+        await closed;
+        assert.deepEqual(events.map(([name]) => name), ['start', 'error', 'childError']);
+        assert.equal(events[1][1].error.syscall, 'spawn');
+
+        events.length = 0;
+        assert.throws(() => spawn(process.execPath, [], { cwd: process.execPath }), { code: 'ENOTDIR' });
+        assert.deepEqual(events.map(([name]) => name), ['start', 'error']);
+        assert.equal(events[1][1].error.code, 'ENOTDIR');
+        assert.equal(events[1][1].error.syscall, 'spawn');
+        console.log('spawn tracing contract passed');
+      } finally {
+        trace.unsubscribe(listeners);
+      }
+    `,
+    ],
+    env: bunEnv,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([child.stdout.text(), child.stderr.text(), child.exited]);
+  expect(stderr).toBe("");
+  expect(stdout).toBe("spawn tracing contract passed\n");
+  expect(exitCode).toBe(0);
+});

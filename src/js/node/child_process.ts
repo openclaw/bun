@@ -70,6 +70,7 @@ interface SpawnSyncResult {
 
 const kFromNode = Symbol("kFromNode");
 let childProcessChannel;
+let childProcessSpawn;
 
 const setStdioBlocking = $newRustFunction("subprocess.rs", "setStdioBlocking", 2);
 
@@ -1502,6 +1503,9 @@ class ChildProcess extends EventEmitter {
       return;
     }
 
+    childProcessSpawn ??= require("node:diagnostics_channel").tracingChannel("child_process.spawn");
+    if (childProcessSpawn.start.hasSubscribers) childProcessSpawn.start.publish({ process: this, options });
+
     // normalizeSpawnargs has already prepended argv0 to the spawnargs array
     // Bun.spawn() expects cmd[0] to be the command to run, and argv0 to replace the first arg when running the command,
     // so we have to set argv0 to spawnargs[0] and cmd[0] to file
@@ -1543,6 +1547,7 @@ class ChildProcess extends EventEmitter {
         windowsHide: !!options.windowsHide,
         windowsVerbatimArguments: !!options.windowsVerbatimArguments,
       });
+      if (childProcessSpawn.end.hasSubscribers) childProcessSpawn.end.publish({ process: this });
       this.pid = this.#handle.pid;
 
       $debug("ChildProcess: spawn", this.pid, spawnargs);
@@ -1574,6 +1579,12 @@ class ChildProcess extends EventEmitter {
         }
       }
     } catch (ex) {
+      if (childProcessSpawn.error.hasSubscribers) {
+        childProcessSpawn.error.publish({
+          process: this,
+          error: typeof ex?.errno === "number" ? new ErrnoException(ex.errno, "spawn") : ex,
+        });
+      }
       const exCode =
         ex != null && typeof ex === "object" && Object.hasOwn(ex, "code") ? (ex as SystemError).code : undefined;
       if (
