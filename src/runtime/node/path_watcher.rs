@@ -331,6 +331,13 @@ impl PathWatcher {
         }
     }
 
+    #[cfg(target_os = "macos")]
+    fn emit_kqueue(&self, event_type: WatchEventKind, rel_path: &[u8]) {
+        for &ctx in self.handlers.keys() {
+            FSWatcher::on_kqueue_update(Some(ctx), event_type, rel_path);
+        }
+    }
+
     /// Like [`emit`](Self::emit), but without per-handler duplicate suppression.
     /// The `IN_IGNORED` retiring a deleted inode's wd lands in the same
     /// millisecond as its `IN_DELETE_SELF`, with the same path and type, so
@@ -1754,6 +1761,14 @@ impl Kqueue {
                 let watcher = unsafe { &*entry.watcher };
                 let watcher_path: &[u8] = watcher.path.as_bytes();
 
+                // https://github.com/nodejs/node/blob/v24.21.0/deps/uv/src/unix/kqueue.c#L487
+                #[cfg(target_os = "macos")]
+                let event_type = if kev.fflags & (NOTE::ATTRIB | NOTE::EXTEND) != 0 {
+                    WatchEventKind::Change
+                } else {
+                    WatchEventKind::Rename
+                };
+                #[cfg(not(target_os = "macos"))]
                 let event_type: WatchEventKind = if kev.fflags
                     & (NOTE::DELETE | NOTE::RENAME | NOTE::REVOKE | NOTE::LINK)
                     != 0
@@ -1771,6 +1786,9 @@ impl Kqueue {
                     entry.subpath.as_bytes()
                 };
 
+                #[cfg(target_os = "macos")]
+                watcher.emit_kqueue(event_type, rel);
+                #[cfg(not(target_os = "macos"))]
                 watcher.emit(event_type, rel, entry.is_file);
                 let _ = handle_oom(touched.get_or_put(entry.watcher));
 

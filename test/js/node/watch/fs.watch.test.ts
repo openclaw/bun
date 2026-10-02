@@ -1949,3 +1949,34 @@ test.skipIf(!isWindows)("closing a watcher on a symlink with a relative target d
 
   expect(runs).toEqual(runs.map(() => ({ stdout: "OK", stderr: "", exitCode: 0 })));
 });
+
+test.skipIf(!isMacOS).each([false, true])(
+  "file watch coalesces a synchronous write burst (unlink=%s)",
+  async unlink => {
+    using dir = tempDir("kqueue-burst", { file: "initial" });
+    const filename = path.join(String(dir), "file");
+    const events: [string, string][] = [];
+    const first = Promise.withResolvers<void>();
+    const watcher = fs.watch(filename, (event, name) => {
+      events.push([event, String(name)]);
+      first.resolve();
+    });
+    watcher.on("error", first.reject);
+    const timeout = setTimeout(() => first.reject(new Error("file watch did not deliver the burst")), 2000);
+    try {
+      for (let i = 0; i < 5; i++) fs.writeFileSync(filename, Buffer.alloc(1024 * 1024, i));
+      if (unlink) fs.unlinkSync(filename);
+      await first.promise;
+      // A kernel burst has no completion event; reject extra callbacks throughout a bounded quiet window.
+      const until = performance.now() + 100;
+      do {
+        expect(events).toEqual([["change", "file"]]);
+        await new Promise<void>(resolve => setImmediate(resolve));
+      } while (performance.now() < until);
+      expect(events).toEqual([["change", "file"]]);
+    } finally {
+      clearTimeout(timeout);
+      watcher.close();
+    }
+  },
+);
