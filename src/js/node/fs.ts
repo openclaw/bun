@@ -288,7 +288,7 @@ var access = function access(path, mode, callback?) {
     if (offset == null) offset = 0;
     else validateInteger(offset, "offset", 0);
     // Node's callback/sync reads coerce length; FileHandle.read defaults it instead.
-    // https://github.com/nodejs/node/blob/v24.21.0/lib/fs.js#L674
+    // https://github.com/nodejs/node/blob/v24.21.0/lib/fs.js#L707
     length = coerceReadLength(length);
     validateReadPosition(position, length);
     if (length === 0) return nextTick(callback, null, 0, buffer);
