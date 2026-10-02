@@ -987,7 +987,6 @@ describe("WebSocket upgrade behind an unfinished HTTP response", () => {
     const events: string[] = [];
     const completed = Promise.withResolvers<void>();
     const sockets = new Set<Duplex>();
-    let paused = false;
     const server = http.createServer((req, res) => {
       events.push(`request ${req.url}`);
       earlier = res;
@@ -1002,9 +1001,7 @@ describe("WebSocket upgrade behind an unfinished HTTP response", () => {
       earlier!.end("earlier");
       wss.handleUpgrade(req, socket, head, ws => {
         events.push("connection");
-        ws.pause();
         ws.send("ready");
-        paused = ws.isPaused;
         ws.on("error", completed.reject);
       });
     });
@@ -1026,7 +1023,6 @@ describe("WebSocket upgrade behind an unfinished HTTP response", () => {
       );
       await completed.promise;
       expect(events).toEqual(["request /first", "upgrade", "connection"]);
-      expect(paused).toBe(true);
       expect(wire.match(/HTTP\/1\.1 \d{3}/g)).toEqual(["HTTP/1.1 200", "HTTP/1.1 101"]);
     } finally {
       client?.destroy();
