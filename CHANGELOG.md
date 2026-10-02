@@ -111,3 +111,5 @@
 - Preserve reentrant native builtin loads without losing load-hook calls, keep conflicting builtin source overrides loud, and reject invalid data-URL base64 bytes and padding.
 - Give synchronous module hooks valid, consistent URLs for Bun's built-in package replacements, using installed package file URLs or `bun-builtin:` fallback URLs while preserving native delegation and hook source overrides.
 - Normalize opaque plugin module identifiers to valid `bun-virtual:` hook URLs while preserving native plugin callbacks and synthetic URL loading after hook deregistration.
+
+- Close silent pre-request `node:http` clients on Linux during `server.close()` plus `closeAllConnections()` by accepting them immediately. Ports [oven-sh/bun#36074](https://github.com/oven-sh/bun/pull/36074). Thanks @robobun!

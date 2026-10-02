@@ -195,6 +195,35 @@ test.each(["http", "https"] as const)(
   },
 );
 
+test.each([false, true])(
+  "closeAllConnections() after close() closes a silent client (connection listener: %s)",
+  async observe => {
+    const server = createServer();
+    if (observe) server.on("connection", () => {});
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const socket = connect((server.address() as AddressInfo).port, "127.0.0.1");
+    const errors: string[] = [];
+    socket.on("error", error => errors.push((error as NodeJS.ErrnoException).code!));
+    try {
+      const socketClosed = new Promise<void>(resolve => socket.once("close", resolve));
+      await once(socket, "connect");
+      // Waiting for server 'connection' would hide Linux's kernel-side deferred-accept queue.
+      const serverClosed = Promise.withResolvers<Error | undefined>();
+      server.close(serverClosed.resolve);
+      server.closeAllConnections();
+      const [error] = await Promise.all([serverClosed.promise, socketClosed]);
+      expect(error).toBeUndefined();
+      expect(socket.destroyed).toBe(true);
+      expect(errors.filter(code => code !== "ECONNRESET")).toEqual([]);
+    } finally {
+      socket.destroy();
+      server.close();
+      server.closeAllConnections();
+    }
+  },
+);
+
 test("closeIdleConnections() leaves a connection that has sent part of a request head", async () => {
   const server = createServer((req, res) => res.end("ok"));
   let accepted = 0;

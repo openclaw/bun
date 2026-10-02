@@ -57,6 +57,8 @@ On macOS, `fs.copyFile` and `fs.cp` accept regular-file `/dev/fd` sources withou
 
 ### [`node:http`](https://nodejs.org/api/http.html)
 
+`server.close()` followed by `server.closeAllConnections()` also disconnects clients that connect without sending a request on Linux.
+
 Destroying an unfinished request or response closes its connection, including asynchronous destruction after `writeHead()`. Bun does not complete the response as an empty success.
 
 Upgrade requests emit `upgrade` while an earlier response on the connection is still pending. Built-in WebSocket adoption waits for that response to drain.
