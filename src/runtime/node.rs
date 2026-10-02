@@ -168,3 +168,6 @@ pub(crate) type uid_t = bun_sys::windows::libuv::uv_uid_t;
 pub(crate) type gid_t = libc::gid_t;
 #[cfg(not(unix))]
 pub(crate) type gid_t = bun_sys::windows::libuv::uv_gid_t;
+
+#[path = "node/node_module_hooks_binding.rs"]
+pub(crate) mod node_module_hooks_binding;

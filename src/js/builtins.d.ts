@@ -620,3 +620,15 @@ declare function $getByIdDirectPrivate<T = any, K extends string = string>(
 declare var $Promise: PromiseConstructor;
 
 declare function $isPromise<T>(value: unknown): value is Promise<T>;
+
+declare function $ERR_INVALID_RETURN_PROPERTY_VALUE(
+  expected_type: string,
+  hook_name: string,
+  property: string,
+  actual_value: any,
+): TypeError;
+declare function $ERR_UNKNOWN_MODULE_FORMAT(format: string, url: string): RangeError;
+
+declare function $ERR_IMPORT_ATTRIBUTE_MISSING(message: string): TypeError;
+declare function $ERR_IMPORT_ATTRIBUTE_TYPE_INCOMPATIBLE(message: string): TypeError;
+declare function $ERR_IMPORT_ATTRIBUTE_UNSUPPORTED(message: string): TypeError;

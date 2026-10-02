@@ -3,6 +3,7 @@
 #include "headers.h"
 
 #include "ImportMetaObject.h"
+#include "NodeModuleHooks.h"
 #include "ZigGlobalObject.h"
 #include "ExtendedDOMClientIsoSubspaces.h"
 #include "ExtendedDOMIsoSubspaces.h"
@@ -374,6 +375,7 @@ JSC_DEFINE_HOST_FUNCTION(functionImportMeta__resolve,
 
     // Node.js allows a second argument for parent
     JSValue from = {};
+    bool explicitParent = false;
 
     if (callFrame->argumentCount() >= 2) {
         JSValue fromValue = callFrame->uncheckedArgument(1);
@@ -394,6 +396,7 @@ JSC_DEFINE_HOST_FUNCTION(functionImportMeta__resolve,
 
         if (fromValue.isString()) {
             from = fromValue;
+            explicitParent = true;
         }
     }
 
@@ -422,6 +425,16 @@ JSC_DEFINE_HOST_FUNCTION(functionImportMeta__resolve,
     // from.toWTFString() *should* always be the fast case, since above we check that it's a string.
     auto fromWTFString = from.toWTFString(globalObject);
     RETURN_IF_EXCEPTION(scope, {});
+
+    if (Bun__hasModuleHooks(globalObject->bunVM())) {
+        auto name = Bun::toString(specifier);
+        auto* meta = explicitParent ? nullptr : dynamicDowncast<ImportMetaObject>(thisValue);
+        auto parent = Bun::toString(meta ? meta->url : fromWTFString);
+        auto result = JSValue::decode(Bun__runModuleResolveHooks(globalObject, &name, &parent, true, false, JSValue::encode(jsUndefined()), true));
+        RETURN_IF_EXCEPTION(scope, {});
+        if (result.isString())
+            return JSValue::encode(result);
+    }
 
     // Try to resolve it to a relative file path. This path is not meant to throw module resolution errors.
     if (specifier.startsWith("./"_s) || specifier.startsWith("../"_s) || specifier.startsWith("/"_s) || specifier.startsWith("file://"_s)

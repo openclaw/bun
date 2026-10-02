@@ -167,6 +167,7 @@
 #include "napi.h"
 #include "NodeHTTP.h"
 #include "NodeVM.h"
+#include "NodeModuleHooks.h"
 #include "Performance.h"
 #include "ProcessBindingConstants.h"
 #include "ProcessBindingTTYWrap.h"
@@ -2740,6 +2741,11 @@ void GlobalObject::finishCreation(VM& vm)
 
     m_streamsRuntime.initialize(this);
 
+    m_moduleHooksBuiltinCache.initLater(
+        [](const JSC::LazyProperty<JSC::JSGlobalObject, JSC::JSMap>::Initializer& init) {
+            init.set(JSC::JSMap::create(init.vm, init.owner->mapStructure()));
+        });
+
     m_requireMap.initLater(
         [](const JSC::LazyProperty<JSC::JSGlobalObject, JSC::JSMap>::Initializer& init) {
             auto* map = JSC::JSMap::create(init.vm, init.owner->mapStructure());
@@ -3512,6 +3518,16 @@ static String resolvedModuleKey(const String& resolved, const String& suffix)
     return makeString(resolved, suffix.startsWith('#') ? "?"_s : ""_s, suffix);
 }
 
+static String moduleHookKey(const String& urlString)
+{
+    if (urlString.startsWith("file://"_s)) {
+        WTF::URL url(urlString);
+        if (!url.hasQuery() && !url.hasFragmentIdentifier())
+            return Bun::moduleKeyFromFileURL(url);
+    }
+    return urlString;
+}
+
 JSC::Identifier GlobalObject::moduleLoaderResolve(JSGlobalObject* jsGlobalObject,
     JSModuleLoader* loader, JSValue key,
     JSValue referrer, RefPtr<JSC::ScriptFetcher>, bool)
@@ -3519,6 +3535,32 @@ JSC::Identifier GlobalObject::moduleLoaderResolve(JSGlobalObject* jsGlobalObject
     Zig::GlobalObject* globalObject = static_cast<Zig::GlobalObject*>(jsGlobalObject);
     auto& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
+
+    if (Bun__hasModuleHooks(globalObject->bunVM())) {
+        auto name = key.toWTFString(globalObject);
+        RETURN_IF_EXCEPTION(scope, {});
+        auto parent = !referrer || referrer.isUndefinedOrNull() ? String() : referrer.toWTFString(globalObject);
+        RETURN_IF_EXCEPTION(scope, {});
+        // requestImportModule resolves a completed dynamic-import key a second time.
+        if (parent.isEmpty() && (isAbsolutePath(name) || WTF::URL(name).isValid()))
+            return Identifier::fromString(vm, name);
+        auto nameBun = Bun::toString(name);
+        auto parentBun = Bun::toString(parent);
+        auto result = JSValue::decode(Bun__runModuleResolveHooks(globalObject, &nameBun, &parentBun, true, false));
+        RETURN_IF_EXCEPTION(scope, {});
+        if (result.isString()) {
+            auto resolved = result.toWTFString(globalObject);
+            RETURN_IF_EXCEPTION(scope, {});
+            auto resolvedBun = Bun::toString(resolved);
+            Bun::validateModuleHooksStaticAttributes(globalObject, &resolvedBun);
+            RETURN_IF_EXCEPTION(scope, {});
+            auto resolvedKey = moduleHookKey(resolved);
+            // A cached static edge shares the import job, including inside require(esm).
+            if (Bun::ModuleHookFetchScope::rejectConflict(globalObject, loader, resolvedKey, std::nullopt))
+                return {};
+            return Identifier::fromString(vm, resolvedKey);
+        }
+    }
 
     WTF::String keyString;
     WTF::String requestedSuffix;
@@ -3695,6 +3737,33 @@ JSC::JSPromise* GlobalObject::moduleLoaderImportModule(JSGlobalObject* jsGlobalO
         sourceOriginStringHolder = sourceURL.path().toString();
     }
 
+    if (Bun__hasModuleHooks(globalObject->bunVM())) {
+        auto nameBun = Bun::toString(moduleName);
+        auto parentBun = Bun::toString(sourceURL.isEmpty() ? sourceOriginStringHolder : sourceURL.string());
+        auto attributes = NodeVM::scriptFetchParametersToImportAttributes(globalObject, parameters.get());
+        auto result = JSValue::decode(Bun__runModuleResolveHooks(globalObject, &nameBun, &parentBun, true, false, JSValue::encode(attributes)));
+        RETURN_IF_EXCEPTION(scope, JSC::JSPromise::rejectedPromiseWithCaughtException(globalObject, scope));
+        if (result.isString()) {
+            auto resolved = result.toWTFString(globalObject);
+            RETURN_IF_EXCEPTION(scope, JSC::JSPromise::rejectedPromiseWithCaughtException(globalObject, scope));
+            auto resolvedBun = Bun::toString(resolved);
+            parameters = Bun::moduleHooksFetchParameters(globalObject, &resolvedBun, parameters);
+            RETURN_IF_EXCEPTION(scope, JSC::JSPromise::rejectedPromiseWithCaughtException(globalObject, scope));
+            auto key = Identifier::fromString(vm, moduleHookKey(resolved));
+            auto type = parameters ? parameters->type() : JSC::ScriptFetchParameters::Type::JavaScript;
+            if (Bun::ModuleHookFetchScope::rejectConflict(globalObject, loader, key.string(), type))
+                return JSC::JSPromise::rejectedPromiseWithCaughtException(globalObject, scope);
+            if (auto* entry = loader->getRegisteredMayBeNull(key, type); entry && !entry->fetchError() && entry->status() != JSC::ModuleRegistryEntry::Status::New) {
+                Bun__discardModuleResolveContext(globalObject, &resolvedBun);
+                RETURN_IF_EXCEPTION(scope, JSC::JSPromise::rejectedPromiseWithCaughtException(globalObject, scope));
+            }
+            auto promise = loader->requestImportModule(globalObject, key, Identifier(), WTF::move(parameters), nullptr, false, referrerAsyncOrder);
+            if (scope.exception()) [[unlikely]]
+                return JSC::JSPromise::rejectedPromiseWithCaughtException(globalObject, scope);
+            return promise;
+        }
+    }
+
     if (globalObject->onLoadPlugins.hasVirtualModules()) {
         if (auto resolution = globalObject->onLoadPlugins.resolveVirtualModule(moduleName, sourceURL.protocolIsFile() ? sourceOriginStringHolder : String())) {
             resolvedIdentifier = JSC::Identifier::fromString(vm, resolution.value());
@@ -3770,6 +3839,7 @@ JSC::JSPromise* GlobalObject::moduleLoaderFetch(JSGlobalObject* globalObject,
     auto& vm = JSC::getVM(globalObject);
 
     auto scope = DECLARE_THROW_SCOPE(vm);
+    const bool hadModuleHooks = Bun__hasModuleHooks(static_cast<Zig::GlobalObject*>(globalObject)->bunVM());
 
     auto moduleKeyJS = key.toString(globalObject);
     RETURN_IF_EXCEPTION(scope, {});
@@ -3777,6 +3847,12 @@ JSC::JSPromise* GlobalObject::moduleLoaderFetch(JSGlobalObject* globalObject,
     WTF::String moduleKey = moduleKeyJS->value(globalObject);
     if (scope.exception()) [[unlikely]]
         return rejectedInternalPromise(globalObject, scope.exception()->value());
+
+    auto* zigGlobalObject = static_cast<Zig::GlobalObject*>(globalObject);
+    auto fetchType = parameters ? parameters->type() : ScriptFetchParameters::Type::JavaScript;
+    if (Bun::ModuleHookFetchScope::rejectConflict(zigGlobalObject, loader, moduleKey, fetchType))
+        return JSC::JSPromise::rejectedPromiseWithCaughtException(globalObject, scope);
+    Bun::ModuleHookFetchScope hookFetch(zigGlobalObject, loader, moduleKey, fetchType, hadModuleHooks);
 
     WTF::String fetchKey = moduleKey;
     bool preservePathDelimiters = false;
@@ -3816,8 +3892,10 @@ JSC::JSPromise* GlobalObject::moduleLoaderFetch(JSGlobalObject* globalObject,
     // already fulfilled and the loader keeps draining its private queue (see
     // JSModuleLoader::loadModuleSync / VM::m_synchronousModuleQueue).
     Bun::JSModuleGraph* graph = Bun::moduleGraphOfLoader(globalObject, loader);
-    if (vm.m_synchronousModuleQueue) {
-        JSValue result = Bun::fetchESMSourceCodeSync(
+    const bool synchronousFetch = vm.m_synchronousModuleQueue;
+    JSValue result;
+    if (synchronousFetch) {
+        result = Bun::fetchESMSourceCodeSync(
             static_cast<Zig::GlobalObject*>(globalObject),
             graph,
             moduleKeyJS,
@@ -3827,26 +3905,49 @@ JSC::JSPromise* GlobalObject::moduleLoaderFetch(JSGlobalObject* globalObject,
             typeAttributeString.isEmpty() ? nullptr : &typeAttribute,
             preservePathDelimiters);
         RETURN_IF_EXCEPTION(scope, rejectedInternalPromise(globalObject, scope.exception()->value()));
-        if (auto* promise = dynamicDowncast<JSC::JSPromise>(result))
-            return promise;
         if (result && result.inherits<JSC::JSSourceCode>())
-            return resolvedInternalPromise(globalObject, result);
-        return rejectedInternalPromise(globalObject, result ? result : JSC::jsUndefined());
+            result = resolvedInternalPromise(globalObject, result);
+        else if (!dynamicDowncast<JSC::JSPromise>(result))
+            return rejectedInternalPromise(globalObject, result ? result : JSC::jsUndefined());
+    } else {
+        result = Bun::fetchESMSourceCodeAsync(
+            static_cast<Zig::GlobalObject*>(globalObject),
+            graph,
+            moduleKeyJS,
+            &res,
+            &moduleKeyBun,
+            &source,
+            typeAttributeString.isEmpty() ? nullptr : &typeAttribute,
+            preservePathDelimiters);
     }
-
-    JSValue result = Bun::fetchESMSourceCodeAsync(
-        static_cast<Zig::GlobalObject*>(globalObject),
-        graph,
-        moduleKeyJS,
-        &res,
-        &moduleKeyBun,
-        &source,
-        typeAttributeString.isEmpty() ? nullptr : &typeAttribute,
-        preservePathDelimiters);
 
     RETURN_IF_EXCEPTION(scope, rejectedInternalPromise(globalObject, scope.exception()->value()));
     ASSERT(result);
     if (auto* promise = dynamicDowncast<JSC::JSPromise>(result)) {
+        if (!synchronousFetch && hookFetch.isActive() && (!graph || !graph->disposed()) && promise->status() == JSC::JSPromise::Status::Pending) {
+            // Bun.plugin may leave an async fetch after the synchronous hook callback returns.
+            // Publish only after that callback, so no second request can own this pending key.
+            JSC::Strong<JSC::JSPromise> protectedPromise(vm, promise);
+            auto* entry = loader->ensureRegistered(globalObject, Identifier::fromString(vm, moduleKey), fetchType);
+            RETURN_IF_EXCEPTION(scope, rejectedInternalPromise(globalObject, scope.exception()->value()));
+            if (entry->status() == JSC::ModuleRegistryEntry::Status::New) {
+                entry->setStatus(JSC::ModuleRegistryEntry::Status::Fetching);
+                entry->ensureFetchPromise(globalObject)->pipeFrom(vm, promise);
+                RETURN_IF_EXCEPTION(scope, rejectedInternalPromise(globalObject, scope.exception()->value()));
+                entry->ensureModulePromise(globalObject);
+                RETURN_IF_EXCEPTION(scope, rejectedInternalPromise(globalObject, scope.exception()->value()));
+            }
+        }
+        if (hookFetch.isActive() && (!graph || !graph->disposed()) && promise->status() == JSC::JSPromise::Status::Fulfilled) {
+            if (auto* code = dynamicDowncast<JSC::JSSourceCode>(promise->result())) {
+                // Publish before another static edge or import can refetch this key.
+                // The synchronous queue must also see a fulfilled fetch for diamond graphs.
+                JSC::Strong<JSC::JSPromise> protectedPromise(vm, promise);
+                auto type = parameters ? parameters->type() : ScriptFetchParameters::Type::JavaScript;
+                loader->provideFetch(globalObject, Identifier::fromString(vm, moduleKey), type, code);
+                RETURN_IF_EXCEPTION(scope, rejectedInternalPromise(globalObject, scope.exception()->value()));
+            }
+        }
         return promise;
     }
     return rejectedInternalPromise(globalObject, result);

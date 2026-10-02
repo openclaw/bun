@@ -385,6 +385,7 @@ extern "C" bool Bun__transpileVirtualModule(
     const BunString* referrer,
     const EncodedSlice* sourceCode,
     BunLoaderType loader,
+    uint8_t moduleType,
     ErrorableResolvedSource* result);
 
 extern "C" JSC::EncodedJSValue Bun__runVirtualModule(
@@ -403,13 +404,15 @@ extern "C" JSC::JSPromise* Bun__transpileFile(
     BunLoaderType forceLoaderType,
     bool preservePathDelimiters,
     // The JSModuleLoader that is fetching when it is not the global object's, else empty.
-    JSC::EncodedJSValue moduleLoader = {});
+    JSC::EncodedJSValue moduleLoader = {},
+    const BunString* moduleKey = nullptr);
 
 extern "C" bool Bun__fetchBuiltinModule(
     void* bunVM,
     JSC::JSGlobalObject* global,
     const BunString* specifier,
-    ErrorableResolvedSource* result);
+    ErrorableResolvedSource* result,
+    bool isCommonJSRequire);
 extern "C" bool Bun__resolveAndFetchBuiltinModule(
     const BunString* specifier,
     ErrorableResolvedSource* result);

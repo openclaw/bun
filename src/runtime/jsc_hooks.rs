@@ -4192,6 +4192,7 @@ pub(crate) unsafe extern "C" fn Bun__transpileFile(
     // The `JSModuleLoader` that is fetching when it is not the global object's (a
     // `Bun.ModuleGraph`'s), else empty: handed back to `Bun__onFulfillAsyncModule`.
     module_loader: JSValue,
+    module_key: Option<&bun_core::String>,
 ) -> *mut c_void {
     use bun_jsc::resolved_source::Tag as ResolvedSourceTag;
 
@@ -4210,6 +4211,8 @@ pub(crate) unsafe extern "C" fn Bun__transpileFile(
     let referrer_slice = referrer.to_utf8();
     let type_attribute_str: Option<&[u8]> = type_attribute.and_then(|s| s.as_utf8());
 
+    let hook_source_utf8: bun_core::Utf8Bytes<'static>;
+    let hook_virtual_source: bun_ast::Source;
     let mut virtual_source_to_use: Option<bun_ast::Source> = None;
     let mut blob_to_deinit: Option<crate::webcore::Blob> = None;
     // SAFETY: per fn contract — `jsc_vm` is the live per-thread VM.
@@ -4275,7 +4278,7 @@ pub(crate) unsafe extern "C" fn Bun__transpileFile(
     }
 
     // ── module_type sniff from extension / package.json ─────────────────────
-    let module_type: ModuleType = 'brk: {
+    let mut module_type: ModuleType = 'brk: {
         if lr.path.is_data_url() {
             break 'brk ModuleType::Unknown;
         }
@@ -4317,6 +4320,84 @@ pub(crate) unsafe extern "C" fn Bun__transpileFile(
         .package_json
         .and_then(|pkg| (!pkg.name.is_empty()).then_some(&*pkg.name));
 
+    // SAFETY: the caller owns this live VM on its JS thread.
+    let module_hooks_active = unsafe {
+        ((*jsc_vm).module_hooks_resolve_count > 0 || (*jsc_vm).module_hooks_load_count > 0)
+            && !(*jsc_vm).module_hooks_skip
+    };
+    if module_hooks_active
+        && lr.virtual_source.is_none()
+        && !had_blob
+        && force_loader_type.is_none()
+        && bun_jsc::node_module_module::module_hooks_should_intercept(lr.path.text)
+        && !lr.path.text.starts_with(b"node:")
+    {
+        let path = bun_core::String::borrow_utf8(lr.path.text);
+        let loader_hint = lr.loader.map(|l| l.to_api() as u8).unwrap_or(254);
+        let module_type_hint = match module_type {
+            ModuleType::Cjs => 1,
+            ModuleType::Esm => 2,
+            _ => 0,
+        };
+        // SAFETY: path is live through the synchronous load hook chain.
+        let result = unsafe {
+            bun_jsc::cpp::Bun__runModuleLoadHooks(
+                global,
+                module_key.unwrap_or(&path),
+                loader_hint,
+                module_type_hint,
+                is_commonjs_require,
+            )
+        }
+        .and_then(|value| {
+            if value.is_undefined_or_null() {
+                Ok(None)
+            } else {
+                bun_jsc::node_module_module::module_hooks_read_load_result(global, value).map(Some)
+            }
+        });
+        match result {
+            Ok(Some((source, loader, format))) => {
+                if loader == 10 {
+                    *ret = ErrorableResolvedSource::ok(ResolvedSource {
+                        source_code: source,
+                        source_url: module_key.unwrap_or(&path).clone(),
+                        tag: bun_jsc::ResolvedSourceTag::Wasm,
+                        ..Default::default()
+                    });
+                    return ptr::null_mut();
+                }
+                hook_source_utf8 = source.into_utf8();
+                // SAFETY: both the source storage and path outlive the synchronous transpile below.
+                let (contents, path_text) = unsafe {
+                    (
+                        bun_ptr::detach_lifetime(hook_source_utf8.slice()),
+                        bun_ptr::detach_lifetime(lr.path.text),
+                    )
+                };
+                hook_virtual_source = bun_ast::Source {
+                    path: bun_paths::fs::Path::init(path_text),
+                    contents: std::borrow::Cow::Borrowed(contents),
+                    ..Default::default()
+                };
+                lr.virtual_source = Some(&hook_virtual_source);
+                if let Some(loader) = force_loader_from_api_u8(loader) {
+                    lr.loader = Some(loader);
+                }
+                match format {
+                    1 => module_type = ModuleType::Cjs,
+                    2 => module_type = ModuleType::Esm,
+                    _ => {}
+                }
+            }
+            Ok(None) => {}
+            Err(error) => {
+                *ret = ErrorableResolvedSource::err(global.take_error(error));
+                return ptr::null_mut();
+            }
+        }
+    }
+
     // ── Concurrent-transpiler dispatch (`transpile_async:` block) ───────────
     // We only run the transpiler concurrently when we can — today that's import statements and
     // import expressions. Node compile cache: lazily initialize from env on the first fetch.
@@ -4343,6 +4424,8 @@ pub(crate) unsafe extern "C" fn Bun__transpileFile(
             // Plugins make this complicated.
             // TODO: allow running concurrently when no onLoad handlers match a plugin.
             && plugin_runner_is_none
+            // The registerHooks() load chain already ran on-thread.
+            && !module_hooks_active
             && store_enabled
             // With the Node compile cache enabled, transpile on-thread so the
             // fetch hook sees every module.
@@ -4474,7 +4557,7 @@ pub(crate) unsafe extern "C" fn Bun__transpileFile(
     let args = TranspileArgs {
         specifier: lr.specifier,
         referrer: referrer_slice.slice(),
-        input_specifier: specifier,
+        input_specifier: module_key.unwrap_or(specifier),
         log: &raw mut *log,
         virtual_source: lr.virtual_source,
         global_object: global,
@@ -4539,6 +4622,7 @@ pub(crate) extern "C" fn Bun__transpileVirtualModule(
     referrer_str: &bun_core::String,
     source_code: &bun_core::EncodedSlice,
     loader_: bun_options_types::schema::api::Loader,
+    module_type: u8,
     ret: &mut ErrorableResolvedSource,
 ) -> bool {
     use bun_options_types::schema::api;
@@ -4607,7 +4691,11 @@ pub(crate) extern "C" fn Bun__transpileVirtualModule(
     let mut extra = TranspileExtra {
         path,
         loader,
-        module_type: ModuleType::Unknown,
+        module_type: match module_type {
+            1 => ModuleType::Cjs,
+            2 => ModuleType::Esm,
+            _ => ModuleType::Unknown,
+        },
         source_code_printer: printer_ptr,
         promise_ptr: ptr::null_mut(), // null forbids async resolution
     };
@@ -4638,6 +4726,39 @@ pub(crate) extern "C" fn Bun__transpileVirtualModule(
             true
         }
     }
+}
+
+/// Transpile a validated load-hook override of a builtin through the same source path as files.
+#[unsafe(no_mangle)]
+pub(crate) extern "Rust" fn __bun_transpile_module_hook_result(
+    global: &JSGlobalObject,
+    specifier: &bun_core::String,
+    source: bun_core::String,
+    loader: u8,
+    module_type: u8,
+    ret: &mut ErrorableResolvedSource,
+) {
+    if loader == 10 {
+        *ret = ErrorableResolvedSource::ok(ResolvedSource {
+            source_code: source,
+            source_url: specifier.clone(),
+            tag: bun_jsc::ResolvedSourceTag::Wasm,
+            ..Default::default()
+        });
+        return;
+    }
+    let loader = force_loader_from_api_u8(loader)
+        .unwrap_or(Loader::Js)
+        .to_api();
+    Bun__transpileVirtualModule(
+        global,
+        specifier,
+        specifier,
+        &source.to_encoded_slice(),
+        loader,
+        module_type,
+        ret,
+    );
 }
 
 /// Materialise an embedded file (`.node`/`.so`/`.dylib`/`.dll` from

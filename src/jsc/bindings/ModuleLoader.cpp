@@ -39,6 +39,7 @@
 #include "JSCommonJSModule.h"
 #include "IsolatedModuleCache.h"
 #include "ModuleGraph.h"
+#include "NodeModuleHooks.h"
 #include "../modules/_NativeModule.h"
 
 #include "JSCommonJSExtensions.h"
@@ -51,6 +52,16 @@ using namespace Zig;
 using namespace WebCore;
 
 extern "C" BunLoaderType Bun__getDefaultLoader(JSC::JSGlobalObject*, const BunString* specifier);
+
+static JSC::JSSourceCode* moduleHooksWasmSourceCode(JSC::VM& vm, ResolvedSource& source)
+{
+    auto bytes = source.source_code.transferToWTFString();
+    auto url = source.source_url.transferToWTFString();
+    Vector<uint8_t> data;
+    data.append(bytes.span8());
+    auto provider = JSC::WebAssemblySourceProvider::create(WTF::move(data), JSC::SourceOrigin(WTF::URL(url)), url);
+    return JSC::JSSourceCode::create(vm, JSC::SourceCode(WTF::move(provider)));
+}
 
 static JSC::JSPromise* rejectedInternalPromise(JSC::JSGlobalObject* globalObject, JSC::JSValue value)
 {
@@ -399,7 +410,7 @@ static JSValue handleVirtualModuleResult(
 
     switch (onLoadResult.type) {
     case OnLoadResultTypeCode: {
-        Bun__transpileVirtualModule(globalObject, specifier, referrer, &onLoadResult.value.sourceText.string, onLoadResult.value.sourceText.loader, res);
+        Bun__transpileVirtualModule(globalObject, specifier, referrer, &onLoadResult.value.sourceText.string, onLoadResult.value.sourceText.loader, 0, res);
         if (!res->success) {
             RELEASE_AND_RETURN(scope, reject(JSValue::decode(res->result.err)));
         }
@@ -491,8 +502,8 @@ extern "C" void Bun__onFulfillAsyncModule(
     auto* specifierValue = Bun::toJS(globalObject, *specifier);
     RETURN_IF_EXCEPTION(scope, );
 
-    // The new C++ module loader does not create a registry entry until *after*
-    // this fetch promise resolves (provideFetch runs inside the
+    // Outside the synchronous module-hook path, the C++ module loader does not
+    // create a registry entry until *after* this fetch promise resolves (provideFetch runs inside the
     // ModuleLoadTopSettled microtask). Two concurrent dynamic imports of the
     // same key therefore each get their own embedder fetch promise, and the
     // loser of that race must still resolve so its loadModule chain can reach
@@ -540,8 +551,11 @@ BuiltinModule fetchBuiltinModuleWithoutResolution(
     void* bunVM = globalObject->bunVM();
     auto& vm = JSC::getVM(globalObject);
     auto scope = DECLARE_THROW_SCOPE(vm);
-    if (Bun__fetchBuiltinModule(bunVM, globalObject, specifier, res)) {
-        ASSERT(res->success);
+    if (Bun__fetchBuiltinModule(bunVM, globalObject, specifier, res, true)) {
+        if (!res->success) {
+            throwException(scope, res->result.err, globalObject);
+            return {};
+        }
 
         auto tag = res->result.value.tag;
         switch (tag) {
@@ -556,6 +570,12 @@ BuiltinModule fetchBuiltinModuleWithoutResolution(
         // require("process"), require("node:process")
         case SyntheticModuleType::NodeProcess: {
             return { Kind::Exports, globalObject->processObject() };
+        }
+
+        case SyntheticModuleType::JSONForObjectLoader: {
+            auto value = JSC::JSONParseWithException(globalObject, res->result.value.source_code.toWTFString(BunString::NonNull));
+            RETURN_IF_EXCEPTION(scope, {});
+            return { Kind::Exports, value };
         }
 
         case SyntheticModuleType::ESM: {
@@ -667,6 +687,9 @@ JSValue fetchCommonJSModule(
     JSC::JSModuleLoader* loader = Bun::moduleLoaderOf(globalObject, scope, target->moduleGraph());
     RETURN_IF_EXCEPTION(scope, {});
 
+    if (ModuleHookFetchScope::rejectConflict(globalObject, loader, specifierWtfString, ScriptFetchParameters::Type::JavaScript, true))
+        return {};
+
     if (Bun::isDataOrBlobURL(specifierWtfString)) [[unlikely]] {
         Bun::throwIfMayNotMakeScriptFromStrings(globalObject, scope);
         RETURN_IF_EXCEPTION(scope, {});
@@ -733,7 +756,11 @@ JSValue fetchCommonJSModule(
         }
     }
 
-    auto builtin = fetchBuiltinModuleWithoutResolution(globalObject, &specifier, res);
+    BuiltinModule builtin;
+    {
+        ModuleHookFetchScope hookFetch(globalObject, loader, specifierWtfString, ScriptFetchParameters::Type::JavaScript, Bun__hasModuleHooks(bunVM));
+        builtin = fetchBuiltinModuleWithoutResolution(globalObject, &specifier, res);
+    }
     RETURN_IF_EXCEPTION(scope, {});
     switch (builtin.kind) {
     case BuiltinModule::Kind::Source: {
@@ -859,7 +886,14 @@ JSValue fetchCommonJSModuleNonBuiltin(
         Bun::throwIfMayNotMakeScriptFromStrings(globalObject, scope);
         RETURN_IF_EXCEPTION(scope, {});
     }
-    Bun__transpileFile(bunVM, globalObject, specifier, referrer, typeAttribute, res, false, !isExtension, forceLoaderType, preservePathDelimiters);
+    {
+        if constexpr (isExtension) {
+            if (ModuleHookFetchScope::rejectConflict(globalObject, loader, specifierWtfString, ScriptFetchParameters::Type::JavaScript, true))
+                return {};
+        }
+        ModuleHookFetchScope hookFetch(globalObject, loader, specifierWtfString, ScriptFetchParameters::Type::JavaScript, Bun__hasModuleHooks(bunVM));
+        Bun__transpileFile(bunVM, globalObject, specifier, referrer, typeAttribute, res, false, !isExtension, forceLoaderType, preservePathDelimiters);
+    }
     if (res->success && res->result.value.isCommonJSModule) {
         if constexpr (isExtension) {
             target->evaluateWithPotentiallyOverriddenCompile(globalObject, specifierWtfString, specifierValue, res->result.value);
@@ -1033,8 +1067,13 @@ static JSValue fetchESMSourceCode(
         }
     }
 
-    if (Bun__fetchBuiltinModule(bunVM, globalObject, specifier, res)) {
-        ASSERT(res->success);
+    if (Bun__fetchBuiltinModule(bunVM, globalObject, specifier, res, false)) {
+        if (!res->success) {
+            RELEASE_AND_RETURN(scope, reject(JSValue::decode(res->result.err)));
+        }
+        if (res->result.value.tag == SyntheticModuleType::Wasm) {
+            RELEASE_AND_RETURN(scope, rejectOrResolve(moduleHooksWasmSourceCode(vm, res->result.value)));
+        }
 
         // This can happen if it's a `bun build --compile`'d CommonJS file
         if (res->result.value.isCommonJSModule) {
@@ -1068,6 +1107,18 @@ static JSValue fetchESMSourceCode(
 
         auto tag = res->result.value.tag;
         switch (tag) {
+        case SyntheticModuleType::JSONForObjectLoader: {
+            auto value = JSC::JSONParseWithException(globalObject, res->result.value.source_code.toWTFString(BunString::NonNull));
+            if (auto* exception = scope.exception()) {
+                (void)scope.tryClearException();
+                RELEASE_AND_RETURN(scope, reject(exception));
+            }
+            auto function = generateJSValueModuleSourceCode(globalObject, value);
+            auto source = JSC::SourceCode(JSC::SyntheticSourceProvider::create(WTF::move(function), JSC::SourceOrigin(), moduleKey));
+            JSC::ensureStillAliveHere(value);
+            RELEASE_AND_RETURN(scope, rejectOrResolve(JSSourceCode::create(vm, WTF::move(source))));
+        }
+
         case SyntheticModuleType::ESM: {
             auto&& provider = Zig::SourceProvider::create(globalObject, res->result.value, JSC::SourceProviderSourceType::Module, true);
             if (useIsolationCacheForBuiltin)
@@ -1158,12 +1209,12 @@ static JSValue fetchESMSourceCode(
     }
 
     if constexpr (allowPromise) {
-        auto* pendingCtx = Bun__transpileFile(bunVM, globalObject, specifier, referrer, typeAttribute, res, true, false, BunLoaderTypeNone, preservePathDelimiters, graph ? JSValue::encode(graph->loader()) : JSC::EncodedJSValue {});
+        auto* pendingCtx = Bun__transpileFile(bunVM, globalObject, specifier, referrer, typeAttribute, res, true, false, BunLoaderTypeNone, preservePathDelimiters, graph ? JSValue::encode(graph->loader()) : JSC::EncodedJSValue {}, &specifierKeyBun);
         if (pendingCtx) {
             return pendingCtx;
         }
     } else {
-        Bun__transpileFile(bunVM, globalObject, specifier, referrer, typeAttribute, res, false, false, BunLoaderTypeNone, preservePathDelimiters);
+        Bun__transpileFile(bunVM, globalObject, specifier, referrer, typeAttribute, res, false, false, BunLoaderTypeNone, preservePathDelimiters, {}, &specifierKeyBun);
     }
 
     if (res->success && res->result.value.isCommonJSModule) {
@@ -1188,6 +1239,10 @@ static JSValue fetchESMSourceCode(
         auto* exception = scope.exception();
         (void)scope.tryClearException();
         RELEASE_AND_RETURN(scope, reject(exception));
+    }
+
+    if (res->result.value.tag == SyntheticModuleType::Wasm) {
+        RELEASE_AND_RETURN(scope, rejectOrResolve(moduleHooksWasmSourceCode(vm, res->result.value)));
     }
 
     // The JSONForObjectLoader tag is source code returned from Bun that needs

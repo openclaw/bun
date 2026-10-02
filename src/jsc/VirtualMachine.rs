@@ -394,6 +394,13 @@ pub struct VirtualMachine {
     pub commonjs_custom_extensions:
         bun_collections::StringArrayHashMap<crate::node_module_module::CustomLoader>,
     pub has_mutated_built_in_extensions: u32,
+    /// Native gates mirrored from `internal/modules/customization_hooks.ts`.
+    /// The load count includes pending resolve results as well as load hooks.
+    pub module_hooks_resolve_count: u32,
+    pub module_hooks_load_count: u32,
+    /// True while the hook chain's default step runs its native resolution,
+    /// so that resolution does not re-enter the hooks.
+    pub module_hooks_skip: bool,
 
     pub initial_script_execution_context_identifier: i32,
 
@@ -5453,6 +5460,45 @@ impl VirtualMachine {
         let mut result = ResolveFunctionResult::default();
         let jsc_vm_ptr = global.bun_vm_ptr();
         // SAFETY: per-thread VM is live (caller is on the JS thread).
+        let (run_hooks, has_loaded) = unsafe {
+            (
+                ((*jsc_vm_ptr).module_hooks_resolve_count > 0
+                    || (*jsc_vm_ptr).module_hooks_load_count > 0)
+                    && !(*jsc_vm_ptr).module_hooks_skip,
+                (*jsc_vm_ptr).has_loaded,
+            )
+        };
+
+        if run_hooks {
+            let hook_specifier = specifier.to_utf8();
+            if crate::node_module_module::module_hooks_should_intercept(hook_specifier.slice()) {
+                if source.length() == 0 && has_loaded {
+                    if crate::node_module_module::module_hooks_virtual_specifier(
+                        hook_specifier.slice(),
+                    ) {
+                        return Ok(Ok(specifier.clone()));
+                    }
+                } else {
+                    // SAFETY: both strings remain live through the synchronous hook chain.
+                    let value = unsafe {
+                        crate::cpp::Bun__runModuleResolveHooks(
+                            global,
+                            specifier,
+                            source,
+                            mode.is_esm(),
+                            mode == ResolveMode::RequireResolve,
+                            JSValue::UNDEFINED,
+                            mode == ResolveMode::RequireResolve,
+                        )
+                    }?;
+                    if !value.is_undefined_or_null() {
+                        return Ok(Ok(value.to_bun_string(global)?));
+                    }
+                }
+            }
+        }
+
+        // SAFETY: the synchronous JS hook has returned; no VM borrow spans that call.
         let jsc_vm = unsafe { &mut *jsc_vm_ptr };
 
         // Bare/`node:` builtins: answer from the alias table before paying for UTF-8 copies and the resolver.

@@ -75,7 +75,7 @@ namespace NodeVM {
 
 static JSPromise* importModuleInner(JSGlobalObject* globalObject, JSString* moduleName, RefPtr<JSC::ScriptFetchParameters> parameters, const SourceOrigin& sourceOrigin, JSValue dynamicImportCallback, JSValue owner);
 
-static JSValue scriptFetchParametersToImportAttributes(JSGlobalObject* globalObject, JSC::ScriptFetchParameters* params)
+JSValue scriptFetchParametersToImportAttributes(JSGlobalObject* globalObject, JSC::ScriptFetchParameters* params)
 {
     auto& vm = globalObject->vm();
     auto* obj = constructEmptyObject(vm, globalObject->nullPrototypeObjectStructure());

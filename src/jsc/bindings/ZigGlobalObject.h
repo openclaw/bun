@@ -39,6 +39,7 @@ class JSNextTickQueue;
 class Process;
 class SecureContextCache;
 class GCProfilerObserver;
+class ModuleHookFetchScope;
 
 struct ModuleGraphState;
 } // namespace Bun
@@ -263,6 +264,7 @@ public:
 
     WebCore::JSStreamsRuntime* streamsRuntime() { return &m_streamsRuntime; }
     JSC::JSMap* requireMap() const { return m_requireMap.getInitializedOnMainThread(this); }
+    JSC::JSMap* moduleHooksBuiltinCache(bool create = true) const { return create ? m_moduleHooksBuiltinCache.getInitializedOnMainThread(this) : m_moduleHooksBuiltinCache.getConcurrently(); }
     // The JSC module loader registry is no longer a JS Map. Use
     // moduleLoader()->registryEntry(key) / moduleMap() / removeEntry(key) /
     // clearAll() instead.
@@ -631,6 +633,7 @@ public:
     V(private, LazyPropertyOfGlobalObject<JSFunction>, m_utilInspectStylizeNoColorFunction)                  \
     V(private, LazyPropertyOfGlobalObject<JSFunction>, m_wasmStreamingConsumeStreamFunction)                 \
     V(private, WebCore::JSStreamsRuntime, m_streamsRuntime)                                                  \
+    V(private, LazyPropertyOfGlobalObject<JSMap>, m_moduleHooksBuiltinCache)                                 \
     V(private, LazyPropertyOfGlobalObject<JSMap>, m_requireMap)                                              \
     V(private, LazyPropertyOfGlobalObject<JSObject>, m_JSArrayBufferControllerPrototype)                     \
     V(private, LazyPropertyOfGlobalObject<JSObject>, m_JSHTTPSResponseControllerPrototype)                   \
@@ -817,6 +820,8 @@ public:
     std::unique_ptr<Bun::SecureContextCache> m_secureContextCache;
 
     std::unique_ptr<Bun::ModuleGraphState> m_moduleGraphs;
+
+    Bun::ModuleHookFetchScope* moduleHookFetchScope = nullptr;
 
     // Backs node:v8's GCProfiler. Lazily created on first start(); its
     // destructor detaches from the heap so a worker that exits mid-profile

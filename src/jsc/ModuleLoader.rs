@@ -143,6 +143,14 @@ unsafe extern "Rust" {
         jsc_vm: *mut VirtualMachine,
         args: &TranspileArgs<'_>,
     ) -> Result<ResolvedSource, crate::CrateError>;
+    pub(crate) safe fn __bun_transpile_module_hook_result(
+        global: &JSGlobalObject,
+        specifier: &bun_core::String,
+        source: bun_core::String,
+        loader: u8,
+        module_type: u8,
+        ret: &mut ErrorableResolvedSource,
+    );
     /// Defined in `bun_runtime::jsc_hooks`. `None` when the specifier is not a
     /// builtin / standalone-graph module.
     pub(crate) safe fn __bun_fetch_builtin_module(
@@ -154,13 +162,65 @@ unsafe extern "Rust" {
 
 #[unsafe(no_mangle)]
 extern "C" fn Bun__fetchBuiltinModule(
-    jsc_vm: &VirtualMachine,
+    jsc_vm: *const VirtualMachine,
     global_object: &JSGlobalObject,
     specifier: &bun_core::String,
     ret: &mut ErrorableResolvedSource,
+    is_commonjs_require: bool,
 ) -> bool {
     jsc::mark_binding();
-    match __bun_fetch_builtin_module(jsc_vm, global_object, specifier) {
+    // No VM borrow may span a user hook, which can re-enter the resolver.
+    let hooks_active =
+        unsafe { (*jsc_vm).module_hooks_load_count > 0 && !(*jsc_vm).module_hooks_skip };
+    let observe_builtin = hooks_active && {
+        let name = specifier.to_utf8();
+        name.slice().starts_with(b"node:")
+            || (crate::node_module_module::module_hooks_should_intercept(name.slice())
+                && HardcodedModule::HardcodedModule::MAP.contains_key(name.slice()))
+    };
+    if observe_builtin {
+        // SAFETY: specifier remains live while hooks run on this VM's JS thread.
+        let result = unsafe {
+            crate::cpp::Bun__runModuleLoadHooks(
+                global_object,
+                specifier,
+                254,
+                0,
+                is_commonjs_require,
+            )
+        }
+        .and_then(|value| {
+            if value.is_undefined_or_null() {
+                Ok(None)
+            } else {
+                crate::node_module_module::module_hooks_read_load_result(global_object, value)
+                    .map(Some)
+            }
+        });
+        match result {
+            Ok(Some((source, loader, module_type))) => {
+                // Node's ESM CommonJS translator delegates builtin overrides through require's load chain.
+                if !is_commonjs_require && module_type == 1 {
+                    return Bun__fetchBuiltinModule(jsc_vm, global_object, specifier, ret, true);
+                }
+                __bun_transpile_module_hook_result(
+                    global_object,
+                    specifier,
+                    source,
+                    loader,
+                    module_type,
+                    ret,
+                );
+                return true;
+            }
+            Ok(None) => {}
+            Err(error) => {
+                *ret = ErrorableResolvedSource::err(global_object.take_error(error));
+                return true;
+            }
+        }
+    }
+    match __bun_fetch_builtin_module(unsafe { &*jsc_vm }, global_object, specifier) {
         Some(resolved) => {
             *ret = ErrorableResolvedSource::ok(resolved);
             true

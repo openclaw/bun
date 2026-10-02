@@ -48,6 +48,7 @@ public:
     // (see commonJSSourceForGraph).
     unsigned overlayShape() const { return m_overlayShape; }
     JSC::JSMap* requireMap() const { return m_requireMap.get(); }
+    JSC::JSMap* moduleHooksBuiltinCache(Zig::GlobalObject*, bool create = true);
     JSC::JSObject* onError() const { return m_onError.get(); } // null if the host gave none
     // The graph in whose context this one was made (null: the host's). Errors of a graph that was
     // given no onError go to its maker's.
@@ -72,6 +73,7 @@ private:
     Ref<WebCore::ScriptExecutionContext> m_context;
     JSC::WriteBarrier<JSC::JSModuleLoader> m_loader;
     JSC::WriteBarrier<JSC::JSMap> m_requireMap;
+    JSC::WriteBarrier<JSC::JSMap> m_moduleHooksBuiltinCache;
     JSC::WriteBarrier<JSC::Unknown> m_requireCache;
     JSC::WriteBarrier<JSC::JSObject> m_onError;
     JSC::WriteBarrier<JSModuleGraph> m_maker;

@@ -30,6 +30,7 @@
  */
 
 #include "BunString.h"
+#include "NodeModuleHooks.h"
 #include "headers.h"
 
 #include "JavaScriptCore/CallData.h"
@@ -138,6 +139,8 @@ static void putModuleGraphRequireMain(VM& vm, JSFunction* requireFunction, JSCom
         requireFunction->putDirectCustomAccessor(vm, WebCore::builtinNames(vm).mainPublicName(), JSC::CustomGetterSetter::create(vm, jsModuleGraphRequireMainGetter, nullptr), JSC::PropertyAttribute::CustomAccessor | JSC::PropertyAttribute::ReadOnly);
 }
 
+static void putRequireProperties(Zig::GlobalObject*, JSFunction*, JSCommonJSModule*);
+
 // The source a graph's module is compiled from: the same text, in a code-cache entry of its
 // overlay shape's own. A graph's wrapper runs under the graph's overlay (below), and JSC's code
 // cache shares compiled code, baseline JIT code included, between everything with the same key;
@@ -216,6 +219,8 @@ static bool evaluateCommonJSModuleOnce(JSC::VM& vm, Zig::GlobalObject* globalObj
         requireFunction->putDirect(vm, vm.propertyNames->resolve, resolveFunction, 0);
         RETURN_IF_EXCEPTION(scope, );
         putModuleGraphRequireMain(vm, requireFunction, moduleObject);
+        putRequireProperties(globalObject, requireFunction, moduleObject);
+        RETURN_IF_EXCEPTION(scope, );
         moduleObject->putDirect(vm, WebCore::clientData(vm)->builtinNames().requirePublicName(), requireFunction, 0);
         RETURN_IF_EXCEPTION(scope, );
         moduleObject->hasEvaluated = true;
@@ -404,10 +409,8 @@ JSC_DEFINE_HOST_FUNCTION(requireResolvePathsFunction, (JSGlobalObject * globalOb
         }
     }
 
-    // This function is not bound with the module object. This is because nearly
-    // no one uses this and it is not worth creating an extra bound function for
-    // every single module. Instead, we can unwrap the bound function that we
-    // can see through the `this`.
+    // The lazy paths property binds this to the original resolve function, so
+    // copied or unbound calls retain the module's lookup scope.
     JSValue thisValue = callframe->thisValue();
     auto* requireResolveBound = dynamicDowncast<JSC::JSBoundFunction>(thisValue);
     if (!requireResolveBound) [[unlikely]] {
@@ -484,6 +487,21 @@ JSC_DEFINE_CUSTOM_SETTER(jsRequireExtensionsSetter,
     return true;
 }
 
+JSC_DEFINE_CUSTOM_GETTER(jsRequireResolvePathsGetter, (JSC::JSGlobalObject * globalObject, JSC::EncodedJSValue thisValue, JSC::PropertyName propertyName))
+{
+    auto& vm = globalObject->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    auto* resolve = dynamicDowncast<JSObject>(JSValue::decode(thisValue));
+    if (!resolve)
+        return JSValue::encode(jsUndefined());
+    auto* target = JSFunction::create(vm, globalObject, 1, "paths"_s, requireResolvePathsFunction, ImplementationVisibility::Public);
+    auto source = makeSource("paths"_s, SourceOrigin(), SourceTaintedOrigin::Untainted);
+    auto* paths = JSBoundFunction::create(vm, globalObject, target, resolve, ArgList(), 1, jsString(vm, String("paths"_s)), source);
+    RETURN_IF_EXCEPTION(scope, {});
+    resolve->putDirect(vm, propertyName, paths, 0);
+    return JSValue::encode(paths);
+}
+
 static const HashTableValue RequireResolveFunctionPrototypeValues[] = {
     { "paths"_s, static_cast<unsigned>(JSC::PropertyAttribute::Function), NoIntrinsic, { HashTableValue::NativeFunctionType, requireResolvePathsFunction, 1 } },
 };
@@ -492,6 +510,27 @@ static const HashTableValue RequireFunctionPrototypeValues[] = {
     { "cache"_s, static_cast<unsigned>(JSC::PropertyAttribute::CustomAccessor), NoIntrinsic, { HashTableValue::GetterSetterType, jsRequireCacheGetter, jsRequireCacheSetter } },
     { "extensions"_s, static_cast<unsigned>(JSC::PropertyAttribute::CustomAccessor), NoIntrinsic, { HashTableValue::GetterSetterType, jsRequireExtensionsGetter, jsRequireExtensionsSetter } },
 };
+
+static void putRequireProperties(Zig::GlobalObject* globalObject, JSFunction* requireFunction, JSCommonJSModule* requirer)
+{
+    auto& vm = globalObject->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    auto& names = WebCore::builtinNames(vm);
+    for (auto name : { names.mainPublicName(), Identifier::fromString(vm, "extensions"_s), Identifier::fromString(vm, "cache"_s) }) {
+        if (name == names.mainPublicName() && requirer->moduleGraph())
+            continue;
+        auto value = requireFunction->get(globalObject, name);
+        RETURN_IF_EXCEPTION(scope, );
+        requireFunction->putDirect(vm, name, value, 0);
+    }
+    auto resolveValue = requireFunction->get(globalObject, vm.propertyNames->resolve);
+    RETURN_IF_EXCEPTION(scope, );
+    auto* resolve = resolveValue.getObject();
+    ASSERT(resolve);
+    // CustomValue exposes a writable data descriptor and binds lazily. Copies
+    // of require.resolve.paths must retain the originating module's scope.
+    resolve->putDirectCustomAccessor(vm, names.pathsPublicName(), CustomGetterSetter::create(vm, jsRequireResolvePathsGetter, jsRequireCacheSetter), static_cast<unsigned>(PropertyAttribute::CustomValue));
+}
 
 Structure* RequireFunctionPrototype::createStructure(
     JSC::VM& vm,
@@ -1508,12 +1547,76 @@ JSC_DEFINE_HOST_FUNCTION(jsFunctionRequireNativeModule, (JSGlobalObject * lexica
     JSValue specifierValue = callframe->argument(0);
     WTF::String specifier = specifierValue.toWTFString(globalObject);
     RETURN_IF_EXCEPTION(throwScope, {});
+    auto* graph = thisObject->moduleGraph();
+    auto* overrides = graph ? graph->moduleHooksBuiltinCache(globalObject, false) : globalObject->moduleHooksBuiltinCache(false);
+    if (overrides) {
+        auto cached = overrides->get(globalObject, specifierValue);
+        RETURN_IF_EXCEPTION(throwScope, {});
+        if (!cached.isUndefined())
+            return JSValue::encode(uncheckedDowncast<JSCommonJSModule>(cached)->exportsObject());
+    }
     ErrorableResolvedSource res;
     BunString specifierStr = Bun::toString(specifier);
-    auto result = fetchBuiltinModuleWithoutResolution(globalObject, &specifierStr, &res);
+    auto* hookLoader = Bun::moduleLoaderOf(globalObject, throwScope, graph);
+    RETURN_IF_EXCEPTION(throwScope, {});
+    if (Bun::ModuleHookFetchScope::rejectConflict(globalObject, hookLoader, specifier, JSC::ScriptFetchParameters::Type::JavaScript, true))
+        return {};
+    BuiltinModule result;
+    {
+        Bun::ModuleHookFetchScope hookFetch(globalObject, hookLoader, specifier, JSC::ScriptFetchParameters::Type::JavaScript, Bun__hasModuleHooks(globalObject->bunVM()));
+        result = fetchBuiltinModuleWithoutResolution(globalObject, &specifierStr, &res);
+    }
     RETURN_IF_EXCEPTION(throwScope, {});
     if (result.kind == BuiltinModule::Kind::Exports) {
+        if (res.result.value.tag == SyntheticModuleType::JSONForObjectLoader) {
+            overrides = graph ? graph->moduleHooksBuiltinCache(globalObject) : globalObject->moduleHooksBuiltinCache();
+            auto* module = JSCommonJSModule::create(globalObject, jsString(vm, specifier), result.exports, true, thisObject);
+            RETURN_IF_EXCEPTION(throwScope, {});
+            overrides->set(globalObject, specifierValue, module);
+            RETURN_IF_EXCEPTION(throwScope, {});
+        }
         return JSC::JSValue::encode(result.exports);
+    }
+    if (result.kind == BuiltinModule::Kind::Source) {
+        overrides = graph ? graph->moduleHooksBuiltinCache(globalObject) : globalObject->moduleHooksBuiltinCache();
+        if (res.result.value.isCommonJSModule) {
+            auto* module = JSCommonJSModule::create(globalObject, jsString(vm, specifier), constructEmptyObject(globalObject), false, thisObject);
+            RETURN_IF_EXCEPTION(throwScope, {});
+            module->setModuleGraph(vm, thisObject->moduleGraph());
+            // Builtin overrides persist like Node's module cache, without appearing in require.cache.
+            overrides->set(globalObject, specifierValue, module);
+            RETURN_IF_EXCEPTION(throwScope, {});
+            module->evaluate(globalObject, specifier, res.result.value, true);
+            if (throwScope.exception()) {
+                overrides->remove(globalObject, specifierValue);
+                return {};
+            }
+            return JSValue::encode(module->exportsObject());
+        }
+        auto* loader = Bun::moduleLoaderOf(globalObject, throwScope, thisObject->moduleGraph());
+        RETURN_IF_EXCEPTION(throwScope, {});
+        auto provider = Zig::SourceProvider::create(globalObject, res.result.value);
+        JSC::VM::SynchronousModuleQueue queue;
+        queue.prev = vm.m_synchronousModuleQueue;
+        vm.m_synchronousModuleQueue = &queue;
+        loader->provideFetch(globalObject, JSC::Identifier::fromString(vm, specifier), JSC::ScriptFetchParameters::Type::JavaScript, JSC::SourceCode(WTF::move(provider)));
+        if (!throwScope.exception()) JSC::JSModuleLoader::drainSynchronousModuleQueue(globalObject);
+        vm.m_synchronousModuleQueue = queue.prev;
+        RETURN_IF_EXCEPTION(throwScope, {});
+        auto* module = JSCommonJSModule::create(globalObject, jsString(vm, specifier), constructEmptyObject(globalObject), false, thisObject);
+        RETURN_IF_EXCEPTION(throwScope, {});
+        module->setModuleGraph(vm, graph);
+        auto* requireESM = globalObject->requireESMFromHijackedExtension();
+        MarkedArgumentBuffer args;
+        args.append(specifierValue);
+        ASSERT(!args.hasOverflowed());
+        auto callData = getCallData(requireESM);
+        call(globalObject, requireESM, callData, module, args);
+        RETURN_IF_EXCEPTION(throwScope, {});
+        module->hasEvaluated = true;
+        overrides->set(globalObject, specifierValue, module);
+        RETURN_IF_EXCEPTION(throwScope, {});
+        return JSValue::encode(module->exportsObject());
     }
     throwScope.assertNoExceptionExceptTermination();
     return throwVMError(globalObject, throwScope, "Failed to fetch builtin module"_s);
@@ -1846,6 +1949,8 @@ JSObject* JSCommonJSModule::createBoundRequireFunction(VM& vm, JSGlobalObject* l
 
     requireFunction->putDirect(vm, vm.propertyNames->resolve, resolveFunction, 0);
 
+    putRequireProperties(globalObject, requireFunction, moduleObject);
+    RETURN_IF_EXCEPTION(scope, nullptr);
     return requireFunction;
 }
 

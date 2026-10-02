@@ -17,6 +17,7 @@ using namespace Zig;
 using namespace JSC;
 
 namespace Bun {
+JSC_DECLARE_HOST_FUNCTION(jsFunctionModuleHooksContainsModuleSyntax);
 JSC_DECLARE_HOST_FUNCTION(jsFunctionIsModuleResolveFilenameSlowPathEnabled);
 JSC::JSValue createStreamIterEnabledFlag(Zig::GlobalObject*);
 void addNodeModuleConstructorProperties(JSC::VM &vm, Zig::GlobalObject *globalObject);

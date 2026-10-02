@@ -9,11 +9,14 @@
 #endif
 #include "headers-handwritten.h"
 #include "NodeModuleModule.h"
+#include "NodeModuleHooks.h"
 #include "CodeGenerationFromStrings.h"
 #include "ModuleGraph.h"
 #include "WebCoreJSBuiltins.h"
 
 #include <JavaScriptCore/JSCInlines.h>
+#include <JavaScriptCore/ParserError.h>
+#include <JavaScriptCore/ErrorInstance.h>
 #include <JavaScriptCore/VM.h>
 #include <JavaScriptCore/JSString.h>
 #include <JavaScriptCore/FunctionPrototype.h>
@@ -37,6 +40,7 @@
 
 #include "GeneratedNodeModuleModule.h"
 #include "ZigGeneratedClasses.h"
+#include "InternalModuleRegistry.h"
 
 namespace Bun {
 
@@ -983,6 +987,232 @@ JSC_DEFINE_HOST_FUNCTION(jsFunctionSyncBuiltinESMExports,
     return JSC::JSValue::encode(JSC::jsUndefined());
 }
 
+static bool moduleHooksShouldIntercept(const String& key)
+{
+    auto path = key.startsWith("file://"_s) ? URL(key).fileSystemPath() : key;
+    auto specifier = Bun::toString(path);
+    return Bun__moduleHooksShouldIntercept(&specifier);
+}
+
+ModuleHookFetchScope::ModuleHookFetchScope(Zig::GlobalObject* globalObject, JSModuleLoader* loader, const String& key, ScriptFetchParameters::Type type, bool enabled)
+    : m_globalObject(enabled && moduleHooksShouldIntercept(key) ? globalObject : nullptr)
+    , m_loader(m_globalObject ? Strong<JSModuleLoader>(globalObject->vm(), loader) : Strong<JSModuleLoader>())
+    , m_key(m_globalObject ? key : String())
+    , m_type(type)
+    , m_previous(m_globalObject ? globalObject->moduleHookFetchScope : nullptr)
+{
+    if (m_globalObject)
+        m_globalObject->moduleHookFetchScope = this;
+}
+
+ModuleHookFetchScope::~ModuleHookFetchScope()
+{
+    if (m_globalObject) {
+        ASSERT(m_globalObject->moduleHookFetchScope == this);
+        m_globalObject->moduleHookFetchScope = m_previous;
+    }
+}
+
+bool ModuleHookFetchScope::rejectConflict(Zig::GlobalObject* globalObject, JSModuleLoader* loader, const String& key, std::optional<ScriptFetchParameters::Type> type, bool directRequire)
+{
+    // Native builtin exports have independent ownership; inspect the load result before rejecting an override.
+    if (key.startsWith("node:"_s))
+        return false;
+    return rejectConflictImpl(globalObject, loader, key, type, directRequire && Bun__hasModuleHooks(globalObject->bunVM()), globalObject->moduleHookFetchScope);
+}
+
+bool ModuleHookFetchScope::rejectBuiltinOverride(Zig::GlobalObject* globalObject, const BunString* path, bool isCommonJSRequire)
+{
+    auto* current = globalObject->moduleHookFetchScope;
+    if (!current || !current->m_key.startsWith("node:"_s) || current->m_key != path->toWTFString())
+        return false;
+    // This scope owns the pending result even if the hook deregistered itself.
+    // A nested native import can publish and even finish during an outer ESM load callback.
+    // CommonJS builtin source uses a separate cache after the ESM wrapper has loaded.
+    return rejectConflictImpl(globalObject, current->m_loader.get(), current->m_key, current->m_type, true, current->m_previous, !isCommonJSRequire);
+}
+
+bool ModuleHookFetchScope::rejectConflictImpl(Zig::GlobalObject* globalObject, JSModuleLoader* loader, const String& key, std::optional<ScriptFetchParameters::Type> type, bool directRequire, ModuleHookFetchScope* first, bool rejectCompleted)
+{
+    if ((!first && !directRequire) || !moduleHooksShouldIntercept(key))
+        return false;
+    bool conflict = false;
+    for (auto* active = first; active; active = active->m_previous) {
+        if (active->m_loader.get() == loader && active->m_key == key && (!type || active->m_type == *type)) {
+            conflict = true;
+            break;
+        }
+    }
+    if (!conflict && directRequire) {
+        auto id = Identifier::fromString(globalObject->vm(), key);
+        auto* entry = type ? loader->getRegisteredMayBeNull(id, *type) : loader->registryEntry(id);
+        conflict = entry && !entry->fetchError() && (entry->status() == ModuleRegistryEntry::Status::Fetching || (rejectCompleted && entry->status() != ModuleRegistryEntry::Status::New));
+    }
+    if (!conflict)
+        return false;
+    auto scope = DECLARE_THROW_SCOPE(globalObject->vm());
+    auto url = isAbsolutePath(key) ? URL::fileURLWithFileSystemPath(key).string() : key;
+    throwError(globalObject, scope, ErrorCode::ERR_MODULE_HOOK_REENTRANCY,
+        makeString("Cannot load \""_s, url, "\" while its module.registerHooks() fetch is in flight: JavaScriptCore cannot preserve per-request module record identity."_s));
+    return true;
+}
+
+static JSC::JSValue callCustomizationHooksExport(Zig::GlobalObject* globalObject, ASCIILiteral exportName, JSC::MarkedArgumentBuffer& args)
+{
+    auto& vm = JSC::getVM(globalObject);
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    JSValue mod = globalObject->internalModuleRegistry()->requireId(globalObject, vm, InternalModuleRegistry::Field::InternalModulesCustomizationHooks);
+    RETURN_IF_EXCEPTION(scope, {});
+    JSObject* modObject = mod.getObject();
+    if (!modObject) [[unlikely]]
+        return JSC::jsUndefined();
+    JSValue fn = modObject->get(globalObject, JSC::Identifier::fromString(vm, exportName));
+    RETURN_IF_EXCEPTION(scope, {});
+    JSC::CallData callData = JSC::getCallData(fn);
+    if (callData.type == JSC::CallData::Type::None) [[unlikely]]
+        return JSC::jsUndefined();
+    JSValue result = JSC::call(globalObject, fn, callData, JSC::jsUndefined(), args);
+    RETURN_IF_EXCEPTION(scope, {});
+    return result;
+}
+
+// Runs the `module.registerHooks()` resolve hook chain. Returns a string (the
+// resolved specifier for Bun's pipeline), `undefined` for "use the native
+// resolution", or empty (exception pending).
+extern "C" [[ZIG_EXPORT(zero_is_throw)]] JSC::EncodedJSValue Bun__runModuleResolveHooks(Zig::GlobalObject* globalObject, const BunString* specifier, const BunString* referrer, bool isESM, bool isUserRequireResolve, JSC::EncodedJSValue importAttributes, bool resolveOnly)
+{
+    auto& vm = JSC::getVM(globalObject);
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    JSC::MarkedArgumentBuffer args;
+    args.append(Bun::toJS(globalObject, *specifier));
+    RETURN_IF_EXCEPTION(scope, {});
+    args.append(Bun::toJS(globalObject, *referrer));
+    RETURN_IF_EXCEPTION(scope, {});
+    args.append(JSC::jsBoolean(isESM));
+    args.append(JSC::jsBoolean(isUserRequireResolve));
+    args.append(JSC::JSValue::decode(importAttributes));
+    args.append(JSC::jsBoolean(resolveOnly));
+    ASSERT(!args.hasOverflowed());
+    JSValue result = callCustomizationHooksExport(globalObject, "runResolveHooksBun"_s, args);
+    RETURN_IF_EXCEPTION(scope, {});
+    return JSC::JSValue::encode(result);
+}
+
+RefPtr<JSC::ScriptFetchParameters> moduleHooksFetchParameters(Zig::GlobalObject* globalObject, const BunString* key, RefPtr<JSC::ScriptFetchParameters> original)
+{
+    auto& vm = globalObject->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    JSC::MarkedArgumentBuffer args;
+    args.append(Bun::toJS(globalObject, *key));
+    RETURN_IF_EXCEPTION(scope, nullptr);
+    ASSERT(!args.hasOverflowed());
+    auto attributes = callCustomizationHooksExport(globalObject, "getResolvedImportAttributes"_s, args);
+    RETURN_IF_EXCEPTION(scope, nullptr);
+    if (!attributes.isObject())
+        return original;
+    JSC::Strong<JSC::JSObject> object(vm, attributes.getObject());
+    auto typeValue = object->get(globalObject, vm.propertyNames->type);
+    RETURN_IF_EXCEPTION(scope, nullptr);
+    String type;
+    if (typeValue.isString()) {
+        type = typeValue.toWTFString(globalObject);
+        RETURN_IF_EXCEPTION(scope, nullptr);
+    }
+    auto parsedType = JSC::ScriptFetchParameters::parseType(type).value_or(JSC::ScriptFetchParameters::Type::JavaScript);
+    Ref<JSC::ScriptFetchParameters> parameters = parsedType == JSC::ScriptFetchParameters::Type::HostDefined
+        ? JSC::ScriptFetchParameters::create(type)
+        : JSC::ScriptFetchParameters::createUnique(parsedType);
+    // Effective attributes remain in the JS resolve context; JSC's registry
+    // identity uses only their type. Do not reread user attribute getters here.
+    return parameters;
+}
+
+void validateModuleHooksStaticAttributes(Zig::GlobalObject* globalObject, const BunString* key)
+{
+    auto& vm = globalObject->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    MarkedArgumentBuffer args;
+    args.append(Bun::toJS(globalObject, *key));
+    RETURN_IF_EXCEPTION(scope, );
+    ASSERT(!args.hasOverflowed());
+    auto attributes = callCustomizationHooksExport(globalObject, "getResolvedImportAttributes"_s, args);
+    RETURN_IF_EXCEPTION(scope, );
+    if (!attributes.isObject())
+        return;
+    auto type = attributes.getObject()->get(globalObject, vm.propertyNames->type);
+    RETURN_IF_EXCEPTION(scope, );
+    if (!type.isUndefined()) {
+        // hostLoadImportedModule selects its type before the attribute-less host resolve callback.
+        throwError(globalObject, scope, ErrorCode::ERR_MODULE_HOOK_ATTRIBUTE_IDENTITY,
+            makeString("Cannot apply resolve-returned type attributes to static import \""_s, key->toWTFString(BunString::ZeroCopy),
+                "\": JavaScriptCore selects the module registry type before calling module.registerHooks() resolve hooks."_s));
+    }
+}
+
+extern "C" void Bun__discardModuleResolveContext(Zig::GlobalObject* globalObject, const BunString* key)
+{
+    auto& vm = globalObject->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    JSC::MarkedArgumentBuffer args;
+    args.append(Bun::toJS(globalObject, *key));
+    RETURN_IF_EXCEPTION(scope, );
+    ASSERT(!args.hasOverflowed());
+    callCustomizationHooksExport(globalObject, "discardResolvedContext"_s, args);
+    RETURN_IF_EXCEPTION(scope, );
+}
+
+// Runs the `module.registerHooks()` load hook chain. Returns an object
+// `{ source, loader, moduleType }`, `undefined` for "load natively", or empty
+// (exception pending).
+extern "C" [[ZIG_EXPORT(zero_is_throw)]] JSC::EncodedJSValue Bun__runModuleLoadHooks(Zig::GlobalObject* globalObject, const BunString* path, uint8_t loaderHint, uint8_t moduleTypeHint, bool isCommonJSRequire)
+{
+    auto& vm = JSC::getVM(globalObject);
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    JSC::MarkedArgumentBuffer args;
+    args.append(Bun::toJS(globalObject, *path));
+    RETURN_IF_EXCEPTION(scope, {});
+    args.append(JSC::jsNumber(loaderHint));
+    args.append(JSC::jsNumber(moduleTypeHint));
+    args.append(JSC::jsBoolean(isCommonJSRequire));
+    ASSERT(!args.hasOverflowed());
+    JSValue result = callCustomizationHooksExport(globalObject, "runLoadHooksBun"_s, args);
+    RETURN_IF_EXCEPTION(scope, {});
+    if (!result.isUndefined() && Bun::ModuleHookFetchScope::rejectBuiltinOverride(globalObject, path, isCommonJSRequire))
+        return {};
+    return JSC::JSValue::encode(result);
+}
+
+JSC_DEFINE_HOST_FUNCTION(jsFunctionModuleHooksContainsModuleSyntax, (JSGlobalObject * globalObject, CallFrame* callFrame))
+{
+    auto& vm = globalObject->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    auto source = callFrame->argument(0).toWTFString(globalObject);
+    RETURN_IF_EXCEPTION(scope, {});
+    if (source.startsWith("#!"_s)) {
+        auto end = source.find('\n');
+        source = end == WTF::notFound ? String() : source.substring(end);
+    }
+    ParserError scriptError;
+    auto wrapped = makeSource(makeString("(function(exports,require,module,__filename,__dirname){\n"_s, source, "\n})"_s), SourceOrigin(), SourceTaintedOrigin::Untainted);
+    if (checkSyntax(vm, wrapped, scriptError))
+        return JSValue::encode(jsBoolean(false));
+    if (callFrame->argument(1).isTrue()) {
+        throwException(globalObject, scope, createSyntaxError(globalObject, scriptError.message()));
+        return {};
+    }
+    ParserError moduleError;
+    bool isModule = checkModuleSyntax(globalObject, makeSource(source, SourceOrigin(), SourceTaintedOrigin::Untainted), moduleError);
+    if (auto* exception = scope.exception()) {
+        auto* error = dynamicDowncast<ErrorInstance>(exception->value());
+        if (!error || error->errorType() != ErrorType::SyntaxError)
+            return {};
+        // Node's syntax probe leaves invalid source available for a load hook to transform.
+        (void)scope.tryClearException();
+        return JSValue::encode(jsBoolean(false));
+    }
+    return JSValue::encode(jsBoolean(isModule));
+}
+
 JSC_DEFINE_HOST_FUNCTION(jsFunctionRegister, (JSGlobalObject * globalObject, JSC::CallFrame* callFrame))
 {
     return JSC::JSValue::encode(JSC::jsUndefined());
@@ -1110,6 +1340,7 @@ globalPaths             getGlobalPathsObject              PropertyCallback
 isBuiltin               jsFunctionIsBuiltinModule         Function 1
 prototype               getModulePrototypeObject          DontEnum|DontDelete|PropertyCallback
 register                jsFunctionRegister                Function 1
+registerHooks           JSBuiltin                         Function|Builtin 1
 runMain                 moduleRunMain                        CustomAccessor
 SourceMap               getSourceMapFunction              PropertyCallback
 syncBuiltinESMExports   jsFunctionSyncBuiltinESMExports   Function 0

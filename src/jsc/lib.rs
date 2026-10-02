@@ -830,6 +830,7 @@ pub mod resolved_source_tag {
         pub const Javascript: Self = Self(0);
         pub const PackageJsonTypeModule: Self = Self(1);
         pub const PackageJsonTypeCommonjs: Self = Self(2);
+        pub const Wasm: Self = Self(3);
         pub const Esm: Self = Self(6);
         pub const JsonForObjectLoader: Self = Self(7);
         /// Generate an object with `default` set to all the exports, including a `default` property.

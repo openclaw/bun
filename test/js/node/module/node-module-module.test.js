@@ -6,6 +6,258 @@ import Module, { _nodeModulePaths, builtinModules, createRequire, isBuiltin, wra
 import path from "path";
 import { Worker } from "worker_threads";
 
+describe.concurrent("registerHooks Node 24 parity", () => {
+  test.each([
+    ...["plain", "base64", "short-circuit", "fragment-comma"].map(kind => [
+      `data-missing-comma-${kind}`,
+      '{"name":"TypeError","code":"ERR_INVALID_URL","message":"Invalid URL","input":true,"formats":[null]}',
+    ]),
+    ["data-missing-comma-source", '{"value":42,"formats":[null]}'],
+    // Known JSC divergence: loadModule/moduleLoadTopSettled cannot separate builtin source overrides from in-flight records.
+    [
+      "builtin-inflight-override-deregister",
+      '{"one":{"error":"ERR_MODULE_HOOK_REENTRANCY"},"two":{"value":"native"},"loads":2}',
+    ],
+    [
+      "builtin-inflight-override-settled",
+      '{"one":{"error":"ERR_MODULE_HOOK_REENTRANCY"},"two":{"value":"native"},"loads":2}',
+    ],
+    ["builtin-inflight-override-direct", '{"one":{"value":1},"two":{"error":"ERR_MODULE_HOOK_REENTRANCY"},"loads":2}'],
+    [
+      "builtin-inflight-override-outer",
+      '{"one":{"error":"ERR_MODULE_HOOK_REENTRANCY"},"two":{"value":"native"},"loads":2}',
+    ],
+    [
+      "builtin-inflight-override-inner",
+      '{"one":{"value":"native"},"two":{"error":"ERR_MODULE_HOOK_REENTRANCY"},"loads":2}',
+    ],
+    ...["direct", "require-during-load"].map(kind => [
+      `shared-builtin-${kind}`,
+      '{"same":true,"events":[[null,{}],["builtin",null]]}',
+    ]),
+    ["shared-builtin-import-during-load", '{"same":true,"events":[[null,{}],[null,{}]]}'],
+    ...["punctuation", "highbit", "padding", "length"].map(kind => [
+      `data-base64-${kind}`,
+      '{"name":"TypeError","code":"ERR_INVALID_URL","message":"Invalid URL","input":true}',
+    ]),
+    ...["whitespace", "unpadded"].map(kind => [`data-base64-${kind}`, "42"]),
+    ...["import", "require"].map(kind => [
+      `shared-request-diamond-${kind}`,
+      '{"same":true,"loads":1,"resolutions":2,"factsEqual":true}',
+    ]),
+    ["shared-request-async-dependency", '{"same":true,"loads":1}'],
+    ["shared-request-commonjs-self", '{"same":true,"value":42,"loads":1}'],
+    // Known JSC divergence: loadModule/moduleLoadTopSettled cannot retain Node's two active-hook records.
+    [
+      "record-identity-active-identical",
+      JSON.stringify({
+        code: "ERR_MODULE_HOOK_REENTRANCY",
+        message:
+          'Cannot load "virtual:identical" while its module.registerHooks() fetch is in flight: JavaScriptCore cannot preserve per-request module record identity.',
+        loads: 1,
+      }),
+    ],
+    // Bun-internal modules bypass customization hooks and retain native import/require handoff.
+    ...["sqlite", "jsc"].map(name => [`bun-internal-handoff-${name}`, '{"same":true,"intercepted":false}']),
+    ...["upper", "mixed", "space", "mime", "json"].map(variant => [`data-header-${variant}`, "42"]),
+    ["data-header-json-case-sensitive", "ERR_INVALID_RETURN_PROPERTY_VALUE"],
+    ["data-query-source", "before?after"],
+    ...["import", "require"].flatMap(kind =>
+      ["module", "commonjs"].map(format => [`single-letter-scheme-${kind}-${format}`, "42"]),
+    ),
+    // Known divergence: Bun's single import/require registry reuses a completed record.
+    // Node runs load again for require() and can return distinct CommonJS-request source ("outer").
+    ["record-identity-completed-handoff", '{"values":["one","one"],"loads":1}'],
+    // Known JSC divergence: hostLoadImportedModule repeats pending cycle edges before loadedModules is populated.
+    ["static-cycle-import", '{"answer":42,"leafResolves":2}'],
+    ["static-cycle-require", '{"answer":42,"leafResolves":2}'],
+    // Known JSC divergence: hostLoadImportedModule chooses the registry type before host resolution.
+    [
+      "attributes-static-returned-identity",
+      JSON.stringify({
+        name: "Error",
+        code: "ERR_MODULE_HOOK_ATTRIBUTE_IDENTITY",
+        message:
+          'Cannot apply resolve-returned type attributes to static import "<url>": JavaScriptCore selects the module registry type before calling module.registerHooks() resolve hooks.',
+      }),
+    ],
+    [
+      "attributes-static-wrong-type",
+      JSON.stringify({
+        code: "ERR_MODULE_HOOK_ATTRIBUTE_IDENTITY",
+        message:
+          'Cannot apply resolve-returned type attributes to static import "<url>": JavaScriptCore selects the module registry type before calling module.registerHooks() resolve hooks.',
+        loads: 1,
+      }),
+    ],
+    // Known JSC divergence: loadModule/moduleLoadTopSettled cannot retain separate same-key records.
+    ...["dynamic-reentrant", "static-reentrant", "sync-handoff"].map(variant => [
+      `record-identity-${variant}`,
+      JSON.stringify({
+        values: [variant === "static-reentrant" ? "outer" : "one", null],
+        errors: [
+          null,
+          {
+            name: "Error",
+            code: "ERR_MODULE_HOOK_REENTRANCY",
+            message:
+              'Cannot load "virtual:parallel" while its module.registerHooks() fetch is in flight: JavaScriptCore cannot preserve per-request module record identity.',
+          },
+        ],
+        loads: 1,
+      }),
+    ]),
+    [
+      "require-resolve-paths",
+      '{"descriptor":[true,true,true],"scoped":true,"copied":true,"unbound":true,"builtin":true}',
+    ],
+    ["materialized-imports-cjs", '{"value":42,"retried":true}'],
+    ["materialized-imports-esm", '{"value":42,"retried":true}'],
+    ["commonjs-tla", "true"],
+    ["bun-default-conditions", '["bun","node"]'],
+    ...["resolve", "load"].map(kind => [`bun-transparent-json-${kind}`, "42"]),
+    ...["resolve", "load", "both"].map(kind => [
+      `bun-native-aliases-${kind}`,
+      JSON.stringify([
+        ...[
+          "ws",
+          "ws/lib/websocket",
+          "next/dist/compiled/ws",
+          "undici",
+          "node-fetch",
+          "isomorphic-fetch",
+          "@vercel/fetch",
+          "abort-controller",
+        ].map(name => [name, name === "undici" ? "object" : "function", true]),
+        ["utf-8-validate", true, true],
+      ]),
+    ]),
+    [
+      "attributes-reject-mismatch",
+      '{"name":"TypeError","code":"ERR_IMPORT_ATTRIBUTE_TYPE_INCOMPATIBLE","message":"Module \\"<url>\\" is not of type \\"json\\""}',
+    ],
+    [
+      "attributes-reject-missing",
+      '{"name":"TypeError","code":"ERR_IMPORT_ATTRIBUTE_MISSING","message":"Module \\"<url>\\" needs an import attribute of \\"type: json\\""}',
+    ],
+    [
+      "attributes-reject-key",
+      '{"name":"TypeError","code":"ERR_IMPORT_ATTRIBUTE_UNSUPPORTED","message":"Import attribute \\"flavor\\" with value \\"wrong\\" is not supported in <url>"}',
+    ],
+    [
+      "attributes-reject-value",
+      '{"name":"TypeError","code":"ERR_IMPORT_ATTRIBUTE_UNSUPPORTED","message":"Import attribute \\"type\\" with value \\"javascript\\" is not supported in <url>"}',
+    ],
+    [
+      "attributes-reject-number",
+      '{"name":"TypeError","code":"ERR_INVALID_ARG_TYPE","message":"The \\"type\\" argument must be of type string. Received type number (42)"}',
+    ],
+    ["attributes-returned-identity", '{"same":true,"loads":1}'],
+    ["attributes-nontype-identity", '{"same":true,"loads":1}'],
+    [
+      "concurrent-attributes",
+      '{"seen":[["resolve",{"flavor":"one"}],["load",{"flavor":"one"}],["resolve",{"flavor":"two"}]],"values":["one","one"]}',
+    ],
+    ["self-deregister-format", "42"],
+    ["redirect-load-json", '["json",42]'],
+    ["redirect-load-mjs", '["module",42]'],
+    ["redirect-load-package", '["module",42]'],
+    ["data-percent", "1"],
+    ["data-wasm-bytes", "170"],
+    ["resolve-only-format", "42"],
+    ["load-detection", '["module","module","module","module","commonjs","module-typescript"]'],
+    ...[
+      "require-cjs",
+      "import-cjs",
+      "require-esm",
+      "import-esm",
+      "require-esm-special",
+      "require-json",
+      "import-json",
+    ].map(mode => [
+      `builtin-override-${mode}`,
+      mode === "import-cjs"
+        ? '{"value":42,"same":true,"loads":2,"cached":true}'
+        : '{"value":42,"same":true,"loads":1,"cached":false}',
+    ]),
+    ...["arraybuffer", "uint8array", "buffer"].map(mode => [`wasm-${mode}`, "170"]),
+    ["parent", "nested"],
+    ["conditions", "custom"],
+    ["cli-conditions", "true"],
+    ["cjs-source", "object"],
+    ["cjs-transform", "43"],
+    ["untyped-typescript-load", '{"value":42,"observed":["typescript","typescript","string"]}'],
+    ["query", '{"same":false,"observed":["target.mjs?one","target.mjs?two"]}'],
+    ["fragment", '{"same":false,"observed":["target.mjs#one","target.mjs#two"]}'],
+    ...["dynamic", "static"].map(kind => [`empty-url-suffix-${kind}`, '{"distinct":4,"observed":["","?","#","?#"]}']),
+    ["custom-scheme", "variant:one"],
+    ["format-lifetime", "42"],
+    ["attributes", '[["resolve",{"type":"json"}],["load",{"type":"json"}]]'],
+    ["attributes-override", '[["resolve",{}],["load",{"type":"json"}]]'],
+    ["meta-resolve", "true"],
+    ["load-result-url", "true"],
+    ["require-query", "true"],
+    ["meta-parent-query", "true"],
+    ["require-properties", "true"],
+    ["source-formats", '["module-typescript","commonjs-typescript","module-typescript","module"]'],
+    ["materialized-file", "42"],
+    ["materialized-package", '{"root":1,"nested":2,"after":2}'],
+    ["data-json", "42"],
+  ])("%s", async (mode, expected) => {
+    using dir = tempDir("register-hooks-parity", {});
+    await using proc = Bun.spawn({
+      cmd: [
+        bunExe(),
+        ...(mode === "cli-conditions" ? ["--conditions=w73-custom"] : []),
+        path.join(import.meta.dir, "register-hooks-parity.fixture.mjs"),
+        mode,
+        String(dir),
+      ],
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect({ stdout: stdout.trim(), stderr }).toEqual({ stdout: expected, stderr: "" });
+    expect(exitCode).toBe(0);
+  });
+  // WebKit fb1167ebf2cb: JSModuleLoader::hostLoadImportedModule (:784) resolves without m_attributes.
+  test.todo("static import attributes reach resolve and load hooks");
+});
+
+test("registerHooks builtin overrides belong to the requiring ModuleGraph", async () => {
+  using dir = tempDir("hooks-builtin-graph", {
+    "entry.mjs": 'export const value = require("node:zlib"); export const again = () => require("node:zlib");',
+    "main.mjs": `
+      import { registerHooks } from "node:module";
+      const hook = registerHooks({ load(url, context, next) {
+        return url === "node:zlib"
+          ? { format: "commonjs", source: "module.exports = w73BuiltinTag;", shortCircuit: true }
+          : next(url, context);
+      }});
+      const first = new Bun.ModuleGraph({ globals: { w73BuiltinTag: 42 } });
+      const second = new Bun.ModuleGraph({ globals: { w73BuiltinTag: 43 } });
+      try {
+        const one = await first.import(import.meta.dir + "/entry.mjs");
+        const two = await second.import(import.meta.dir + "/entry.mjs");
+        Bun.gc(true);
+        console.log(JSON.stringify([one.value, two.value, one.again(), two.again()]));
+      } finally {
+        first.dispose(); second.dispose(); hook.deregister();
+      }
+    `,
+  });
+  await using proc = Bun.spawn({
+    cmd: [bunExe(), path.join(String(dir), "main.mjs")],
+    env: bunEnv,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect({ stdout: stdout.trim(), stderr }).toEqual({ stdout: "[42,43,42,43]", stderr: "" });
+  expect(exitCode).toBe(0);
+});
+
 describe.concurrent("node-module-module", () => {
   test("builtinModules exists", () => {
     expect(Array.isArray(builtinModules)).toBe(true);
@@ -1473,4 +1725,51 @@ console.log("survived", require("./late.js"));`,
     expect(stderr).toBe("");
     expect(exitCode).toBe(0);
   });
+});
+
+test("registerHooks resolves, loads, chains, and deregisters synchronous hooks", async () => {
+  await using proc = Bun.spawn({
+    cmd: [
+      bunExe(),
+      "-e",
+      `
+      const assert = require("node:assert/strict");
+      const { registerHooks } = require("node:module");
+      const calls = [];
+      const first = registerHooks({
+        resolve(specifier, context, nextResolve) {
+          if (specifier === "virtual-module-hooks") {
+            calls.push("resolve");
+            return { url: "test://module-hooks.cjs", shortCircuit: true };
+          }
+          return nextResolve(specifier, context);
+        },
+        load(url, context, nextLoad) {
+          if (url === "test://module-hooks.cjs") {
+            calls.push("load");
+            return { format: "commonjs", source: Buffer.from("module.exports = 42"), shortCircuit: true };
+          }
+          return nextLoad(url, context);
+        }
+      });
+      const second = registerHooks({
+        resolve(specifier, context, nextResolve) { return nextResolve(specifier, context); },
+        load(url, context, nextLoad) { return nextLoad(url, context); }
+      });
+      assert.equal(require("virtual-module-hooks"), 42);
+      assert.deepEqual(calls, ["resolve", "load"]);
+      second.deregister();
+      first.deregister();
+      assert.throws(() => require("other-virtual-module-hooks"), { code: "MODULE_NOT_FOUND" });
+      console.log("hooks passed");
+    `,
+    ],
+    env: bunEnv,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect(stdout.trim()).toBe("hooks passed");
+  expect(stderr).toBe("");
+  expect(exitCode).toBe(0);
 });

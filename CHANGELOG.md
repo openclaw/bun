@@ -105,3 +105,7 @@
 - Drain the calling VM's concurrent JIT plans before `Bun.gc(true)`, `globalThis.gc()`, and `bun:jsc` full collections so compiler roots do not retain otherwise unreachable objects.
 
 - Half-close POSIX socket stdout/stderr after `end()` or pipeline completion without closing fd 1/2, restore nonblocking pipe setup, and preserve Node's pipe shutdown and later-write behavior.
+- Implement synchronous `node:module.registerHooks()` with Node 24 resolution context, URL identity, source transformation, dynamic import attributes, and deregistration semantics; static import attributes remain unavailable to hooks. Ports [oven-sh/bun#35690](https://github.com/oven-sh/bun/pull/35690). Thanks @cirospaciari!
+- Reject unsafe same-key hook loads with `ERR_MODULE_HOOK_REENTRANCY` and static resolve-returned type attributes with `ERR_MODULE_HOOK_ATTRIBUTE_IDENTITY`; document JavaScriptCore's static input-attribute and repeated cycle-resolution limits.
+- Deduplicate identical static hook loads, preserve native Bun-module handoffs, and decode data-URL base64 markers with Node-compatible casing rules.
+- Preserve reentrant native builtin loads without losing load-hook calls, keep conflicting builtin source overrides loud, and reject invalid data-URL base64 bytes and padding.

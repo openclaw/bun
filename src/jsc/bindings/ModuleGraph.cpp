@@ -567,6 +567,7 @@ void JSModuleGraph::visitChildrenImpl(JSCell* cell, Visitor& visitor)
     Base::visitChildren(thisObject, visitor);
     visitor.append(thisObject->m_loader);
     visitor.append(thisObject->m_requireMap);
+    visitor.append(thisObject->m_moduleHooksBuiltinCache);
     visitor.append(thisObject->m_requireCache);
     visitor.append(thisObject->m_onError);
     visitor.append(thisObject->m_maker);
@@ -617,6 +618,13 @@ JSPromise* JSModuleGraph::import(Zig::GlobalObject* globalObject, JSValue specif
     return result;
 }
 
+JSMap* JSModuleGraph::moduleHooksBuiltinCache(Zig::GlobalObject* globalObject, bool create)
+{
+    if (create && !m_moduleHooksBuiltinCache)
+        m_moduleHooksBuiltinCache.set(globalObject->vm(), this, JSMap::create(globalObject->vm(), globalObject->mapStructure()));
+    return m_moduleHooksBuiltinCache.get();
+}
+
 // Drops the loader's registry and the graph's CommonJS cache, and stops the graph's context.
 // No promise is settled. Code of the graph that is still running keeps what it closes over, as
 // usual; onError stays for its errors.
@@ -632,6 +640,7 @@ void JSModuleGraph::dispose(Zig::GlobalObject* globalObject)
     m_requireMap->clear(globalObject);
     RETURN_IF_EXCEPTION(scope, );
     m_requireCache.clear();
+    m_moduleHooksBuiltinCache.clear();
 }
 
 void disposeModuleGraphOfContext(WebCore::ScriptExecutionContext& context)

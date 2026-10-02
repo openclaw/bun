@@ -1093,7 +1093,7 @@ fn do_resolve_with_args<const IS_FILE_PATH: bool>(
     from: &BunString,
     mode: ResolveMode,
 ) -> JsResult<JSValue> {
-    match resolve_with_args::<IS_FILE_PATH>(ctx, specifier, from, mode)? {
+    match resolve_with_args::<IS_FILE_PATH>(ctx, specifier, from, mode, false)? {
         Resolved::Found(value) => Ok(value),
         Resolved::NotFound(err) => Err(ctx.throw_value(err)),
     }
@@ -1104,6 +1104,7 @@ fn resolve_with_args<const IS_FILE_PATH: bool>(
     specifier: &BunString,
     from: &BunString,
     mode: ResolveMode,
+    as_url: bool,
 ) -> JsResult<Resolved> {
     let mut query_string = BunString::EMPTY;
 
@@ -1136,10 +1137,11 @@ fn resolve_with_args<const IS_FILE_PATH: bool>(
     // CommonJS cache keys must distinguish a literal '?' in the resolved path
     // from the query suffix, including when a relative import reaches that path.
     // Bun.resolve's directory-based public APIs still return filesystem paths.
-    let encoded_module_key = IS_FILE_PATH
-        && !mode.is_esm()
-        && result_value.index_of_ascii_char(b'?').is_some()
-        && bun_paths::is_absolute(result_value.to_utf8().slice());
+    let encoded_module_key = bun_paths::is_absolute(result_value.to_utf8().slice())
+        && (as_url
+            || (IS_FILE_PATH
+                && !mode.is_esm()
+                && result_value.index_of_ascii_char(b'?').is_some()));
     let result_value = if encoded_module_key {
         bun_url::file_url_from_string(&result_value)
     } else {
@@ -1164,6 +1166,18 @@ fn resolve_with_args<const IS_FILE_PATH: bool>(
     }
 
     Ok(Resolved::Found(result_value.into_js(ctx)?))
+}
+
+pub(crate) fn resolve_for_module_hooks(
+    global: &JSGlobalObject,
+    specifier: &BunString,
+    parent: &BunString,
+    mode: ResolveMode,
+) -> JsResult<JSValue> {
+    match resolve_with_args::<true>(global, specifier, parent, mode, true)? {
+        Resolved::Found(value) => Ok(value),
+        Resolved::NotFound(error) => Err(global.throw_value(error)),
+    }
 }
 
 #[bun_jsc::host_fn]
@@ -1328,6 +1342,7 @@ pub(crate) fn bun_resolve_sync_with_source_if_exists(
             &specifier_str,
             source,
             ResolveMode::from_ffi_bools(is_esm, false),
+            false,
         )
         .map(|r| match r {
             Resolved::Found(value) => value,

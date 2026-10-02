@@ -485,6 +485,8 @@ pub struct Resolver<'a> {
 
     pub caches: CacheSet,
     pub generation: Generation,
+    /// Hook-created dependency directories outlive deregistration.
+    pub runtime_mutable_directories: bool,
 
     /// Auto-install backend. `bun_install::PackageManager` implements
     /// [`AutoInstaller`]; the resolver only sees the trait object so it stays
@@ -621,6 +623,7 @@ impl<'a> Resolver<'a> {
             watcher: from.watcher,
             caches: CacheSet::init(),
             generation: from.generation,
+            runtime_mutable_directories: false,
             package_manager: from.package_manager,
             on_wake_package_manager: from.on_wake_package_manager,
             env_loader: from.env_loader,
@@ -920,6 +923,7 @@ impl<'a> Resolver<'a> {
             elapsed: 0,
             watcher: None,
             generation: 0,
+            runtime_mutable_directories: false,
             package_manager: None,
             on_wake_package_manager: Default::default(),
             env_loader: None,
@@ -2589,10 +2593,13 @@ impl<'a> Resolver<'a> {
                 // Skip directories that are themselves called "node_modules", since we
                 // don't ever want to search for "node_modules/node_modules"
                 'node_modules: {
-                    if !(dir_info.has_node_modules() || is_self_reference) {
+                    if !is_self_reference
+                        && (dir_info.is_node_modules()
+                            || (!dir_info.has_node_modules() && !self.runtime_mutable_directories))
+                    {
                         break 'node_modules;
                     }
-                    any_node_modules_folder = true;
+                    any_node_modules_folder |= dir_info.has_node_modules();
                     let abs_path: &[u8] = if is_self_reference {
                         dir_info.abs_path
                     } else {
@@ -3655,13 +3662,22 @@ impl<'a> Resolver<'a> {
                 // listing fd: a concurrent resolver at a newer generation
                 // rewrites the `DirEntry` in place under that lock. The entry
                 // pointer stays valid after unlock (EntryStore-owned).
-                let looked_up = {
+                let mut looked_up = {
                     let rfs = &mut Fs::FileSystem::instance().fs;
                     let _entries_lock = rfs.entries_mutex.lock_guard();
                     resolved_dir_info
                         .get_entries_ref_locked(self.generation)
                         .map(|entries| (entries.get(base), entries.fd))
                 };
+                if looked_up.as_ref().is_none_or(|(entry, _)| entry.is_none())
+                    && self.refresh_created_file(abs_esm_path)
+                {
+                    let rfs = &mut Fs::FileSystem::instance().fs;
+                    let _entries_lock = rfs.entries_mutex.lock_guard();
+                    looked_up = resolved_dir_info
+                        .get_entries_ref_locked(self.generation)
+                        .map(|entries| (entries.get(base), entries.fd));
+                }
                 let Some((entry_lookup, dirname_fd)) = looked_up else {
                     esm_resolution.status = Status::ModuleNotFound;
                     return MatchStatus::NotFound;
@@ -4206,9 +4222,19 @@ impl<'a> Resolver<'a> {
 
         let path_without_trailing_slash = strings::without_trailing_slash_windows_path(input_path);
         Self::assert_valid_cache_key(path_without_trailing_slash);
-        let top_result = self
+        let mut top_result = self
             .dir_cache_mut()
             .get_or_put(path_without_trailing_slash)?;
+        if self.runtime_mutable_directories && top_result.status == allocators::ItemStatus::NotFound
+        {
+            self.fs_mut()
+                .fs
+                .bust_entries_cache(path_without_trailing_slash);
+            self.dir_cache_mut().remove(path_without_trailing_slash);
+            top_result = self
+                .dir_cache_mut()
+                .get_or_put(path_without_trailing_slash)?;
+        }
         if top_result.status != allocators::ItemStatus::Unknown {
             return Ok(self
                 .dir_cache_mut()
@@ -4288,7 +4314,13 @@ impl<'a> Resolver<'a> {
 
         while top.len() > root_path.len() {
             debug_assert!(top.as_ptr() == root_path.as_ptr());
-            let result = self.dir_cache_mut().get_or_put(top)?;
+            let mut result = self.dir_cache_mut().get_or_put(top)?;
+            if self.runtime_mutable_directories && result.status == allocators::ItemStatus::NotFound
+            {
+                rfs!().entries.remove(top);
+                self.dir_cache_mut().remove(top);
+                result = self.dir_cache_mut().get_or_put(top)?;
+            }
 
             if result.status != allocators::ItemStatus::Unknown {
                 top_parent = result;
@@ -5752,6 +5784,19 @@ impl<'a> Resolver<'a> {
         dec_ret!(MatchStatus::NotFound);
     }
 
+    fn refresh_created_file(&mut self, path: &[u8]) -> bool {
+        if !self.runtime_mutable_directories {
+            return false;
+        }
+        let path_z = bun_core::ZBox::from_bytes(path);
+        if bun_sys::exists_at_type(FD::cwd(), &path_z).is_err() {
+            return false;
+        }
+        let dir = strings::without_trailing_slash_windows_path(Dirname::dirname(path));
+        let generation = self.generation;
+        self.fs_mut().fs.refresh_entries(dir, generation)
+    }
+
     pub(crate) fn load_as_file(
         &mut self,
         path: &[u8],
@@ -5830,7 +5875,10 @@ impl<'a> Resolver<'a> {
         // Each probe of the listing goes through `EntriesOption::lookup`, a
         // single `entries_mutex` critical section (see its doc for the
         // in-place rewrite this guards against).
-        let (plain_query, plain_dirname_fd) = dir_entry.get().lookup(base);
+        let (mut plain_query, mut plain_dirname_fd) = dir_entry.get().lookup(base);
+        if plain_query.is_none() && self.refresh_created_file(path) {
+            (plain_query, plain_dirname_fd) = dir_entry.get().lookup(base);
+        }
         if let Some(query) = plain_query {
             // SAFETY: rfs points at the process-global RealFS; the lazy-stat
             // rewrite inside `kind()` is serialized on the per-entry mutex.
@@ -6011,7 +6059,10 @@ impl<'a> Resolver<'a> {
             ));
         }
 
-        let (ext_query, dirname_fd) = dir_entry.get().lookup(file_name);
+        let (mut ext_query, mut dirname_fd) = dir_entry.get().lookup(file_name);
+        if ext_query.is_none() && self.refresh_created_file(buffer) {
+            (ext_query, dirname_fd) = dir_entry.get().lookup(file_name);
+        }
         if let Some(query) = ext_query {
             // SAFETY: rfs points at the process-global RealFS; the lazy-stat
             // rewrite inside `kind()` is serialized on the per-entry mutex.

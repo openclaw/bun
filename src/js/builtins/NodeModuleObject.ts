@@ -24,3 +24,7 @@ export function _initPaths() {
   const M = require("node:module");
   M.globalPaths = paths;
 }
+
+export function registerHooks(hooks) {
+  return require("internal/modules/customization_hooks").registerHooks(hooks);
+}
