@@ -244,6 +244,7 @@ pub mod code_generation;
 pub mod deprecated;
 pub mod env_var;
 pub mod feature_flags;
+pub mod node_options;
 pub use code_generation::{
     CodeGenerationFromStrings, code_generation_from_strings, disallow_code_generation_from_strings,
 };
