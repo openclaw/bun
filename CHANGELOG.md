@@ -101,3 +101,5 @@
 - Borrow process stdout/stderr descriptors without duplicating them, so explicitly closing an initialized output fd publishes EOF while the process remains alive.
 - Read implemented Node runtime flags from `NODE_OPTIONS`, including ordered require/import preloads in children, while keeping injected flags out of `process.execArgv`. Ports [oven-sh/bun#40328](https://github.com/oven-sh/bun/pull/40328). Thanks @robobun!
 - Preserve emitted MessagePort and parentPort payloads and return listener presence from `emit()`. Ports [oven-sh/bun#35796](https://github.com/oven-sh/bun/pull/35796). Thanks @robobun!
+
+- Drain the calling VM's concurrent JIT plans before `Bun.gc(true)`, `globalThis.gc()`, and `bun:jsc` full collections so compiler roots do not retain otherwise unreachable objects.

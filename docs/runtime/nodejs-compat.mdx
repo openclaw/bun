@@ -263,6 +263,8 @@ Writes also reach the shared environment when value coercion creates the first w
 
 The following list covers the globals implemented by Node.js and Bun's compatibility status for each.
 
+With `--expose-gc`, `globalThis.gc()` performs a synchronous full collection, like `Bun.gc(true)`. Both wait for the calling VM's concurrent JavaScript compilation plans so those plans do not retain otherwise unreachable objects during the collection.
+
 ### [`AbortController`](https://developer.mozilla.org/en-US/docs/Web/API/AbortController)
 
 🟢 Fully implemented.
