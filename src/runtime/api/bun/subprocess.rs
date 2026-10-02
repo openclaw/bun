@@ -1585,10 +1585,8 @@ pub(crate) extern "C" fn on_pipe_close(this: *mut bun_sys::windows::libuv::Pipe)
     drop(unsafe { bun_core::heap::take(this) });
 }
 
-/// `child_process` `stream._handle.setBlocking(fd, blocking)`: spawn sets the
-/// parent-end pipe fd nonblocking, so blocking `fs.readSync` IPC needs
-/// `O_NONBLOCK` cleared. Returns whether the flag was applied (`false` on
-/// Windows: no CRT fd, like Node).
+/// Toggle O_NONBLOCK for a stdio handle. Returns 0 or a negative POSIX errno;
+/// Windows child pipe handles have no CRT fd and report unsupported.
 #[bun_jsc::host_fn]
 pub(crate) fn set_stdio_blocking(
     _global_this: &JSGlobalObject,
@@ -1599,17 +1597,17 @@ pub(crate) fn set_stdio_blocking(
     #[cfg(windows)]
     {
         let _ = (fd, blocking_value);
-        Ok(JSValue::FALSE)
+        Ok(JSValue::js_number(-1.0))
     }
     #[cfg(not(windows))]
     {
         if fd < 0 {
-            return Ok(JSValue::FALSE);
+            return Ok(JSValue::js_number(-(bun_sys::E::EBADF as i32) as f64));
         }
         let nonblocking = blocking_value != JSValue::TRUE;
         match bun_sys::update_nonblocking(bun_sys::Fd::from_native(fd), nonblocking) {
-            Ok(()) => Ok(JSValue::TRUE),
-            Err(_) => Ok(JSValue::FALSE),
+            Ok(()) => Ok(JSValue::js_number(0.0)),
+            Err(err) => Ok(JSValue::js_number(-(err.errno as i32) as f64)),
         }
     }
 }

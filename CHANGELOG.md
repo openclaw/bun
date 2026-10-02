@@ -86,3 +86,4 @@
 - Keep JIT-optimized environment deletes connected to the shared store after `SHARE_ENV` promotion. Adapts the property-cache guard from [oven-sh/bun#38871](https://github.com/oven-sh/bun/pull/38871). Thanks @robobun!
 - Preserve literal post-script `--` arguments for direct Bun and Node-compatible file entrypoints, including preloads, while retaining command separator handling for `bun run` and package scripts.
 - Include nonenumerable CommonJS data exports in modules with `__esModule` and accessors, matching Node without exposing nonenumerable getters.
+- Support POSIX `process.stdout` and `process.stderr` `_handle.setBlocking()` so native writers can clear nonblocking mode and avoid truncated pipe output.

@@ -90,6 +90,21 @@ export function getStdioWriteStream(
   stream._isStdio = true;
   stream.fd = fd;
 
+  if (
+    process.platform !== "win32" &&
+    (isTTY || fdType === BunProcessStdinFdType.pipe || fdType === BunProcessStdinFdType.socket)
+  ) {
+    const setStdioBlocking = $newRustFunction("subprocess.rs", "setStdioBlocking", 2);
+    stream._handle = {
+      get fd() {
+        return fd;
+      },
+      setBlocking(blocking) {
+        return setStdioBlocking(fd, !!blocking);
+      },
+    };
+  }
+
   const underlyingSink = stream[require("internal/fs/streams").kWriteStreamFastPath];
   $assert(underlyingSink);
   return [stream, underlyingSink];

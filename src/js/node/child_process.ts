@@ -88,7 +88,7 @@ class StdioPipeHandle {
   setBlocking(blocking) {
     const fd = this.fd;
     if (fd < 0) return false;
-    return setStdioBlocking(fd, !!blocking);
+    return setStdioBlocking(fd, !!blocking) === 0;
   }
 }
 

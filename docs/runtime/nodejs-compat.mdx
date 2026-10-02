@@ -161,6 +161,8 @@ Socket close notifications use internal scheduling and continue to run when user
 
 Direct file execution preserves a literal `--` after the script name in `process.argv`, including with `--import` preloads. Explicit `bun run` commands and package scripts consume one separator.
 
+On POSIX, piped and terminal `process.stdout` and `process.stderr` expose `_handle.fd` and `_handle.setBlocking()` for native writers. Regular-file output has no `_handle`.
+
 `process.rawListeners()` returns stable once wrappers with a `.listener` reference to the original callback. `process.listeners()` returns the original callbacks. Duplicate callbacks keep separate registrations, and removing a callback or wrapper removes its last matching registration. A re-registered once wrapper removes one matching registration when first called; later calls do nothing, and any remaining registrations stay visible to `listenerCount()`.
 
 `process.report` preserves the full original startup command line, including the executable, flags, script, and user arguments, independently of later `process.argv` or `process.execArgv` changes.
