@@ -44,9 +44,9 @@ use bun_paths as path;
 use bun_paths::platform;
 #[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
 use bun_paths::resolve_path::join_z_buf_spill;
+use bun_sys::{self as sys, E, Tag};
 #[cfg(not(any(windows, target_os = "macos")))]
 use bun_sys::{Fd, FdExt};
-use bun_sys::{self as sys, E, Tag};
 use bun_threading::Mutex;
 use bun_wyhash::hash;
 
