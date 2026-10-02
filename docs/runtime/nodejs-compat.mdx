@@ -188,7 +188,7 @@ Socket close notifications use internal scheduling and continue to run when user
 
 ### [`node:process`](https://nodejs.org/api/process.html)
 
-Initializing `process.stdout` or `process.stderr` does not retain a duplicate pipe writer. Explicitly closing the underlying descriptor publishes EOF while the process remains alive. On POSIX, socket and pipe stdio use nonblocking writes. `end()` and pipeline completion flush pending output and shut down the write side of socket stdio, so peers receive EOF before process exit. Actual pipes stay open until process exit or explicit descriptor closure. `destroy()` preserves fd 1/2; after socket or pipe finalization, later stream writes fail with `EPIPE`.
+Initializing `process.stdout` or `process.stderr` does not retain a duplicate pipe writer. Explicitly closing the underlying descriptor publishes EOF while the process remains alive. On POSIX, socket and pipe stdio use nonblocking writes. `end()` and pipeline completion flush pending output and shut down the write side of socket stdio, so peers receive EOF before process exit. Actual pipes stay open until process exit or explicit descriptor closure. `destroy()` preserves fd 1/2; after POSIX socket or pipe finalization, later stream writes fail with `EPIPE`. On Windows, piped stdout/stderr reset their writable state after `end()` or pipeline completion and accept subsequent writes.
 
 `NODE_OPTIONS` applies Bun-supported Node runtime flags before command-line arguments, including `--require`/`-r` and `--import` preloads. Injected flags are absent from `process.execArgv`. Unsupported Node flags remain ignored; flags outside the Node allowlist warn and are ignored. `process.config.variables.node_without_node_options` remains `true` because support is partial.
 

@@ -61,6 +61,9 @@ export function getStdioWriteStream(
     // to match Node.js behavior where they become Duplex streams (Socket)
     // But when redirected to a file, they shouldn't have it
     if (fdType === BunProcessStdinFdType.pipe || fdType === BunProcessStdinFdType.socket) {
+      // Finish must reach the stdio _destroy override, which resets Writable
+      // state. Windows pipes remain writable after end(), as in Node.
+      stream._writableState.autoDestroy = true;
       if (process.platform !== "win32") {
         const shutdownStdio = $newCppFunction("BunProcess.cpp", "jsFunctionShutdownStdio", 2);
         const { ErrnoException } = require("internal/shared");
@@ -69,7 +72,6 @@ export function getStdioWriteStream(
         const writev = stream._writev;
         const final = stream._final;
         let shutdown = false;
-        stream._writableState.autoDestroy = true;
         stream._write = function (chunk, encoding, cb) {
           if (shutdown) return cb(new ErrnoException(epipe, "write"));
           return write.$call(this, chunk, encoding, cb);
