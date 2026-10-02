@@ -4,6 +4,7 @@ import { exists, writeFile } from "fs/promises";
 import { bunExe, bunEnv as env, readdirSorted, tmpdirSync } from "harness";
 import { join } from "path";
 
+// OpenClaw fork policy: explicitly enable the auto-install behavior tested here.
 it.concurrent("should download dependency to run local file", async () => {
   const run_dir = tmpdirSync();
   await writeFile(
@@ -19,7 +20,7 @@ console.log(minify("print(6 * 7)").code);
     stderr: stderr1,
     exited: exited1,
   } = spawn({
-    cmd: [bunExe(), "run", "test.js"],
+    cmd: [bunExe(), "--install=auto", "run", "test.js"],
     cwd: run_dir,
     stdout: "pipe",
     stdin: "pipe",
@@ -44,7 +45,7 @@ console.log(minify("print(6 * 7)").code);
     stderr: stderr2,
     exited: exited2,
   } = spawn({
-    cmd: [bunExe(), "test.js"],
+    cmd: [bunExe(), "--install=auto", "test.js"],
     cwd: run_dir,
     stdout: "pipe",
     stdin: "pipe",
@@ -84,7 +85,7 @@ for (const entry of await decompress(Buffer.from(buffer))) {
     stderr: stderr1,
     exited: exited1,
   } = spawn({
-    cmd: [bunExe(), "test.js"],
+    cmd: [bunExe(), "--install=auto", "test.js"],
     cwd: run_dir,
     stdout: "pipe",
     stdin: "pipe",
@@ -117,7 +118,7 @@ for (const entry of await decompress(Buffer.from(buffer))) {
     stderr: stderr2,
     exited: exited2,
   } = spawn({
-    cmd: [bunExe(), "run", "test.js"],
+    cmd: [bunExe(), "--install=auto", "run", "test.js"],
     cwd: run_dir,
     stdout: "pipe",
     stdin: "pipe",
@@ -155,7 +156,7 @@ import { prueba } from "pruebadfasdfasdkafasdyuif.js";
   `,
   );
   const { exited: exited } = spawn({
-    cmd: [bunExe(), "test.js"],
+    cmd: [bunExe(), "--install=auto", "test.js"],
     cwd: run_dir,
     stdin: null,
     stdout: "pipe",
