@@ -55,6 +55,7 @@ const resolvedContexts = new Map<
 // A resolve-only lookup must retain the native identity when its returned
 // filesystem URL is subsequently loaded while hooks remain registered.
 const builtinURLs = new Map<string, string>();
+const nativeURLs = new Map<string, string>();
 
 function updateNativeHooksCounts() {
   setNativeHooksCounts(resolveHooks.length, loadHooks.length + resolvedContexts.size);
@@ -107,11 +108,20 @@ function registerHooks(hooks) {
 function nativeBuiltinSpecifier(specifier) {
   if (specifier === undefined) return undefined;
   if (specifier.startsWith("bun-builtin:")) {
-    const name = getNativeBuiltinSpecifier(specifier.slice(12));
-    return name?.includes(":") && name !== "bun:ffi" ? undefined : name;
+    return nativeURLs.get(specifier);
   }
   if (specifier.startsWith("node:internal/")) return getNativeBuiltinSpecifier(specifier.slice(5));
   return getNativeBuiltinSpecifier(specifier);
+}
+
+function nativeVirtualSpecifier(url) {
+  if (typeof url === "string" && url.startsWith("bun-virtual:")) return nativeURLs.get(url);
+}
+
+function virtualModuleURL(specifier) {
+  const url = "bun-virtual:" + encodeURIComponent(specifier);
+  nativeURLs.set(url, specifier);
+  return url;
 }
 
 function convertCJSFilenameToURL(filename) {
@@ -120,12 +130,16 @@ function convertCJSFilenameToURL(filename) {
   const builtin = nativeBuiltinSpecifier(filename);
   if (builtin !== undefined) {
     if (builtin.startsWith("internal/")) return "node:" + builtin;
-    return builtin.includes(":") ? builtin : "bun-builtin:" + builtin;
+    if (builtin.includes(":")) return builtin;
+    const url = "bun-builtin:" + builtin;
+    nativeURLs.set(url, builtin);
+    return url;
   }
   if (isAbsolute(filename)) {
     return pathToFileURL(filename).href;
   }
-  return filename;
+  if (URL.canParse(filename)) return filename;
+  return filename.includes(":") ? virtualModuleURL(filename) : pathToFileURL(filename).href;
 }
 
 function convertURLToCJSFilename(url) {
@@ -302,6 +316,7 @@ function resolveWithHooks(specifier, parentURL, importAttributes, conditions, de
 // from the extension (Bun's native loader re-derives package.json semantics
 // itself, so this only feeds the hooks' `context`/result observability).
 function defaultEsmFormat(filename) {
+  if (filename.startsWith("bun-virtual:")) return "builtin";
   if (filename.startsWith("node:") || nativeBuiltinSpecifier(filename) !== undefined) return "builtin";
   if (filename.startsWith("data:")) {
     const mime = filename.slice(5, filename.indexOf(",")).split(";", 1)[0];
@@ -348,32 +363,33 @@ function runResolveHooksBun(specifier, referrer, isESM, isUserRequireResolve, at
       throw $ERR_INVALID_ARG_VALUE("context.conditions", nextConditions, "expected an array");
     }
     if (isESM && spec.slice(0, 5).toLowerCase() === "data:") return { __proto__: null, url: new URL(spec).href };
+    if (nativeVirtualSpecifier(spec) !== undefined) return { __proto__: null, url: spec, format: "builtin" };
+    const parent = context.parentURL ?? referrer;
+    const nativeParent = nativeVirtualSpecifier(parent) ?? parent;
     const directBuiltin = nativeBuiltinSpecifier(spec);
     const nativeURL =
-      directBuiltin === undefined
-        ? nativeDefaultResolve(spec, context.parentURL ?? referrer, isESM, isUserRequireResolve, nextConditions)
-        : undefined;
-    const builtin = directBuiltin ?? nativeBuiltinSpecifier(nativeURL);
+      spec.startsWith("bun-builtin:") && directBuiltin !== undefined
+        ? directBuiltin
+        : nativeDefaultResolve(spec, nativeParent, isESM, isUserRequireResolve, nextConditions);
+    // Native plugins may use our URL scheme names as their own namespaces.
+    if (nativeURL.startsWith("bun-virtual:") || nativeURL.startsWith("bun-builtin:")) {
+      return { __proto__: null, url: virtualModuleURL(nativeURL), format: "builtin" };
+    }
+    const builtin = nativeBuiltinSpecifier(nativeURL);
     if (builtin !== undefined) {
       let url;
       if (builtin.startsWith("node:")) {
-        url = directBuiltin === undefined ? builtin : spec.startsWith("node:") ? spec : "node:" + spec;
+        url = directBuiltin === builtin ? (spec.startsWith("node:") ? spec : "node:" + spec) : builtin;
       } else if (
         !spec.includes(":") &&
         builtin !== "bun" &&
         !spec.startsWith("internal/") &&
         !builtin.startsWith("internal:")
       ) {
-        url = nativeDefaultResolve(
-          spec,
-          context.parentURL ?? referrer,
-          isESM,
-          isUserRequireResolve,
-          nextConditions,
-          true,
-        );
+        url = nativeDefaultResolve(spec, nativeParent, isESM, isUserRequireResolve, nextConditions, true);
       }
       url ??= builtin === "bun:ffi" ? "bun-builtin:ffi" : convertCJSFilenameToURL(builtin);
+      if (url.startsWith("bun-builtin:")) nativeURLs.set(url, builtin);
       builtinResolutions.set(url, builtin);
       return {
         __proto__: null,
@@ -394,7 +410,11 @@ function runResolveHooksBun(specifier, referrer, isESM, isUserRequireResolve, at
     return {
       __proto__: null,
       url: resolvedURL,
-      format: isESM && !resolvedURL.startsWith("node:") ? defaultEsmFormat(url) : undefined,
+      format: resolvedURL.startsWith("bun-virtual:")
+        ? "builtin"
+        : isESM && !resolvedURL.startsWith("node:")
+          ? defaultEsmFormat(url)
+          : undefined,
     };
   }
 
@@ -451,7 +471,8 @@ function getResolvedBuiltin(path) {
   return (
     resolvedContexts.get(url)?.builtin ??
     builtinURLs.get(url) ??
-    (path.startsWith("bun-builtin:") || path.startsWith("node:") ? nativeBuiltinSpecifier(path) : undefined)
+    nativeURLs.get(url) ??
+    (path.startsWith("node:") ? nativeBuiltinSpecifier(path) : undefined)
   );
 }
 
@@ -511,7 +532,7 @@ function runLoadHooksBun(path, loaderHint, moduleTypeHint, isCommonJSRequire) {
   const resolved = resolvedContexts.get(key);
   if (resolvedContexts.delete(key)) updateNativeHooksCounts();
   const url = resolved?.url ?? key;
-  const builtin = resolved?.builtin ?? builtinURLs.get(url);
+  const builtin = resolved?.builtin ?? builtinURLs.get(url) ?? nativeVirtualSpecifier(url);
   if (resolved?.isESM) isCommonJSRequire = false;
   let format: string | null | undefined = resolved?.format;
   if (format === undefined && isCommonJSRequire && url.startsWith("node:")) {

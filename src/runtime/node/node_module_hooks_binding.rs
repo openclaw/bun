@@ -21,6 +21,7 @@ pub(crate) fn set_module_hooks_counts(
         (*vm).module_hooks_resolve_count = resolve_count.max(0) as u32;
         (*vm).module_hooks_load_count = load_count.max(0) as u32;
         if resolve_count > 0 || load_count > 0 {
+            (*vm).module_hooks_ever_registered = true;
             (*vm).transpiler.resolver.runtime_mutable_directories = true;
         }
     }

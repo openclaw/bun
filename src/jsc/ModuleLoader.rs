@@ -170,9 +170,14 @@ extern "C" fn Bun__fetchBuiltinModule(
 ) -> bool {
     jsc::mark_binding();
     // SAFETY: this global owns the live, thread-confined VM. Copy flags so no VM borrow spans a hook.
-    let hooks_active =
-        unsafe { (*jsc_vm).module_hooks_load_count > 0 && !(*jsc_vm).module_hooks_skip };
-    let replacement = if hooks_active {
+    let (hooks_active, native_url) = unsafe {
+        let vm = &*jsc_vm;
+        (
+            vm.module_hooks_load_count > 0 && !vm.module_hooks_skip,
+            crate::node_module_module::module_hooks_native_url(vm, specifier),
+        )
+    };
+    let replacement = if hooks_active || native_url {
         // SAFETY: the path is live and no VM borrow spans the JS metadata lookup.
         match unsafe { crate::cpp::Bun__getModuleHooksBuiltin(global_object, specifier) }.and_then(
             |value| {

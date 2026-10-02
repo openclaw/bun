@@ -401,6 +401,8 @@ pub struct VirtualMachine {
     /// True while the hook chain's default step runs its native resolution,
     /// so that resolution does not re-enter the hooks.
     pub module_hooks_skip: bool,
+    /// Hook-generated native URLs remain usable after the last hook deregisters.
+    pub module_hooks_ever_registered: bool,
 
     pub initial_script_execution_context_identifier: i32,
 
@@ -5498,7 +5500,18 @@ impl VirtualMachine {
             }
         }
 
-        // SAFETY: the synchronous JS hook has returned; no VM borrow spans that call.
+        // SAFETY: this copies the gate before the JS metadata lookup; no VM borrow spans it.
+        let native_url =
+            unsafe { crate::node_module_module::module_hooks_native_url(&*jsc_vm_ptr, specifier) };
+        if native_url {
+            // SAFETY: the global and specifier remain live through the synchronous lookup.
+            let native = unsafe { crate::cpp::Bun__getModuleHooksBuiltin(global, specifier) }?;
+            if !native.is_undefined_or_null() {
+                return Ok(Ok(specifier.clone()));
+            }
+        }
+
+        // SAFETY: synchronous JS calls have returned; no VM borrow spans them.
         let jsc_vm = unsafe { &mut *jsc_vm_ptr };
 
         // Bare/`node:` builtins: answer from the alias table before paying for UTF-8 copies and the resolver.

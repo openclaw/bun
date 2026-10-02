@@ -18,6 +18,13 @@ const replacements = [
   "next/dist/compiled/undici",
 ];
 const cases: [string, string, string, string][] = [];
+for (const specifier of ["ws", "ffi"]) {
+  for (const method of ["require", "import"]) {
+    for (const behavior of ["deregister-resolve", "deregister-load"]) {
+      cases.push([specifier, method, "missing", behavior]);
+    }
+  }
+}
 cases.push(["ws", "require", "installed", "tsconfig"], ["ws", "import", "installed", "tsconfig"]);
 cases.push(["ws", "require", "installed", "conditions"], ["ws", "import", "installed", "conditions"]);
 for (const specifier of replacements) {

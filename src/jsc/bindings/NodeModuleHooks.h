@@ -14,7 +14,9 @@ class GlobalObject;
 }
 
 extern "C" bool Bun__hasModuleHooks(void*);
+extern "C" bool Bun__moduleHooksNativeURL(void*, const BunString*);
 extern "C" bool Bun__moduleHooksShouldIntercept(const BunString*);
+extern "C" JSC::EncodedJSValue Bun__getModuleHooksBuiltin(Zig::GlobalObject*, const BunString*);
 extern "C" JSC::EncodedJSValue Bun__runModuleResolveHooks(Zig::GlobalObject*, const BunString*, const BunString*, bool, bool, JSC::EncodedJSValue = JSC::JSValue::encode(JSC::jsUndefined()), bool = false);
 
 extern "C" void Bun__discardModuleResolveContext(Zig::GlobalObject*, const BunString*);

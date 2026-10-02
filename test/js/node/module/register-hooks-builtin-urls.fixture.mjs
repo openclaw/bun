@@ -56,8 +56,9 @@ const importer = req("./caller.cjs");
 const events = [];
 const requested = behavior === "imports" ? "#replacement" : specifier;
 if (behavior === "imports") put("package.json", JSON.stringify({ imports: { "#replacement": specifier } }));
+let hook;
 if (behavior !== "no-hooks")
-  registerHooks({
+  hook = registerHooks({
     ...(behavior === "load-only"
       ? {}
       : {
@@ -66,13 +67,16 @@ if (behavior !== "no-hooks")
               spec,
               behavior === "conditions" ? { ...context, conditions: [...context.conditions, "development"] } : context,
             );
+            new URL(result.url);
             if (spec === requested) events.push({ phase: "resolve", url: result.url, format: result.format ?? null });
+            if (behavior === "deregister-resolve") hook.deregister();
             return result;
           },
         }),
     load(url, context, next) {
       events.push({ phase: "load", url, format: context.format ?? null });
       new URL(url);
+      if (behavior === "deregister-load") hook.deregister();
       if (behavior === "override")
         return { format: "module", source: "export default { overridden: 42 };", shortCircuit: true };
       return next(url, context);
@@ -85,7 +89,7 @@ try {
       ? req(behavior === "roundtrip" ? req.resolve(requested) : requested)
       : await importer(requested);
   if (behavior === "override") assert.equal(value.default?.overridden ?? value.overridden, 42);
-  if (behavior !== "no-hooks") {
+  if (behavior !== "no-hooks" && behavior !== "deregister-resolve") {
     const load = events.find(event => event.phase === "load");
     assert.ok(load, "the native replacement must reach the load hook");
     if (installed === "installed") assert.equal(load.url, targets[method]);

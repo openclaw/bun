@@ -33,6 +33,7 @@
 #include "isBuiltinModule.h"
 #include "AsyncContextFrame.h"
 #include "ImportMetaObject.h"
+#include "NodeModuleHooks.h"
 
 namespace Zig {
 
@@ -1052,6 +1053,20 @@ BUN_DEFINE_HOST_FUNCTION(jsFunctionMockModuleFactoryReject, (JSC::JSGlobalObject
 
 extern "C" JSC::EncodedJSValue Bun__runOnResolvePlugins(Zig::GlobalObject* globalObject, const BunString* namespaceString, const BunString* path, const BunString* from, const BunString* kind, BunPluginTarget target)
 {
+    String nativeName;
+    BunString nativeFrom;
+    if (Bun__moduleHooksNativeURL(globalObject->bunVM(), from)) {
+        auto& vm = JSC::getVM(globalObject);
+        auto scope = DECLARE_THROW_SCOPE(vm);
+        auto value = JSValue::decode(Bun__getModuleHooksBuiltin(globalObject, from));
+        RETURN_IF_EXCEPTION(scope, {});
+        if (value.isString()) {
+            nativeName = value.toWTFString(globalObject);
+            RETURN_IF_EXCEPTION(scope, {});
+            nativeFrom = Bun::toString(nativeName);
+            from = &nativeFrom;
+        }
+    }
     return globalObject->onResolvePlugins.run(globalObject, namespaceString, path, from, kind);
 }
 
@@ -1069,6 +1084,21 @@ Structure* createModuleMockStructure(JSC::VM& vm, JSC::JSGlobalObject* globalObj
 
 JSC::JSValue runVirtualModule(Zig::GlobalObject* globalObject, BunString* specifier, bool& wasModuleMock)
 {
+    String nativeName;
+    BunString nativeSpecifier;
+    // The request retains its native identity even if its final hook deregistered.
+    if (Bun__moduleHooksNativeURL(globalObject->bunVM(), specifier)) {
+        auto& vm = JSC::getVM(globalObject);
+        auto scope = DECLARE_THROW_SCOPE(vm);
+        auto value = JSValue::decode(Bun__getModuleHooksBuiltin(globalObject, specifier));
+        RETURN_IF_EXCEPTION(scope, {});
+        if (value.isString()) {
+            nativeName = value.toWTFString(globalObject);
+            RETURN_IF_EXCEPTION(scope, {});
+            nativeSpecifier = Bun::toString(nativeName);
+            specifier = &nativeSpecifier;
+        }
+    }
     auto fallback = [&]() -> JSC::JSValue {
         return JSValue::decode(Bun__runVirtualModule(globalObject, specifier));
     };

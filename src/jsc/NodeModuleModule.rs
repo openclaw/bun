@@ -258,6 +258,17 @@ pub extern "C" fn Bun__hasModuleHooks(vm: &VirtualMachine) -> bool {
     (vm.module_hooks_resolve_count > 0 || vm.module_hooks_load_count > 0) && !vm.module_hooks_skip
 }
 
+pub fn module_hooks_native_url(vm: &VirtualMachine, specifier: &BunString) -> bool {
+    vm.module_hooks_ever_registered
+        && (specifier.starts_with_ascii(b"bun-builtin:")
+            || specifier.starts_with_ascii(b"bun-virtual:"))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn Bun__moduleHooksNativeURL(vm: &VirtualMachine, specifier: &BunString) -> bool {
+    module_hooks_native_url(vm, specifier)
+}
+
 /// Reads the `{ source, loader, moduleType }` object returned by
 /// `runLoadHooksBun` in `internal/modules/customization_hooks.ts`.
 pub fn module_hooks_read_load_result(
