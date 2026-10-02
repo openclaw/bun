@@ -104,7 +104,8 @@ async function generateRegistryUser(username: string, password: string): Promise
 describe("auto-install", () => {
   test("symlinks (and junctions) are created correctly in the install cache", async () => {
     const { stdout, stderr, exited } = spawn({
-      cmd: [bunExe(), "--print", "require('is-number')"],
+      // OpenClaw fork policy: opt in to exercise the runtime install cache.
+      cmd: [bunExe(), "--install=auto", "--print", "require('is-number')"],
       cwd: packageDir,
       stdout: "pipe",
       stderr: "pipe",

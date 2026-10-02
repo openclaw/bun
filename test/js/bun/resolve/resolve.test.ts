@@ -1079,9 +1079,10 @@ describe.if(isWindows)("#30839 - imports entry pointing at a scoped package", ()
       for (const p of [root, join(root, "app"), join(root, "app", "main.js")]) {
         chmodSync(p, 0o777);
       }
-      cmd = ["runuser", "-u", "nobody", "--", bunExe(), join(root, "app", "main.js")];
+      // OpenClaw fork policy: opt in to reach package-manager initialization.
+      cmd = ["runuser", "-u", "nobody", "--", bunExe(), "--install=auto", join(root, "app", "main.js")];
     } else {
-      cmd = [bunExe(), join(root, "app", "main.js")];
+      cmd = [bunExe(), "--install=auto", join(root, "app", "main.js")];
     }
     // Execute-only: the spawn can chdir into it, but listing it fails.
     chmodSync(work, 0o111);

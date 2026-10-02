@@ -17,7 +17,7 @@ import { join } from "path";
 // registry, which would otherwise mask this test's pass/fail signal.
 test("auto-install: DirInfo.abs_path survives threadlocal buffer reuse across resolutions", async () => {
   using dir = tempDir("autoinstall-abs-path", {
-    // No package.json / node_modules so global_cache defaults to .auto (resolver.zig canUse).
+    // No package.json / node_modules so explicit .auto can install packages.
     // nanoid has `exports` with a `./non-secure` subpath, enabling the self-reference
     // branch at resolver.zig:1807. left-pad's cache folder name is longer than nanoid's,
     // so nanoid's cached abs_path slice becomes a truncated prefix of left-pad's path
@@ -40,9 +40,9 @@ test("auto-install: DirInfo.abs_path survives threadlocal buffer reuse across re
   });
 
   await using proc = Bun.spawn({
-    // Deliberately no -i / --install flag: default .auto prevents the auto-install
-    // fallback from masking the corrupted abs_path.
-    cmd: [bunExe(), "index.js"],
+    // OpenClaw fork policy requires opt-in. Use .auto, not fallback, so the
+    // auto-install fallback cannot mask the corrupted abs_path.
+    cmd: [bunExe(), "--install=auto", "index.js"],
     cwd: String(dir),
     // Use a per-test cache dir: a shared cache can be left half-populated (extracted dir
     // present, name/version symlink missing) if a prior run is killed mid-install, which

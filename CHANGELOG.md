@@ -93,3 +93,4 @@
 - Propagate synchronous `process.emit()` listener exceptions to the caller, preserving once-listener removal and stopping dispatch before later listeners.
 - Poll macOS file watches on their owning JavaScript event loop so kqueue coalesces bursts like Node, preserving directory watches, inode replacement, and unref behavior.
 - Emit queued HTTP upgrades immediately and defer built-in WebSocket adoption until earlier responses drain. Adapts [oven-sh/bun#43441](https://github.com/oven-sh/bun/pull/43441), preserving the fork's socket backpressure and pause behavior. Thanks @robobun!
+- Disable runtime auto-install by default in the OpenClaw fork, including workers and child processes; retain explicit CLI/bunfig opt-ins and package-manager installs.

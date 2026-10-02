@@ -3,7 +3,13 @@ title: "Auto-install"
 description: "Bun's automatic package installation feature for standalone script execution"
 ---
 
-If Bun finds no `node_modules` directory in the working directory or higher, it abandons Node.js-style module resolution in favor of the **Bun module resolution algorithm**.
+## OpenClaw fork: auto-install defaults off
+
+The OpenClaw fork disables automatic package installation during execution. A missing import throws a module-not-found error without fetching from the registry. This default also applies to workers and child processes running the fork.
+
+To opt in, pass `--install=auto`, `--install=fallback`, or `--install=force`, or set `install.auto` explicitly in `bunfig.toml`. Explicit `bun install`, `bun add`, `bun x`, and `bunx` commands keep their package-manager behavior.
+
+The following sections describe auto-install after you enable it. In `auto` mode, if Bun finds no `node_modules` directory during module resolution, it uses the **Bun module resolution algorithm**.
 
 Under Bun-style module resolution, Bun auto-installs every imported package on the fly into a [global module cache](/pm/global-cache) during execution. [`bun install`](/pm/cli/install) uses the same cache.
 

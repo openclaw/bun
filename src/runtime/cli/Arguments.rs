@@ -205,7 +205,7 @@ const RUNTIME_PARAMS_: &[ParamType] = &[
     ),
     parse_param!("--no-install                      Disable auto install in the Bun runtime"),
     parse_param!(
-        "--install <STR>                   Configure auto-install behavior. One of \"auto\" (default, auto-installs when no node_modules), \"fallback\" (missing packages only), \"force\" (always)."
+        "--install <STR>                   Configure auto-install behavior. One of \"disable\" (default), \"auto\" (when no node_modules), \"fallback\" (missing packages only), \"force\" (always)."
     ),
     parse_param!(
         "-i                                Auto-install dependencies during execution. Equivalent to --install=fallback."

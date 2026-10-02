@@ -3,10 +3,11 @@
 pub enum GlobalCache {
     allow_install,
     read_only,
-    #[default]
     auto,
     force,
     fallback,
+    // OpenClaw fork policy: runtime package downloads require explicit opt-in.
+    #[default]
     disable,
 }
 

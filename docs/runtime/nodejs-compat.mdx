@@ -9,6 +9,10 @@ Every day, Bun gets closer to 100% Node.js API compatibility. Popular frameworks
 
 We update this page regularly. It reflects the latest version of Bun's compatibility with _Node.js v26_.
 
+## OpenClaw fork: auto-install defaults off
+
+The OpenClaw fork reports missing runtime imports without downloading npm packages. This default covers scripts, workers, and child processes running the fork. You can opt in with `--install=auto|fallback|force` or an explicit bunfig `install.auto` setting. Package-manager commands (`bun install`, `bun add`, `bun x`, and `bunx`) are unchanged. See [Auto-install](/runtime/auto-install).
+
 ## Built-in Node.js modules
 
 ### [`node:assert`](https://nodejs.org/api/assert.html)

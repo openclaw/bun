@@ -398,7 +398,7 @@ impl Default for DebugOptions {
             silent: false,
             hot_reload: HotReload::None,
             watch_kill_signal: bun_core::SignalCode::DEFAULT,
-            global_cache: GlobalCache::auto,
+            global_cache: GlobalCache::default(),
             offline_mode_setting: None,
             run_in_bun: false,
             loaded_bunfig: false,

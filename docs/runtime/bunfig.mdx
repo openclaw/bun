@@ -481,7 +481,7 @@ saveTextLockfile = false
 
 ### `install.auto`
 
-Configure Bun's [auto-install](/runtime/auto-install) behavior. Default `"auto"` — when no `node_modules` folder is found, Bun installs dependencies on the fly during execution.
+Configure Bun's [auto-install](/runtime/auto-install) behavior. The OpenClaw fork defaults to `"disable"`. Set `"auto"` explicitly to install dependencies on the fly when no `node_modules` folder is found during module resolution.
 
 ```toml title="bunfig.toml" icon="settings"
 [install]
