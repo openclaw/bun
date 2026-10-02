@@ -253,12 +253,14 @@ pub(crate) fn create_stdio(global: &JSGlobalObject, frame: &CallFrame) -> JsResu
     let result = {
         let pollable = is_pollable(mode);
         sink.pollable.set(pollable);
+        sink.nonblocking.set(pollable);
         sink.is_socket.set(sys::S::ISSOCK(mode));
         sink.force_sync.set(true);
         sink.writer.with_mut(|writer| {
             writer.force_sync = true;
             let result = writer.start(fd, pollable);
             if let Some(poll) = writer.get_poll() {
+                poll.set_flag(bun_io::FilePollFlag::Nonblocking);
                 poll.set_flag(if sys::S::ISSOCK(mode) {
                     bun_io::FilePollFlag::Socket
                 } else {
