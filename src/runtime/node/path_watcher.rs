@@ -15,7 +15,7 @@
 //!   PathWatcherManager        process-global, lazy, owns the OS resource
 //!     ├─ Linux:   one inotify fd + one reader thread, wd → PathWatcher map
 //!     ├─ macOS:   directories: fs_events.rs (one CFRunLoop thread, one FSEventStream)
-//!     │           files: the kqueue backend below, started on the first file watch
+//!     │           files: direct kqueue polling on their owning JavaScript loop
 //!     └─ FreeBSD: one kqueue fd + one reader thread, fd → PathWatcher map
 //!
 //!   PathWatcher               one per unique (realpath, recursive) — deduped
@@ -27,7 +27,7 @@
 
 use core::cell::{Cell, UnsafeCell};
 use core::ffi::c_void;
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "macos")))]
 use core::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
@@ -36,7 +36,7 @@ use bun_collections::{ArrayHashMap, StringArrayHashMap};
 use bun_core::ZBox;
 #[cfg(any(target_os = "linux", target_os = "android"))]
 use bun_core::strings;
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "macos")))]
 use bun_core::{Output, zstr};
 use bun_core::{ZStr, handle_oom};
 use bun_paths as path;
@@ -44,9 +44,9 @@ use bun_paths as path;
 use bun_paths::platform;
 #[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
 use bun_paths::resolve_path::join_z_buf_spill;
-#[cfg(not(windows))]
-use bun_sys::FdExt;
-use bun_sys::{self as sys, E, Fd, Tag};
+#[cfg(not(any(windows, target_os = "macos")))]
+use bun_sys::{Fd, FdExt};
+use bun_sys::{self as sys, E, Tag};
 use bun_threading::Mutex;
 use bun_wyhash::hash;
 
@@ -98,30 +98,26 @@ pub(crate) struct PathWatcherManager {
 
     /// Platform-specific dispatch maps (inotify wd_map / kqueue entries).
     /// Interior-mutable for the same reason as `watchers`.
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_os = "macos")))]
     platform: UnsafeCell<Platform>,
 
-    /// inotify/kqueue fd. Written before the reader thread spawns (Linux and
-    /// FreeBSD: `Platform::init`; macOS: `Kqueue::start` under `mutex`, on the
-    /// first file watch) and not after. Hoisted out of `UnsafeCell<Platform>` so
-    /// reads are safe `Cell::get()` instead of raw deref.
-    #[cfg(not(windows))]
+    /// Published before the Linux/FreeBSD reader thread starts.
+    #[cfg(not(any(windows, target_os = "macos")))]
     platform_fd: Cell<Fd>,
 
     /// Reader-thread loop flag. Initialized `true`, never cleared (no teardown).
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_os = "macos")))]
     running: AtomicBool,
 
     /// Monotonic kevent generation counter (kqueue backend). Bumped under `mutex`.
     /// `Cell` so the bump is a safe `.get()/.set()` instead of a raw deref.
-    #[cfg(any(target_os = "macos", target_os = "freebsd"))]
+    #[cfg(target_os = "freebsd")]
     next_gen: Cell<usize>,
 }
 
 // SAFETY: all interior-mutable state (`watchers`, `retired`, `platform`
 // dispatch maps, `next_gen`) is only accessed while holding `mutex`. `running` is atomic.
-// `platform_fd` is written before the reader thread spawns (on macOS under
-// `mutex`, which every JS-thread read also holds) and not afterwards, so
+// `platform_fd` is written before the reader thread spawns and not afterwards, so
 // cross-thread `Cell::get()` reads observe only the publish ordered by the spawn
 // happens-before — no data race. The manager is a process-global singleton
 // shared between the JS thread(s) and the reader thread.
@@ -138,13 +134,13 @@ impl Default for PathWatcherManager {
             watchers: UnsafeCell::new(StringArrayHashMap::default()),
             #[cfg(not(windows))]
             retired: UnsafeCell::new(Vec::new()),
-            #[cfg(not(windows))]
+            #[cfg(not(any(windows, target_os = "macos")))]
             platform: UnsafeCell::new(Platform::default()),
-            #[cfg(not(windows))]
+            #[cfg(not(any(windows, target_os = "macos")))]
             platform_fd: Cell::new(Fd::INVALID),
-            #[cfg(not(windows))]
+            #[cfg(not(any(windows, target_os = "macos")))]
             running: AtomicBool::new(true),
-            #[cfg(any(target_os = "macos", target_os = "freebsd"))]
+            #[cfg(target_os = "freebsd")]
             next_gen: Cell::new(1),
         }
     }
@@ -215,7 +211,7 @@ impl PathWatcherManager {
 
     /// Every live watcher: the dedup map plus the retired ones. Caller holds
     /// `mutex`.
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_os = "macos")))]
     fn all_watchers_locked(&self) -> impl Iterator<Item = *mut PathWatcher> + '_ {
         // SAFETY: caller holds self.mutex; shared access to both lists.
         unsafe {
@@ -229,7 +225,7 @@ impl PathWatcherManager {
 
     /// The reader thread's fd failed for good: every live watcher that `hit`
     /// accepts gets `err` and closes. Caller holds `mutex`.
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_os = "macos")))]
     fn fail_watchers_locked(&self, hit: impl Fn(&PathWatcher) -> bool, err: &sys::Error) {
         for w in self.all_watchers_locked() {
             // SAFETY: caller holds self.mutex; every listed watcher is live.
@@ -253,9 +249,8 @@ pub(crate) struct PathWatcher {
     /// Canonical absolute path (realpath of the user-supplied path). Owned.
     path: ZBox,
     recursive: bool,
-    /// The watched path is not a directory. On macOS this selects the backend:
-    /// kqueue for a file, FSEvents for a directory.
-    #[cfg(not(windows))]
+    /// The watched path is not a directory. Darwin files bypass this manager.
+    #[cfg(not(any(windows, target_os = "macos")))]
     is_file: bool,
     file_id: Option<(u64, u64)>,
 
@@ -328,13 +323,6 @@ impl PathWatcher {
                     is_file,
                 );
             }
-        }
-    }
-
-    #[cfg(target_os = "macos")]
-    fn emit_kqueue(&self, event_type: WatchEventKind, rel_path: &[u8]) {
-        for &ctx in self.handlers.keys() {
-            FSWatcher::on_kqueue_update(Some(ctx), event_type, rel_path);
         }
     }
 
@@ -445,6 +433,7 @@ impl PathWatcher {
             unsafe { (*this).manager = None };
             // SAFETY: exclusive under manager.mutex (the reader and CF threads
             // take it before touching the watcher); the borrow ends at the call.
+            #[cfg(not(target_os = "macos"))]
             Platform::remove_watch(manager, unsafe { &mut *this });
         }
         manager.mutex.unlock();
@@ -484,15 +473,13 @@ pub(crate) fn watch(
     callback: Callback,
     update_end: UpdateEndCallback,
     ctx: *mut c_void,
-) -> sys::Result<*mut PathWatcher> {
+) -> sys::Result<Option<*mut PathWatcher>> {
     // Assert the callback/updateEnd are what node_fs_watcher passes.
     // Compare against the *exact* fn pointers `FSWatcher` passes (not local wrappers,
     // which would be distinct fn items with distinct addresses).
     debug_assert!(callback as usize == FSWatcher::ON_PATH_UPDATE as usize);
     debug_assert!(update_end as usize == (FSWatcher::on_update_end as UpdateEndCallback) as usize);
     let _ = vm;
-
-    let manager = PathWatcherManager::get()?;
 
     // Resolve to a canonical path so `fs.watch("./x")` and `fs.watch("/abs/x")` dedup;
     // FSEvents reports events by realpath so macOS needs this for prefix matching too.
@@ -511,7 +498,7 @@ pub(crate) fn watch(
                 if e.get_errno() == E::ENOTDIR {
                     is_file = true;
                     // On macOS this fd is the one the kqueue watch registers
-                    // (`Darwin::add_file_watch`); O_EVTONLY marks it event-only so
+                    // on the owning JavaScript loop; O_EVTONLY marks it event-only so
                     // it does not pin the volume. `O.EVTONLY` is 0 elsewhere.
                     match sys::open(path, sys::O::PATH | sys::O::EVTONLY | sys::O::CLOEXEC, 0) {
                         Ok(f) => sys::File::from_fd(f),
@@ -532,6 +519,12 @@ pub(crate) fn watch(
         }
     };
 
+    #[cfg(target_os = "macos")]
+    if is_file {
+        FSWatcher::watch_file(ctx, probe, path::basename(resolved.as_bytes()))?;
+        return Ok(None);
+    }
+    let manager = PathWatcherManager::get()?;
     let mut key_buf = path::path_buffer_pool::get();
     let key = PathWatcherManager::make_key(key_buf.as_mut_slice(), resolved.as_bytes(), recursive);
     let file_id = if is_file {
@@ -551,7 +544,7 @@ pub(crate) fn watch(
             // SAFETY: existing is a live PathWatcher under manager.mutex.
             unsafe { handle_oom((*existing).handlers.put(ctx, ChangeEvent::default())) };
             manager.mutex.unlock();
-            return Ok(existing);
+            return Ok(Some(existing));
         }
         // The reader may not have processed the old inode's removal yet.
         manager.retire_watcher_locked(existing);
@@ -562,7 +555,7 @@ pub(crate) fn watch(
         manager: Some(manager),
         path: ZBox::from_bytes(resolved.as_bytes()),
         recursive,
-        #[cfg(not(windows))]
+        #[cfg(not(any(windows, target_os = "macos")))]
         is_file,
         file_id,
         handlers: ArrayHashMap::default(),
@@ -580,7 +573,7 @@ pub(crate) fn watch(
     // this PathWatcher in the interim is fine — it just appends a handler; events
     // won't deliver until the FSEventStream is scheduled anyway.
     #[cfg(target_os = "macos")]
-    if !is_file {
+    {
         manager.mutex.unlock();
 
         // SAFETY: watcher heap-allocated; reachable via dedup map but FSEvents not yet
@@ -617,34 +610,31 @@ pub(crate) fn watch(
             unsafe { PathWatcher::destroy(watcher) };
             return Err(err.without_path());
         }
-        return Ok(watcher);
+        return Ok(Some(watcher));
     }
 
-    // Linux/FreeBSD, and a file on macOS (kqueue): `addWatch` mutates the platform
-    // dispatch maps (wd_map/entries) which live under `manager.mutex`, so call it
-    // while still locked.
-    #[cfg(target_os = "macos")]
-    // SAFETY: watcher live under manager.mutex.
-    let added = Darwin::add_file_watch(manager, unsafe { &mut *watcher }, probe.into_raw());
     #[cfg(not(target_os = "macos"))]
-    // SAFETY: watcher live under manager.mutex.
-    let added = Platform::add_watch(manager, unsafe { &mut *watcher });
-    if let Err(err) = added {
-        // Still under the same lock as the map insertion, so no other thread
-        // can have observed `watcher` yet — unconditional destroy is safe.
-        manager.unlink_watcher_locked(watcher);
-        manager.mutex.unlock();
-        // SAFETY: no other thread observed watcher.
-        unsafe {
-            (*watcher).manager = None;
-            PathWatcher::destroy(watcher);
+    {
+        // The reader dispatch maps are protected by manager.mutex.
+        // SAFETY: watcher live under manager.mutex.
+        let added = Platform::add_watch(manager, unsafe { &mut *watcher });
+        if let Err(err) = added {
+            // Still under the same lock as the map insertion, so no other thread
+            // can have observed `watcher` yet — unconditional destroy is safe.
+            manager.unlink_watcher_locked(watcher);
+            manager.mutex.unlock();
+            // SAFETY: no other thread observed watcher.
+            unsafe {
+                (*watcher).manager = None;
+                PathWatcher::destroy(watcher);
+            }
+            // `Linux.addOne` builds the error with `.path = watcher.path`, which we
+            // just freed; strip it like every other return in this function.
+            return Err(err.without_path());
         }
-        // `Linux.addOne` builds the error with `.path = watcher.path`, which we
-        // just freed; strip it like every other return in this function.
-        return Err(err.without_path());
+        manager.mutex.unlock();
+        Ok(Some(watcher))
     }
-    manager.mutex.unlock();
-    Ok(watcher)
 }
 
 // ────────────────────────────────────────────────────────────────────────────────
@@ -1271,22 +1261,16 @@ use bun_watcher::inotify_watcher::Event as InotifyEvent;
 /// PathWatcher itself is the FSEventsWatcher's opaque ctx — `fs_events.rs` calls
 /// back via `on_fs_event` below, and we fan out to the JS handlers.
 ///
-/// A file watch uses the kqueue backend below, as libuv does: FSEvents reports a
-/// write to a file only when the writer closes it, kqueue's NOTE_WRITE on every
-/// write(2). The kqueue and its reader thread start on the first file watch.
+/// File watches register directly on the owning JS loop in `darwin_file_watch`.
 #[cfg(target_os = "macos")]
 #[derive(Default)]
-pub(crate) struct Darwin {
-    kq: Kqueue,
-}
+pub(crate) struct Darwin;
 
 #[cfg(target_os = "macos")]
 #[derive(Default)]
 pub(crate) struct DarwinWatch {
     /// Set for a directory watch.
     fsevents: Option<*mut fsevents::FSEventsWatcher>,
-    /// Populated for a file watch.
-    kq: KqueueWatch,
 }
 
 #[cfg(target_os = "macos")]
@@ -1301,44 +1285,10 @@ impl Drop for DarwinWatch {
 }
 
 #[cfg(target_os = "macos")]
-impl PathWatcherManager {
-    /// The kqueue dispatch map. Caller holds `mutex`.
-    #[inline]
-    fn kqueue(&self) -> *mut Kqueue {
-        // SAFETY: `platform` is only reached under `mutex`; projecting a field
-        // through the raw pointer asserts nothing.
-        unsafe { &raw mut (*self.platform.get()).kq }
-    }
-}
-
-#[cfg(target_os = "macos")]
-impl PathWatcher {
-    #[inline]
-    fn kqueue_watch(&mut self) -> &mut KqueueWatch {
-        &mut self.platform.kq
-    }
-}
-
-#[cfg(target_os = "macos")]
 impl Darwin {
     fn init() -> sys::Result<&'static PathWatcherManager> {
         // SAFETY: just allocated; nothing after this can fail.
         Ok(unsafe { &*bun_core::heap::into_raw(Box::new(PathWatcherManager::default())) })
-    }
-
-    /// Register a file with kqueue. Caller holds `manager.mutex` and hands over
-    /// `fd`, the event-only descriptor `watch()` opened to resolve the path.
-    /// The descriptor is closed on error.
-    fn add_file_watch(
-        manager: &'static PathWatcherManager,
-        watcher: &mut PathWatcher,
-        fd: Fd,
-    ) -> sys::Result<()> {
-        if let Err(err) = Kqueue::ensure_started(manager) {
-            fd.close();
-            return Err(err);
-        }
-        Kqueue::register(manager, watcher, fd, b"", true)
     }
 
     /// Caller does NOT hold `manager.mutex` — `FSEvents.watch()` takes the FSEvents
@@ -1370,14 +1320,6 @@ impl Darwin {
                 },
                 Tag::watch,
             )),
-        }
-    }
-
-    /// Caller holds `manager.mutex`. Releases the kqueue entry of a file watch;
-    /// a directory watch is torn down by `remove_fsevents_watch` instead.
-    fn remove_watch(manager: &'static PathWatcherManager, watcher: &mut PathWatcher) {
-        if watcher.is_file {
-            Kqueue::remove_watch(manager, watcher);
         }
     }
 
@@ -1457,22 +1399,17 @@ impl Darwin {
 }
 
 // ────────────────────────────────────────────────────────────────────────────────
-// Kqueue (FreeBSD, and files on macOS)
+// Kqueue (FreeBSD)
 // ────────────────────────────────────────────────────────────────────────────────
 
-/// kqueue constants of the host. The two platforms expose the same names under
-/// different `bun_sys` modules.
-#[cfg(target_os = "macos")]
-use bun_sys::darwin::{EV, EVFILT, NOTE};
 #[cfg(target_os = "freebsd")]
 use bun_sys::freebsd::{EV, EVFILT, NOTE};
 
 /// One kqueue fd, one blocking reader thread, per-watch open file descriptors
 /// registered with EVFILT_VNODE. kqueue gives no filenames, so directory events
 /// (FreeBSD only) surface as a bare `rename` with an empty path — same behaviour
-/// as libuv on FreeBSD; callers are expected to re-scan. On macOS only files are
-/// registered here; directories go through FSEvents (see `Darwin`).
-#[cfg(any(target_os = "macos", target_os = "freebsd"))]
+/// as libuv on FreeBSD; callers are expected to re-scan.
+#[cfg(target_os = "freebsd")]
 #[derive(Default)]
 pub(crate) struct Kqueue {
     /// ident (fd number) → entry (by value — avoids a per-entry heap alloc for
@@ -1481,7 +1418,7 @@ pub(crate) struct Kqueue {
     entries: ArrayHashMap<i32, KqEntry>,
 }
 
-#[cfg(any(target_os = "macos", target_os = "freebsd"))]
+#[cfg(target_os = "freebsd")]
 struct KqEntry {
     /// Raw `*mut`. See `WdOwner.watcher` — stored long-lived, dereferenced
     /// under `manager.mutex`; outlives the entry because
@@ -1494,14 +1431,14 @@ struct KqEntry {
     is_file: bool,
 }
 
-#[cfg(any(target_os = "macos", target_os = "freebsd"))]
+#[cfg(target_os = "freebsd")]
 #[derive(Default)]
 pub(crate) struct KqueueWatch {
     fds: Vec<i32>,
 }
 // Drop: Vec frees automatically.
 
-#[cfg(any(target_os = "macos", target_os = "freebsd"))]
+#[cfg(target_os = "freebsd")]
 impl PathWatcherManager {
     /// The kqueue fd. Written in [`Kqueue::start`] before the reader thread is
     /// spawned, and reset to `INVALID` under `mutex` when that thread exits, so
@@ -1528,7 +1465,7 @@ impl PathWatcher {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "freebsd"))]
+#[cfg(target_os = "freebsd")]
 impl Kqueue {
     #[cfg(target_os = "freebsd")]
     fn init() -> sys::Result<&'static PathWatcherManager> {
@@ -1544,16 +1481,6 @@ impl Kqueue {
             return Err(err);
         }
         Ok(manager)
-    }
-
-    /// macOS: the first file watch creates the kqueue and its reader thread.
-    /// Caller holds `manager.mutex`.
-    #[cfg(target_os = "macos")]
-    fn ensure_started(manager: &'static PathWatcherManager) -> sys::Result<()> {
-        if manager.platform_fd.get() != Fd::INVALID {
-            return Ok(());
-        }
-        Kqueue::start(manager)
     }
 
     /// Create the kqueue and spawn the detached reader thread. On failure
@@ -1713,20 +1640,10 @@ impl Kqueue {
                     // `sys::kevent` retried EINTR; anything else is fatal, as in
                     // the inotify reader.
                     manager.mutex.lock();
-                    // macOS: directory watches live on FSEvents, not on this kqueue.
                     manager.fail_watchers_locked(
-                        |w| cfg!(target_os = "freebsd") || w.is_file,
+                        |_| true,
                         &sys::Error::from_code(err.get_errno(), Tag::kevent),
                     );
-                    // macOS: the next file watch starts a fresh kqueue and reader.
-                    // On EBADF the number is no longer ours to close.
-                    #[cfg(target_os = "macos")]
-                    {
-                        if err.get_errno() != E::EBADF {
-                            kq.close();
-                        }
-                        manager.platform_fd.set(Fd::INVALID);
-                    }
                     manager.mutex.unlock();
                     return;
                 }
@@ -1761,14 +1678,6 @@ impl Kqueue {
                 let watcher = unsafe { &*entry.watcher };
                 let watcher_path: &[u8] = watcher.path.as_bytes();
 
-                // https://github.com/nodejs/node/blob/v24.21.0/deps/uv/src/unix/kqueue.c#L487
-                #[cfg(target_os = "macos")]
-                let event_type = if kev.fflags & (NOTE::ATTRIB | NOTE::EXTEND) != 0 {
-                    WatchEventKind::Change
-                } else {
-                    WatchEventKind::Rename
-                };
-                #[cfg(not(target_os = "macos"))]
                 let event_type: WatchEventKind = if kev.fflags
                     & (NOTE::DELETE | NOTE::RENAME | NOTE::REVOKE | NOTE::LINK)
                     != 0
@@ -1786,9 +1695,6 @@ impl Kqueue {
                     entry.subpath.as_bytes()
                 };
 
-                #[cfg(target_os = "macos")]
-                watcher.emit_kqueue(event_type, rel);
-                #[cfg(not(target_os = "macos"))]
                 watcher.emit(event_type, rel, entry.is_file);
                 let _ = handle_oom(touched.get_or_put(entry.watcher));
 

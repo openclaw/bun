@@ -217,6 +217,8 @@ pub enum PollTag {
     ParentDeathWatchdog,
     LifecycleScriptSubprocessOutputReader,
     MemoryPressure,
+    #[cfg(target_os = "macos")]
+    FSWatcher,
 }
 
 /// Compatibility module — call sites in `bun_runtime`/`bun_install` still spell
@@ -315,6 +317,8 @@ impl FilePoll {
         flags.remove(Flags::Process);
         flags.remove(Flags::Machport);
         flags.remove(Flags::MemoryPressure);
+        #[cfg(target_os = "macos")]
+        flags.remove(Flags::Vnode);
         flags.remove(Flags::Eof);
         flags.remove(Flags::Hup);
 
@@ -349,10 +353,11 @@ impl FilePoll {
         #[cfg(all(target_os = "macos", debug_assertions))]
         debug_assert!(self.generation_number == kqueue_event.ext[0] as usize);
 
-        // EVFILT_MEMORYSTATUS reports the pressure level in `fflags`, not `data`;
-        // thread it through `size_or_offset` so the dispatch arm can read it.
+        // These filters report their payload in `fflags`, not `data`.
         #[cfg(target_os = "macos")]
-        if kqueue_event.filter == bun_sys::darwin::EVFILT::MEMORYSTATUS {
+        if kqueue_event.filter == bun_sys::darwin::EVFILT::MEMORYSTATUS
+            || kqueue_event.filter == bun_sys::darwin::EVFILT::VNODE
+        {
             self.on_update(kqueue_event.fflags as i64);
             return;
         }
@@ -418,6 +423,10 @@ impl FilePoll {
     }
 
     pub fn is_registered(&self) -> bool {
+        #[cfg(target_os = "macos")]
+        if self.flags.contains(Flags::PollVnode) {
+            return true;
+        }
         self.flags.contains(Flags::PollWritable)
             || self.flags.contains(Flags::PollReadable)
             || self.flags.contains(Flags::PollProcess)
@@ -729,6 +738,20 @@ impl FilePoll {
                 },
                 // System-wide memory pressure. ident is always 0; EV_CLEAR so each
                 // transition delivers once (matches libdispatch's registration).
+                Flags::Vnode => kevent64_s {
+                    ident: u64::try_from(fd.native()).expect("int cast"),
+                    filter: EVFILT::VNODE,
+                    data: 0,
+                    fflags: NOTE::ATTRIB
+                        | NOTE::WRITE
+                        | NOTE::RENAME
+                        | NOTE::DELETE
+                        | NOTE::EXTEND
+                        | NOTE::REVOKE,
+                    udata: Pollable::init(self).ptr() as u64,
+                    flags: EV::ADD | one_shot_flag,
+                    ext: [self.generation_number as u64, 0],
+                },
                 Flags::MemoryPressure => kevent64_s {
                     ident: 0,
                     filter: EVFILT::MEMORYSTATUS,
@@ -879,6 +902,8 @@ impl FilePoll {
             Flags::Writable => Flags::PollWritable,
             Flags::Machport => Flags::PollMachport,
             Flags::MemoryPressure => Flags::PollMemoryPressure,
+            #[cfg(target_os = "macos")]
+            Flags::Vnode => Flags::PollVnode,
             _ => unreachable!(),
         });
         self.flags.remove(Flags::NeedsRearm);
@@ -938,6 +963,8 @@ impl FilePoll {
             || self.flags.contains(Flags::PollProcess)
             || self.flags.contains(Flags::PollMachport)
             || self.flags.contains(Flags::PollMemoryPressure);
+        #[cfg(target_os = "macos")]
+        let registered = registered || self.flags.contains(Flags::PollVnode);
         // The `needs_rearm` skip below keeps the disarmed kernel registration, so teardown must still delete it.
         let disarmed_only = !registered && self.flags.contains(Flags::NeedsRearm);
         if !registered && !(disarmed_only && force_unregister) {
@@ -964,6 +991,10 @@ impl FilePoll {
             if self.flags.contains(Flags::PollMemoryPressure) {
                 break 'brk Flags::MemoryPressure;
             }
+            #[cfg(target_os = "macos")]
+            if self.flags.contains(Flags::PollVnode) {
+                break 'brk Flags::Vnode;
+            }
             return sys::Result::Ok(());
         };
 
@@ -978,6 +1009,8 @@ impl FilePoll {
             self.flags.remove(Flags::PollWritable);
             self.flags.remove(Flags::PollMachport);
             self.flags.remove(Flags::PollMemoryPressure);
+            #[cfg(target_os = "macos")]
+            self.flags.remove(Flags::PollVnode);
             return sys::Result::Ok(());
         }
 
@@ -1046,6 +1079,15 @@ impl FilePoll {
                     } else {
                         EVFILT::PROC
                     },
+                    data: 0,
+                    fflags: 0,
+                    udata: Pollable::init(self).ptr() as u64,
+                    flags: EV::DELETE,
+                    ext: [0, 0],
+                },
+                Flags::Vnode => kevent64_s {
+                    ident: u64::try_from(fd.native()).expect("int cast"),
+                    filter: EVFILT::VNODE,
                     data: 0,
                     fflags: 0,
                     udata: Pollable::init(self).ptr() as u64,
@@ -1181,6 +1223,8 @@ impl FilePoll {
         self.flags.remove(Flags::PollMachport);
         self.flags.remove(Flags::PollMemoryPressure);
         #[cfg(target_os = "macos")]
+        self.flags.remove(Flags::PollVnode);
+        #[cfg(target_os = "macos")]
         self.flags.remove(Flags::ProcessRetry);
 
         sys::Result::Ok(())
@@ -1218,6 +1262,8 @@ pub enum Flags {
     PollMachport,
     /// Poll for memory-pressure events (Darwin `EVFILT_MEMORYSTATUS`, Linux PSI `EPOLLPRI`)
     PollMemoryPressure,
+    #[cfg(target_os = "macos")]
+    PollVnode,
 
     // What did the event loop tell us?
     Readable,
@@ -1227,6 +1273,8 @@ pub enum Flags {
     Hup,
     Machport,
     MemoryPressure,
+    #[cfg(target_os = "macos")]
+    Vnode,
 
     // What is the type of file descriptor?
     Fifo,
@@ -1277,6 +1325,10 @@ impl Flags {
             #[cfg(target_os = "macos")]
             if kqueue_event.filter == EVFILT::MACHPORT {
                 flags.insert(Flags::Machport);
+            }
+            #[cfg(target_os = "macos")]
+            if kqueue_event.filter == EVFILT::VNODE {
+                flags.insert(Flags::Vnode);
             }
             #[cfg(target_os = "macos")]
             if kqueue_event.filter == EVFILT::MEMORYSTATUS {

@@ -852,6 +852,12 @@ pub(crate) unsafe fn __bun_run_file_poll(poll: *mut FilePoll, size_or_offset: i6
             // SAFETY: `proc` carries the +1 ref taken at queue time; this drops it.
             unsafe { Process::on_wait_pid_from_event_loop_task(proc) };
         }
+        #[cfg(target_os = "macos")]
+        bun_io::PollTag::FSWatcher => {
+            // SAFETY: this tag is registered with a heap-stable FSWatcher on its owning JS thread.
+            unsafe { &*owner.ptr.cast::<crate::node::node_fs_watcher::FSWatcher>() }
+                .on_file_poll(size_or_offset as u32);
+        }
         poll_tag::MEMORY_PRESSURE => {
             // SAFETY: `poll` is live per `__bun_run_file_poll`'s contract.
             crate::node::memory_pressure::on_poll(unsafe { &mut *poll }, size_or_offset);

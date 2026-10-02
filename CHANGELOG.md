@@ -91,4 +91,4 @@
 - Report allocated worker heap capacity in `Worker.getHeapStatistics().total_heap_size`, separately from occupied bytes in `used_heap_size`.
 - Make `process.title` and `--title` visible to OS process tools on Linux and macOS while preserving startup argv and worker-local assignments. Ports [oven-sh/bun#44318](https://github.com/oven-sh/bun/pull/44318). Thanks @tnrich!
 - Propagate synchronous `process.emit()` listener exceptions to the caller, preserving once-listener removal and stopping dispatch before later listeners.
-- Coalesce pending macOS file-watch events until JavaScript delivery, matching libuv event precedence while preserving directory watches and inode replacement. Adapts the pending-delivery approach from [oven-sh/bun#44008](https://github.com/oven-sh/bun/pull/44008). Thanks @robobun!
+- Poll macOS file watches on their owning JavaScript event loop so kqueue coalesces bursts like Node, preserving directory watches, inode replacement, and unref behavior.

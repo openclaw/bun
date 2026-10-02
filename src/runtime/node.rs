@@ -91,6 +91,9 @@ pub(crate) mod win_watcher;
 // Force-references `Bun__UVSignalHandle__init` / `Bun__UVSignalHandle__close`
 // for C++ (`src/jsc/bindings/BunProcess.cpp`). Must be `mod`-declared or the
 // `#[no_mangle]` exports are never compiled into the binary.
+#[cfg(target_os = "macos")]
+#[path = "node/darwin_file_watch.rs"]
+mod darwin_file_watch;
 #[path = "node/memory_pressure.rs"]
 pub(crate) mod memory_pressure;
 #[path = "node/node_fs_binding.rs"]
