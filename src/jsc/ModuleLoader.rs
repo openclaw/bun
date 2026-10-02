@@ -169,7 +169,7 @@ extern "C" fn Bun__fetchBuiltinModule(
     is_commonjs_require: bool,
 ) -> bool {
     jsc::mark_binding();
-    // No VM borrow may span a user hook, which can re-enter the resolver.
+    // SAFETY: this global owns the live, thread-confined VM. Copy flags so no VM borrow spans a hook.
     let hooks_active =
         unsafe { (*jsc_vm).module_hooks_load_count > 0 && !(*jsc_vm).module_hooks_skip };
     let observe_builtin = hooks_active && {
@@ -220,6 +220,7 @@ extern "C" fn Bun__fetchBuiltinModule(
             }
         }
     }
+    // SAFETY: the VM remains live, and the user hook has returned before this shared borrow.
     match __bun_fetch_builtin_module(unsafe { &*jsc_vm }, global_object, specifier) {
         Some(resolved) => {
             *ret = ErrorableResolvedSource::ok(resolved);
