@@ -92,3 +92,4 @@
 - Make `process.title` and `--title` visible to OS process tools on Linux and macOS while preserving startup argv and worker-local assignments. Ports [oven-sh/bun#44318](https://github.com/oven-sh/bun/pull/44318). Thanks @tnrich!
 - Propagate synchronous `process.emit()` listener exceptions to the caller, preserving once-listener removal and stopping dispatch before later listeners.
 - Poll macOS file watches on their owning JavaScript event loop so kqueue coalesces bursts like Node, preserving directory watches, inode replacement, and unref behavior.
+- Emit queued HTTP upgrades immediately and defer built-in WebSocket adoption until earlier responses drain. Adapts [oven-sh/bun#43441](https://github.com/oven-sh/bun/pull/43441), preserving the fork's socket backpressure and pause behavior. Thanks @robobun!

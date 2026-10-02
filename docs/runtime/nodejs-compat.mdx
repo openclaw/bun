@@ -55,6 +55,8 @@ On macOS, `fs.copyFile` and `fs.cp` accept regular-file `/dev/fd` sources withou
 
 Destroying an unfinished request or response closes its connection, including asynchronous destruction after `writeHead()`. Bun does not complete the response as an empty success.
 
+Upgrade requests emit `upgrade` while an earlier response on the connection is still pending. Built-in WebSocket adoption waits for that response to drain.
+
 🟢 Fully implemented. `http.Server` does not extend `net.Server`. Bun ignores `listen(handle)` and the `fd`, `ipv6Only` and `signal` options of `listen()`. `keepAlive`/`keepAliveInitialDelay` on the server are no-ops.
 
 ### [`node:https`](https://nodejs.org/api/https.html)

@@ -581,11 +581,12 @@ static void endFloodPreventionPause(us_socket_t* socket, uWS::NodeHttpResponseDa
     reinterpret_cast<uWS::HttpResponse<SSL>*>(socket)->resume();
 }
 
-/* A pipelined CONNECT stays queued so that the connection never counts as idle. No request follows it, so it holds no reads. */
+/* A pipelined tunnel stays queued so that the connection never counts as idle. No request follows it, so it holds no reads. */
 template<bool SSL>
 static bool queuedResponsesHoldReads(uWS::NodeHttpResponseData<SSL>* httpResponseData)
 {
-    return httpResponseData->nodeHttpQueuedPipelinedCount > 0 && !httpResponseData->isConnectRequest;
+    bool tunnel = httpResponseData->isConnectRequest || (httpResponseData->state & uWS::HttpResponseData<SSL>::HTTP_NODE_TUNNEL_AFTER_BODY);
+    return httpResponseData->nodeHttpQueuedPipelinedCount > 0 && !tunnel;
 }
 
 /* node:http flood prevention, resume half: unsent response bytes and queued responses hold the reads. */

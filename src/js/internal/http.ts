@@ -43,6 +43,7 @@ const kPendingCallbacks = Symbol("pendingCallbacks");
 const kRequest = Symbol("request");
 // Set on a server socket at the 'connect'/'upgrade' handoff: the native response of that request.
 const kHandoffResponse = Symbol("kHandoffResponse");
+const kOnHandoffActive = Symbol("kOnHandoffActive");
 const kCloseCallback = Symbol("closeCallback");
 
 // node:_http_server registers its pipelined-response machinery here at module
@@ -543,6 +544,7 @@ export {
   kCloseCallback,
   kHandle,
   kHandoffResponse,
+  kOnHandoffActive,
   kInternalSocketData,
   kNeedDrain,
   kOnReadParsed,

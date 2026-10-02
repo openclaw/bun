@@ -980,3 +980,107 @@ describe.concurrent("the request stream when ws upgrades before the declared bod
     });
   });
 });
+
+describe("WebSocket upgrade behind an unfinished HTTP response", () => {
+  test.each([WebSocketServer, NpmWebSocketServer])("emits upgrade before the response finishes (%p)", async WSS => {
+    let earlier: http.ServerResponse | undefined;
+    const events: string[] = [];
+    const completed = Promise.withResolvers<void>();
+    const sockets = new Set<Duplex>();
+    let paused = false;
+    const server = http.createServer((req, res) => {
+      events.push(`request ${req.url}`);
+      earlier = res;
+      if (req.url !== "/first") completed.reject(new Error("upgrade dispatched as request"));
+    });
+    const wss = new WSS({ noServer: true });
+    server.on("connection", socket => sockets.add(socket));
+    server.on("clientError", completed.reject);
+    server.on("upgrade", (req, socket, head) => {
+      events.push("upgrade");
+      // Ending this from the listener makes delayed upgrade notification deadlock.
+      earlier!.end("earlier");
+      wss.handleUpgrade(req, socket, head, ws => {
+        events.push("connection");
+        ws.pause();
+        ws.send("ready");
+        paused = ws.isPaused;
+        ws.on("error", completed.reject);
+      });
+    });
+    let client: Socket | undefined;
+    try {
+      const port = await listen(server);
+      client = connect(port, "127.0.0.1");
+      let wire = "";
+      client.on("error", completed.reject);
+      client.on("close", () => completed.reject(new Error("closed before handshake")));
+      client.on("data", chunk => {
+        wire += chunk.toString("latin1");
+        if (wire.endsWith("ready")) completed.resolve();
+      });
+      client.write(
+        "GET /first HTTP/1.1\r\nHost: localhost\r\n\r\n" +
+          "GET /ws HTTP/1.1\r\nHost: localhost\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n" +
+          "Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n",
+      );
+      await completed.promise;
+      expect(events).toEqual(["request /first", "upgrade", "connection"]);
+      expect(paused).toBe(true);
+      expect(wire.match(/HTTP\/1\.1 \d{3}/g)).toEqual(["HTTP/1.1 200", "HTTP/1.1 101"]);
+    } finally {
+      client?.destroy();
+      for (const ws of wss.clients) ws.terminate();
+      wss.close();
+      for (const socket of sockets) socket.destroy();
+      await new Promise<void>(resolve => server.close(() => resolve()));
+    }
+  });
+});
+
+describe("rejected WebSocket upgrade behind an unfinished HTTP response", () => {
+  test.each([WebSocketServer, NpmWebSocketServer])("rejects immediately like Node (%p)", async WSS => {
+    let earlier: http.ServerResponse | undefined;
+    const completed = Promise.withResolvers<void>();
+    const sockets = new Set<Duplex>();
+    const server = http.createServer((req, res) => {
+      if (req.url !== "/first") {
+        completed.reject(new Error("upgrade dispatched as request"));
+        return;
+      }
+      earlier = res;
+      res.write("held");
+    });
+    const wss = new WSS({ noServer: true, verifyClient: () => false });
+    server.on("connection", socket => sockets.add(socket));
+    server.on("clientError", completed.reject);
+    server.on("upgrade", (req, socket, head) => {
+      wss.handleUpgrade(req, socket, head, () => completed.reject(new Error("unexpected acceptance")));
+    });
+    let client: Socket | undefined;
+    try {
+      client = connect(await listen(server), "127.0.0.1");
+      let wire = "";
+      client.on("data", chunk => (wire += chunk.toString("latin1")));
+      client.on("error", completed.reject);
+      client.on("end", completed.resolve);
+      client.on("close", () => completed.reject(new Error("closed before rejection")));
+      client.write(
+        "GET /first HTTP/1.1\r\nHost: localhost\r\n\r\n" +
+          "GET /ws HTTP/1.1\r\nHost: localhost\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n" +
+          "Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n",
+      );
+      await completed.promise;
+      // Node 24 + ws reject on the raw socket without finishing the earlier HTTP response.
+      expect(earlier!.writableEnded).toBe(false);
+      expect(wire.match(/HTTP\/1\.1 \d{3}/g)).toEqual(["HTTP/1.1 200", "HTTP/1.1 401"]);
+      expect(wire).toContain("4\r\nheld\r\n");
+      expect(wire.endsWith("Unauthorized")).toBe(true);
+    } finally {
+      client?.destroy();
+      wss.close();
+      for (const socket of sockets) socket.destroy();
+      await new Promise<void>(resolve => server.close(() => resolve()));
+    }
+  });
+});
