@@ -138,7 +138,7 @@ pub(crate) fn default_resolve_for_hooks(
         let parent = if referrer.starts_with_ascii(b"file:") {
             bun_url::path_from_file_url(&referrer)
         } else {
-            referrer.clone()
+            referrer
         };
         let parent = parent.to_utf8();
         let name = specifier.to_utf8();
