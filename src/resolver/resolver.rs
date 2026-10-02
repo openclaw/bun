@@ -487,6 +487,8 @@ pub struct Resolver<'a> {
     pub generation: Generation,
     /// Hook-created dependency directories outlive deregistration.
     pub runtime_mutable_directories: bool,
+    /// Node package lookup for hook URLs must ignore even already-cached tsconfig aliases.
+    pub ignore_tsconfig_paths: bool,
 
     /// Auto-install backend. `bun_install::PackageManager` implements
     /// [`AutoInstaller`]; the resolver only sees the trait object so it stays
@@ -624,6 +626,7 @@ impl<'a> Resolver<'a> {
             caches: CacheSet::init(),
             generation: from.generation,
             runtime_mutable_directories: false,
+            ignore_tsconfig_paths: false,
             package_manager: from.package_manager,
             on_wake_package_manager: from.on_wake_package_manager,
             env_loader: from.env_loader,
@@ -924,6 +927,7 @@ impl<'a> Resolver<'a> {
             watcher: None,
             generation: 0,
             runtime_mutable_directories: false,
+            ignore_tsconfig_paths: false,
             package_manager: None,
             on_wake_package_manager: Default::default(),
             env_loader: None,
@@ -972,7 +976,7 @@ impl<'a> Resolver<'a> {
         // and outlives the returned MatchResult.
         // TODO: thread an explicit `'a` through MatchResult instead.
         let import_path: &'static [u8] = unsafe { &*std::ptr::from_ref::<[u8]>(import_path) };
-        if source_dir.is_empty() {
+        if source_dir.is_empty() || self.ignore_tsconfig_paths {
             return MatchStatus::NotFound;
         }
         if !bun_paths::is_absolute(source_dir) {
@@ -1761,7 +1765,10 @@ impl<'a> Resolver<'a> {
 
             // First, check path overrides from the nearest enclosing TypeScript "tsconfig.json" file
             if let Ok(Some(dir_info)) = self.dir_info_cached(source_dir) {
-                if let Some(tsconfig) = dir_info.enclosing_tsconfig_json {
+                if let Some(tsconfig) = dir_info
+                    .enclosing_tsconfig_json
+                    .filter(|_| !self.ignore_tsconfig_paths)
+                {
                     if tsconfig.paths.count() > 0 {
                         let mut res = MatchResult::default();
                         if self
@@ -2504,7 +2511,10 @@ impl<'a> Resolver<'a> {
 
         // First, check path overrides from the nearest enclosing TypeScript "tsconfig.json" file
 
-        if let Some(tsconfig) = dir_info.enclosing_tsconfig_json {
+        if let Some(tsconfig) = dir_info
+            .enclosing_tsconfig_json
+            .filter(|_| !self.ignore_tsconfig_paths)
+        {
             // Try path substitutions first
             if tsconfig.paths.count() > 0 {
                 if self

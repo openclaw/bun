@@ -1,6 +1,7 @@
 //! Native bindings for `internal/modules/customization_hooks.ts`
 //! (`module.registerHooks()`).
 
+use bun_jsc::bun_string_jsc::StringJsc;
 use bun_jsc::virtual_machine::ResolveMode;
 use bun_jsc::{CallFrame, JSGlobalObject, JSValue, JsResult};
 
@@ -32,6 +33,9 @@ pub(crate) fn get_builtin_specifier_for_hooks(
     frame: &CallFrame,
 ) -> JsResult<JSValue> {
     let name = frame.argument(0).to_utf8(global)?;
+    if bun_jsc::module_loader::exposed_internal_tag(name.slice()).is_some() {
+        return bun_jsc::bun_string_jsc::create_utf8_for_js(global, name.slice());
+    }
     if let Some(alias) = bun_jsc::module_loader::bun_aliases_get(name.slice()) {
         return bun_jsc::bun_string_jsc::create_utf8_for_js(global, alias.path.as_bytes());
     }
@@ -127,6 +131,51 @@ pub(crate) fn default_resolve_for_hooks(
                 *slot = map;
             }
         }
+    }
+
+    if frame.argument(5).is_truthy() {
+        // Resolve the installed package without the VM's replacement aliases.
+        let parent = if referrer.starts_with_ascii(b"file:") {
+            bun_url::path_from_file_url(&referrer)
+        } else {
+            referrer.clone()
+        };
+        let parent = parent.to_utf8();
+        let name = specifier.to_utf8();
+        let resolver_vm = global.bun_vm_ptr();
+        // SAFETY: this synchronous resolver call cannot execute JavaScript;
+        // its options are restored before returning to the hook chain.
+        let resolved = unsafe {
+            let resolver = &mut (*resolver_vm).transpiler.resolver;
+            let old_target = core::mem::replace(&mut resolver.opts.target, bun_ast::Target::Node);
+            let old_fields = core::mem::replace(
+                &mut resolver.opts.main_fields,
+                vec![b"main".as_slice().into()].into_boxed_slice(),
+            );
+            let old_default = core::mem::replace(&mut resolver.opts.main_fields_is_default, false);
+            let old_tsconfig = core::mem::replace(&mut resolver.ignore_tsconfig_paths, true);
+            let result = resolver.resolve(
+                bun_resolver::fs::PathName::init(parent.slice()).dir,
+                name.slice(),
+                if is_esm {
+                    bun_ast::ImportKind::Stmt
+                } else {
+                    bun_ast::ImportKind::Require
+                },
+            );
+            resolver.opts.target = old_target;
+            resolver.opts.main_fields = old_fields;
+            resolver.opts.main_fields_is_default = old_default;
+            resolver.ignore_tsconfig_paths = old_tsconfig;
+            result
+                .ok()
+                .and_then(|result| result.path_const().map(|path| path.text.to_vec()))
+        };
+        if let Some(path) = resolved.filter(|path| bun_paths::is_absolute(path)) {
+            return bun_url::file_url_from_string(&bun_core::String::clone_utf8(&path))
+                .into_js(global);
+        }
+        return Ok(JSValue::UNDEFINED);
     }
 
     crate::api::bun_object::resolve_for_module_hooks(

@@ -109,3 +109,4 @@
 - Reject unsafe same-key hook loads with `ERR_MODULE_HOOK_REENTRANCY` and static resolve-returned type attributes with `ERR_MODULE_HOOK_ATTRIBUTE_IDENTITY`; document JavaScriptCore's static input-attribute and repeated cycle-resolution limits.
 - Deduplicate identical static hook loads, preserve native Bun-module handoffs, and decode data-URL base64 markers with Node-compatible casing rules.
 - Preserve reentrant native builtin loads without losing load-hook calls, keep conflicting builtin source overrides loud, and reject invalid data-URL base64 bytes and padding.
+- Give synchronous module hooks valid, consistent URLs for Bun's built-in package replacements, using installed package file URLs or `bun-builtin:` fallback URLs while preserving native delegation and hook source overrides.

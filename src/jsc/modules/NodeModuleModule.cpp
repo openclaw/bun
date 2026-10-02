@@ -1161,6 +1161,18 @@ extern "C" void Bun__discardModuleResolveContext(Zig::GlobalObject* globalObject
     RETURN_IF_EXCEPTION(scope, );
 }
 
+extern "C" [[ZIG_EXPORT(zero_is_throw)]] JSC::EncodedJSValue Bun__getModuleHooksBuiltin(Zig::GlobalObject* globalObject, const BunString* path)
+{
+    auto& vm = globalObject->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    JSC::MarkedArgumentBuffer args;
+    args.append(Bun::toJS(globalObject, *path));
+    RETURN_IF_EXCEPTION(scope, {});
+    auto result = callCustomizationHooksExport(globalObject, "getResolvedBuiltin"_s, args);
+    RETURN_IF_EXCEPTION(scope, {});
+    return JSC::JSValue::encode(result);
+}
+
 // Runs the `module.registerHooks()` load hook chain. Returns an object
 // `{ source, loader, moduleType }`, `undefined` for "load natively", or empty
 // (exception pending).
