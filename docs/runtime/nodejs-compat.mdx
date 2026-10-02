@@ -137,6 +137,8 @@ Child construction publishes the `child_process` diagnostics channel with the ex
 
 ### [`node:module`](https://nodejs.org/api/module.html)
 
+CommonJS named exports include nonenumerable data properties even when an `__esModule` marker and accessors are present. Nonenumerable accessors remain excluded.
+
 Package imports and exports match the `module-sync` condition for both `import` and `require`. Conditions retain package.json key order. Bun and Node build targets include this condition; the browser target does not.
 
 🟡 Missing `Module#load()`, `registerHooks`, `findPackageJSON`, `stripTypeScriptTypes`, `getSourceMapsSupport`/`setSourceMapsSupport`. Overriding `require.cache`, `require.extensions` and `module._resolveFilename` is supported. `syncBuiltinESMExports`, `module._load`, `module._pathCache` and `module.register` are no-ops (we recommend [`Bun.plugin`](/runtime/plugins) instead). `findSourceMap` always returns `undefined`.
