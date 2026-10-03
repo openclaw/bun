@@ -9,6 +9,7 @@ const {
   startGCProfiler,
   stopGCProfiler,
   discardGCProfiler,
+  getHeapUsage,
   queryObjects: queryHeapObjects,
 } = $cpp("NodeV8.cpp", "Bun::createNodeV8Binding");
 
@@ -198,7 +199,7 @@ function totalmem() {
 }
 
 function getHeapStatistics() {
-  const stats = jsc.heapStats();
+  const stats = getHeapUsage();
   const memory = jsc.memoryUsage();
 
   // These numbers need to be plausible, even if incorrect
@@ -207,7 +208,7 @@ function getHeapStatistics() {
   // > static #heapLimit = Math.floor(getHeapStatistics().heap_size_limit)
   //
   return {
-    total_heap_size: stats.heapSize,
+    total_heap_size: stats.heapCapacity,
     total_heap_size_executable: stats.heapSize >> 1,
     total_physical_size: memory.peak,
     total_available_size: totalmem() - stats.heapSize,
@@ -247,7 +248,7 @@ const kHeapSpaces = [
   "trusted_large_object_space",
 ];
 function getHeapSpaceStatistics() {
-  const stats = jsc.heapStats();
+  const stats = getHeapUsage();
   const spaces = [];
   for (let i = 0; i < kHeapSpaces.length; i++) {
     const space_name = kHeapSpaces[i];

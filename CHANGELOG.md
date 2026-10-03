@@ -141,3 +141,5 @@
 - Allow package imports to target recognized `bun:` built-ins while retaining Node 24.21 validation for unknown names, other URL schemes, and exports targets.
 
 - Limit the `bun:` package-import exception to scalar targets outside fallback arrays, preserving Node 24.21 array selection and errors for native and captured module loading.
+
+- Count allocations since the most recent garbage collection in process, V8-compatible, and worker heap statistics, including newly retained JavaScript array storage.

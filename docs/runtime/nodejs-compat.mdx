@@ -272,7 +272,7 @@ The same replay took Node 24 **39.7 ms at 2,500 modules and 63.4 ms at 4,000**. 
 
 MessagePort message and close events run in the port creation AsyncLocalStorage context. Transferred endpoints capture their receiving context.
 
-`Worker.getHeapStatistics()` reports JSC heap capacity as `total_heap_size` and occupied heap bytes as `used_heap_size`.
+`Worker.getHeapStatistics()` reports JSC heap capacity as `total_heap_size` and occupied heap bytes as `used_heap_size`. `process.memoryUsage()`, `v8.getHeapStatistics()`, and `v8.getHeapSpaceStatistics()` use the same heap usage measurement. It includes allocations since the most recent garbage collection.
 
 Node-API threadsafe functions deliver or return every accepted native payload before finalization when a worker stops, including during a microtask between callbacks.
 
