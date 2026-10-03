@@ -427,7 +427,7 @@ class Session extends EventEmitter {
   #preciseCoverageCallCount = false;
   #preciseCoverageDetailed = false;
   #forwardedDebugger = false;
-  #pendingCollections: Set<(err: Error | null, result?: any) => void> = new SafeSet();
+  #pendingCollections: Set<{ callback: (err: Error | null, result?: any) => void }> = new SafeSet();
   // Baseline for delta semantics: takePreciseCoverage must reset counters, but
   // JSC has no counter-reset API, so subtract the previous take instead.
   #coverageBaseline: Map<string, number> = new Map();
@@ -474,8 +474,8 @@ class Session extends EventEmitter {
     }
     this.#profilerEnabled = false;
     this.#connected = false;
-    for (const complete of this.#pendingCollections) {
-      process.nextTick(complete, $ERR_INSPECTOR_CLOSED());
+    for (const { callback } of this.#pendingCollections) {
+      process.nextTick(callback, $ERR_INSPECTOR_CLOSED());
     }
     this.#pendingCollections.clear();
     this.#coverageBaseline.$clear();
@@ -511,17 +511,17 @@ class Session extends EventEmitter {
     }
 
     if (method === "HeapProfiler.enable" || method === "HeapProfiler.disable") {
-      if (callback) this.#heapCallback(callback, null, {});
+      if (callback) this.#heapCallback(callback, {});
       return;
     }
 
     if (method === "HeapProfiler.collectGarbage") {
       const collection = collectInspectorGarbage();
       if (callback) {
-        const complete = (error: Error | null, result?: any) => this.#heapCallback(callback, error, result);
-        this.#pendingCollections.add(complete);
+        const request = { callback };
+        this.#pendingCollections.add(request);
         collection.$then(() => {
-          if (this.#pendingCollections.delete(complete)) complete(null, {});
+          if (this.#pendingCollections.delete(request)) this.#heapCallback(request.callback, {});
         });
       }
       return;
@@ -555,9 +555,9 @@ class Session extends EventEmitter {
     }
   }
 
-  #heapCallback(callback: (err: Error | null, result?: any) => void, error: Error | null, result?: any) {
+  #heapCallback(callback: (err: Error | null, result?: any) => void, result: any) {
     try {
-      callback(error, result);
+      callback(null, result);
     } catch (error) {
       process.emitWarning(error);
     }

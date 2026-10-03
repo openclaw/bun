@@ -247,8 +247,8 @@ describe("node:inspector", () => {
           { length: 2 },
           () =>
             new Promise<void>(resolve => {
-              session.post("HeapProfiler.collectGarbage", (error, result) => {
-                replies.push([error?.code, error?.message, result]);
+              session.post("HeapProfiler.collectGarbage", function (error, result) {
+                replies.push([error?.code, error?.message, result, arguments.length]);
                 resolve();
               });
             }),
@@ -265,13 +265,44 @@ describe("node:inspector", () => {
         });
         await Promise.all(pending);
         expect(replies).toEqual([
-          ["ERR_INSPECTOR_CLOSED", "Session was closed", undefined],
-          ["ERR_INSPECTOR_CLOSED", "Session was closed", undefined],
+          ["ERR_INSPECTOR_CLOSED", "Session was closed", undefined, 1],
+          ["ERR_INSPECTOR_CLOSED", "Session was closed", undefined, 1],
           [null, {}],
         ]);
       } finally {
         session.disconnect();
       }
+    });
+
+    test.concurrent("a disconnected collection callback throws through nextTick", async () => {
+      await using proc = Bun.spawn({
+        cmd: [
+          bunExe(),
+          "-e",
+          `
+          const assert = require("node:assert/strict");
+          const { Session } = require("node:inspector");
+          const session = new Session();
+          const failure = new Error("closed callback");
+          process.once("uncaughtException", error => {
+            assert.equal(error, failure);
+            console.log("uncaught callback");
+          });
+          session.connect();
+          session.post("HeapProfiler.collectGarbage", function(error) {
+            assert.equal(arguments.length, 1);
+            assert.equal(error.code, "ERR_INSPECTOR_CLOSED");
+            throw failure;
+          });
+          session.disconnect();
+        `,
+        ],
+        env: bunEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      expect({ stdout, stderr, exitCode }).toEqual({ stdout: "uncaught callback\n", stderr: "", exitCode: 0 });
     });
 
     for (const worker of [false, true]) {
