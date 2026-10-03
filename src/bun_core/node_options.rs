@@ -400,6 +400,85 @@ fn is_allowed(flag: &[u8]) -> bool {
     ALLOWED.binary_search(&flag).is_ok()
 }
 
+pub fn is_allowed_worker_argument(argument: &[u8]) -> bool {
+    let (name, _) = split_name_value(argument);
+    let normalized = normalize(name);
+    is_allowed(&normalized) || is_bun_flag(&normalized)
+}
+
+// Node v24.21 value options must be consumed even when Bun does not apply them.
+static WORKER_VALUE_FLAGS: &[&[u8]] = &[
+    b"--allow-fs-read",
+    b"--allow-fs-write",
+    b"--cpu-prof-dir",
+    b"--cpu-prof-interval",
+    b"--cpu-prof-name",
+    b"--diagnostic-dir",
+    b"--disable-proto",
+    b"--experimental-loader",
+    b"--heap-prof-dir",
+    b"--heap-prof-interval",
+    b"--heap-prof-name",
+    b"--heapsnapshot-near-heap-limit",
+    b"--heapsnapshot-signal",
+    b"--icu-data-dir",
+    b"--input-type",
+    b"--inspect-port",
+    b"--inspect-publish-uid",
+    b"--loader",
+    b"--localstorage-file",
+    b"--max-old-space-size-percentage",
+    b"--network-family-autoselection-attempt-timeout",
+    b"--openssl-config",
+    b"--report-dir",
+    b"--report-filename",
+    b"--report-signal",
+    b"--secure-heap",
+    b"--secure-heap-min",
+    b"--snapshot-blob",
+    b"--stack-trace-limit",
+    b"--test-coverage-branches",
+    b"--test-coverage-exclude",
+    b"--test-coverage-functions",
+    b"--test-coverage-include",
+    b"--test-coverage-lines",
+    b"--test-global-setup",
+    b"--test-isolation",
+    b"--test-name-pattern",
+    b"--test-random-seed",
+    b"--test-reporter",
+    b"--test-reporter-destination",
+    b"--test-rerun-failures",
+    b"--test-shard",
+    b"--test-skip-pattern",
+    b"--tls-cipher-list",
+    b"--tls-keylog",
+    b"--trace-event-categories",
+    b"--trace-event-file-pattern",
+    b"--trace-require-module",
+    b"--use-largepages",
+    b"--v8-pool-size",
+    b"--watch-kill-signal",
+    b"--watch-path",
+];
+
+pub fn worker_required_value_flag(argument: &[u8]) -> Option<&'static [u8]> {
+    let (name, _) = split_name_value(argument);
+    let normalized = normalize(name);
+    match supported(&normalized) {
+        Some((canonical, Supported::Value)) => Some(canonical),
+        _ => WORKER_VALUE_FLAGS
+            .iter()
+            .copied()
+            .find(|flag| *flag == normalized.as_ref()),
+    }
+}
+
+pub fn worker_canonical_flag(argument: &[u8]) -> Option<&'static [u8]> {
+    let (name, _) = split_name_value(argument);
+    supported(&normalize(name)).map(|(canonical, _)| canonical)
+}
+
 /// Bun-specific flags that commonly reach NODE_OPTIONS via tooling that
 /// forwards `process.execArgv` to worker processes (Next.js, jest-worker).
 /// Accepted silently so that `bun --bun next build` keeps working.

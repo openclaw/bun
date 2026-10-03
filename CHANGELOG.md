@@ -149,3 +149,5 @@
 - Support asynchronous full garbage collection through `node:inspector` HeapProfiler sessions on the main thread and workers, with Node-compatible connection errors and pending callback cleanup.
 
 - Publish Node HTTP server request-start and response-created diagnostics before request dispatch, preserving response constructor timing and covering injected HTTP/1 connections. Adapts [oven-sh/bun#29588](https://github.com/oven-sh/bun/pull/29588) and [oven-sh/bun#32628](https://github.com/oven-sh/bun/pull/32628). Thanks @robobun and @cirospaciari!
+
+- Apply `NODE_OPTIONS` and `BUN_OPTIONS` preloads in Node workers with explicit environments and `execArgv`, preserve selected CLI arguments through nested workers, and apply supported worker restrictions before preloads. Builds on [oven-sh/bun#42620](https://github.com/oven-sh/bun/pull/42620).

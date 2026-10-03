@@ -3900,3 +3900,279 @@ test("getHeapStatistics includes array storage allocated since the last collecti
     await worker.terminate();
   }
 });
+
+describe("worker environment preloads", () => {
+  const cases = [
+    ["inherited", ["env", "cli"], "cli"],
+    ["empty-exec", ["env"], "empty"],
+    ["copy-env-empty-exec", ["env"], "empty"],
+    ["empty-env-empty-exec", [], "empty"],
+    ["empty-env-inherited-exec", ["cli"], "cli"],
+    ["changed-env", ["changed"], "empty"],
+    ["own-exec", ["env", "own"], "own"],
+    ["shared-env", ["env"], "empty"],
+    ["nested", ["env", "own"], "own"],
+    ["mutated-inherited", ["env", "cli"], "cli"],
+    ["mutated-empty-exec", ["changed"], "empty"],
+  ] as const;
+
+  for (const [mode, expected, argvKind] of cases) {
+    test.concurrent(`NODE_OPTIONS: ${mode}`, async () => {
+      using dir = tempDir("worker-env-preloads", {
+        "env.cjs": '(globalThis.preloads ??= []).push("env");',
+        "cli.cjs": '(globalThis.preloads ??= []).push("cli");',
+        "own.cjs": '(globalThis.preloads ??= []).push("own");',
+        "changed.cjs": '(globalThis.preloads ??= []).push("changed");',
+        "worker.mjs": `
+          import { Worker, parentPort, workerData } from "node:worker_threads";
+          if (workerData?.depth) {
+            const child = new Worker(new URL(import.meta.url), { workerData: { depth: workerData.depth - 1 } });
+            child.once("message", message => parentPort.postMessage(message));
+            child.once("error", error => { throw error; });
+          } else parentPort.postMessage({ preloads: globalThis.preloads ?? [], execArgv: process.execArgv });
+        `,
+        "parent.mjs": `
+          import { Worker, SHARE_ENV } from "node:worker_threads";
+          const mode = process.argv[2];
+          const own = ["--import", new URL("./own.cjs", import.meta.url).href];
+          const changed = "--import=" + new URL("./changed.cjs", import.meta.url).href;
+          let options = {};
+          if (mode === "empty-exec") options = { execArgv: [] };
+          if (mode === "copy-env-empty-exec") options = { env: { ...process.env }, execArgv: [] };
+          if (mode === "empty-env-empty-exec") options = { env: {}, execArgv: [] };
+          if (mode === "empty-env-inherited-exec") options = { env: {} };
+          if (mode === "changed-env") options = { env: { NODE_OPTIONS: changed }, execArgv: [] };
+          if (mode === "own-exec") options = { env: { ...process.env }, execArgv: own };
+          if (mode === "shared-env") options = { env: SHARE_ENV, execArgv: [] };
+          if (mode === "nested") options = { env: { ...process.env }, execArgv: own, workerData: { depth: 2 } };
+          if (mode.startsWith("mutated-")) {
+            process.env.NODE_OPTIONS = changed;
+            if (mode === "mutated-empty-exec") options.execArgv = [];
+          }
+          const worker = new Worker(new URL("./worker.mjs", import.meta.url), options);
+          worker.once("message", message => console.log(JSON.stringify(message)));
+          worker.once("error", error => { throw error; });
+        `,
+      });
+      const cli = pathToFileURL(join(String(dir), "cli.cjs")).href;
+      const own = pathToFileURL(join(String(dir), "own.cjs")).href;
+      await using proc = Bun.spawn({
+        cmd: [bunExe(), "--import", cli, join(String(dir), "parent.mjs"), mode],
+        env: {
+          ...bunEnv,
+          BUN_OPTIONS: undefined,
+          NODE_OPTIONS: `--import=${pathToFileURL(join(String(dir), "env.cjs")).href}`,
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      expect(stderr).toBe("");
+      expect(JSON.parse(stdout)).toEqual({
+        preloads: expected,
+        execArgv: argvKind === "empty" ? [] : ["--import", argvKind === "own" ? own : cli],
+      });
+      expect(exitCode).toBe(0);
+    });
+  }
+
+  for (const variable of ["NODE_OPTIONS", "BUN_OPTIONS"]) {
+    test.concurrent(
+      `${variable}: require preloads precede import preloads with explicit env and execArgv`,
+      async () => {
+        using dir = tempDir("worker-env-preload-order", {
+          "env.cjs": '(globalThis.preloads ??= []).push("env-require");',
+          "env.mjs": '(globalThis.preloads ??= []).push("env-import");',
+          "own.cjs": '(globalThis.preloads ??= []).push("own-require");',
+          "own.mjs": '(globalThis.preloads ??= []).push("own-import");',
+          "worker.mjs": 'import {parentPort} from "node:worker_threads"; parentPort.postMessage(globalThis.preloads);',
+          "parent.mjs": `
+          import { Worker } from "node:worker_threads";
+          import { fileURLToPath } from "node:url";
+          const worker = new Worker(new URL("./worker.mjs", import.meta.url), {
+            env: { ...process.env },
+            execArgv: ["--import", new URL("./own.mjs", import.meta.url).href, "--require", fileURLToPath(new URL("./own.cjs", import.meta.url))],
+          });
+          worker.once("message", message => console.log(JSON.stringify(message)));
+          worker.once("error", error => { throw error; });
+        `,
+        });
+        await using proc = Bun.spawn({
+          cmd: [bunExe(), join(String(dir), "parent.mjs")],
+          cwd: String(dir),
+          env: {
+            ...bunEnv,
+            NODE_OPTIONS: undefined,
+            BUN_OPTIONS: undefined,
+            [variable]: `--import=${pathToFileURL(join(String(dir), "env.mjs")).href} --require=./env.cjs`,
+          },
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+        expect({ stdout, stderr, exitCode }).toEqual({
+          stdout: '["env-require","own-require","env-import","own-import"]\n',
+          stderr: "",
+          exitCode: 0,
+        });
+      },
+    );
+  }
+
+  test.concurrent("rejects invalid NODE_OPTIONS in an explicit worker environment", async () => {
+    await using proc = Bun.spawn({
+      cmd: [
+        bunExe(),
+        "-e",
+        `
+        const { Worker } = require("node:worker_threads");
+        try {
+          const worker = new Worker('require("node:worker_threads").parentPort.postMessage("unexpected")', {
+            eval: true, env: { NODE_OPTIONS: "--definitely-invalid-worker-option" }, execArgv: [],
+          });
+          worker.on("message", value => console.log(value));
+        } catch (error) { console.log(JSON.stringify({ code: error.code, message: error.message })); }
+      `,
+      ],
+      env: { ...bunEnv, NODE_OPTIONS: undefined, BUN_OPTIONS: undefined },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect({ stdout, stderr, exitCode }).toEqual({
+      stdout:
+        '{"code":"ERR_WORKER_INVALID_EXEC_ARGV","message":"Initiated Worker with invalid NODE_OPTIONS env variable: --definitely-invalid-worker-option is not allowed in NODE_OPTIONS"}\n',
+      stderr: "",
+      exitCode: 0,
+    });
+  });
+});
+
+test.each(["--no-addons", "--no_addons"])(
+  "worker environment restriction %s applies before require preloads",
+  async flag => {
+    using dir = tempDir("worker-env-no-addons", {
+      "preload.cjs": `
+      try { process.dlopen({ exports: {} }, __filename + ".missing.node"); }
+      catch (error) { globalThis.preloadAddonError = error.code; }
+    `,
+      "worker.mjs":
+        'import {parentPort} from "node:worker_threads"; parentPort.postMessage(globalThis.preloadAddonError);',
+    });
+    const worker = new Worker(join(String(dir), "worker.mjs"), {
+      env: {
+        ...bunEnv,
+        BUN_OPTIONS: undefined,
+        NODE_OPTIONS: `${flag} --require=${JSON.stringify(join(String(dir), "preload.cjs"))}`,
+      },
+      execArgv: [],
+    });
+    try {
+      const exited = once(worker, "exit");
+      const [message] = await once(worker, "message");
+      expect(message).toBe("ERR_DLOPEN_DISABLED");
+      expect(await exited).toEqual([0]);
+    } finally {
+      await worker.terminate();
+    }
+  },
+);
+
+test("BUN_OPTIONS preloads remain active with explicit env and empty execArgv", async () => {
+  using dir = tempDir("worker-bun-options-empty-exec", {
+    "preload.mjs": "globalThis.envPreloaded = true;",
+    "worker.mjs":
+      'import {parentPort} from "node:worker_threads"; parentPort.postMessage(globalThis.envPreloaded === true);',
+    "parent.mjs": `
+      import { Worker } from "node:worker_threads";
+      const worker = new Worker(new URL("./worker.mjs", import.meta.url), { env: { ...process.env }, execArgv: [] });
+      worker.once("message", workerPreloaded => console.log(JSON.stringify({ parentPreloaded: globalThis.envPreloaded === true, workerPreloaded })));
+      worker.once("error", error => { throw error; });
+    `,
+  });
+  await using proc = Bun.spawn({
+    cmd: [bunExe(), join(String(dir), "parent.mjs")],
+    env: {
+      ...bunEnv,
+      NODE_OPTIONS: undefined,
+      BUN_OPTIONS: `--import=${pathToFileURL(join(String(dir), "preload.mjs")).href}`,
+    },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect({ stdout, stderr, exitCode }).toEqual({
+    stdout: '{"parentPreloaded":true,"workerPreloaded":true}\n',
+    stderr: "",
+    exitCode: 0,
+  });
+});
+
+describe("inherited NODE_OPTIONS errors", () => {
+  const cases = [
+    ["unknown", false, "--definitely-invalid-worker-option is not allowed in NODE_OPTIONS"],
+    ["unknown-before-import", false, "--definitely-invalid-worker-option is not allowed in NODE_OPTIONS"],
+    ["import-before-unknown", true, "--definitely-invalid-worker-option is not allowed in NODE_OPTIONS"],
+    ["missing-value", true, "--import requires an argument"],
+    ["unterminated", false, "invalid value for NODE_OPTIONS (unterminated string)\n"],
+    ["positional-first", false, null],
+    ["positional-before-import", false, null],
+    ["import-before-positional", true, null],
+    ["value-before-import", true, null],
+    ["v8-positional", false, null],
+    ["dash-positional", false, null],
+  ] as const;
+  for (const [mode, loaded, error] of cases) {
+    for (const explicit of [false, true]) {
+      test.concurrent(`${mode}, explicit env: ${explicit}`, async () => {
+        using dir = tempDir("worker-env-errors", {
+          "preload.mjs": "globalThis.envPreloaded = true;",
+          "parent.mjs": `
+            import { Worker } from "node:worker_threads";
+            const [mode, explicit] = process.argv.slice(2);
+            const good = "--import=" + new URL("./preload.mjs", import.meta.url).href;
+            const bad = "--definitely-invalid-worker-option";
+            const values = {
+              unknown: bad,
+              "unknown-before-import": bad + " " + good,
+              "import-before-unknown": good + " " + bad,
+              "missing-value": good + " --import",
+              unterminated: good + ' "unterminated',
+              "positional-first": "ignored " + bad,
+              "positional-before-import": "ignored " + good,
+              "import-before-positional": good + " ignored " + bad,
+              "value-before-import": "--diagnostic-dir . " + good,
+              "v8-positional": "--max-old-space-size 512 " + good,
+              "dash-positional": "- " + good,
+            };
+            process.env.NODE_OPTIONS = values[mode];
+            try {
+              const worker = new Worker(new URL('data:text/javascript,import{parentPort}from"node:worker_threads";parentPort.postMessage(globalThis.envPreloaded===true)'), {
+                execArgv: [], ...(explicit === "true" ? { env: { NODE_OPTIONS: values[mode] } } : {}),
+              });
+              worker.once("message", loaded => console.log(JSON.stringify({ loaded })));
+              worker.once("error", error => { throw error; });
+            } catch (error) { console.log(JSON.stringify({ code: error.code, message: error.message })); }
+          `,
+        });
+        await using proc = Bun.spawn({
+          cmd: [bunExe(), join(String(dir), "parent.mjs"), mode, String(explicit)],
+          env: { ...bunEnv, NODE_OPTIONS: undefined, BUN_OPTIONS: undefined },
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+        expect(stderr).toBe("");
+        expect(JSON.parse(stdout)).toEqual(
+          explicit && error !== null
+            ? {
+                code: "ERR_WORKER_INVALID_EXEC_ARGV",
+                message: "Initiated Worker with invalid NODE_OPTIONS env variable: " + error,
+              }
+            : { loaded },
+        );
+        expect(exitCode).toBe(0);
+      });
+    }
+  }
+});

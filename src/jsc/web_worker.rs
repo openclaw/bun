@@ -316,12 +316,11 @@ impl WebWorker {
         unsafe { bun_core::ffi::slice(self.argv_ptr, self.argv_len) }
     }
 
-    /// `None` when
-    /// `inherit_exec_argv` (the worker inherits the parent's execArgv),
-    /// otherwise `Some(slice)` (possibly empty) borrowed from C++ WorkerOptions.
+    /// Node workers retain a CLI argument snapshot even when inherited. Web
+    /// workers return `None` for inherited arguments; other slices borrow C++ WorkerOptions.
     #[inline]
     pub fn exec_argv(&self) -> Option<&[WTFStringImpl]> {
-        if self.inherit_exec_argv {
+        if self.inherit_exec_argv && !self.is_node_worker {
             return None;
         }
         // SAFETY: see `argv()`.
@@ -358,8 +357,12 @@ impl WebWorker {
         argv_ptr: *const WTFStringImpl,
         argv_len: usize,
         inherit_exec_argv: bool,
+        inherit_preloads: bool,
         exec_argv_ptr: *const WTFStringImpl,
         exec_argv_len: usize,
+        effective_exec_argv_ptr: *const WTFStringImpl,
+        effective_exec_argv_len: usize,
+        environment_argc: usize,
         // `NODE_USE_SYSTEM_CA` from the worker's own `env` option (1 / 0), or -1 when it inherits
         // the env.
         env_use_system_ca: i8,
@@ -436,7 +439,7 @@ impl WebWorker {
             worker_preload_require_start,
             worker_preload_require_count,
             worker_eval_mode,
-        ) = if inherit_exec_argv {
+        ) = if inherit_preloads {
             (
                 parent_ref.worker_preloads.clone(),
                 parent_ref.worker_eval_preloads.clone(),
@@ -495,20 +498,24 @@ impl WebWorker {
         let mut transform_options = (*parent_ref.transpiler.options.transform_options).clone();
         // A worker's own `execArgv` carries node's per-Environment options (parsed with the
         // RunCommand param table, hence the hook); without one it inherits the parent's.
-        let exec_argv: virtual_machine::WorkerExecArgv = if inherit_exec_argv {
+        let exec_argv: virtual_machine::WorkerExecArgv = if inherit_preloads {
             Default::default()
         } else {
             let hooks = runtime_hooks().expect("RuntimeHooks not installed");
             // SAFETY: caller passed valid (ptr,len) borrowed from the C++ WorkerOptions, alive
             // for the proxy's lifetime; the hook only reads the slice.
             unsafe {
-                (hooks.parse_worker_exec_argv)(bun_core::ffi::slice(exec_argv_ptr, exec_argv_len))
+                (hooks.parse_worker_exec_argv)(
+                    bun_core::ffi::slice(effective_exec_argv_ptr, effective_exec_argv_len),
+                    environment_argc,
+                    inherit_exec_argv,
+                )
             }
         };
         if let Some(invalid) = exec_argv.invalid {
             use bun_core::WTFStringImplExt as _;
             // SAFETY: an index into the same slice, whose strings the caller keeps alive.
-            let arg = unsafe { &**exec_argv_ptr.add(invalid) }.to_owned_slice_z();
+            let arg = unsafe { &**effective_exec_argv_ptr.add(invalid) }.to_owned_slice_z();
             let mut message = b"Initiated Worker with invalid execArgv flags: ".to_vec();
             message.extend_from_slice(arg.as_bytes());
             *error_message = BunString::clone_utf8(&message);
@@ -527,7 +534,7 @@ impl WebWorker {
         // node_worker.cc: a Worker starts from the parent's resolved option, a custom `env`
         // re-derives it from that env, and then the flags (its own execArgv's, else the parent's)
         // win.
-        let use_system_ca_flag = if inherit_exec_argv {
+        let use_system_ca_flag = if inherit_preloads {
             parent_ref.use_system_ca_flag
         } else {
             exec_argv.use_system_ca
@@ -558,7 +565,7 @@ impl WebWorker {
             env_loader,
             proxy_env_slots,
             exec_argv,
-            has_own_exec_argv: !inherit_exec_argv,
+            has_own_exec_argv: !inherit_preloads,
             use_system_ca: use_system_ca_flag.or(use_system_ca_base),
             use_system_ca_flag,
         };

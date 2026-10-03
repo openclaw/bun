@@ -42,9 +42,13 @@ struct WorkerOptions {
     Vector<String> preloadModules;
     std::optional<HashMap<String, String>> env;
     Vector<String> argv;
-    // If nullopt, inherit execArgv from the parent thread
+    // Node workers snapshot their selected CLI arguments, including inherited arguments.
     std::optional<Vector<String>> execArgv;
-    // --require/--import modules parsed from an explicit node Worker execArgv.
+    bool inheritExecArgv { true };
+    bool inheritPreloads { true };
+    Vector<String> effectiveExecArgv;
+    size_t environmentArgc { 0 };
+    // --require/--import modules parsed from the selected environment and execArgv.
     // Kept raw so resolution and evaluation happen in the worker VM.
     Vector<String> execArgvPreloadModules;
     size_t execArgvEvalPreloadCount { 0 };

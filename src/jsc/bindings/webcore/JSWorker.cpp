@@ -125,7 +125,8 @@ static bool isNodeWorkerValueExecArgv(const String& flag)
 
 static bool isNodeWorkerDisallowedExecArgv(const String& flag)
 {
-    return flag == "--perf-basic-prof"_s
+    return flag == "--disallow-code-generation-from-strings"_s
+        || flag == "--perf-basic-prof"_s
         || flag == "--perf-basic-prof-only-functions"_s
         || flag == "--perf-prof"_s
         || flag == "--perf-prof-unwinding-info"_s
@@ -136,13 +137,14 @@ static bool isNodeWorkerDisallowedExecArgv(const String& flag)
         || flag == "--zero-fill-buffers"_s;
 }
 
-static std::optional<String> parseNodeWorkerExecArgv(const Vector<String>& execArgv, Vector<String>& outputPreloads, size_t& evalPreloadCount, size_t& bunPreloadCount, size_t& requirePreloadCount, WorkerEvalMode& evalMode)
+static std::optional<String> parseNodeWorkerExecArgv(const Vector<String>& execArgv, Vector<String>& outputPreloads, size_t& evalPreloadCount, size_t& bunPreloadCount, size_t& requirePreloadCount, WorkerEvalMode& evalMode, size_t nodeOptionsCount = 0, size_t bunOptionsCount = 0, bool inheritedNodeOptions = false, bool inheritedBunOptions = false, bool inheritedExecArgv = false)
 {
     Vector<String> bunPreloads;
     Vector<String> requirePreloads;
     Vector<String> importPreloads;
 
     for (size_t i = 0; i < execArgv.size(); i++) {
+        const size_t optionIndex = i;
         const String& argument = execArgv[i];
         size_t equals = argument.find('=');
         bool hasInlineValue = equals != notFound;
@@ -206,13 +208,20 @@ static std::optional<String> parseNodeWorkerExecArgv(const Vector<String>& execA
             return makeString("Initiated Worker with invalid execArgv flags: "_s, flag, " requires an argument"_s);
         } else if (flag == "--inspect"_s || flag == "--inspect-brk"_s || flag == "--inspect-port"_s) {
             continue;
-        } else if (!isNodeWorkerDisallowedExecArgv(flag)) {
+        } else if ((optionIndex < nodeOptionsCount && inheritedNodeOptions)
+            || (optionIndex >= nodeOptionsCount && optionIndex < nodeOptionsCount + bunOptionsCount && inheritedBunOptions)
+            || (optionIndex >= nodeOptionsCount + bunOptionsCount && inheritedExecArgv)
+            || !isNodeWorkerDisallowedExecArgv(flag)) {
             // The complete option parser lives above this binding. Preserve
             // previously accepted flags instead of rejecting valid Node
             // options that this local list does not need to interpret.
             continue;
         }
 
+        if (optionIndex < nodeOptionsCount)
+            return makeString("Initiated Worker with invalid NODE_OPTIONS env variable: "_s, flag, " is not allowed in NODE_OPTIONS"_s);
+        if (optionIndex < nodeOptionsCount + bunOptionsCount)
+            return makeString("Initiated Worker with invalid BUN_OPTIONS env variable: "_s, flag, " is not allowed in BUN_OPTIONS"_s);
         return makeString("Initiated Worker with invalid execArgv flags: "_s, argument);
     }
 
@@ -223,6 +232,37 @@ static std::optional<String> parseNodeWorkerExecArgv(const Vector<String>& execA
     evalPreloadCount = outputPreloads.size();
     outputPreloads.appendVector(WTF::move(importPreloads));
     return std::nullopt;
+}
+
+static void appendWorkerOptionStrings(Zig::GlobalObject* globalObject, JSValue value, Vector<String>& out)
+{
+    auto& vm = globalObject->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    Strong<JSArray> array(vm, uncheckedDowncast<JSArray>(value.asCell()));
+    for (unsigned i = 0; i < array->length(); ++i) {
+        JSValue item = array->getIndex(globalObject, i);
+        RETURN_IF_EXCEPTION(scope, );
+        String string = item.toWTFString(globalObject).isolatedCopy();
+        RETURN_IF_EXCEPTION(scope, );
+        out.append(WTF::move(string));
+    }
+}
+
+static void appendWorkerEnvironmentOptions(Zig::GlobalObject* globalObject, const String& value, bool isBun, bool strict, Vector<String>& out)
+{
+    if (value.isEmpty()) return;
+    auto& vm = globalObject->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    BunString source = Bun::toString(value);
+    JSValue parsed = JSValue::decode(Bun__Process__tokenizeWorkerOptions(globalObject, &source, isBun, strict));
+    RETURN_IF_EXCEPTION(scope, );
+    if (parsed.isString()) {
+        String message = parsed.toWTFString(globalObject);
+        RETURN_IF_EXCEPTION(scope, );
+        scope.throwException(globalObject, Bun::createError(globalObject, Bun::ErrorCode::ERR_WORKER_INVALID_EXEC_ARGV, makeString("Initiated Worker with invalid "_s, isBun ? "BUN_OPTIONS"_s : "NODE_OPTIONS"_s, " env variable: "_s, message)));
+        return;
+    }
+    RELEASE_AND_RETURN(scope, appendWorkerOptionStrings(globalObject, parsed, out));
 }
 
 // Functions
@@ -311,6 +351,7 @@ template<> __attribute__((minsize)) JSC::EncodedJSValue JSC_HOST_CALL_ATTRIBUTES
     EnsureStillAliveScope argument1 = callFrame->argument(1);
 
     WorkerOptions options {};
+    bool explicitEnvironment = false;
     // Founding an env tree swaps the parent's process.env, so it is deferred until
     // every option has validated (below).
     bool shareEnv = false;
@@ -413,6 +454,7 @@ template<> __attribute__((minsize)) JSC::EncodedJSValue JSC_HOST_CALL_ATTRIBUTES
 
         auto envValue = optionsObject->getIfPropertyExists(lexicalGlobalObject, Identifier::fromString(vm, "env"_s));
         RETURN_IF_EXCEPTION(throwScope, {});
+        explicitEnvironment = envValue && envValue.isObject();
         // Recognize the SHARE_ENV registry symbol directly so `new globalThis.Worker(url, { env: SHARE_ENV })`
         // (which bypasses the node:worker_threads wrapper) shares env instead of throwing
         // ERR_INVALID_ARG_TYPE on its own sentinel.
@@ -495,13 +537,53 @@ template<> __attribute__((minsize)) JSC::EncodedJSValue JSC_HOST_CALL_ATTRIBUTES
             });
             RETURN_IF_EXCEPTION(throwScope, {});
             options.execArgv.emplace(WTF::move(execArgv));
-            if (options.kind == WorkerOptions::Kind::Node) {
-                if (auto error = parseNodeWorkerExecArgv(*options.execArgv, options.execArgvPreloadModules, options.execArgvEvalPreloadCount, options.execArgvBunPreloadCount, options.execArgvRequirePreloadCount, options.execArgvEvalMode)) {
-                    throwScope.throwException(lexicalGlobalObject, Bun::createError(globalObject, Bun::ErrorCode::ERR_WORKER_INVALID_EXEC_ARGV, *error));
-                    return encodedJSValue();
-                }
-            }
+            options.inheritExecArgv = false;
         }
+    }
+
+    if (options.kind == WorkerOptions::Kind::Node) {
+        if (!options.execArgv) {
+            JSValue inherited = JSValue::decode(Bun__Process__createExecArgv(globalObject));
+            RETURN_IF_EXCEPTION(throwScope, {});
+            options.execArgv.emplace();
+            appendWorkerOptionStrings(globalObject, inherited, *options.execArgv);
+            RETURN_IF_EXCEPTION(throwScope, {});
+        }
+        if (explicitEnvironment || !options.inheritExecArgv) {
+            options.inheritPreloads = false;
+            auto* parentEnv = globalObject->processEnvObject();
+            RETURN_IF_EXCEPTION(throwScope, {});
+            Vector<String> effectiveArgv;
+            auto parentOption = [&](ASCIILiteral key) -> String {
+                auto scope = DECLARE_THROW_SCOPE(vm);
+                JSValue value = parentEnv->get(lexicalGlobalObject, Identifier::fromString(vm, key));
+                RETURN_IF_EXCEPTION(scope, {});
+                if (value.isUndefined()) return {};
+                RELEASE_AND_RETURN(scope, value.toWTFString(lexicalGlobalObject));
+            };
+            String parentNodeOptions = parentOption("NODE_OPTIONS"_s);
+            RETURN_IF_EXCEPTION(throwScope, {});
+            String parentBunOptions = parentOption("BUN_OPTIONS"_s);
+            RETURN_IF_EXCEPTION(throwScope, {});
+            String nodeOptions = options.env ? options.env->get("NODE_OPTIONS"_s) : parentNodeOptions;
+            String bunOptions = options.env ? options.env->get("BUN_OPTIONS"_s) : parentBunOptions;
+            appendWorkerEnvironmentOptions(globalObject, nodeOptions, false, explicitEnvironment, effectiveArgv);
+            RETURN_IF_EXCEPTION(throwScope, {});
+            size_t nodeOptionsCount = effectiveArgv.size();
+            appendWorkerEnvironmentOptions(globalObject, bunOptions, true, explicitEnvironment, effectiveArgv);
+            RETURN_IF_EXCEPTION(throwScope, {});
+            size_t bunOptionsCount = effectiveArgv.size() - nodeOptionsCount;
+            options.environmentArgc = effectiveArgv.size();
+            effectiveArgv.appendVector(*options.execArgv);
+            if (auto error = parseNodeWorkerExecArgv(effectiveArgv, options.execArgvPreloadModules, options.execArgvEvalPreloadCount, options.execArgvBunPreloadCount, options.execArgvRequirePreloadCount, options.execArgvEvalMode, nodeOptionsCount, bunOptionsCount, !explicitEnvironment || nodeOptions == parentNodeOptions, !explicitEnvironment || bunOptions == parentBunOptions, options.inheritExecArgv)) {
+                throwScope.throwException(lexicalGlobalObject, Bun::createError(globalObject, Bun::ErrorCode::ERR_WORKER_INVALID_EXEC_ARGV, *error));
+                return encodedJSValue();
+            }
+            options.effectiveExecArgv = WTF::move(effectiveArgv);
+        }
+    } else {
+        options.inheritPreloads = options.inheritExecArgv;
+        if (options.execArgv) options.effectiveExecArgv = *options.execArgv;
     }
 
     // Resolve the spawning thread's env tree (founding one if needed) so disjoint

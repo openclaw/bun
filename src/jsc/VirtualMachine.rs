@@ -2937,7 +2937,11 @@ pub struct RuntimeHooks {
     /// Parse `execArgv` against the `RunCommand` param table (lives in `bun_runtime::cli`, forward-dep).
     /// Caller writes `allow_addons` / `allow_ffi_cc` back into `transform_options` and applies
     /// `cpu_prof` to the worker VM.
-    pub parse_worker_exec_argv: unsafe fn(exec_argv: &[bun_core::WTFStringImpl]) -> WorkerExecArgv,
+    pub parse_worker_exec_argv: unsafe fn(
+        exec_argv: &[bun_core::WTFStringImpl],
+        environment_argc: usize,
+        inherited_exec_argv: bool,
+    ) -> WorkerExecArgv,
     /// `CronJob.clearAllForVM(vm, .teardown)`. `CronJob` lives in
     /// `bun_runtime::api::cron`.
     pub stop_cron_for_vm_teardown: fn(vm: &mut VirtualMachine),

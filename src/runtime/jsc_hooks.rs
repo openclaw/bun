@@ -1594,6 +1594,8 @@ unsafe fn apply_standalone_runtime_flags(
 /// Each `WTFStringImpl` in `exec_argv` is a live WTF string kept alive for the worker's lifetime.
 unsafe fn parse_worker_exec_argv(
     exec_argv: &[bun_core::WTFStringImpl],
+    environment_argc: usize,
+    inherited_exec_argv: bool,
 ) -> bun_jsc::virtual_machine::WorkerExecArgv {
     use crate::cli::arguments::replace_pid_placeholder;
     enum Pending {
@@ -1661,10 +1663,13 @@ unsafe fn parse_worker_exec_argv(
             pending = Pending::Dir;
         } else if let Some(v) = bytes.strip_prefix(b"--cpu-prof-dir=") {
             out.cpu_prof_dir = Some(v.into());
-        } else if matches!(
-            bytes.strip_prefix(b"--disallow-code-generation-from-strings".as_slice()),
-            Some([] | [b'=', ..])
-        ) {
+        } else if !inherited_exec_argv
+            && index >= environment_argc
+            && matches!(
+                bytes.strip_prefix(b"--disallow-code-generation-from-strings".as_slice()),
+                Some([] | [b'=', ..])
+            )
+        {
             out.invalid.get_or_insert(index);
         }
     }
