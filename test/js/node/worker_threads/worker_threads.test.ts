@@ -4122,6 +4122,10 @@ describe("inherited NODE_OPTIONS errors", () => {
     ["positional-before-import", false, null],
     ["import-before-positional", true, null],
     ["value-before-import", true, null],
+    ["report-directory-before-import", true, null],
+    ["debug-port-before-import", true, null],
+    ["test-isolation-before-import", true, null],
+    ["prof-process", false, "--prof-process is not allowed in NODE_OPTIONS"],
     ["v8-positional", false, null],
     ["dash-positional", false, null],
   ] as const;
@@ -4145,6 +4149,10 @@ describe("inherited NODE_OPTIONS errors", () => {
               "positional-before-import": "ignored " + good,
               "import-before-positional": good + " ignored " + bad,
               "value-before-import": "--diagnostic-dir . " + good,
+              "report-directory-before-import": "--report-directory . " + good,
+              "debug-port-before-import": "--debug-port 0 " + good,
+              "test-isolation-before-import": "--experimental-test-isolation none " + good,
+              "prof-process": "--prof-process " + good,
               "v8-positional": "--max-old-space-size 512 " + good,
               "dash-positional": "- " + good,
             };

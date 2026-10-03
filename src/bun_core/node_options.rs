@@ -403,7 +403,9 @@ fn is_allowed(flag: &[u8]) -> bool {
 pub fn is_allowed_worker_argument(argument: &[u8]) -> bool {
     let (name, _) = split_name_value(argument);
     let normalized = normalize(name);
-    is_allowed(&normalized) || is_bun_flag(&normalized)
+    // Node rejects this in env even though allowedNodeEnvironmentFlags lists its alias.
+    normalized.as_ref() != b"--prof-process"
+        && (is_allowed(&normalized) || is_bun_flag(&normalized))
 }
 
 // Node v24.21 value options must be consumed even when Bun does not apply them.
@@ -413,9 +415,11 @@ static WORKER_VALUE_FLAGS: &[&[u8]] = &[
     b"--cpu-prof-dir",
     b"--cpu-prof-interval",
     b"--cpu-prof-name",
+    b"--debug-port",
     b"--diagnostic-dir",
     b"--disable-proto",
     b"--experimental-loader",
+    b"--experimental-test-isolation",
     b"--heap-prof-dir",
     b"--heap-prof-interval",
     b"--heap-prof-name",
@@ -431,6 +435,7 @@ static WORKER_VALUE_FLAGS: &[&[u8]] = &[
     b"--network-family-autoselection-attempt-timeout",
     b"--openssl-config",
     b"--report-dir",
+    b"--report-directory",
     b"--report-filename",
     b"--report-signal",
     b"--secure-heap",
