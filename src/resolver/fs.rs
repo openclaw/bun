@@ -130,7 +130,7 @@ pub struct Entry {
     pub mutex: Mutex,
     pub need_stat: AtomicBool,
 
-    pub abs_path: Interned,
+    abs_path: std::sync::OnceLock<Interned>,
 }
 
 impl Entry {
@@ -166,15 +166,33 @@ impl Entry {
         self.dir
     }
 
-    /// `Interned` is `Copy`.
     #[inline]
     pub fn abs_path(&self) -> Interned {
-        self.abs_path
+        self.abs_path.get().copied().unwrap_or(Interned::EMPTY)
     }
 
-    #[inline]
-    pub fn set_abs_path(&mut self, p: Interned) {
-        self.abs_path = p;
+    /// Serialize fills with the entry's fd lifecycle; failed fills publish nothing.
+    pub fn abs_path_or_try_fill<E>(
+        &self,
+        fill: impl FnOnce() -> Result<Interned, E>,
+    ) -> Result<Interned, E> {
+        if let Some(path) = self.abs_path.get() {
+            return Ok(*path);
+        }
+        let _guard = self.mutex.lock_guard();
+        if let Some(path) = self.abs_path.get() {
+            return Ok(*path);
+        }
+        let path = fill()?;
+        self.abs_path
+            .set(path)
+            .expect("abs_path fill holds the entry mutex");
+        Ok(path)
+    }
+
+    pub fn abs_path_or_fill(&self, fill: impl FnOnce() -> Interned) -> Interned {
+        let Ok(path) = self.abs_path_or_try_fill(|| Ok::<_, core::convert::Infallible>(fill()));
+        path
     }
 
     /// Stat-on-first-use.
@@ -506,7 +524,7 @@ impl DirEntry {
                     kind: found_kind.unwrap_or(EntryKind::File),
                     fd: Fd::INVALID,
                 }));
-                addr_of_mut!((*p).abs_path).write(Interned::EMPTY);
+                addr_of_mut!((*p).abs_path).write(std::sync::OnceLock::new());
                 p
             }
         };
@@ -1040,8 +1058,51 @@ mod tests {
             base_lowercase_: strings::StringOrTinyString::init(b"entry.js"),
             mutex: Mutex::default(),
             need_stat: AtomicBool::new(false),
-            abs_path: Interned::EMPTY,
+            abs_path: std::sync::OnceLock::new(),
         }
+    }
+
+    #[test]
+    fn abs_path_fills_race_free_and_publish_once() {
+        use core::sync::atomic::AtomicUsize;
+        const PATHS: [&[u8]; 2] = [b"/fixture/entry.js", b"/real/fixture/entry.js"];
+        let entry = entry();
+        let started = AtomicUsize::new(0);
+        let fills = AtomicUsize::new(0);
+        std::thread::scope(|scope| {
+            for path in PATHS {
+                let (entry, started, fills) = (&entry, &started, &fills);
+                scope.spawn(move || {
+                    started.fetch_add(1, Ordering::SeqCst);
+                    let filled = entry.abs_path_or_fill(|| {
+                        while started.load(Ordering::SeqCst) < PATHS.len() {
+                            std::thread::yield_now();
+                        }
+                        fills.fetch_add(1, Ordering::SeqCst);
+                        Interned::from_static(path)
+                    });
+                    assert!(filled == entry.abs_path());
+                });
+            }
+            scope.spawn(|| {
+                while entry.abs_path().is_empty() {
+                    std::thread::yield_now();
+                }
+                assert!(PATHS.contains(&entry.abs_path().as_bytes()));
+            });
+        });
+        assert_eq!(fills.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn failed_abs_path_fill_publishes_nothing() {
+        let entry = entry();
+        assert!(entry.abs_path_or_try_fill(|| Err(())).is_err());
+        assert!(entry.abs_path().is_empty());
+        let first = entry.abs_path_or_fill(|| Interned::from_static(b"/fixture/entry.js"));
+        let second = entry.abs_path_or_try_fill(|| Err(()));
+        assert!(first.as_bytes() == b"/fixture/entry.js" && second.is_ok_and(|p| p == first));
+        assert!(entry.abs_path() == first);
     }
 
     #[test]
