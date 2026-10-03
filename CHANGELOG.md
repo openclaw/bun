@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Honor deleted, restored, and redefined `Error.prepareStackTrace` properties instead of retaining a stale native formatter.
+
 - Defer stdin and eval package-scope validation until module resolution needs it, so inline scripts can diagnose malformed ancestor metadata themselves.
 
 - Dispatch child IPC messages and disconnects through JavaScript `process.emit`, preserving wrappers, accessors, and inherited overrides.

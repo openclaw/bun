@@ -17,6 +17,8 @@ The OpenClaw fork reports missing runtime imports without downloading npm packag
 
 ## Built-in Node.js modules
 
+`Error.prepareStackTrace` supports deletion, descriptor restoration, and accessor replacement. Nested stack formatting and throwing formatters leave later captures usable.
+
 ### [`node:assert`](https://nodejs.org/api/assert.html)
 
 🟢 Fully implemented. Legacy-mode `deepEqual` uses `Bun.deepEquals` semantics rather than Node's loose `==` comparison, and function-valued or `printf`-style `message` arguments are not formatted.
