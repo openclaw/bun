@@ -1072,8 +1072,8 @@ mod tests {
                 let mut fs = NeverStat;
                 start.wait();
                 for _ in 0..if cfg!(miri) { 8 } else { 100_000 } {
-                    // The resolver is thread-local and remains live for the call.
-                    let path = unsafe { entry.symlink(&mut fs, false) };
+                    // SAFETY: the resolver is thread-local and remains live for the call.
+                    let path = unsafe { entry.symlink(&raw mut fs, false) };
                     assert!(path.is_empty() || path == b"/fixture/real/entry.js");
                     std::hint::black_box(path);
                 }
@@ -1112,8 +1112,8 @@ mod tests {
                         entry.set_cache_fd(Fd::INVALID);
                         entry.need_stat.store(true, Ordering::Release);
                     }
-                    // The resolver is thread-local and remains live for the call.
-                    assert_eq!(unsafe { entry.kind(&mut fs, false) }, EntryKind::File);
+                    // SAFETY: the resolver is thread-local and remains live for the call.
+                    assert_eq!(unsafe { entry.kind(&raw mut fs, false) }, EntryKind::File);
                 }
             });
             scope.spawn(|| {
