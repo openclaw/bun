@@ -4078,35 +4078,38 @@ test.each(["--no-addons", "--no_addons"])(
   },
 );
 
-test("BUN_OPTIONS preloads remain active with explicit env and empty execArgv", async () => {
-  using dir = tempDir("worker-bun-options-empty-exec", {
-    "preload.mjs": "globalThis.envPreloaded = true;",
-    "worker.mjs":
-      'import {parentPort} from "node:worker_threads"; parentPort.postMessage(globalThis.envPreloaded === true);',
-    "parent.mjs": `
+test.each(["--import=", "--import ", "--preload=", "--preload "])(
+  "BUN_OPTIONS %s preloads remain active with explicit env and empty execArgv",
+  async flag => {
+    using dir = tempDir("worker-bun-options-empty-exec", {
+      "preload.mjs": "globalThis.envPreloaded = true;",
+      "worker.mjs":
+        'import {parentPort} from "node:worker_threads"; parentPort.postMessage(globalThis.envPreloaded === true);',
+      "parent.mjs": `
       import { Worker } from "node:worker_threads";
       const worker = new Worker(new URL("./worker.mjs", import.meta.url), { env: { ...process.env }, execArgv: [] });
       worker.once("message", workerPreloaded => console.log(JSON.stringify({ parentPreloaded: globalThis.envPreloaded === true, workerPreloaded })));
       worker.once("error", error => { throw error; });
     `,
-  });
-  await using proc = Bun.spawn({
-    cmd: [bunExe(), join(String(dir), "parent.mjs")],
-    env: {
-      ...bunEnv,
-      NODE_OPTIONS: undefined,
-      BUN_OPTIONS: `--import=${pathToFileURL(join(String(dir), "preload.mjs")).href}`,
-    },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
-  expect({ stdout, stderr, exitCode }).toEqual({
-    stdout: '{"parentPreloaded":true,"workerPreloaded":true}\n',
-    stderr: "",
-    exitCode: 0,
-  });
-});
+    });
+    await using proc = Bun.spawn({
+      cmd: [bunExe(), join(String(dir), "parent.mjs")],
+      env: {
+        ...bunEnv,
+        NODE_OPTIONS: undefined,
+        BUN_OPTIONS: `${flag}${pathToFileURL(join(String(dir), "preload.mjs")).href}`,
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect({ stdout, stderr, exitCode }).toEqual({
+      stdout: '{"parentPreloaded":true,"workerPreloaded":true}\n',
+      stderr: "",
+      exitCode: 0,
+    });
+  },
+);
 
 describe("inherited NODE_OPTIONS errors", () => {
   const cases = [

@@ -65,7 +65,7 @@ extern "C" fn tokenize_worker_options(
                 break;
             }
             let split = bun_core::strings::split_once_char(token, b'=');
-            let name = split.map_or(token.as_ref(), |(name, _)| name);
+            let name = split.map_or_else(|| token.as_ref(), |(name, _)| name);
             if !is_bun
                 && token.first() == Some(&b'-')
                 && !bun_core::node_options::is_allowed_worker_argument(token)
@@ -77,7 +77,12 @@ extern "C" fn tokenize_worker_options(
                 }
                 break;
             }
-            if let Some(canonical) = bun_core::node_options::worker_required_value_flag(token) {
+            let required_value = if is_bun && name == b"--preload" {
+                Some(b"--preload".as_slice())
+            } else {
+                bun_core::node_options::worker_required_value_flag(token)
+            };
+            if let Some(canonical) = required_value {
                 let value = match split {
                     Some((_, value)) if !value.is_empty() => Some(value),
                     Some(_) => None,
@@ -88,7 +93,7 @@ extern "C" fn tokenize_worker_options(
                             i += 1;
                             value
                                 .strip_prefix(b"\\-")
-                                .map_or(value.as_ref(), |_| &value[1..])
+                                .map_or_else(|| value.as_ref(), |_| &value[1..])
                         }),
                 };
                 let Some(value) = value else {
