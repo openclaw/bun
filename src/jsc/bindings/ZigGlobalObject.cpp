@@ -3536,16 +3536,14 @@ JSC::Identifier GlobalObject::moduleLoaderResolve(JSGlobalObject* jsGlobalObject
     auto& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    // require(esm) already fetched this exact key. The loader revisits it as a
-    // top-level request; resolving it again can link a different path spelling
-    // and leave the original record without a module environment.
-    if (vm.m_synchronousModuleQueue && key.isString() && (!referrer || referrer.isUndefinedOrNull() || (referrer.isString() && !asString(referrer)->length()))) {
+    String preparedKey;
+    if (key.isString() && (!referrer || referrer.isUndefinedOrNull() || (referrer.isString() && !asString(referrer)->length()))) {
         auto name = asString(key)->value(globalObject);
         RETURN_IF_EXCEPTION(scope, {});
         if (isAbsolutePath(name)) {
             auto moduleKey = Identifier::fromString(vm, name);
             if (auto* entry = loader->registryEntry(moduleKey); entry && entry->record())
-                return moduleKey;
+                preparedKey = name;
         }
     }
 
@@ -3669,7 +3667,14 @@ JSC::Identifier GlobalObject::moduleLoaderResolve(JSGlobalObject* jsGlobalObject
     }
     auto resolved = res.result.value.transferToWTFString();
     auto suffix = requestedSuffix.isEmpty() ? queryZ.transferToWTFString() : requestedSuffix;
-    return Identifier::fromString(vm, resolvedModuleKey(resolved, suffix));
+    auto resolvedKey = resolvedModuleKey(resolved, suffix);
+    // The loader revisits require(esm)'s prepared key as a top-level request.
+    // Keep that record when only path spelling changed, or its environment is
+    // never linked. Actual plugin redirects must still select their new target.
+    if (!preparedKey.isEmpty() && isAbsolutePath(resolvedKey)
+        && URL::fileURLWithFileSystemPath(preparedKey) == URL::fileURLWithFileSystemPath(resolvedKey))
+        return Identifier::fromString(vm, preparedKey);
+    return Identifier::fromString(vm, resolvedKey);
 }
 
 JSC::Identifier StandaloneGlobalObject::moduleLoaderResolve(JSGlobalObject* globalObject, JSModuleLoader* loader, JSValue key, JSValue referrer, RefPtr<JSC::ScriptFetcher> fetcher, bool b)
