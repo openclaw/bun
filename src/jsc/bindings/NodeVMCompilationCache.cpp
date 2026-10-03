@@ -17,6 +17,9 @@
 namespace Bun {
 
 static constexpr size_t defaultLimit = 256 * 1024 * 1024;
+// CodeCacheMap prunes at 2,000 entries; leave 250 slots for other JSC compilation users.
+static constexpr size_t defaultAdmissionThreshold = 1750;
+static constexpr size_t maxAdmissionThreshold = 2000;
 // Per-entry reservation covers the entry, two StringImpls, weak handles, payload owner and hash-table slack.
 static constexpr size_t entryOverhead = 1024;
 
@@ -50,6 +53,30 @@ void NodeVMCompilationCache::initialize()
         if (parsed.ec == std::errc() && parsed.ptr == end)
             m_statistics.limit = limit;
     }
+    m_statistics.admissionThreshold = defaultAdmissionThreshold;
+    if (const char* value = std::getenv("BUN_VM_COMPILE_CACHE_THRESHOLD")) {
+        size_t threshold;
+        const char* end = value + strlen(value);
+        auto parsed = std::from_chars(value, end, threshold);
+        if (parsed.ec == std::errc() && parsed.ptr == end && threshold <= maxAdmissionThreshold)
+            m_statistics.admissionThreshold = threshold;
+    }
+    m_statistics.active = m_statistics.limit && !m_statistics.admissionThreshold;
+}
+
+bool NodeVMCompilationCache::admit(const SourceCode& source)
+{
+    if (m_statistics.active)
+        return true;
+    // JSC uses the same memoized source hash. Collisions can only postpone admission, never cause a cache hit.
+    uint64_t fingerprint = (static_cast<uint64_t>(source.hash()) << 32) | source.length();
+    m_seenSources.add(fingerprint + 1);
+    m_statistics.observedSources = m_seenSources.size();
+    if (m_statistics.observedSources <= m_statistics.admissionThreshold)
+        return false;
+    m_seenSources.clear();
+    m_statistics.active = true;
+    return true;
 }
 
 NodeVMCompilationCache::~NodeVMCompilationCache()
@@ -67,7 +94,7 @@ const NodeVMCompilationCache::Statistics& NodeVMCompilationCache::statistics()
 NodeVMCompilationCache::Entry* NodeVMCompilationCache::find(const SourceCode& source, const Identity& identity)
 {
     initialize();
-    if (!m_statistics.limit || !identity.codeGenerationMode.isEmpty())
+    if (!m_statistics.active || !identity.codeGenerationMode.isEmpty())
         return nullptr;
     auto it = m_entries.find(cacheHash(source, identity));
     if (it == m_entries.end())
@@ -143,7 +170,7 @@ UnlinkedProgramCodeBlock* NodeVMCompilationCache::getOrCompile(JSGlobalObject* g
 {
     initialize();
     VM& vm = globalObject->vm();
-    bool enabled = m_statistics.limit && !hasCachedData && identity.codeGenerationMode.isEmpty();
+    bool enabled = m_statistics.limit && !hasCachedData && identity.codeGenerationMode.isEmpty() && admit(source);
     if (enabled) {
         if (auto* entry = find(source, identity)) {
             auto* block = entry->decoded.get();
@@ -190,6 +217,9 @@ JSC_DEFINE_HOST_FUNCTION(nodeVMCompilationCacheStats, (JSGlobalObject * globalOb
     const auto& stats = WebCore::clientData(vm)->nodeVMCompilationCache.statistics();
     auto* result = constructEmptyObject(globalObject);
     Bun::putDirectNamed(vm, result, "limit"_s, jsNumber(stats.limit));
+    Bun::putDirectNamed(vm, result, "admissionThreshold"_s, jsNumber(stats.admissionThreshold));
+    Bun::putDirectNamed(vm, result, "observedSources"_s, jsNumber(stats.observedSources));
+    Bun::putDirectNamed(vm, result, "active"_s, jsBoolean(stats.active));
     Bun::putDirectNamed(vm, result, "bytes"_s, jsNumber(stats.bytes));
     Bun::putDirectNamed(vm, result, "entries"_s, jsNumber(stats.entries));
     Bun::putDirectNamed(vm, result, "hits"_s, jsNumber(stats.hits));

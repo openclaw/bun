@@ -2748,7 +2748,12 @@ describe("bounded vm compilation cache", () => {
   async function runCacheFixture(source: string, limit = "268435456") {
     await using proc = Bun.spawn({
       cmd: [bunExe(), "--expose-internals", "-e", source],
-      env: { ...bunEnv, BUN_VM_COMPILE_CACHE_SIZE: limit, BUN_JSC_useCodeCache: "false" },
+      env: {
+        ...bunEnv,
+        BUN_VM_COMPILE_CACHE_SIZE: limit,
+        BUN_VM_COMPILE_CACHE_THRESHOLD: "0",
+        BUN_JSC_useCodeCache: "false",
+      },
       stdout: "pipe",
       stderr: "pipe",
     });
@@ -2878,7 +2883,7 @@ describe("bounded vm compilation cache", () => {
       import { runInThisContext } from "node:vm";
       import { nodeVMCompilationCacheStats as stats } from "bun:internal-for-testing";
       for(let i=0;i<3;i++) assert.equal(runInThisContext("40 + 2"),42);
-      assert.deepEqual(stats(), {limit:0,bytes:0,entries:0,hits:0,decodes:0,misses:0,evictions:0});
+      assert.deepEqual(stats(), {limit:0,admissionThreshold:0,observedSources:0,active:false,bytes:0,entries:0,hits:0,decodes:0,misses:0,evictions:0});
       console.log("ok");
     `,
       "0",
@@ -2910,6 +2915,7 @@ test.concurrent("repeated vm source executes after GC without another parse", as
       BUN_JSC_reportParseTimes: "1",
       BUN_JSC_useCodeCache: "false",
       BUN_VM_COMPILE_CACHE_SIZE: "268435456",
+      BUN_VM_COMPILE_CACHE_THRESHOLD: "0",
     },
     stdout: "pipe",
     stderr: "pipe",
@@ -2921,4 +2927,41 @@ test.concurrent("repeated vm source executes after GC without another parse", as
   expect(measured).toHaveLength(2);
   expect(measured[0]).toBe("");
   expect(exitCode).toBe(0);
+});
+
+test.concurrent("vm compilation admission counts distinct sources before retaining bytecode", async () => {
+  await using proc = Bun.spawn({
+    cmd: [
+      bunExe(),
+      "--expose-internals",
+      "-e",
+      `
+      const assert = require("node:assert/strict");
+      const {runInThisContext} = require("node:vm");
+      const {nodeVMCompilationCacheStats: stats} = require("bun:internal-for-testing");
+      for (let pass=0;pass<8;pass++)
+        for (let i=0;i<1500;i++) assert.equal(runInThisContext(String(i)),i);
+      assert.equal(stats().observedSources,1500);
+      assert.equal(stats().active,false);
+      assert.equal(stats().bytes,0);
+      assert.equal(stats().entries,0);
+      assert.equal(stats().misses,0);
+      for(let i=1500;i<1750;i++) runInThisContext(String(i));
+      assert.equal(stats().active,false);
+      runInThisContext("1750");
+      assert.equal(stats().active,true);
+      assert.equal(stats().observedSources,1751);
+      assert.equal(stats().entries,1);
+      assert.equal(stats().misses,1);
+      runInThisContext("1750");
+      assert.equal(stats().hits,1);
+      console.log("ok");
+    `,
+    ],
+    env: { ...bunEnv, BUN_VM_COMPILE_CACHE_SIZE: "268435456", BUN_VM_COMPILE_CACHE_THRESHOLD: "1750" },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect({ stdout, stderr, exitCode }).toEqual({ stdout: "ok\n", stderr: "", exitCode: 0 });
 });

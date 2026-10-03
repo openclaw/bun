@@ -880,6 +880,9 @@ export const internalModuleBytecode: {
 
 export const nodeVMCompilationCacheStats: () => {
   limit: number;
+  admissionThreshold: number;
+  observedSources: number;
+  active: boolean;
   bytes: number;
   entries: number;
   hits: number;

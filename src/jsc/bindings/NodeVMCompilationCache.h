@@ -5,6 +5,7 @@
 #include <JavaScriptCore/SourceCode.h>
 #include <JavaScriptCore/Weak.h>
 #include <wtf/HashMap.h>
+#include <wtf/HashSet.h>
 #include <wtf/SentinelLinkedList.h>
 
 namespace JSC {
@@ -36,6 +37,9 @@ public:
     };
     struct Statistics {
         size_t limit { 0 };
+        size_t admissionThreshold { 1750 };
+        size_t observedSources { 0 };
+        bool active { false };
         size_t bytes { 0 };
         size_t entries { 0 };
         uint64_t hits { 0 };
@@ -63,11 +67,13 @@ private:
         size_t bytes;
     };
     using Entries = WTF::UncheckedKeyHashMap<unsigned, std::unique_ptr<Entry>>;
+    WTF::UncheckedKeyHashSet<uint64_t> m_seenSources;
     Entries m_entries;
     WTF::SentinelLinkedList<Entry, WTF::BasicRawSentinelNode<Entry>> m_lru;
     Statistics m_statistics;
     bool m_initialized { false };
     void initialize();
+    bool admit(const JSC::SourceCode&);
     Entry* find(const JSC::SourceCode&, const Identity&);
     void remove(Entry&);
     void insert(JSC::JSGlobalObject*, const JSC::SourceCode&, const Identity&, JSC::UnlinkedProgramCodeBlock*, bool fullBytecode);
