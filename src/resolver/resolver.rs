@@ -2811,8 +2811,7 @@ impl<'a> Resolver<'a> {
                                                 kind,
                                                 package_json,
                                                 esm.subpath,
-                                                false,
-                                                is_self_reference,
+                                                PackageMapContext::Exports { is_self_reference },
                                                 out,
                                             )
                                             .is_success()
@@ -2871,8 +2870,7 @@ impl<'a> Resolver<'a> {
                                                 kind,
                                                 package_json,
                                                 esm.subpath,
-                                                false,
-                                                is_self_reference,
+                                                PackageMapContext::Exports { is_self_reference },
                                                 out,
                                             )
                                             .is_success()
@@ -3330,8 +3328,7 @@ impl<'a> Resolver<'a> {
                                                 kind,
                                                 package_json,
                                                 esm.subpath,
-                                                false,
-                                                is_self_reference,
+                                                PackageMapContext::Exports { is_self_reference },
                                                 out,
                                             )
                                             .is_success()
@@ -3374,8 +3371,7 @@ impl<'a> Resolver<'a> {
                                                 kind,
                                                 package_json,
                                                 esm.subpath,
-                                                false,
-                                                is_self_reference,
+                                                PackageMapContext::Exports { is_self_reference },
                                                 out,
                                             )
                                             .is_success()
@@ -3955,10 +3951,13 @@ impl<'a> Resolver<'a> {
         kind: ast::ImportKind,
         package_json: &PackageJSON,
         package_subpath: &[u8],
-        is_imports: bool,
-        is_self_reference: bool,
+        context: PackageMapContext,
         out: &mut MatchResult,
     ) -> MatchStatus {
+        let (is_imports, is_self_reference) = match context {
+            PackageMapContext::Imports => (true, false),
+            PackageMapContext::Exports { is_self_reference } => (false, is_self_reference),
+        };
         let mut esm_resolution = esm_resolution_;
         use crate::package_json::Status;
         if !((matches!(
@@ -5441,8 +5440,7 @@ impl<'a> Resolver<'a> {
             kind,
             package_json,
             import_path,
-            true,
-            false,
+            PackageMapContext::Imports,
             out,
         )
     }
@@ -5452,7 +5450,7 @@ impl<'a> Resolver<'a> {
         dir_info: &DirInfo::DirInfo,
         input_path_: &[u8],
     ) -> Option<&'static [u8]> {
-        let package_json = self.package_json_for_resolution(&dir_info)?;
+        let package_json = self.package_json_for_resolution(dir_info)?;
         let browser_map = &package_json.browser_map;
 
         if browser_map.count() == 0 {
@@ -7276,6 +7274,13 @@ enum PackageConfigProbe {
     Present([Option<Box<[u16]>>; 2]),
 }
 
+#[derive(Clone, Copy)]
+enum PackageMapContext {
+    Imports,
+    Exports { is_self_reference: bool },
+}
+
+#[derive(Clone, Copy)]
 enum PackageMapRead {
     Exports,
     Imports,
