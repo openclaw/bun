@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Synchronize resolver entry-cache snapshots with symlink fills, fd updates, and re-stats, preventing torn path reads during concurrent worker resolution.
 - Implement `node:v8.queryObjects()` with full garbage collection, prototype-chain matching, and count or shallow-summary results for retention diagnostics.
 - Make child stdout/stderr `ref()` and `unref()` idempotent so idle subprocess pipes release parent liveness, and return the stream for chaining. Adapts the return-value fix from [oven-sh/bun#36316](https://github.com/oven-sh/bun/pull/36316). Thanks @robobun!
 - Enable the Node-compatible `module-sync` condition for Bun and Node package resolution while preserving target module kind and export-key precedence. Ports [oven-sh/bun#20770](https://github.com/oven-sh/bun/pull/20770). Thanks @RiskyMH!
