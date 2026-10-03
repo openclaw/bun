@@ -125,6 +125,8 @@ Upgrade requests emit `upgrade` while an earlier response on the connection is s
 
 ### [`node:child_process`](https://nodejs.org/api/child_process.html)
 
+Child IPC dispatch calls the JavaScript `process.emit` property for `message`, `internalMessage`, and `disconnect`, so wrappers and accessors observe these events.
+
 Child stdout/stderr `ref()` and `unref()` set the pipe reference state and return the stream. Repeated calls are idempotent, so one `unref()` releases the reference after any number of `ref()` calls.
 
 Child construction publishes the `child_process` diagnostics channel with the exact child object. Spawning publishes `child_process.spawn` tracing start, end, and error events before the corresponding child events. Unspawned stdio getters are safe; failed spawns drain readable pipes to EOF and retain fork IPC methods. Exit listeners run before stdio resumes, and POSIX PATH permission failures report `EACCES`.
