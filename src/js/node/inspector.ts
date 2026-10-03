@@ -24,6 +24,7 @@ const isCPUProfilerRunning = $newCppFunction("JSInspectorProfiler.cpp", "jsFunct
 const startPreciseCoverage = $newCppFunction("JSInspectorProfiler.cpp", "jsFunction_startPreciseCoverage", 0);
 const stopPreciseCoverage = $newCppFunction("JSInspectorProfiler.cpp", "jsFunction_stopPreciseCoverage", 0);
 const collectPreciseCoverage = $newCppFunction("JSInspectorProfiler.cpp", "jsFunction_collectPreciseCoverage", 0);
+const collectInspectorGarbage = $newCppFunction("JSInspectorProfiler.cpp", "jsFunction_collectInspectorGarbage", 0);
 
 // Native bindings for inspector.open(): they start Bun's debugger thread with a
 // WebSocket server that speaks the V8 Chrome DevTools Protocol (see
@@ -426,6 +427,7 @@ class Session extends EventEmitter {
   #preciseCoverageCallCount = false;
   #preciseCoverageDetailed = false;
   #forwardedDebugger = false;
+  #pendingCollections: Set<(err: Error | null, result?: any) => void> = new SafeSet();
   // Baseline for delta semantics: takePreciseCoverage must reset counters, but
   // JSC has no counter-reset API, so subtract the previous take instead.
   #coverageBaseline: Map<string, number> = new Map();
@@ -472,6 +474,10 @@ class Session extends EventEmitter {
     }
     this.#profilerEnabled = false;
     this.#connected = false;
+    for (const complete of this.#pendingCollections) {
+      process.nextTick(complete, $ERR_INSPECTOR_CLOSED());
+    }
+    this.#pendingCollections.clear();
     this.#coverageBaseline.$clear();
     runtimeEnabledSessions.delete(this);
     if (runtimeEnabledSessions.size === 0) removeConsoleHooks();
@@ -501,12 +507,24 @@ class Session extends EventEmitter {
     if (callback !== undefined) validateFunction(callback, "callback");
 
     if (!this.#connected) {
-      const error = $ERR_INSPECTOR_NOT_CONNECTED();
+      throw $ERR_INSPECTOR_NOT_CONNECTED();
+    }
+
+    if (method === "HeapProfiler.enable" || method === "HeapProfiler.disable") {
+      if (callback) this.#heapCallback(callback, null, {});
+      return;
+    }
+
+    if (method === "HeapProfiler.collectGarbage") {
+      const collection = collectInspectorGarbage();
       if (callback) {
-        queueMicrotask(() => callback(error));
-        return;
+        const complete = (error: Error | null, result?: any) => this.#heapCallback(callback, error, result);
+        this.#pendingCollections.add(complete);
+        collection.$then(() => {
+          if (this.#pendingCollections.delete(complete)) complete(null, {});
+        });
       }
-      throw error;
+      return;
     }
 
     const result = this.#handleMethod(method, params as object | undefined);
@@ -534,6 +552,14 @@ class Session extends EventEmitter {
         throw error;
       }
       return result;
+    }
+  }
+
+  #heapCallback(callback: (err: Error | null, result?: any) => void, error: Error | null, result?: any) {
+    try {
+      callback(error, result);
+    } catch (error) {
+      process.emitWarning(error);
     }
   }
 

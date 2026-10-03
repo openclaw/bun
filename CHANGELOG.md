@@ -145,3 +145,5 @@
 - Count allocations since the most recent garbage collection in process, V8-compatible, and worker heap statistics, including newly retained JavaScript array storage.
 
 - Publish cached resolver paths once so worker resolution and filesystem-router reloads cannot expose truncated symlink targets. Adapts [oven-sh/bun#40258](https://github.com/oven-sh/bun/pull/40258). Thanks @robobun!
+
+- Support asynchronous full garbage collection through `node:inspector` HeapProfiler sessions on the main thread and workers, with Node-compatible connection errors and pending callback cleanup.
