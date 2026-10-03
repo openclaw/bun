@@ -491,6 +491,8 @@ pub struct Resolver<'a> {
     pub generation: Generation,
     /// Hook-created dependency directories outlive deregistration.
     pub runtime_mutable_directories: bool,
+    /// Plugin-created files outlive hooks, but successful lookups keep their cache policy.
+    pub refresh_runtime_plugin_misses: bool,
     /// Node package lookup for hook URLs must ignore even already-cached tsconfig aliases.
     pub ignore_tsconfig_paths: bool,
 
@@ -632,6 +634,7 @@ impl<'a> Resolver<'a> {
             caches: CacheSet::init(),
             generation: from.generation,
             runtime_mutable_directories: false,
+            refresh_runtime_plugin_misses: false,
             ignore_tsconfig_paths: false,
             package_manager: from.package_manager,
             on_wake_package_manager: from.on_wake_package_manager,
@@ -935,6 +938,7 @@ impl<'a> Resolver<'a> {
             watcher: None,
             generation: 0,
             runtime_mutable_directories: false,
+            refresh_runtime_plugin_misses: false,
             ignore_tsconfig_paths: false,
             package_manager: None,
             on_wake_package_manager: Default::default(),
@@ -1386,6 +1390,27 @@ impl<'a> Resolver<'a> {
 
         let mut tmp =
             self.resolve_without_symlinks(source_dir_normalized, import_path, kind, global_cache);
+
+        if matches!(tmp, ResultUnion::NotFound)
+            && self.refresh_runtime_plugin_misses
+            && !self.runtime_mutable_directories
+            && self
+                .node_module_error
+                .as_ref()
+                .is_none_or(|error| !error.is_fatal())
+        {
+            // Recheck plugin-created files only after the cached resolution misses.
+            self.runtime_mutable_directories = true;
+            let mut resolver = scopeguard::guard(&mut *self, |resolver| {
+                resolver.runtime_mutable_directories = false;
+            });
+            tmp = resolver.resolve_without_symlinks(
+                source_dir_normalized,
+                import_path,
+                kind,
+                global_cache,
+            );
+        }
 
         // Fragments in URLs in CSS imports are technically expected to work
         if matches!(tmp, ResultUnion::NotFound) && kind.is_from_css() {
@@ -5734,22 +5759,33 @@ impl<'a> Resolver<'a> {
         // Lookup + listing fd in one critical section (see `DirInfo::get_entry`
         // for the rewrite this guards against); the fd gate matches
         // `DirInfo::get_file_descriptor`.
-        let looked_up = {
+        let generation = self.generation;
+        let lookup_entry = || {
             let realfs = &mut Fs::FileSystem::instance().fs;
             let _entries_lock = realfs.entries_mutex.lock_guard();
-            dir_info
-                .get_entries_ref_locked(self.generation)
-                .map(|entries| {
-                    (
-                        entries.get(&base[..]),
-                        if FeatureFlags::STORE_FILE_DESCRIPTORS {
-                            entries.fd
-                        } else {
-                            FD::INVALID
-                        },
-                    )
-                })
+            dir_info.get_entries_ref_locked(generation).map(|entries| {
+                (
+                    entries.get(&base[..]),
+                    if FeatureFlags::STORE_FILE_DESCRIPTORS {
+                        entries.fd
+                    } else {
+                        FD::INVALID
+                    },
+                )
+            })
         };
+        let mut looked_up = lookup_entry();
+        if looked_up.as_ref().is_none_or(|(entry, _)| entry.is_none())
+            && self.runtime_mutable_directories
+        {
+            let mut buffer = bun_paths::path_buffer_pool::get();
+            let path = self
+                .fs_ref()
+                .abs_buf_checked(&[dir_info.abs_path, base], &mut buffer);
+            if path.is_some_and(|path| self.refresh_created_file(path)) {
+                looked_up = lookup_entry();
+            }
+        }
         if let Some((Some(lookup), dirname_fd)) = looked_up {
             // SAFETY: rfs points at the process-global RealFS; the lazy-stat
             // rewrite inside `kind()` is serialized on the per-entry mutex.

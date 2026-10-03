@@ -14,7 +14,79 @@ declare global {
   var asyncret: any;
 }
 
+async function expectPluginFixtureOutput(dir: string, expectedStdout: string) {
+  await using proc = Bun.spawn({
+    cmd: [bunExe(), "main.mjs"],
+    env: bunEnv,
+    cwd: dir,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect({ stdout, stderr, exitCode }).toEqual({ stdout: expectedStdout, stderr: "", exitCode: 0 });
+}
+
+it.concurrent("delegated resolution refreshes a newly created directory index", async () => {
+  using dir = tempDir("plugin-delegated-index", {
+    "generated/seed.cjs": 'exports.value = "seed";',
+    "entry.cjs": "exports.read = name => require(name).value;",
+    "main.mjs": `
+      import assert from "node:assert/strict";
+      import { writeFileSync } from "node:fs";
+      import { join } from "node:path";
+      import { createRequire } from "node:module";
+      const require = createRequire(import.meta.url);
+      assert.equal(require("./generated/seed.cjs").value, "seed");
+      const entry = require("./entry.cjs");
+      Bun.plugin({
+        name: "late-directory-member",
+        setup(builder) {
+          builder.onLoad({ filter: /^never$/ }, () => { throw new Error("unexpected onLoad"); });
+        },
+      });
+      writeFileSync(join(import.meta.dir, "generated/index.js"), 'exports.value = "created";');
+      console.log(entry.read("./generated"));
+    `,
+  });
+  await expectPluginFixtureOutput(String(dir), "created\n");
+});
+
 for (const mode of ["require", "import"] as const) {
+  it.concurrent(`delegated static ${mode} finds a file in a previously missing directory`, async () => {
+    using dir = tempDir("plugin-delegated-missing-directory", {
+      "package.json": JSON.stringify({
+        imports: { "#late": "./generated/late.cjs", "#missing": "./generated/missing.cjs" },
+      }),
+      "entry.cjs": 'module.exports = require("#late");',
+      "entry.mjs": 'export { value } from "#late";',
+      "main.mjs": `
+        import assert from "node:assert/strict";
+        import { mkdirSync, writeFileSync } from "node:fs";
+        import { join } from "node:path";
+        import { createRequire } from "node:module";
+        const require = createRequire(import.meta.url);
+        assert.throws(() => require.resolve("./generated/late.cjs"), { code: "MODULE_NOT_FOUND" });
+        let calls = 0;
+        Bun.plugin({
+          name: "delegated-missing-directory",
+          setup(builder) {
+            builder.onResolve({ filter: /^#late$/ }, () => {
+              calls++;
+              mkdirSync(join(import.meta.dir, "generated"), { recursive: true });
+              writeFileSync(join(import.meta.dir, "generated/late.cjs"), 'exports.value = "late";');
+            });
+          },
+        });
+        const loaded = ${mode === "require" ? 'require("./entry.cjs")' : 'await import("./entry.mjs")'};
+        assert.equal(loaded.value, "late");
+        assert.ok(calls > 0);
+        assert.throws(() => require("#missing"), { code: "MODULE_NOT_FOUND" });
+        console.log("late");
+      `,
+    });
+    await expectPluginFixtureOutput(String(dir), "late\n");
+  });
+
   for (const creation of ["onResolve", "after-entry", "onLoad-only"] as const) {
     it.concurrent(`delegated ${mode} finds a package import created ${creation}`, async () => {
       using dir = tempDir("plugin-delegated-created-file", {
@@ -55,15 +127,7 @@ for (const mode of ["require", "import"] as const) {
           console.log("specific");
         `,
       });
-      await using proc = Bun.spawn({
-        cmd: [bunExe(), "main.mjs"],
-        env: bunEnv,
-        cwd: String(dir),
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
-      expect({ stdout, stderr, exitCode }).toEqual({ stdout: "specific\n", stderr: "", exitCode: 0 });
+      await expectPluginFixtureOutput(String(dir), "specific\n");
     });
   }
 }

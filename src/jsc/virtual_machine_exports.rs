@@ -193,8 +193,7 @@ pub fn on_did_append_plugin(jsc_vm: &mut VirtualMachine, global: &JSGlobalObject
         global_object: bun_ptr::BackRef::new(global),
     });
     jsc_vm.transpiler.linker.plugin_runner = Some(std::ptr::from_mut::<dyn PluginResolver>(runner));
-    // Plugins can materialize files before delegating to the native resolver.
-    jsc_vm.transpiler.resolver.runtime_mutable_directories = true;
+    jsc_vm.transpiler.resolver.refresh_runtime_plugin_misses = true;
 }
 
 #[cfg(windows)]
