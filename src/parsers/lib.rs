@@ -6,6 +6,7 @@ pub use error::{Error, Result};
 
 pub mod json_index;
 mod json_stage2;
+mod node_json_diagnostic;
 pub mod node_package_json;
 pub mod xml_index;
 

@@ -62,6 +62,7 @@ pub struct PackageJSON {
     pub(crate) node_only: bool,
     pub(crate) node_override: Option<Box<PackageJSON>>,
     pub node_error: Option<PackageConfigError>,
+    pub(crate) node_json_errors: [Option<Box<[u16]>>; 2],
     pub(crate) node_exports: bool,
     pub(crate) node_imports: bool,
     pub name: Box<[u8]>,
@@ -132,6 +133,7 @@ impl Default for PackageJSON {
             node_only: false,
             node_override: None,
             node_error: None,
+            node_json_errors: [None, None],
             node_exports: false,
             node_imports: false,
             name: Box::default(),
@@ -236,6 +238,7 @@ impl PackageJSON {
         fields: bun_parsers::node_package_json::NodePackageJson,
     ) {
         let pkg = self;
+        pkg.node_json_errors = fields.json_errors;
         pkg.name = Box::default();
         pkg.module_type = ModuleType::Unknown;
         pkg.main_fields.swap_remove(b"main");
@@ -245,7 +248,14 @@ impl PackageJSON {
         pkg.node_imports = false;
         for (field, range) in fields.fields.into_iter().enumerate() {
             let Some(range) = range else { continue };
-            let source = bun_ast::Source::init_path_string_owned(path, contents[range].to_vec());
+            let raw = &contents[range];
+            let map_source = (field >= 3)
+                .then(|| bun_parsers::node_package_json::map_json_source(raw))
+                .flatten();
+            let source = bun_ast::Source::init_path_string_owned(
+                path,
+                map_source.as_deref().unwrap_or(raw).to_vec(),
+            );
             let mut log = bun_ast::Log::default();
             let parsed = json_parser::ParsedJson::parse_json(&source, &mut log);
             if field >= 3 {
@@ -577,6 +587,11 @@ impl PackageJSON {
         let node_imports = node_fields
             .as_ref()
             .is_ok_and(|fields| fields.fields[4].is_some());
+        let node_json_errors = node_fields
+            .as_ref()
+            .ok()
+            .map(|fields| fields.json_errors.clone())
+            .unwrap_or_default();
 
         let parsed_json = match r.caches.json.parse_package_json(r_log, &json_source) {
             Ok(Some(v)) => v,
@@ -616,6 +631,7 @@ impl PackageJSON {
             node_only: false,
             node_override: None,
             node_error,
+            node_json_errors,
             node_exports,
             node_imports,
             name: Box::default(),
@@ -1452,7 +1468,6 @@ impl Default for Resolution {
 
 #[derive(Clone, Copy, PartialEq, Eq, strum::IntoStaticStr)]
 pub enum Status {
-    InvalidJson,
     Undefined,
     UndefinedNoConditionsMatch, // A more friendly error message for when no conditions are matched
     Null,
@@ -1725,12 +1740,6 @@ impl<'a> ESModule<'a> {
     }
 
     pub(crate) fn resolve_imports(&mut self, specifier: &[u8], imports: &Entry) -> Resolution {
-        if matches!(imports.data, EntryData::InvalidJson) {
-            return Resolution {
-                status: Status::InvalidJson,
-                ..Default::default()
-            };
-        }
         if !matches!(imports.data, EntryData::Map(_)) {
             return Resolution {
                 status: Status::PackageImportNotDefined,
@@ -1822,12 +1831,6 @@ impl<'a> ESModule<'a> {
         subpath: &[u8],
         exports: &Entry,
     ) -> Resolution {
-        if matches!(exports.data, EntryData::InvalidJson) {
-            return Resolution {
-                status: Status::InvalidJson,
-                ..Default::default()
-            };
-        }
         if let EntryData::Map(object) = &exports.data {
             if let Some(first) = object.list.first() {
                 if object

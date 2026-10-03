@@ -33,6 +33,7 @@ pub enum NodeModuleErrorKind {
 /// inserted at byte offset `insert_at` once the referrer is known.
 pub struct NodeModuleError {
     pub kind: NodeModuleErrorKind,
+    pub json_message: Box<[u16]>,
     pub head: Vec<u8>,
     pub insert_at: usize,
     /// Node includes the referrer clause for `require()` of `#imports`
@@ -46,11 +47,44 @@ pub struct NodeModuleError {
 /// JSON-stringify `target` the way Node's `JSONStringify(target)` renders a
 /// string target in ERR_INVALID_PACKAGE_TARGET.
 fn write_json_string(out: &mut Vec<u8>, s: &[u8]) {
+    let start = out.len();
     let _ = write!(
         out,
         "{}",
         bun_core::fmt::format_json_string_utf8(s, Default::default())
     );
+    // JSON.stringify uses lowercase escapes and literal Unicode separators.
+    let end = out.len();
+    let (mut read, mut write) = (start, start);
+    while let Some(offset) = bun_core::strings::index_of_char_usize(&out[read..end], b'\\') {
+        out.copy_within(read..read + offset, write);
+        read += offset;
+        write += offset;
+        if read + 6 <= end && out[read + 1] == b'u' {
+            out[read + 2..read + 6].make_ascii_lowercase();
+            let literal = match &out[read + 2..read + 6] {
+                b"2028" => Some("\u{2028}"),
+                b"2029" => Some("\u{2029}"),
+                b"feff" => Some("\u{feff}"),
+                _ => None,
+            };
+            if let Some(literal) = literal {
+                let bytes = literal.as_bytes();
+                out[write..write + bytes.len()].copy_from_slice(bytes);
+                write += bytes.len();
+            } else {
+                out.copy_within(read..read + 6, write);
+                write += 6;
+            }
+            read += 6;
+        } else {
+            out.copy_within(read..read + 2, write);
+            read += 2;
+            write += 2;
+        }
+    }
+    out.copy_within(read..end, write);
+    out.truncate(write + end - read);
 }
 
 impl NodeModuleError {
@@ -89,12 +123,9 @@ impl NodeModuleError {
         error
     }
 
-    pub fn invalid_json(path: &[u8]) -> Box<Self> {
-        let mut error = Self::at_end(
-            NodeModuleErrorKind::InvalidPackageJson,
-            format!("Invalid JSON in {}", BStr::new(path)).into_bytes(),
-            false,
-        );
+    pub fn invalid_json(message: &[u16]) -> Box<Self> {
+        let mut error = Self::at_end(NodeModuleErrorKind::InvalidPackageJson, Vec::new(), false);
+        error.json_message = Box::from(message);
         error.suppress_referrer = true;
         error
     }
@@ -146,6 +177,7 @@ impl NodeModuleError {
         let insert_at = head.len();
         Box::new(Self {
             kind,
+            json_message: Box::default(),
             head,
             insert_at,
             referrer_in_require,
@@ -232,6 +264,7 @@ impl NodeModuleError {
         }
         Box::new(Self {
             kind: NodeModuleErrorKind::InvalidPackageTarget,
+            json_message: Box::default(),
             head,
             insert_at,
             referrer_in_require: is_imports,
@@ -250,6 +283,7 @@ impl NodeModuleError {
         head.push(b'.');
         Box::new(Self {
             kind: NodeModuleErrorKind::InvalidPackageConfig,
+            json_message: Box::default(),
             head,
             insert_at,
             referrer_in_require: false,
@@ -273,6 +307,7 @@ impl NodeModuleError {
         }
         Box::new(Self {
             kind: NodeModuleErrorKind::InvalidPackageConfigStructure,
+            json_message: Box::default(),
             head,
             insert_at,
             referrer_in_require: false,

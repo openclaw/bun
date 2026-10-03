@@ -6,7 +6,9 @@ use bun_core::strings;
 
 use crate::build_message::LogKindJsc as _;
 use crate::bun_string_jsc;
-use crate::{CallFrame, JSGlobalObject, JSValue, JsClass, JsResult, StringJsc as _};
+use crate::{
+    CallFrame, EncodedSliceJsc as _, JSGlobalObject, JSValue, JsClass, JsResult, StringJsc as _,
+};
 
 // R-2 (host-fn re-entrancy): every JS-exposed method takes `&self`. `msg` and
 // `referrer` are read-only after construction; only `logged` is mutated
@@ -85,11 +87,10 @@ impl ResolveMessage {
         referrer: &[u8],
     ) -> JSValue {
         use bun_resolver::NodeModuleErrorKind as K;
-        let text = error.message(is_esm, specifier, referrer);
-        let message = bstr::BStr::new(&text);
         let code = match error.kind {
             K::InvalidPackageJson => {
-                return global.create_syntax_error_instance(format_args!("{message}"));
+                return bun_core::EncodedSlice::utf16(&error.json_message)
+                    .to_syntax_error_instance(global);
             }
             K::InvalidPackageConfig | K::InvalidPackageConfigStructure => {
                 crate::ErrCode::ERR_INVALID_PACKAGE_CONFIG
@@ -98,6 +99,8 @@ impl ResolveMessage {
             K::PackageImportNotDefined => crate::ErrCode::ERR_PACKAGE_IMPORT_NOT_DEFINED,
             K::InvalidPackageTarget => crate::ErrCode::ERR_INVALID_PACKAGE_TARGET,
         };
+        let text = error.message(is_esm, specifier, referrer);
+        let message = bstr::BStr::new(&text);
         global.err(code, format_args!("{message}")).to_js()
     }
 

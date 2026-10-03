@@ -13,6 +13,7 @@ pub const FIELDS: [&[u8]; 5] = [b"name", b"main", b"type", b"exports", b"imports
 pub struct NodePackageJson {
     pub fields: [Option<Range<usize>>; 5],
     pub needs_recovery: bool,
+    pub json_errors: [Option<Box<[u16]>>; 2],
 }
 
 impl NodePackageJson {
@@ -78,7 +79,7 @@ impl NodePackageJson {
                         }
                         cursor += 1;
                     }
-                    index.at(cursor - 1) + 1
+                    index.at(cursor)
                 }
                 b'"' => {
                     let end = index.at(cursor + 1);
@@ -144,8 +145,27 @@ impl NodePackageJson {
         {
             return Err(invalid);
         }
+        for field in 3..5 {
+            let Some(range) = result.fields[field].as_ref() else {
+                continue;
+            };
+            let raw = &contents[range.clone()];
+            if let Some(json) = map_json_source(raw) {
+                result.needs_recovery |= raw.first() == Some(&b'"');
+                result.json_errors[field - 3] = crate::node_json_diagnostic::syntax_error(&json);
+            }
+        }
         Ok(result)
     }
+}
+
+pub fn map_json_source(text: &[u8]) -> Option<Cow<'_, [u8]>> {
+    let value = if text.first() == Some(&b'"') {
+        string_value(text)?
+    } else {
+        Cow::Borrowed(text)
+    };
+    matches!(value.first(), Some(b'{' | b'[')).then_some(value)
 }
 
 fn string_value(text: &[u8]) -> Option<Cow<'_, [u8]>> {
