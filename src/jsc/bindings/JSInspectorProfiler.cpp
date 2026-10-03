@@ -29,7 +29,7 @@ JSC_DEFINE_HOST_FUNCTION(jsFunction_collectInspectorGarbage, (JSGlobalObject * g
     auto* promise = JSPromise::create(vm, globalObject->promiseStructure());
     auto ticket = vm.deferredWorkTimer->addPendingWork(DeferredWorkTimer::WorkType::ImminentlyScheduled, vm, promise, {});
     vm.deferredWorkTimer->scheduleWorkSoonIfActive(ticket, [](DeferredWorkTimer::Ticket& ticket) {
-        auto* promise = jsCast<JSPromise*>(ticket.target());
+        auto* promise = uncheckedDowncast<JSPromise>(ticket.target());
         auto* globalObject = promise->globalObject();
         Strong<JSPromise> protectedPromise(globalObject->vm(), promise);
         // Collect after the posting job unwinds, before re-entering JavaScript.
