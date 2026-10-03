@@ -37,7 +37,7 @@ The OpenClaw fork reports missing runtime imports without downloading npm packag
 
 ### [`node:diagnostics_channel`](https://nodejs.org/api/diagnostics_channel.html)
 
-🟡 `channel()`, `subscribe()`, `tracingChannel()` and the `http` client, `http.server.response.finish`, `http2`, `dgram` and `child_process` built-in channels are implemented. Missing `boundedChannel()` and the `http.server.request.start`, `http.server.response.created`, `net`, `module`, `console` and `worker_threads` built-in channels. Subscribers do not keep a `Channel` alive, so hold a reference to it.
+🟡 `channel()`, `subscribe()`, `tracingChannel()` and the `http` client and server, `http2`, `dgram` and `child_process` built-in channels are implemented. HTTP server request and response channels cover native servers and injected HTTP/1 connections, including HTTP/2 servers with `allowHTTP1`. Missing `boundedChannel()` and the `net`, `module`, `console` and `worker_threads` built-in channels. Subscribers do not keep a `Channel` alive, so hold a reference to it.
 
 ### [`node:dns`](https://nodejs.org/api/dns.html)
 

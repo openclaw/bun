@@ -30,7 +30,12 @@ const {
   isStoppedModuleGraphRunning,
 } = require("internal/shared");
 const kServerResponseStatistics = Symbol("ServerResponseStatistics");
-const onResponseFinishChannel = require("node:diagnostics_channel").channel("http.server.response.finish");
+const dc = require("node:diagnostics_channel");
+const onRequestStartChannel = dc.channel("http.server.request.start");
+const onResponseCreatedChannel = dc.channel("http.server.response.created");
+const onResponseFinishChannel = dc.channel("http.server.response.finish");
+const kUpgradeResponse = Symbol("upgradeResponse");
+const kFallbackResponseHandle = Symbol("fallbackResponseHandle");
 
 const { isPrimary } = require("internal/cluster/isPrimary");
 const { addServerAbortSignalOption } = require("internal/net/server_abort_signal");
@@ -68,7 +73,6 @@ const {
   onDataIncomingMessage,
   http1ServerPipeline,
 } = require("internal/http");
-const { FakeSocket } = require("internal/http/FakeSocket");
 const NumberIsNaN = Number.isNaN;
 const { emitListeningEvent, lookupListenAddress, registerListenCallback } = require("internal/net/server");
 
@@ -169,6 +173,8 @@ function assignSocketInternal(self, socket) {
   setCloseCallback(socket, onServerResponseClose);
   self.socket = socket;
   self.emit("socket", socket);
+  const pending = takeUnassignedResponse(self, socket);
+  if (pending) replayResponseWrites(self, pending);
 }
 
 function onServerResponseClose() {
@@ -1031,16 +1037,29 @@ Server.prototype[kRealListen] = function (tls, port, host, socketPath, reusePort
         }
         socket[kEnableStreaming](false);
 
+        handle.onabort = socket[kBoundOnAbort] ??= onServerRequestEvent.bind(socket);
+        if (hasBody) handle.ondata = onDataIncomingMessage.bind(http_req);
+        if (isSocketNew) server.emit("connection", socket);
+
+        socket[kRequest] = http_req;
+        let is_upgrade = false;
+        if ((dispatchBits & DISPATCH_HAS_UPGRADE) !== 0 && (dispatchBits & DISPATCH_CONN_UPGRADE) !== 0) {
+          http_req.upgrade = true;
+          is_upgrade = !!server.shouldUpgradeCallback(http_req);
+        }
+        http_req.upgrade = is_upgrade;
+
         // The builtin ServerResponse consumes its options synchronously, so a
         // reusable scratch object avoids one allocation per request. User
         // subclasses (options.ServerResponse) might retain options, so they
         // keep getting a fresh object.
         let http_res;
-        if (ResponseClass === ServerResponse) {
+        if (is_upgrade || ResponseClass === ServerResponse) {
           scratchResponseOptions[kHandle] = handle;
+          scratchResponseOptions[kUpgradeResponse] = is_upgrade;
           scratchResponseOptions.highWaterMark = socket.writableHighWaterMark;
           scratchResponseOptions[kRejectNonStandardBodyWrites] = server.rejectNonStandardBodyWrites;
-          http_res = new ResponseClass(http_req, scratchResponseOptions);
+          http_res = new ServerResponse(http_req, scratchResponseOptions);
           scratchResponseOptions[kHandle] = undefined;
         } else {
           http_res = new ResponseClass(http_req, {
@@ -1090,46 +1109,23 @@ Server.prototype[kRealListen] = function (tls, port, host, socketPath, reusePort
           http_res.once("finish", stopServerResponsePerf);
         }
 
-        handle.onabort = socket[kBoundOnAbort] ??= onServerRequestEvent.bind(socket);
-        // Like Node's connectionListener -> parserOnBody: body bytes flow into
-        // the IncomingMessage as they arrive, and the push callback readStop()s
-        // the socket (which emits 'pause' on it) once the buffer fills.
-        if (hasBody) {
-          handle.ondata = onDataIncomingMessage.bind(http_req);
-        }
+        // A constructor throw must leave the queued-turn kick pending until the native error flag is set.
         drainMicrotasks();
-
         let pendingPromise: Promise<void> | undefined;
         let didFinish = false;
 
-        if (isSocketNew) {
-          server.emit("connection", socket);
+        if (isPipelined) {
+          socket[kPipelinedResponses]?.pop();
+          queuePipelinedResponse(socket, http_res, !!isAncientHTTP);
         }
-
-        // Target of the socket 'timeout' handler until this request's response detaches.
-        socket[kRequest] = http_req;
-        // Node.js (llhttp) only flags a request as an upgrade when it carries
-        // both an Upgrade header and a Connection header with the "upgrade"
-        // token; the server then consults shouldUpgradeCallback (default: an
-        // 'upgrade' listener is installed) and otherwise dispatches the
-        // request normally.
-        let is_upgrade = false;
-        if ((dispatchBits & DISPATCH_HAS_UPGRADE) !== 0 && (dispatchBits & DISPATCH_CONN_UPGRADE) !== 0) {
-          // Like Node.js, shouldUpgradeCallback sees req.upgrade === true.
-          http_req.upgrade = true;
-          is_upgrade = !!server.shouldUpgradeCallback(http_req);
+        if (!is_upgrade) {
+          publishRequestStart(http_req, http_res, socket, server);
         }
-        // Like Node.js's parserOnIncoming: req.upgrade is true inside the
-        // 'upgrade' listener and false for a declined upgrade that falls
-        // through to 'request'.
-        http_req.upgrade = is_upgrade;
         if (isPipelined) {
           // A previous response on this connection has not finished yet: like
           // Node.js, this response is queued (res.socket === null) and its
           // writes are buffered until the in-flight response finishes and the
           // pipeline assigns it the socket (advanceResponsePipeline).
-          socket[kPipelinedResponses]?.pop(); // the turn that the native handle held
-          queuePipelinedResponse(socket, http_res, !!isAncientHTTP);
           if (is_upgrade) {
             http_res[kPipelinedQueuedState].handoff = true;
             socket[kPendingHandoff] = [];
@@ -1663,6 +1659,7 @@ const kDestroySoon = Symbol("kDestroySoon");
 // Scratch options object for the builtin ServerResponse (see the dispatcher).
 const scratchResponseOptions = {
   [kHandle]: undefined,
+  [kUpgradeResponse]: false,
   highWaterMark: 0,
   [kRejectNonStandardBodyWrites]: false,
 };
@@ -2536,6 +2533,7 @@ function _writeHead(statusCode, reason, obj, response) {
 function ServerResponse(req, options): void {
   if (!(this instanceof ServerResponse)) return new ServerResponse(req, options);
   OutgoingMessage.$call(this, options);
+  const fallbackHandle = req[kFallbackResponseHandle];
 
   this.useChunkedEncodingByDefault = true;
 
@@ -2561,7 +2559,7 @@ function ServerResponse(req, options): void {
     if (handle) {
       this[kHandle] = handle;
     } else {
-      this[kHandle] = req[kHandle];
+      this[kHandle] = fallbackHandle ?? req[kHandle];
     }
     // The in-server path passes this via the symbol key (see emitRequestEvent);
     // a user calling `new ServerResponse(req, { rejectNonStandardBodyWrites: true })`
@@ -2572,12 +2570,15 @@ function ServerResponse(req, options): void {
       this[kRejectNonStandardBodyWrites] = rejectNonStandardBodyWrites;
     }
   } else {
-    this[kHandle] = req[kHandle];
+    this[kHandle] = fallbackHandle ?? req[kHandle];
   }
 
   this.statusCode = 200;
   this.statusMessage = undefined;
   this.chunkedEncoding = false;
+  if (fallbackHandle) prepareUnassignedResponse(this, req.socket);
+  // Accepted upgrades use an internal pipeline placeholder, without an HTTP response lifecycle.
+  if (!options?.[kUpgradeResponse]) publishResponseCreated(req, this);
 }
 $toClass(ServerResponse, "ServerResponse", OutgoingMessage);
 
@@ -2834,6 +2835,30 @@ function stopServerResponsePerf(this: any) {
   }
 }
 
+function publishResponseCreated(request, response) {
+  if (onResponseCreatedChannel.hasSubscribers) {
+    const socket = request.socket;
+    if (response[kHandle] && socket) prepareUnassignedResponse(response, socket);
+    onResponseCreatedChannel.publish({ request, response });
+  }
+}
+
+function createFallbackResponse(ResponseClass, request, handle) {
+  request[kFallbackResponseHandle] = handle;
+  try {
+    return new ResponseClass(request);
+  } finally {
+    request[kFallbackResponseHandle] = undefined;
+  }
+}
+
+function publishRequestStart(request, response, socket, server) {
+  if (onRequestStartChannel.hasSubscribers) {
+    prepareUnassignedResponse(response, socket);
+    onRequestStartChannel.publish({ request, response, socket, server });
+  }
+}
+
 function publishResponseFinish(request, response, socket, server) {
   if (onResponseFinishChannel.hasSubscribers) {
     onResponseFinishChannel.publish({ request, response, socket, server });
@@ -3002,8 +3027,12 @@ function advancePipelineIfIdleNT(server, socket) {
 // outgoing queue: park the response behind the connection's in-flight one.
 // Its write()/end() buffer (kPipelinedQueuedState) until
 // advanceResponsePipeline assigns it the socket and replays them.
-function queuePipelinedResponse(socket, res, isAncient) {
-  res[kPipelinedQueuedState] = {
+function prepareUnassignedResponse(
+  res,
+  socket,
+  isAncient = res.req.httpVersionMajor < 1 || res.req.httpVersionMinor < 1,
+) {
+  return (res[kPipelinedQueuedState] ??= {
     ops: [],
     bytes: 0,
     headerBytes: 0,
@@ -3011,7 +3040,20 @@ function queuePipelinedResponse(socket, res, isAncient) {
     ended: false,
     isAncient,
     socket,
-  };
+  });
+}
+
+function takeUnassignedResponse(res, socket) {
+  const pending = res[kPipelinedQueuedState];
+  if (pending === undefined) return;
+  res[kPipelinedQueuedState] = undefined;
+  releasePipelineOutgoingData(socket, pending.bytes);
+  if (pending.ended) res.finished = false;
+  return pending;
+}
+
+function queuePipelinedResponse(socket, res, isAncient) {
+  prepareUnassignedResponse(res, socket, isAncient);
   (socket[kPipelinedResponses] ??= []).push(res);
 }
 
@@ -3123,8 +3165,6 @@ function advanceResponsePipeline(server, socket) {
   }
 
   queue.shift();
-  res[kPipelinedQueuedState] = undefined;
-  releasePipelineOutgoingData(socket, queued.bytes);
 
   if (NodeHTTPServerSocket && socket instanceof NodeHTTPServerSocket) {
     const socketHandle = socket[kHandle];
@@ -3136,6 +3176,7 @@ function advanceResponsePipeline(server, socket) {
       // The connection is already gone; the socket close path destroys queued
       // responses, but make sure this (already dequeued) one is not skipped.
       failQueuedPipelinedWriteCallbacks(queued, socket.errored ?? $ERR_STREAM_DESTROYED("write"));
+      takeUnassignedResponse(res, socket);
       if (!res.destroyed) {
         res.destroy();
       }
@@ -3143,6 +3184,7 @@ function advanceResponsePipeline(server, socket) {
     }
 
     if (queued.handoff) {
+      takeUnassignedResponse(res, socket);
       const ready = socket[kPendingHandoff];
       socket[kPendingHandoff] = undefined;
       // Adoption replaces the native socket; never run it inside the previous response's callback.
@@ -3157,17 +3199,15 @@ function advanceResponsePipeline(server, socket) {
     }
   } else {
     // internal/http1_server_fallback connection (a foreign duplex): the
-    // response's JS handle writes to the socket itself (nothing to switch
-    // natively), and the prototype assignSocket installs the 'close' listener
-    // a plain stream needs. Clear `finished` first, or assignSocket's _flush
-    // emits 'prefinish' before the ops replay below.
-    if (queued.ended) {
-      res.finished = false;
-    }
+    // response's JS handle writes to the socket itself, and assignSocket
+    // installs the 'close' listener a plain stream needs.
     res.assignSocket(socket);
   }
+}
 
-  // Replay the writes buffered while the response was queued.
+function replayResponseWrites(res, queued) {
+  const handle = res[kHandle];
+  // Replay the writes buffered while the response was unassigned.
   // The buffered bytes are handed to the native handle below, so they no
   // longer count as pending output (Node's _flush does the same).
   res.outputSize = 0;
@@ -3193,8 +3233,10 @@ function advanceResponsePipeline(server, socket) {
           if (typeof op[3] === "function") process.nextTick(op[3]);
         } else if (kind === "write") {
           if (ServerResponsePrototypeWrite.$call(res, op[1], op[2], op[3]) === false) hitBackpressure = true;
-        } else {
+        } else if (kind === "end") {
           ServerResponsePrototypeEnd.$call(res, op[1], op[2], op[3]);
+        } else {
+          ServerResponsePrototypeFlushHeaders.$call(res);
         }
       }
     } finally {
@@ -3270,11 +3312,18 @@ function accountQueuedHeaderBytes(res, queued) {
   addPipelineOutgoingData(queued, bytes);
 }
 
-function bufferPipelinedWrite(res, queued, chunk, encoding, callback) {
-  callWriteHeadIfObservable(res, res[headerStateSymbol]);
-  if (res[headerStateSymbol] === NodeHTTPHeaderState.none) {
-    updateHasBody(res, res.statusCode);
+function freezeBufferedResponseHeaders(res, fromEnd) {
+  if (res[headerStateSymbol] !== NodeHTTPHeaderState.none) return;
+  if (fromEnd) res[kImplicitHeaderFromEnd] = true;
+  try {
+    res._implicitHeader();
+  } finally {
+    if (fromEnd) res[kImplicitHeaderFromEnd] = false;
   }
+}
+
+function bufferPipelinedWrite(res, queued, chunk, encoding, callback) {
+  freezeBufferedResponseHeaders(res, false);
   accountQueuedHeaderBytes(res, queued);
   if (!res._hasBody) {
     if (chunk && res[kRejectNonStandardBodyWrites]) {
@@ -3302,10 +3351,7 @@ function bufferPipelinedWrite(res, queued, chunk, encoding, callback) {
 }
 
 function bufferPipelinedEnd(res, queued, chunk, encoding, callback) {
-  callWriteHeadIfObservable(res, res[headerStateSymbol], true);
-  if (res[headerStateSymbol] === NodeHTTPHeaderState.none) {
-    updateHasBody(res, res.statusCode);
-  }
+  freezeBufferedResponseHeaders(res, true);
   accountQueuedHeaderBytes(res, queued);
   if (chunk && !res._hasBody) {
     if (res[kRejectNonStandardBodyWrites]) {
@@ -3434,12 +3480,7 @@ Object.defineProperty(ServerResponse.prototype, "headers", {
 
 Object.defineProperty(ServerResponse.prototype, "socket", {
   get() {
-    if (this[kPipelinedQueuedState] !== undefined) {
-      // Queued pipelined response: like Node.js, res.socket is null until the
-      // response is assigned the socket.
-      return null;
-    }
-    return (this[fakeSocketSymbol] ??= new FakeSocket(this));
+    return this[fakeSocketSymbol] ?? null;
   },
   set(value) {
     this[fakeSocketSymbol] = value;
@@ -3534,7 +3575,7 @@ ServerResponse.prototype._writeRaw = function (chunk, encoding, callback) {
     // Standalone path: OutgoingMessage._writeRaw buffers to outputData while
     // no socket is assigned yet (kSocket is null) and flushes the buffer
     // ahead of the chunk once one is - writing through the auto-creating
-    // `socket` getter here would drop the bytes into a FakeSocket.
+    // The response has no socket until it owns the connection.
     return OutgoingMessagePrototype._writeRaw.$apply(this, arguments);
   }
   const queued = this[kPipelinedQueuedState];
@@ -4206,8 +4247,10 @@ ServerResponse.prototype.assignSocket = function (socket) {
   socket.once("close", onServerResponseClose);
   this.socket = socket;
   this.emit("socket", socket);
+  const pending = takeUnassignedResponse(this, socket);
   // Like Node.js: drain anything written before the socket was assigned.
   this._flush();
+  if (pending) replayResponseWrites(this, pending);
 };
 
 // Backed by real storage (the native response handle exposes no such flag):
@@ -4270,9 +4313,10 @@ ServerResponse.prototype.flushHeaders = function () {
   if (this[headerStateSymbol] === NodeHTTPHeaderState.sent) return; // Should be idempotent.
   if (this[headerStateSymbol] !== NodeHTTPHeaderState.assigned) this._implicitHeader();
 
-  if (this[kPipelinedQueuedState] !== undefined) {
-    // Queued pipelined response: its headers go out when it is assigned the
-    // socket (advanceResponsePipeline) - nothing can be flushed before then.
+  const pending = this[kPipelinedQueuedState];
+  if (pending !== undefined) {
+    accountQueuedHeaderBytes(this, pending);
+    pending.ops.push(["flush"]);
     return;
   }
 
@@ -4303,6 +4347,8 @@ ServerResponse.prototype.flushHeaders = function () {
     this._send("");
   }
 };
+
+const ServerResponsePrototypeFlushHeaders = ServerResponse.prototype.flushHeaders;
 
 function updateHasBody(response, statusCode) {
   // RFC 2616, 10.2.5:
@@ -4487,6 +4533,8 @@ http1ServerPipeline.maybePauseFallbackReads = maybePauseFallbackReads;
 http1ServerPipeline.resumeFallbackReadsOnDrain = resumeFallbackReadsOnDrain;
 http1ServerPipeline.finishDrainedResponse = finishDrainedResponse;
 http1ServerPipeline.publishResponseFinish = publishResponseFinish;
+http1ServerPipeline.publishRequestStart = publishRequestStart;
+http1ServerPipeline.createFallbackResponse = createFallbackResponse;
 http1ServerPipeline.kMustCloseConnection = kMustCloseConnection;
 
 export default {

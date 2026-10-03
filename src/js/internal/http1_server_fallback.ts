@@ -368,6 +368,8 @@ function connectionListenerHTTP1(server, socket, options) {
     resumeFallbackReadsOnDrain,
     finishDrainedResponse,
     publishResponseFinish,
+    publishRequestStart,
+    createFallbackResponse,
     kMustCloseConnection,
   } = http1ServerPipeline;
   const { allMethods } = process.binding("http_parser");
@@ -479,14 +481,14 @@ function connectionListenerHTTP1(server, socket, options) {
       if (!socket._paused && socket.readable) socket.resume();
     };
 
-    const res = new ServerResponseClass(req);
+    const handle = createHttp1FallbackResponseHandle(socket, shouldKeepAlive, keepAliveTimeout);
+    const res = createFallbackResponse(ServerResponseClass, req, handle);
     // The native dispatcher seeds these from the server; renderNativeHeaders
     // reads them to decide the Keep-Alive auto-header bits, so the fallback
     // path must carry them too or keep-alive responses lose their timeout line.
     res._keepAliveTimeout = keepAliveTimeout;
     const { maxRequestsPerSocket } = server;
     res._maxRequestsPerSocket = maxRequestsPerSocket;
-    const handle = createHttp1FallbackResponseHandle(socket, shouldKeepAlive, keepAliveTimeout);
     handle.onfinished = function () {
       socket[kHttp1ActiveRequests] = Math.max(0, (socket[kHttp1ActiveRequests] || 1) - 1);
       if (!shouldKeepAlive && !socket.destroyed) {
@@ -501,9 +503,12 @@ function connectionListenerHTTP1(server, socket, options) {
     // the previous response is still assigned (its 'finish' detach is a tick
     // away), so queue this response instead of letting assignSocket throw
     // ERR_HTTP_SOCKET_ASSIGNED.
-    if (socket._httpMessage) {
+    const isQueued = !!socket._httpMessage;
+    if (isQueued) {
       queuePipelinedResponse(socket, res, versionMajor < 1 || versionMinor < 1);
-    } else {
+    }
+    publishRequestStart(req, res, socket, server);
+    if (!isQueued) {
       res.assignSocket(socket);
     }
     // node's resOnFinish: release the socket once the response completes,

@@ -738,3 +738,427 @@ test("child_process.spawn tracing matches synchronous spawn outcomes", async () 
   expect(stdout).toBe("spawn tracing contract passed\n");
   expect(exitCode).toBe(0);
 });
+
+const httpChannelFamilyScript = String.raw`
+const assert = require("node:assert/strict");
+const dc = require("node:diagnostics_channel");
+const { once } = require("node:events");
+const http = require("node:http");
+const net = require("node:net");
+const [transport = "native", mode = "normal"] = process.argv.slice(1);
+const names = ["http.server.response.created", "http.server.request.start", "http.server.response.finish",
+  "http.client.request.created", "http.client.request.start", "http.client.request.error", "http.client.response.finish"];
+const records = [];
+const events = [];
+const subscriptions = names.map(name => {
+  const channel = dc.channel(name);
+  const subscriber = (message) => {
+    records.push({name, message, keys: Object.keys(message).sort(), socketAtPublish: message.response?.socket});
+    events.push(name);
+  };
+  if (mode !== "none") channel.subscribe(subscriber);
+  return {channel, subscriber};
+});
+const requests = [];
+const responses = [];
+let client;
+let clientResponse;
+let clientError;
+let first;
+let server;
+function handler(req, res) {
+  requests.push(req); responses.push(res); events.push("handler");
+  res.on("finish", () => events.push("finish"));
+  if (mode === "abort") res.destroy();
+  else if (mode === "queued" && !first) first = res;
+  else {
+    res.end("ok");
+    if (first) first.end("ok");
+  }
+}
+server = http.createServer(handler);
+if (mode === "continue") server.on("checkContinue", handler);
+if (mode === "expectation") server.on("checkExpectation", handler);
+if (mode === "upgrade") server.on("upgrade", (req, socket) => {events.push("upgrade"); socket.end("HTTP/1.1 101 Switching Protocols\r\nConnection: close\r\n\r\n");});
+const listener = transport === "injected" ? net.createServer(socket => server.emit("connection", socket)) : server;
+const timer = setTimeout(() => { console.error("HTTP proof timed out"); process.exit(2); }, 10000);
+(async () => {
+  try {
+    listener.listen(0, "127.0.0.1");
+    await once(listener, "listening");
+    if (["normal", "none", "abort"].includes(mode)) {
+      await new Promise((resolve, reject) => {
+        client = http.request({host:"127.0.0.1",port:listener.address().port,path:"/synthetic",agent:false}, res => {
+          clientResponse = res; events.push("response"); res.on("error", reject); res.on("end", resolve); res.resume();
+        });
+        client.on("error", err => {clientError = err; events.push("error"); mode === "abort" ? resolve() : reject(err);});
+        client.end();
+      });
+    } else {
+      client = net.connect(listener.address().port,"127.0.0.1");
+      const closed = once(client,"close");
+      client.resume();
+      const extra = mode === "continue" ? "Expect: 100-continue\r\n" :
+        ["expectation","reject"].includes(mode) ? "Expect: synthetic\r\n" :
+        ["upgrade","declined"].includes(mode) ? "Upgrade: synthetic\r\n" : "";
+      const connection = ["upgrade","declined"].includes(mode) ? "upgrade, close" : "close";
+      const request = "GET /synthetic HTTP/1.1\r\nHost: localhost\r\n" + extra + "Connection: " + connection + "\r\n\r\n";
+      client.write(mode === "queued" ? "GET /first HTTP/1.1\r\nHost: localhost\r\n\r\n"+request : request);
+      await closed;
+    }
+    const perName = Object.fromEntries(names.map(name => [name,records.filter(record => record.name === name)]));
+    console.log(JSON.stringify({transport,mode,events,counts:Object.fromEntries(names.map(name=>[name,perName[name].length])),
+      payloadKeys:Object.fromEntries(names.map(name=>[name,perName[name].map(x=>x.keys)]))}));
+    if (mode === "none") {assert.equal(records.length,0); return;}
+    const expected = mode === "upgrade" ? 0 : mode === "queued" ? 2 : 1;
+    for (const name of names.slice(0,3)) assert.equal(perName[name].length,name.endsWith("finish") && mode === "abort" ? 0 : expected,name);
+    for (let i=0;i<expected;i++) {
+      const created=perName[names[0]][i],start=perName[names[1]][i],finish=perName[names[2]][i];
+      assert.deepEqual(created.keys,["request","response"]);
+      assert.deepEqual(start.keys,["request","response","server","socket"]);
+      assert.equal(start.message.server,server);
+      assert.equal(start.message.socket,start.message.request.socket);
+      assert.equal(created.message.request,start.message.request);
+      assert.equal(created.message.response,start.message.response);
+      assert.equal(start.socketAtPublish,null,"start publishes before socket assignment");
+      if(mode !== "reject") {
+        assert.equal(start.message.request,requests[i]); assert.equal(start.message.response,responses[i]);
+      }
+      if(finish) {
+        assert.deepEqual(finish.keys,start.keys); assert.equal(finish.message.request,start.message.request);
+        assert.equal(finish.message.response,start.message.response); assert.equal(finish.message.server,server);
+      }
+    }
+    if(expected && mode !== "reject") assert.ok(events.indexOf(names[1]) < events.indexOf("handler"));
+    if(["normal","abort"].includes(mode)) {
+      for(const name of names.slice(3,5)) {assert.equal(perName[name].length,1,name);assert.equal(perName[name][0].message.request,client);assert.deepEqual(perName[name][0].keys,["request"]);}
+      const error=perName[names[5]],response=perName[names[6]];
+      assert.equal(error.length,mode === "abort" ? 1 : 0);assert.equal(response.length,mode === "normal" ? 1 : 0);
+      if(error.length) {assert.deepEqual(error[0].keys,["error","request"]);assert.equal(error[0].message.error,clientError);assert.ok(events.indexOf(names[5])<events.indexOf("error"));}
+      if(response.length) {assert.deepEqual(response[0].keys,["request","response"]);assert.equal(response[0].message.response,clientResponse);assert.ok(events.indexOf(names[6])<events.indexOf("response"));}
+    }
+  } finally {
+    clearTimeout(timer);
+    for(const {channel,subscriber} of subscriptions) channel.unsubscribe(subscriber);
+    client?.destroy(); server.closeAllConnections();
+    if(listener.listening) await new Promise(resolve=>listener.close(resolve));
+  }
+})().catch(error=>{console.error(error);process.exitCode=1;});
+`;
+
+for (const transport of ["native", "injected"]) {
+  for (const mode of [
+    "normal",
+    "none",
+    "abort",
+    "continue",
+    "expectation",
+    "reject",
+    "upgrade",
+    "declined",
+    "queued",
+  ]) {
+    test.concurrent(`http diagnostics family: ${transport} ${mode}`, async () => {
+      await using proc = Bun.spawn({
+        cmd: [bunExe(), "-e", httpChannelFamilyScript, transport, mode],
+        env: bunEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      expect({ stderr, exitCode }).toEqual({ stderr: "", exitCode: 0 });
+      expect(JSON.parse(stdout)).toMatchObject({ transport, mode });
+    });
+  }
+}
+
+const httpConstructorChannelsScript = String.raw`
+const assert = require("node:assert/strict");
+const http = require("node:http");
+const net = require("node:net");
+const {once} = require("node:events");
+const {channel} = require("node:diagnostics_channel");
+const [transport = "native", mode = "drop-options"] = process.argv.slice(1);
+const created = channel("http.server.response.created");
+const seen = [];
+const order = [];
+const subscriber = message => {seen.push(message); order.push("created"); assert.equal(message.response.socket,null);};
+created.subscribe(subscriber);
+let server;
+let listener;
+let client;
+const timer = setTimeout(()=>{console.error("constructor proof timed out");process.exit(2)},10000);
+(async()=>{
+  try {
+    if(mode === "standalone") {
+      const request = {method:"GET",httpVersionMajor:1,httpVersionMinor:1};
+      const response = new http.ServerResponse(request);
+      assert.deepEqual(seen,[{request,response}]);
+      assert.equal(response.socket,null);
+      console.log("ok");
+      return;
+    }
+    class CustomResponse extends http.ServerResponse {
+      constructor(req, options) {
+        order.push("before");
+        super(req,mode === "drop-options" || mode === "upgrade" ? undefined : options);
+        order.push("after");
+        if(mode === "unsubscribe") created.unsubscribe(subscriber);
+      }
+    }
+    let request;
+    let response;
+    server = http.createServer({ServerResponse:CustomResponse},(req,res)=>{request=req;response=res;res.end("ok")});
+    if(mode === "upgrade") server.on("upgrade",(_req,socket)=>socket.end("HTTP/1.1 101 Switching Protocols\r\nConnection: close\r\n\r\n"));
+    listener = transport === "injected" ? net.createServer(socket=>server.emit("connection",socket)) : server;
+    listener.listen(0,"127.0.0.1");
+    await once(listener,"listening");
+    client = net.connect(listener.address().port,"127.0.0.1");
+    const closed = once(client,"close");
+    client.resume();
+    client.write(mode === "upgrade" ? "GET / HTTP/1.1\r\nHost: localhost\r\nConnection: upgrade\r\nUpgrade: synthetic\r\n\r\n" : "GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
+    await closed;
+    assert.deepEqual(order,mode === "upgrade" ? [] : ["before","created","after"]);
+    assert.deepEqual(seen,mode === "upgrade" ? [] : [{request,response}]);
+    console.log("ok");
+  } finally {
+    clearTimeout(timer);
+    created.unsubscribe(subscriber);
+    client?.destroy();server?.closeAllConnections();
+    if(listener?.listening) await new Promise(resolve=>listener.close(resolve));
+  }
+})().catch(error=>{console.error(error);process.exitCode=1});
+`;
+
+for (const transport of ["native", "injected"]) {
+  for (const mode of ["standalone", "drop-options", "forward-options", "unsubscribe", "upgrade"]) {
+    test.concurrent(`http response.created constructors: ${transport} ${mode}`, async () => {
+      await using proc = Bun.spawn({
+        cmd: [bunExe(), "-e", httpConstructorChannelsScript, transport, mode],
+        env: bunEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      expect({ stdout, stderr, exitCode }).toEqual({ stdout: "ok\n", stderr: "", exitCode: 0 });
+    });
+  }
+}
+
+const httpSubscriberWriteScript = String.raw`
+const assert = require("node:assert/strict");
+const http = require("node:http");
+const net = require("node:net");
+const {once} = require("node:events");
+const {channel} = require("node:diagnostics_channel");
+const [transport = "native", topic = "http.server.request.start"] = process.argv.slice(1);
+const dc = channel(topic);
+let first;
+let callbacks = 0;
+let client;
+const subscriber = ({request,response}) => {
+  assert.equal(response.socket,null);
+  if(request.url === "/second") {
+    callbacks++;
+    response.setHeader("Content-Length","12");
+    response.write("B-head");
+  }
+};
+dc.subscribe(subscriber);
+const server = http.createServer((req,res)=>{
+  if(req.url === "/first") first = res;
+  else {
+    res.end("B-tail");
+    first.setHeader("Content-Length","6");
+    first.end("A-body");
+  }
+});
+const listener = transport === "injected" ? net.createServer(socket=>server.emit("connection",socket)) : server;
+const timer=setTimeout(()=>{console.error("subscriber proof timed out");process.exit(2)},10000);
+(async()=>{
+  try {
+    listener.listen(0,"127.0.0.1");await once(listener,"listening");
+    client=net.connect(listener.address().port,"127.0.0.1");
+    let wire="";
+    client.on("data",chunk=>wire+=chunk);
+    const closed=once(client,"close");
+    client.write("GET /first HTTP/1.1\r\nHost: localhost\r\n\r\nGET /second HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
+    await closed;
+    assert.equal(callbacks,1);
+    const responses=wire.split("HTTP/1.1 200 OK\r\n");
+    assert.equal(responses.length,3,wire);
+    assert.equal(responses[0],"");
+    assert.equal(responses[1].split("\r\n\r\n")[1],"A-body");
+    assert.equal(responses[2].split("\r\n\r\n")[1],"B-headB-tail");
+    console.log("ok");
+  } finally {
+    clearTimeout(timer);dc.unsubscribe(subscriber);client?.destroy();server.closeAllConnections();
+    if(listener.listening) await new Promise(resolve=>listener.close(resolve));
+  }
+})().catch(error=>{console.error(error);process.exitCode=1});
+`;
+
+for (const transport of ["native", "injected"]) {
+  for (const topic of ["http.server.request.start", "http.server.response.created"]) {
+    test.concurrent(`http diagnostics subscriber writes: ${transport} ${topic}`, async () => {
+      await using proc = Bun.spawn({
+        cmd: [bunExe(), "-e", httpSubscriberWriteScript, transport, topic],
+        env: bunEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      expect({ stdout, stderr, exitCode }).toEqual({ stdout: "ok\n", stderr: "", exitCode: 0 });
+    });
+  }
+}
+
+const httpSubscriberEdgeScript = String.raw`
+const assert = require('node:assert/strict');
+const http = require('node:http');
+const net = require('node:net');
+const {once} = require('node:events');
+const {channel} = require('node:diagnostics_channel');
+const [transport='native',topic='http.server.request.start',mode='socket-write']=process.argv.slice(1);
+const dc=channel(topic);
+let response;
+let published=0;
+let client;
+const subscriber=({response:res})=>{
+  published++;
+  assert.equal(res.socket,null);
+  if(mode==='flush') res.flushHeaders();
+  else {
+    res.write('A');
+    res.on('socket',()=>res.write('B'));
+  }
+};
+dc.subscribe(subscriber);
+const server=http.createServer((_req,res)=>{response=res;if(mode!=='flush')res.end('C')});
+const listener=transport==='injected'?net.createServer(socket=>server.emit('connection',socket)):server;
+const timer=setTimeout(()=>{console.error('subscriber edge timeout');process.exit(2)},5000);
+(async()=>{
+  try {
+    listener.listen(0,'127.0.0.1');await once(listener,'listening');
+    const body=await new Promise((resolve,reject)=>{
+      client=http.get({host:'127.0.0.1',port:listener.address().port,agent:false},res=>{
+        if(mode==='flush')response.end('headers-first');
+        let body='';res.on('data',chunk=>body+=chunk);res.on('error',reject);res.on('end',()=>resolve(body));
+      });
+      client.on('error',reject);
+    });
+    assert.equal(published,1);
+    assert.equal(body,mode==='flush'?'headers-first':'ABC');
+    console.log('ok');
+  } finally {
+    clearTimeout(timer);dc.unsubscribe(subscriber);client?.destroy();server.closeAllConnections();
+    if(listener.listening)await new Promise(resolve=>listener.close(resolve));
+  }
+})().catch(error=>{console.error(error);process.exitCode=1});
+`;
+
+for (const transport of ["native", "injected"]) {
+  for (const topic of ["http.server.request.start", "http.server.response.created"]) {
+    for (const mode of ["socket-write", "flush"]) {
+      test.concurrent(`http diagnostics subscriber ordering: ${transport} ${topic} ${mode}`, async () => {
+        await using proc = Bun.spawn({
+          cmd: [bunExe(), "-e", httpSubscriberEdgeScript, transport, topic, mode],
+          env: bunEnv,
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+        expect({ stdout, stderr, exitCode }).toEqual({ stdout: "ok\n", stderr: "", exitCode: 0 });
+      });
+    }
+  }
+}
+
+test("fallback response constructor writes are buffered without diagnostics subscribers", async () => {
+  await using proc = Bun.spawn({
+    cmd: [
+      bunExe(),
+      "-e",
+      String.raw`
+const assert=require('node:assert/strict');
+const http=require('node:http');
+const net=require('node:net');
+const {once}=require('node:events');
+let first;
+let client;
+class Response extends http.ServerResponse {
+  constructor(req,options){
+    super(req,options);
+    if(req.url==='/second')this.writeEarlyHints({link:'</synthetic>; rel=preload'});
+  }
+}
+const server=http.createServer({ServerResponse:Response},(req,res)=>{
+  res.setHeader('Content-Length','6');
+  if(req.url==='/first'){first=res;res.write('A-');}
+  else {res.end('B-body');first.end('body');}
+});
+const listener=net.createServer(socket=>server.emit('connection',socket));
+const timer=setTimeout(()=>{console.error('constructor hints timeout');process.exit(2)},5000);
+(async()=>{
+  try{
+    listener.listen(0,'127.0.0.1');await once(listener,'listening');
+    client=net.connect(listener.address().port,'127.0.0.1');
+    let wire='';client.on('data',chunk=>wire+=chunk);
+    const closed=once(client,'close');
+    client.write('GET /first HTTP/1.1\r\nHost: localhost\r\n\r\nGET /second HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n');
+    await closed;
+    const body=wire.indexOf('A-body'),hint=wire.indexOf('HTTP/1.1 103 Early Hints'),last=wire.indexOf('HTTP/1.1 200 OK',1);
+    assert.notEqual(body,-1,wire);assert.ok(hint>body,wire);assert.ok(last>hint,wire);assert.ok(wire.endsWith('B-body'),wire);
+    console.log('ok');
+  }finally{
+    clearTimeout(timer);client?.destroy();server.closeAllConnections();
+    if(listener.listening)await new Promise(resolve=>listener.close(resolve));
+  }
+})().catch(error=>{console.error(error);process.exitCode=1});
+`,
+    ],
+    env: bunEnv,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect({ stdout, stderr, exitCode }).toEqual({ stdout: "ok\n", stderr: "", exitCode: 0 });
+});
+
+const httpSubscriberFreezeScript = String.raw`
+const assert=require('node:assert/strict');const http=require('node:http');const net=require('node:net');const {once}=require('node:events');const {channel}=require('node:diagnostics_channel');
+const [transport='native',topic='http.server.request.start',mode='write']=process.argv.slice(1);
+const dc=channel(topic);let client;let published=0;
+const subscriber=({response:res})=>{
+ published++;res.setHeader('x-before','yes');res[mode]('A');
+ assert.equal(res.headersSent,true);
+ assert.throws(()=>res.setHeader('x-after','no'),{code:'ERR_HTTP_HEADERS_SENT'});
+ res.statusCode=204;
+};
+dc.subscribe(subscriber);
+const server=http.createServer((_req,res)=>{if(!res.finished)res.end('B')});
+const listener=transport==='injected'?net.createServer(socket=>server.emit('connection',socket)):server;
+const timer=setTimeout(()=>{console.error('subscriber freeze timeout');process.exit(2)},5000);
+(async()=>{try{
+ listener.listen(0,'127.0.0.1');await once(listener,'listening');
+ const result=await new Promise((resolve,reject)=>{client=http.get({host:'127.0.0.1',port:listener.address().port,agent:false},res=>{let body='';res.on('data',chunk=>body+=chunk);res.on('error',reject);res.on('end',()=>resolve({status:res.statusCode,header:res.headers['x-before'],body}))});client.on('error',reject)});
+ assert.equal(published,1);assert.deepEqual(result,{status:200,header:'yes',body:mode==='end'?'A':'AB'});console.log('ok');
+}finally{clearTimeout(timer);dc.unsubscribe(subscriber);client?.destroy();server.closeAllConnections();if(listener.listening)await new Promise(resolve=>listener.close(resolve))}})().catch(error=>{console.error(error);process.exitCode=1});
+`;
+
+for (const transport of ["native", "injected"]) {
+  for (const topic of ["http.server.request.start", "http.server.response.created"]) {
+    for (const mode of ["write", "end"]) {
+      test.concurrent(`http diagnostics freezes headers: ${transport} ${topic} ${mode}`, async () => {
+        await using proc = Bun.spawn({
+          cmd: [bunExe(), "-e", httpSubscriberFreezeScript, transport, topic, mode],
+          env: bunEnv,
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+        expect({ stdout, stderr, exitCode }).toEqual({ stdout: "ok\n", stderr: "", exitCode: 0 });
+      });
+    }
+  }
+}
