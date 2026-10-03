@@ -233,7 +233,15 @@ JSC::UnlinkedProgramCodeBlock* NodeVMScript::unlinkedCodeBlockFor(JSGlobalObject
     // The CodeCache records the parse on the executable it is given (that changes what the executable keys
     // later lookups with, so m_cachedExecutable is not used for this); every run links its own anyway.
     NodeVMCompilationCache::Identity identity { m_options.lineOffset.zeroBasedInt(), m_options.columnOffset.zeroBasedInt(), NodeVMCompilationCache::Kind::Script, m_options.filenameProvided, m_options.produceCachedData, codeGenerationMode, globalObject->globalScopeExtension() ? JSC::TaintedByWithScopeLexicallyScopedFeature : JSC::NoLexicallyScopedFeatures };
-    auto* block = WebCore::clientData(vm)->nodeVMCompilationCache.getOrCompile(globalObject, JSC::ProgramExecutable::create(globalObject, m_source), m_source, identity, m_options.hasCachedData, error);
+    auto& cache = WebCore::clientData(vm)->nodeVMCompilationCache;
+    JSC::UnlinkedProgramCodeBlock* block;
+    if (cache.isActive())
+        block = cache.getOrCompile(globalObject, JSC::ProgramExecutable::create(globalObject, m_source), m_source, identity, m_options.hasCachedData, error);
+    else {
+        block = vm.codeCache()->getUnlinkedProgramCodeBlock(vm, JSC::ProgramExecutable::create(globalObject, m_source), m_source, codeGenerationMode, error);
+        if (block)
+            cache.observeCompilation(globalObject, m_source, identity, m_options.hasCachedData, block);
+    }
     if (block)
         m_unlinkedCodeBlock.set(vm, this, block);
     return block;

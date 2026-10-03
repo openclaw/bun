@@ -48,6 +48,8 @@ public:
         uint64_t evictions { 0 };
     };
     ~NodeVMCompilationCache();
+    bool isActive() const { return m_statistics.active; }
+    void observeCompilation(JSC::JSGlobalObject*, const JSC::SourceCode&, const Identity&, bool hasCachedData, JSC::UnlinkedProgramCodeBlock*);
     JSC::UnlinkedProgramCodeBlock* getOrCompile(JSC::JSGlobalObject*, JSC::ProgramExecutable*, const JSC::SourceCode&, const Identity&, bool hasCachedData, JSC::ParserError&);
     RefPtr<JSC::CachedBytecode> bytecode(const JSC::SourceCode&, const Identity&);
     const Statistics& statistics();

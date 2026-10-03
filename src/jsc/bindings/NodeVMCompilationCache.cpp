@@ -166,11 +166,21 @@ void NodeVMCompilationCache::insert(JSGlobalObject* globalObject, const SourceCo
     ++m_statistics.entries;
 }
 
+void NodeVMCompilationCache::observeCompilation(JSGlobalObject* globalObject, const SourceCode& source, const Identity& identity, bool hasCachedData, UnlinkedProgramCodeBlock* block)
+{
+    initialize();
+    if (!m_statistics.limit || hasCachedData || !identity.codeGenerationMode.isEmpty() || !admit(source))
+        return;
+    ++m_statistics.misses;
+    Strong<UnlinkedProgramCodeBlock> protectedBlock(globalObject->vm(), block);
+    insert(globalObject, source, identity, block, false);
+}
+
 UnlinkedProgramCodeBlock* NodeVMCompilationCache::getOrCompile(JSGlobalObject* globalObject, ProgramExecutable* executable, const SourceCode& source, const Identity& identity, bool hasCachedData, ParserError& error)
 {
     initialize();
     VM& vm = globalObject->vm();
-    bool enabled = m_statistics.limit && !hasCachedData && identity.codeGenerationMode.isEmpty() && admit(source);
+    bool enabled = m_statistics.limit && !hasCachedData && identity.codeGenerationMode.isEmpty();
     if (enabled) {
         if (auto* entry = find(source, identity)) {
             auto* block = entry->decoded.get();

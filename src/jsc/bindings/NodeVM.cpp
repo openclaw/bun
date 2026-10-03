@@ -231,7 +231,14 @@ JSC::JSFunction* constructAnonymousFunction(JSC::JSGlobalObject* globalObject, c
     ParserError error;
 
     if (unlinkedProgramCodeBlock == nullptr) {
-        unlinkedProgramCodeBlock = WebCore::clientData(vm)->nodeVMCompilationCache.getOrCompile(globalObject, programExecutable, sourceCode, cacheIdentity, options.hasCachedData, error);
+        auto& cache = WebCore::clientData(vm)->nodeVMCompilationCache;
+        if (cache.isActive())
+            unlinkedProgramCodeBlock = cache.getOrCompile(globalObject, programExecutable, sourceCode, cacheIdentity, options.hasCachedData, error);
+        else {
+            unlinkedProgramCodeBlock = vm.codeCache()->getUnlinkedProgramCodeBlock(vm, programExecutable, sourceCode, {}, error);
+            if (unlinkedProgramCodeBlock)
+                cache.observeCompilation(globalObject, sourceCode, cacheIdentity, options.hasCachedData, unlinkedProgramCodeBlock);
+        }
     }
 
     if (!unlinkedProgramCodeBlock || error.isValid()) {
