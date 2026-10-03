@@ -14,6 +14,60 @@ declare global {
   var asyncret: any;
 }
 
+for (const mode of ["require", "import"] as const) {
+  for (const creation of ["onResolve", "after-entry", "onLoad-only"] as const) {
+    it.concurrent(`delegated ${mode} finds a package import created ${creation}`, async () => {
+      using dir = tempDir("plugin-delegated-created-file", {
+        "package.json": JSON.stringify({
+          imports: { "#selected/*": "./broad.cjs", "#selected/*.js": "./specific.cjs" },
+        }),
+        "broad.cjs": 'exports.value = "broad";',
+        "entry.cjs": "exports.read = name => require(name).value;",
+        "entry.mjs": "export const read = async name => (await import(name)).value;",
+        "main.mjs": `
+          import assert from "node:assert/strict";
+          import { existsSync, writeFileSync } from "node:fs";
+          import { join } from "node:path";
+          import { createRequire } from "node:module";
+          const target = join(import.meta.dir, "specific.cjs");
+          const writeTarget = () => writeFileSync(target, 'exports.value = "specific";');
+          let calls = 0;
+          Bun.plugin({
+            name: "delegated-created-file",
+            setup(builder) {
+              if (${JSON.stringify(creation)} === "onLoad-only") {
+                builder.onLoad({ filter: /never-matches/ }, () => { throw new Error("unexpected onLoad"); });
+              } else {
+                builder.onResolve({ filter: /^#selected\\// }, () => {
+                  calls++;
+                  if (${JSON.stringify(creation)} === "onResolve") writeTarget();
+                  assert.equal(existsSync(target), true);
+                  return undefined;
+                });
+              }
+            },
+          });
+          const loaded = ${mode === "require" ? 'createRequire(import.meta.url)("./entry.cjs")' : 'await import("./entry.mjs")'};
+          assert.equal(existsSync(target), false);
+          if (${JSON.stringify(creation)} !== "onResolve") writeTarget();
+          assert.equal(await loaded.read("#selected/leaf.js"), "specific");
+          assert.equal(calls, ${creation === "onLoad-only" ? 0 : 1});
+          console.log("specific");
+        `,
+      });
+      await using proc = Bun.spawn({
+        cmd: [bunExe(), "main.mjs"],
+        env: bunEnv,
+        cwd: String(dir),
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      expect({ stdout, stderr, exitCode }).toEqual({ stdout: "specific\n", stderr: "", exitCode: 0 });
+    });
+  }
+}
+
 plugin({
   name: "url text file loader",
   setup(builder) {
