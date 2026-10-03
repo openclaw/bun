@@ -3530,7 +3530,7 @@ static String moduleHookKey(const String& urlString)
 
 JSC::Identifier GlobalObject::moduleLoaderResolve(JSGlobalObject* jsGlobalObject,
     JSModuleLoader* loader, JSValue key,
-    JSValue referrer, RefPtr<JSC::ScriptFetcher>, bool)
+    JSValue referrer, RefPtr<JSC::ScriptFetcher>, bool useImportMap)
 {
     Zig::GlobalObject* globalObject = static_cast<Zig::GlobalObject*>(jsGlobalObject);
     auto& vm = globalObject->vm();
@@ -3659,7 +3659,7 @@ JSC::Identifier GlobalObject::moduleLoaderResolve(JSGlobalObject* jsGlobalObject
     BunString keyZ = Bun::toString(keyString);
     BunString referrerZ = Bun::toString(resolverReferrerString);
     BunString queryZ = BunStringEmpty;
-    Zig__GlobalObject__resolve(&res, globalObject, &keyZ, &referrerZ, &queryZ, splitQuery, false);
+    Zig__GlobalObject__resolve(&res, globalObject, &keyZ, &referrerZ, &queryZ, splitQuery, false, !useImportMap);
     RETURN_IF_EXCEPTION(scope, {});
     if (!res.success) {
         throwException(scope, res.result.err, globalObject);
@@ -3810,7 +3810,7 @@ JSC::JSPromise* GlobalObject::moduleLoaderImportModule(JSGlobalObject* jsGlobalO
         BunString moduleNameZ = Bun::toString(moduleName);
         BunString sourceOriginZ = Bun::toString(sourceURL.protocolIsFile() ? sourceURL.string() : sourceOriginStringHolder);
         BunString queryZ = BunStringEmpty;
-        Zig__GlobalObject__resolve(&res, globalObject, &moduleNameZ, &sourceOriginZ, &queryZ, splitQuery, true);
+        Zig__GlobalObject__resolve(&res, globalObject, &moduleNameZ, &sourceOriginZ, &queryZ, splitQuery, true, false);
         RETURN_IF_EXCEPTION(scope, JSC::JSPromise::rejectedPromiseWithCaughtException(globalObject, scope));
         if (!res.success) [[unlikely]] {
             throwException(scope, res.result.err, globalObject);

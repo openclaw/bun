@@ -1431,6 +1431,7 @@ extern "C" fn Zig__GlobalObject__resolve(
     query: &mut BunString,
     split_query: bool,
     dynamic_import: bool,
+    resolved_key: bool,
 ) {
     crate::mark_binding();
     match VirtualMachine::resolve_maybe_needs_trailing_slash::<true>(
@@ -1440,6 +1441,8 @@ extern "C" fn Zig__GlobalObject__resolve(
         Some(query),
         if dynamic_import {
             crate::virtual_machine::ResolveMode::DynamicImport
+        } else if resolved_key {
+            crate::virtual_machine::ResolveMode::ResolvedEsm
         } else {
             crate::virtual_machine::ResolveMode::Esm
         },

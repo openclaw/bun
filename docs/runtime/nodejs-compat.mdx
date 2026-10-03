@@ -149,6 +149,12 @@ Child construction publishes the `child_process` diagnostics channel with the ex
 
 ### [`node:module`](https://nodejs.org/api/module.html)
 
+Runtime package resolution follows Node 24.21's `package.json` validation. Selected malformed metadata, non-string `name` or `type` fields, and invalid exports condition objects throw `ERR_INVALID_PACKAGE_CONFIG` with the package path and Node's resolution context. Unselected metadata and explicit `.mjs`/`.cjs` formats remain deferred, and values Node ignores are not rejected.
+
+Unreadable selected package metadata also throws `ERR_INVALID_PACKAGE_CONFIG`, rather than falling through to an index file. This deliberately follows Node 24.21; Node 24.19 treated these read failures as absent metadata. Missing files, non-directory path components, and a `package.json` directory remain absence cases.
+
+`import.meta.resolve()` validates the package scope of existing `.js`, `.ts`, and extensionless files. Missing-file URLs and `require.resolve()` defer that scope validation. Loading an already-resolved CommonJS file through the ESM loader preserves the original resolution mode.
+
 `registerHooks()` supports synchronous resolve/load chaining, source transformation, and deregistration. `nextResolve` honors parent URLs and custom conditions, and hooks preserve query/fragment module identities. Dynamic-import attributes, including attributes returned by resolve hooks, reach the matching load hook.
 
 Hooks receive absolute URLs for Bun's built-in package replacements, including `ws`, `undici`, the fetch polyfills, `abort-controller`, and `utf-8-validate`. When the requested package is installed, resolve and load hooks observe its resolved `file:` URL. Calling `nextLoad()` still serves Bun's native replacement; a load hook can short-circuit with its own source. If there is no resolvable package file, the hook URL uses `bun-builtin:<canonical-name>` (for example, `bun-builtin:ws`) with format `"builtin"`. Bare `bun` uses `bun-builtin:bun`. The `ffi` alias follows the same installed-file rule and otherwise uses `bun-builtin:ffi`, which delegates to `bun:ffi`. These URLs can be parsed with `new URL()`. Node builtins retain `node:` URLs, including `node:sys` and exposed `node:internal/...` modules. Direct imports of the internal `bun:`, `builtin:`, and `macro:` namespaces retain their existing native loading path.

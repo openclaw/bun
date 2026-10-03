@@ -4069,6 +4069,8 @@ pub struct PendingIpc {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ResolveMode {
     Esm,
+    /// JSC is loading a key already resolved by import or require.
+    ResolvedEsm,
     DynamicImport,
     Require,
     /// `require.resolve()`: returns the bare specifier for Node builtins.
@@ -4078,13 +4080,13 @@ pub enum ResolveMode {
 impl ResolveMode {
     #[inline]
     pub fn is_esm(self) -> bool {
-        matches!(self, Self::Esm | Self::DynamicImport)
+        matches!(self, Self::Esm | Self::ResolvedEsm | Self::DynamicImport)
     }
 
     #[inline]
     pub fn import_kind(self) -> bun_ast::ImportKind {
         match self {
-            Self::Esm => bun_ast::ImportKind::Stmt,
+            Self::Esm | Self::ResolvedEsm => bun_ast::ImportKind::Stmt,
             Self::DynamicImport => bun_ast::ImportKind::Dynamic,
             Self::Require => bun_ast::ImportKind::Require,
             Self::RequireResolve => bun_ast::ImportKind::RequireResolve,
@@ -5682,6 +5684,7 @@ impl VirtualMachine {
         // SAFETY: per-thread VM is live for this synchronous call.
         let jsc_vm = unsafe { &mut *jsc_vm_ptr };
 
+        jsc_vm.transpiler.resolver.node_module_error = None;
         let mut resolve_result = jsc_vm._resolve(
             &mut result,
             specifier_utf8.slice(),
@@ -5710,6 +5713,28 @@ impl VirtualMachine {
                 !source_is_file_url,
                 HashSign::Fragment,
             );
+        }
+        if resolve_result.is_ok()
+            && mode.is_esm()
+            && mode != ResolveMode::ResolvedEsm
+            && jsc_vm.transpiler.resolver.node_module_error.is_none()
+            && bun_paths::is_absolute(result.path)
+        {
+            jsc_vm.transpiler.resolver.node_module_error = jsc_vm
+                .transpiler
+                .resolver
+                .node_package_scope_error(result.path);
+        }
+        if let Some(error) = jsc_vm.transpiler.resolver.node_module_error.take() {
+            if resolve_result.is_err() || error.is_fatal() {
+                return Ok(Err(crate::ResolveMessage::from_node_module_error(
+                    global,
+                    &error,
+                    mode.is_esm(),
+                    specifier_utf8.slice(),
+                    source_utf8.slice(),
+                )));
+            }
         }
         if let Err(err_) = resolve_result {
             let err = err_;

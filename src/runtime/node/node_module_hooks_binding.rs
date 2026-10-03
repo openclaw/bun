@@ -199,7 +199,7 @@ pub(crate) fn get_package_type_for_hooks(
     let package = unsafe { (*vm).transpiler.resolver.read_dir_info(dir) }
         .ok()
         .flatten()
-        .and_then(|info| info.package_json().or(info.enclosing_package_json));
+        .and_then(|info| info.package_json_for_node_scope());
     let kind = match package.map(|package| package.module_type) {
         Some(bun_options_types::bundle_enums::ModuleType::Cjs) => 1,
         Some(bun_options_types::bundle_enums::ModuleType::Esm) => 2,

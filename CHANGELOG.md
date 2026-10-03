@@ -123,3 +123,5 @@
 - Preserve already-fetched CommonJS-to-ESM module keys through linking so Windows forward-slash aliases and paths containing dot segments do not crash when reading exports.
 
 - Cache repeated `node:vm` compilations after 1,750 distinct source fingerprints with a 256 MiB per-VM byte LRU, configurable through `BUN_VM_COMPILE_CACHE_SIZE`, while preserving fresh evaluations, context globals, import callback identities, and cached-data validation.
+
+- Match Node 24.21 package metadata validation during import and require, preserve lazy scope/condition checks and ignored fields, reject unreadable selected metadata, and retain CommonJS parent paths in resolution diagnostics. Adapts [oven-sh/bun#33890](https://github.com/oven-sh/bun/pull/33890) and [oven-sh/bun#35711](https://github.com/oven-sh/bun/pull/35711). Thanks @robobun and @cirospaciari!
