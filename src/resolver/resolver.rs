@@ -1391,27 +1391,6 @@ impl<'a> Resolver<'a> {
         let mut tmp =
             self.resolve_without_symlinks(source_dir_normalized, import_path, kind, global_cache);
 
-        if matches!(tmp, ResultUnion::NotFound)
-            && self.refresh_runtime_plugin_misses
-            && !self.runtime_mutable_directories
-            && self
-                .node_module_error
-                .as_ref()
-                .is_none_or(|error| !error.is_fatal())
-        {
-            // Recheck plugin-created files only after the cached resolution misses.
-            self.runtime_mutable_directories = true;
-            let mut resolver = scopeguard::guard(&mut *self, |resolver| {
-                resolver.runtime_mutable_directories = false;
-            });
-            tmp = resolver.resolve_without_symlinks(
-                source_dir_normalized,
-                import_path,
-                kind,
-                global_cache,
-            );
-        }
-
         // Fragments in URLs in CSS imports are technically expected to work
         if matches!(tmp, ResultUnion::NotFound) && kind.is_from_css() {
             'try_without_suffix: {
@@ -1493,7 +1472,22 @@ impl<'a> Resolver<'a> {
             }
             ResultUnion::NotFound => {
                 let _ = self.flush_debug_logs(FlushMode::Fail);
-                ResultUnion::NotFound
+                if self.refresh_runtime_plugin_misses
+                    && !self.runtime_mutable_directories
+                    && self
+                        .node_module_error
+                        .as_ref()
+                        .is_none_or(|error| !error.is_fatal())
+                {
+                    self.retry_runtime_plugin_miss(
+                        source_dir_normalized,
+                        import_path,
+                        kind,
+                        global_cache,
+                    )
+                } else {
+                    ResultUnion::NotFound
+                }
             }
         };
 
@@ -6180,6 +6174,22 @@ impl<'a> Resolver<'a> {
         }
 
         dec_ret!(MatchStatus::NotFound);
+    }
+
+    #[cold]
+    fn retry_runtime_plugin_miss(
+        &mut self,
+        source_dir: &[u8],
+        import_path: &'static [u8],
+        kind: ast::ImportKind,
+        global_cache: GlobalCache,
+    ) -> ResultUnion {
+        // Recheck plugin-created files only after the cached resolution misses.
+        self.runtime_mutable_directories = true;
+        let mut resolver = scopeguard::guard(self, |resolver| {
+            resolver.runtime_mutable_directories = false;
+        });
+        resolver.resolve_and_auto_install(source_dir, import_path, kind, global_cache)
     }
 
     #[inline]
