@@ -78,6 +78,7 @@ public:
     JSGlobalObject* parsingContext = nullptr;
     JSValue contextExtensions {};
     bool produceCachedData = false;
+    bool hasCachedData = false;
 
     using BaseVMOptions::BaseVMOptions;
 

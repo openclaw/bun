@@ -121,3 +121,5 @@
 - Allow later Windows pipe stdout/stderr writes after `end()` and pipeline completion, matching Node while preserving POSIX socket shutdown.
 
 - Preserve already-fetched CommonJS-to-ESM module keys through linking so Windows forward-slash aliases and paths containing dot segments do not crash when reading exports.
+
+- Cache repeated `node:vm` compilations with a 256 MiB per-VM byte LRU, configurable through `BUN_VM_COMPILE_CACHE_SIZE`, while preserving fresh evaluations, context globals, import callback identities, and cached-data validation.
