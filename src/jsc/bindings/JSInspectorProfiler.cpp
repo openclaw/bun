@@ -34,7 +34,7 @@ JSC_DEFINE_HOST_FUNCTION(jsFunction_collectInspectorGarbage, (JSGlobalObject * g
         Strong<JSPromise> protectedPromise(globalObject->vm(), promise);
         // Collect after the posting job unwinds, before re-entering JavaScript.
         Bun__gc(Bun::vm(globalObject), true);
-        promise->resolve(globalObject, jsUndefined());
+        promise->resolve(globalObject, globalObject->vm(), jsUndefined());
     });
     return JSValue::encode(promise);
 }
