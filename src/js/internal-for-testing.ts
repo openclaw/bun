@@ -877,3 +877,13 @@ export const internalModuleBytecode: {
   (index: number): { name: string; bytecode: Uint8Array; strings: Uint8Array } | null;
   (source: string, name: string): { name: string; bytecode: Uint8Array; strings: Uint8Array };
 } = $newCppFunction("InternalModuleRegistry.cpp", "jsInternalModuleBytecode", 2);
+
+export const nodeVMCompilationCacheStats: () => {
+  limit: number;
+  bytes: number;
+  entries: number;
+  hits: number;
+  decodes: number;
+  misses: number;
+  evictions: number;
+} = $cpp("NodeVMCompilationCache.cpp", "createNodeVMCompilationCacheStatsForTesting");

@@ -75,6 +75,7 @@ class DOMWrapperWorld;
 #include "DOMURLBaseCache.h"
 #include "NodeVMOptionNames.h"
 #include "NodeVMSourceOriginCache.h"
+#include "NodeVMCompilationCache.h"
 #include <JavaScriptCore/HeapObserver.h>
 namespace Zig {
 class GlobalObject;
@@ -347,6 +348,10 @@ private:
     Bun::NodeVMOptionNames m_nodeVMOptionNames;
     Bun::NodeVMSourceOriginCache m_nodeVMSourceOriginCache;
 
+public:
+    Bun::NodeVMCompilationCache nodeVMCompilationCache;
+
+private:
     Bun::HeapSizeAfterLastCollection m_heapSizeAfterLastCollection;
 
     SentinelLinkedList<JSVMClientDataClient, BasicRawSentinelNode<JSVMClientDataClient>> m_clients;

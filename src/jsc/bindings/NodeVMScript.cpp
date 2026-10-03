@@ -67,8 +67,10 @@ bool ScriptOptions::fromJS(JSC::JSGlobalObject* globalObject, JSC::VM& vm, JSC::
             any = true;
         RETURN_IF_EXCEPTION(scope, false);
 
-        if (validateCachedData(globalObject, vm, scope, options, this->cachedData))
+        if (validateCachedData(globalObject, vm, scope, options, this->cachedData)) {
+            this->hasCachedData = true;
             any = true;
+        }
         RETURN_IF_EXCEPTION(scope, false);
 
         // Handle importModuleDynamically option
@@ -230,7 +232,8 @@ JSC::UnlinkedProgramCodeBlock* NodeVMScript::unlinkedCodeBlockFor(JSGlobalObject
 
     // The CodeCache records the parse on the executable it is given (that changes what the executable keys
     // later lookups with, so m_cachedExecutable is not used for this); every run links its own anyway.
-    JSC::UnlinkedProgramCodeBlock* block = vm.codeCache()->getUnlinkedProgramCodeBlock(vm, JSC::ProgramExecutable::create(globalObject, m_source), m_source, codeGenerationMode, error);
+    NodeVMCompilationCache::Identity identity { m_options.lineOffset.zeroBasedInt(), m_options.columnOffset.zeroBasedInt(), NodeVMCompilationCache::Kind::Script, m_options.filenameProvided, m_options.produceCachedData, codeGenerationMode, globalObject->globalScopeExtension() ? JSC::TaintedByWithScopeLexicallyScopedFeature : JSC::NoLexicallyScopedFeatures };
+    auto* block = WebCore::clientData(vm)->nodeVMCompilationCache.getOrCompile(globalObject, JSC::ProgramExecutable::create(globalObject, m_source), m_source, identity, m_options.hasCachedData, error);
     if (block)
         m_unlinkedCodeBlock.set(vm, this, block);
     return block;
@@ -253,7 +256,11 @@ JSC::ProgramExecutable* NodeVMScript::createExecutable()
 
 void NodeVMScript::cacheBytecode()
 {
-    m_cachedBytecode = getBytecode(globalObject(), JSC::SourceCodeType::ProgramType, m_source);
+    NodeVMCompilationCache::Identity identity { m_options.lineOffset.zeroBasedInt(), m_options.columnOffset.zeroBasedInt(), NodeVMCompilationCache::Kind::Script, m_options.filenameProvided, m_options.produceCachedData, {}, globalObject()->globalScopeExtension() ? JSC::TaintedByWithScopeLexicallyScopedFeature : JSC::NoLexicallyScopedFeatures };
+    if (!m_options.hasCachedData)
+        m_cachedBytecode = WebCore::clientData(vm())->nodeVMCompilationCache.bytecode(m_source, identity);
+    if (!m_cachedBytecode)
+        m_cachedBytecode = getBytecode(globalObject(), JSC::SourceCodeType::ProgramType, m_source);
     m_cachedDataProduced = m_cachedBytecode != nullptr;
 }
 

@@ -209,7 +209,7 @@ JSC::JSFunction* constructAnonymousFunction(JSC::JSGlobalObject* globalObject, c
 
     SourceCode sourceCode(JSC::StringSourceProvider::create(program, sourceOrigin, WTF::move(options.filename), sourceTaintOrigin, wrappedPosition, SourceProviderSourceType::Program));
 
-    CodeCache* cache = vm.codeCache();
+    NodeVMCompilationCache::Identity cacheIdentity { options.lineOffset.zeroBasedInt(), options.columnOffset.zeroBasedInt(), NodeVMCompilationCache::Kind::Function, options.filenameProvided, options.produceCachedData, {}, lexicallyScopedFeatures };
     ProgramExecutable* programExecutable = ProgramExecutable::create(globalObject, sourceCode);
 
     UnlinkedProgramCodeBlock* unlinkedProgramCodeBlock = nullptr;
@@ -231,7 +231,7 @@ JSC::JSFunction* constructAnonymousFunction(JSC::JSGlobalObject* globalObject, c
     ParserError error;
 
     if (unlinkedProgramCodeBlock == nullptr) {
-        unlinkedProgramCodeBlock = cache->getUnlinkedProgramCodeBlock(vm, programExecutable, sourceCode, {}, error);
+        unlinkedProgramCodeBlock = WebCore::clientData(vm)->nodeVMCompilationCache.getOrCompile(globalObject, programExecutable, sourceCode, cacheIdentity, options.hasCachedData, error);
     }
 
     if (!unlinkedProgramCodeBlock || error.isValid()) {
@@ -259,7 +259,9 @@ JSC::JSFunction* constructAnonymousFunction(JSC::JSGlobalObject* globalObject, c
 
     if (bytecodeAccepted == TriState::Indeterminate) {
         if (options.produceCachedData) {
-            RefPtr<JSC::CachedBytecode> producedBytecode = getBytecode(globalObject, JSC::SourceCodeType::ProgramType, sourceCode);
+            RefPtr<JSC::CachedBytecode> producedBytecode = WebCore::clientData(vm)->nodeVMCompilationCache.bytecode(sourceCode, cacheIdentity);
+            if (!producedBytecode)
+                producedBytecode = getBytecode(globalObject, JSC::SourceCodeType::ProgramType, sourceCode);
             if (producedBytecode) {
                 JSC::JSUint8Array* buffer = WebCore::createBuffer(globalObject, producedBytecode->span());
                 RETURN_IF_EXCEPTION(throwScope, nullptr);
@@ -1979,8 +1981,10 @@ bool CompileFunctionOptions::fromJS(JSC::JSGlobalObject* globalObject, JSC::VM& 
         // The validators return false both for "absent" and for "threw".
         RETURN_IF_EXCEPTION(scope, false);
 
-        if (validateCachedData(globalObject, vm, scope, options, this->cachedData))
+        if (validateCachedData(globalObject, vm, scope, options, this->cachedData)) {
+            this->hasCachedData = true;
             any = true;
+        }
         RETURN_IF_EXCEPTION(scope, false);
 
         JSValue parsingContextValue = options->getIfPropertyExists(globalObject, optionNames(vm).parsingContext(vm));

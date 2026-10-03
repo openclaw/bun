@@ -2743,3 +2743,182 @@ test.concurrent("Atomics.notify does not wake the Atomics.waitAsync of a context
     exitCode: 0,
   });
 });
+
+describe("bounded vm compilation cache", () => {
+  async function runCacheFixture(source: string, limit = "268435456") {
+    await using proc = Bun.spawn({
+      cmd: [bunExe(), "--expose-internals", "-e", source],
+      env: { ...bunEnv, BUN_VM_COMPILE_CACHE_SIZE: limit, BUN_JSC_useCodeCache: "false" },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect({ stdout, stderr, exitCode }).toEqual({ stdout: "ok\n", stderr: "", exitCode: 0 });
+  }
+
+  test.concurrent("reuses compilation beyond the shared JSC working set", async () => {
+    await runCacheFixture(`
+      import assert from "node:assert/strict";
+      import { runInThisContext } from "node:vm";
+      import { nodeVMCompilationCacheStats as stats } from "bun:internal-for-testing";
+      for (let pass = 0; pass < 2; pass++) {
+        for (let i = 0; i < 2105; i++) {
+          const f = runInThisContext("(() => " + i + ")", { filename: "cache-" + i + ".js" });
+          assert.equal(f(), i);
+        }
+      }
+      assert.equal(stats().misses, 2105);
+      assert.equal(stats().hits, 2105);
+      assert.equal(stats().evictions, 0);
+      console.log("ok");
+    `);
+  });
+
+  test.concurrent("keys source, location, compilation kind and cachedData options", async () => {
+    await runCacheFixture(`
+      import assert from "node:assert/strict";
+      import { Script, compileFunction } from "node:vm";
+      import { nodeVMCompilationCacheStats as stats } from "bun:internal-for-testing";
+      const source = "(() => { throw new Error('cache-key'); })";
+      const variants = [
+        {filename:"first.js"}, {filename:"second.js"},
+        {filename:"first.js",lineOffset:10}, {filename:"first.js",columnOffset:10},
+        {filename:"first.js",produceCachedData:true},
+      ];
+      for (const options of variants) {
+        for (let pass=0; pass<2; pass++) {
+          const script = new Script(source, options);
+          assert.throws(script.runInThisContext(), error =>
+            error.message === "cache-key" && error.stack.includes(options.filename + ":" + ((options.lineOffset ?? 0)+1) + ":"));
+          if (options.produceCachedData) assert.equal(script.cachedDataProduced,true);
+        }
+      }
+      assert.equal(stats().misses,variants.length);
+      assert.equal(stats().hits,variants.length);
+      const previous = stats();
+      const cachedData = new Script("40 + 2").createCachedData();
+      const accepted = new Script("40 + 2", {cachedData});
+      assert.equal(accepted.cachedDataRejected,false);
+      assert.equal(accepted.runInThisContext(),42);
+      new Script("40 + 2", {cachedData:Buffer.alloc(0)});
+      assert.equal(stats().misses,previous.misses+1);
+      assert.equal(stats().hits,previous.hits);
+      for (let pass=0;pass<2;pass++) assert.equal(compileFunction("return n + 1",["n"])(41),42);
+      assert.equal(stats().hits,previous.hits+1);
+      for (const n of [1,2,1]) assert.equal(new Script(String(n), {filename:"changed.js"}).runInThisContext(),n);
+      for (const url of ["first-map.js","second-map.js"]) {
+        const script=new Script("new Error('directive')\\n//# sourceURL="+url);
+        assert(script.runInThisContext().stack.includes(url));
+      }
+      console.log("ok");
+    `);
+  });
+
+  test.concurrent("keeps fresh contexts, closures and dynamic import referrers", async () => {
+    await runCacheFixture(`
+      import assert from "node:assert/strict";
+      import vm from "node:vm";
+      const source="(() => { let n=0; return () => ++n; })()";
+      const a=vm.runInThisContext(source), b=vm.runInThisContext(source);
+      assert.deepEqual([a(),a(),b()],[1,2,1]);
+      for (const n of [10,20,30]) {
+        const context=vm.createContext({n});
+        assert.equal(vm.runInContext("++n",context),n+1);
+        assert.equal(vm.runInNewContext("++n",{n}),n+1);
+        assert.equal(vm.compileFunction("return n",[],{parsingContext:context})(),n+1);
+      }
+      const seen=[];
+      const callbacks=[0,1].map(n => (specifier,referrer) => {
+        seen.push(referrer);
+        return import("data:text/javascript,export default "+n);
+      });
+      for (const n of [0,1,0,1]) {
+        const script=new vm.Script('import("value")',{filename:"same-import.js",importModuleDynamically:callbacks[n]});
+        assert.equal((await script.runInThisContext()).default,n);
+        assert.equal(seen.at(-1),script);
+      }
+      console.log("ok");
+    `);
+  });
+
+  test.concurrent("evicts by bytes, updates recency and keeps decoded functions alive", async () => {
+    await runCacheFixture(
+      `
+      import assert from "node:assert/strict";
+      import { runInThisContext } from "node:vm";
+      import { nodeVMCompilationCacheStats as stats } from "bun:internal-for-testing";
+      const source="(() => (() => 42))";
+      runInThisContext(source);
+      await new Promise(setImmediate);
+      Bun.gc(true);
+      const retained=runInThisContext(source);
+      assert.equal(stats().decodes,1);
+      for(let i=0;i<100;i++) {
+        assert.equal(runInThisContext(String(i)),i);
+        assert(stats().bytes <= stats().limit);
+      }
+      assert(stats().evictions > 0);
+      const before=stats();
+      assert.equal(runInThisContext("99"),99);
+      assert.equal(stats().hits,before.hits+1);
+      assert.equal(runInThisContext("0"),0);
+      assert.equal(stats().misses,before.misses+1);
+      Bun.gc(true);
+      assert.equal(retained()(),42);
+      console.log("ok");
+    `,
+      "32768",
+    );
+  });
+
+  test.concurrent("can be disabled", async () => {
+    await runCacheFixture(
+      `
+      import assert from "node:assert/strict";
+      import { runInThisContext } from "node:vm";
+      import { nodeVMCompilationCacheStats as stats } from "bun:internal-for-testing";
+      for(let i=0;i<3;i++) assert.equal(runInThisContext("40 + 2"),42);
+      assert.deepEqual(stats(), {limit:0,bytes:0,entries:0,hits:0,decodes:0,misses:0,evictions:0});
+      console.log("ok");
+    `,
+      "0",
+    );
+  });
+});
+
+test.concurrent("repeated vm source executes after GC without another parse", async () => {
+  await using proc = Bun.spawn({
+    cmd: [
+      bunExe(),
+      "-e",
+      `
+      const vm = require("node:vm");
+      const run = () => vm.runInThisContext("(function(){ return 42; })")();
+      console.error("READY");
+      run();
+      run();
+      setImmediate(() => {
+        Bun.gc(true);
+        console.error("CACHE_PROOF_BEGIN");
+        console.log(run());
+        console.error("CACHE_PROOF_END");
+      });
+    `,
+    ],
+    env: {
+      ...bunEnv,
+      BUN_JSC_reportParseTimes: "1",
+      BUN_JSC_useCodeCache: "false",
+      BUN_VM_COMPILE_CACHE_SIZE: "268435456",
+    },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect(stdout).toBe("42\n");
+  expect(stderr.split("CACHE_PROOF_BEGIN\n")).toHaveLength(2);
+  const measured = stderr.split("CACHE_PROOF_BEGIN\n")[1].split("CACHE_PROOF_END");
+  expect(measured).toHaveLength(2);
+  expect(measured[0]).toBe("");
+  expect(exitCode).toBe(0);
+});

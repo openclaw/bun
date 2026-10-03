@@ -115,3 +115,5 @@
 - Close silent pre-request `node:http` clients on Linux during `server.close()` plus `closeAllConnections()` by accepting them immediately. Ports [oven-sh/bun#36074](https://github.com/oven-sh/bun/pull/36074). Thanks @robobun!
 
 - Match Node read/write overload defaults and validation for explicit undefined/null arguments, zero-length reads, bigint positions, and buffer ranges. Adapts [oven-sh/bun#37647](https://github.com/oven-sh/bun/pull/37647). Thanks @robobun!
+
+- Cache repeated `node:vm` compilations with a 256 MiB per-VM byte LRU, configurable through `BUN_VM_COMPILE_CACHE_SIZE`, while preserving fresh evaluations, context globals, import callback identities, and cached-data validation.
