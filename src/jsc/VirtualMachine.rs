@@ -5719,6 +5719,12 @@ impl VirtualMachine {
             && mode != ResolveMode::ResolvedEsm
             && jsc_vm.transpiler.resolver.node_module_error.is_none()
             && bun_paths::is_absolute(result.path)
+            // Inline entries do not infer their module kind from a package scope.
+            && !jsc_vm
+                .module_loader
+                .eval_source
+                .as_ref()
+                .is_some_and(|source| source.path.text == result.path)
         {
             jsc_vm.transpiler.resolver.node_module_error = jsc_vm
                 .transpiler
