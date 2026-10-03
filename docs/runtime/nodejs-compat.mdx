@@ -164,6 +164,8 @@ Module loading has four additional limits:
 - Resolve hooks can run more than once for the same edge in a static cycle. For example, `entry → middle → leaf → middle` returns the correct exports but can resolve `middle → leaf` twice; Node resolves it once. This affects both dynamic import of the entry and `require(entry)`. JavaScriptCore's `loadRequestedModules` starts separate graph traversals before `finishLoadingImportedModule` fills the referring record's completed-edge cache. Resolve hooks should tolerate these repeated calls.
 - Bun uses one module registry for `import()` and `require()` of the same URL. After `import()` finishes loading a URL, a later `require()` reuses the completed record without running load hooks again. A hook cannot return different source for `require()` of a URL that `import()` already loaded. Node can run a second load hook and return different source for the CommonJS request. This completed-record reuse does not trigger `ERR_MODULE_HOOK_REENTRANCY`; that error protects in-flight requests.
 
+CommonJS-to-ESM loads preserve already-fetched absolute module keys, including Windows forward-slash aliases and paths containing dot segments, through linking and export access.
+
 CommonJS named exports include nonenumerable data properties even when an `__esModule` marker and accessors are present. Nonenumerable accessors remain excluded.
 
 Package imports and exports match the `module-sync` condition for both `import` and `require`. Conditions retain package.json key order. Bun and Node build targets include this condition; the browser target does not.

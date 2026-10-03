@@ -119,3 +119,5 @@
 - Make newly assigned Windows native environment variables enumerable so environment copies and children retain them. Adapts [oven-sh/bun#35254](https://github.com/oven-sh/bun/pull/35254). Thanks @robobun!
 
 - Allow later Windows pipe stdout/stderr writes after `end()` and pipeline completion, matching Node while preserving POSIX socket shutdown.
+
+- Preserve already-fetched CommonJS-to-ESM module keys through linking so Windows forward-slash aliases and paths containing dot segments do not crash when reading exports.

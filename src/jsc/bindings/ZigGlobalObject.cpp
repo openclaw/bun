@@ -3536,6 +3536,19 @@ JSC::Identifier GlobalObject::moduleLoaderResolve(JSGlobalObject* jsGlobalObject
     auto& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
+    // require(esm) already fetched this exact key. The loader revisits it as a
+    // top-level request; resolving it again can link a different path spelling
+    // and leave the original record without a module environment.
+    if (vm.m_synchronousModuleQueue && key.isString() && (!referrer || referrer.isUndefinedOrNull() || (referrer.isString() && !asString(referrer)->length()))) {
+        auto name = asString(key)->value(globalObject);
+        RETURN_IF_EXCEPTION(scope, {});
+        if (isAbsolutePath(name)) {
+            auto moduleKey = Identifier::fromString(vm, name);
+            if (auto* entry = loader->registryEntry(moduleKey); entry && entry->record())
+                return moduleKey;
+        }
+    }
+
     if (Bun__hasModuleHooks(globalObject->bunVM())) {
         auto name = key.toWTFString(globalObject);
         RETURN_IF_EXCEPTION(scope, {});
