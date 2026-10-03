@@ -422,6 +422,7 @@ function collectCoverageScripts(): any[] | Error {
 
 class Session extends EventEmitter {
   #connected = false;
+  #connectedToMainThread = false;
   #profilerEnabled = false;
   #preciseCoverageEnabled = false;
   #preciseCoverageCallCount = false;
@@ -456,6 +457,7 @@ class Session extends EventEmitter {
       throw $ERR_INSPECTOR_ALREADY_CONNECTED();
     }
     this.#connected = true;
+    this.#connectedToMainThread = false;
   }
 
   connectToMainThread() {
@@ -463,6 +465,7 @@ class Session extends EventEmitter {
       throw $ERR_INSPECTOR_NOT_WORKER();
     }
     this.connect();
+    this.#connectedToMainThread = true;
   }
 
   disconnect() {
@@ -515,7 +518,7 @@ class Session extends EventEmitter {
       return;
     }
 
-    if (method === "HeapProfiler.collectGarbage") {
+    if (method === "HeapProfiler.collectGarbage" && !this.#connectedToMainThread) {
       const collection = collectInspectorGarbage();
       if (callback) {
         const request = { callback };

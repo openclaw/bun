@@ -305,6 +305,48 @@ describe("node:inspector", () => {
       expect({ stdout, stderr, exitCode }).toEqual({ stdout: "uncaught callback\n", stderr: "", exitCode: 0 });
     });
 
+    test.concurrent("a main-thread connection in a worker does not collect the worker heap", async () => {
+      const workerSource = `
+        const assert = require("node:assert/strict");
+        (async () => {
+          for (const promises of [false, true]) {
+            const { Session } = require(promises ? "node:inspector/promises" : "node:inspector");
+            const session = new Session();
+            const collect = () => promises ? session.post("HeapProfiler.collectGarbage") : new Promise((resolve, reject) => {
+              session.post("HeapProfiler.collectGarbage", (error, result) => error ? reject(error) : resolve(result));
+            });
+            session.connectToMainThread();
+            await assert.rejects(collect, {
+              code: "ERR_INSPECTOR_COMMAND",
+              message: "Inspector error -32601: 'HeapProfiler.collectGarbage' wasn't found",
+            });
+            session.disconnect();
+            session.connect();
+            assert.deepEqual(await collect(), {});
+            session.disconnect();
+          }
+          console.log("local-only");
+        })().catch(error => { console.error(error); process.exitCode = 1; });
+      `;
+      await using proc = Bun.spawn({
+        cmd: [
+          bunExe(),
+          "-e",
+          `
+          const { Worker } = require("node:worker_threads");
+          new Worker(${JSON.stringify(workerSource)}, { eval: true })
+            .on("error", error => { console.error(error); process.exitCode = 1; })
+            .on("exit", code => { process.exitCode = code; });
+        `,
+        ],
+        env: bunEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      expect({ stdout, stderr, exitCode }).toEqual({ stdout: "local-only\n", stderr: "", exitCode: 0 });
+    });
+
     for (const worker of [false, true]) {
       test.concurrent(
         `collectGarbage reclaims unreachable objects after the posting job (${worker ? "worker" : "main"})`,
