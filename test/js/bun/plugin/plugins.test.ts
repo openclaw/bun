@@ -51,6 +51,38 @@ it.concurrent("delegated resolution refreshes a newly created directory index", 
   await expectPluginFixtureOutput(String(dir), "created\n");
 });
 
+it.each(["imports", "main", "wildcard"])("delegated resolution refreshes late %s extension candidates", async shape => {
+  const directory = shape === "main" ? "node_modules/late-package" : "generated";
+  const target = `${directory}/value.${shape === "wildcard" ? "js" : "ts"}`;
+  const request = shape === "main" ? "late-package" : shape === "imports" ? "#late" : "#wild/value";
+  using dir = tempDir("plugin-delegated-extension", {
+    "package.json": JSON.stringify({
+      imports: { "#late": "./generated/value.js", "#wild/*": "./generated/*" },
+    }),
+    [`${directory}/package.json`]: JSON.stringify({ name: "late-package", main: "./value.js" }),
+    [`${directory}/seed.cjs`]: 'exports.value = "seed";',
+    "entry.cjs": "exports.read = name => require(name).value;",
+    "main.mjs": `
+      import assert from "node:assert/strict";
+      import { writeFileSync } from "node:fs";
+      import { join } from "node:path";
+      import { createRequire } from "node:module";
+      const require = createRequire(import.meta.url);
+      assert.equal(require(${JSON.stringify("./" + directory + "/seed.cjs")}).value, "seed");
+      const entry = require("./entry.cjs");
+      Bun.plugin({
+        name: "late-extension",
+        setup(builder) {
+          builder.onLoad({ filter: /^never$/ }, () => { throw new Error("unexpected onLoad"); });
+        },
+      });
+      writeFileSync(join(import.meta.dir, ${JSON.stringify(target)}), 'exports.value = "created";');
+      console.log(entry.read(${JSON.stringify(request)}));
+    `,
+  });
+  await expectPluginFixtureOutput(String(dir), "created\n");
+});
+
 for (const mode of ["require", "import"] as const) {
   it.concurrent(`delegated static ${mode} finds a file in a previously missing directory`, async () => {
     using dir = tempDir("plugin-delegated-missing-directory", {
