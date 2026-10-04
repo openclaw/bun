@@ -212,7 +212,7 @@ Socket close notifications use internal scheduling and continue to run when user
 
 ### [`node:process`](https://nodejs.org/api/process.html)
 
-Process metadata exposes Node-compatible data descriptors. `argv` and `execArgv` initialize lazily and support descriptor-based replacement. `ppid` and `title` retain their native behavior behind data descriptors. `exitCode` remains a non-configurable accessor.
+`process.platform`, `arch`, `version`, `versions`, `pid`, and `release` expose Node-compatible data descriptors. `argv` and `execArgv` initialize lazily and support descriptor-based replacement. `ppid` and `title` retain their native behavior behind data descriptors. `exitCode` remains a non-configurable accessor.
 
 Initializing `process.stdout` or `process.stderr` does not retain a duplicate pipe writer. Explicitly closing the underlying descriptor publishes EOF while the process remains alive. On POSIX, socket and pipe stdio use nonblocking writes. `end()` and pipeline completion flush pending output and shut down the write side of socket stdio, so peers receive EOF before process exit. Actual pipes stay open until process exit or explicit descriptor closure. `destroy()` preserves fd 1/2; after POSIX socket or pipe finalization, later stream writes fail with `EPIPE`. On Windows, piped stdout/stderr reset their writable state after `end()` or pipeline completion and accept subsequent writes.
 
