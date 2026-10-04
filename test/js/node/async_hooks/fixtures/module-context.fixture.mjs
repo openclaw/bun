@@ -202,6 +202,7 @@ try {
       expected = event.file.startsWith("b/") || event.parent?.startsWith("b/") ? "B" : "A";
     else if (
       variant === "concurrent-overlap" &&
+      // Node evaluates the overlapping other body in A; its hooks and caller stay in B.
       (["other.mjs", "ready", "ready.mjs"].includes(event.file) || event.parent === "other.mjs")
     )
       expected = "B";
