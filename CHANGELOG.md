@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep query and fragment imports of compiled embedded modules on their canonical module record, including Windows and non-ASCII filenames.
+
 - Align WebKit and VM source-position assertions with Node's constructor locations and select these regressions for native stack-formatting changes in both fork CI lanes.
 
 - Preserve the native-context count in the fast `v8.getHeapStatistics()` adapter and avoid appending a second strict code-generation flag to inherited worker arguments.
