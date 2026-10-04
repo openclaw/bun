@@ -1001,6 +1001,7 @@ impl WebWorker {
         *self.vm_handle.lock() = Some(unsafe { (*vm).handle() });
         WebWorker__installHeapLimitObserver(
             self.messaging_proxy,
+            // SAFETY: vm was initialized above and is owned by this worker thread.
             JSGlobalObject::opaque_ref(unsafe { (*vm).global }),
             core::ptr::from_ref(self).cast(),
         );
