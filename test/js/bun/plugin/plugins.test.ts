@@ -26,6 +26,34 @@ async function expectPluginFixtureOutput(dir: string, expectedStdout: string) {
   expect({ stdout, stderr, exitCode }).toEqual({ stdout: expectedStdout, stderr: "", exitCode: 0 });
 }
 
+it.concurrent("onResolve can synchronously load another ES module", async () => {
+  const imports = Array.from({ length: 100 }, (_, i) => `import * as p${i} from "node:path";`);
+  const values = Array.from({ length: 100 }, (_, i) => `p${i}.sep`);
+  using dir = tempDir("plugin-reentrant-resolution", {
+    "entry.mjs": 'import { a } from "./dep.mjs"; import { b } from "./other.mjs"; export const value = a + b;',
+    "dep.mjs": "export const a = 1;",
+    "other.mjs": "export const b = 2;",
+    "nested.mjs": `${imports.join("\n")}\nexport const values = [${values.join(",")}];`,
+    "main.mjs": `
+      import { createRequire } from "node:module";
+      import { join } from "node:path";
+      const require = createRequire(import.meta.url);
+      let nestedLength = 0;
+      Bun.plugin({
+        name: "reentrant-resolution",
+        setup(build) {
+          build.onResolve({ filter: /dep\\.mjs$/ }, () => {
+            nestedLength = require("./nested.mjs").values.length;
+            return { path: join(import.meta.dir, "dep.mjs") };
+          });
+        },
+      });
+      console.log(require("./entry.mjs").value + ":" + nestedLength);
+    `,
+  });
+  await expectPluginFixtureOutput(String(dir), "3:100\n");
+});
+
 it.concurrent("delegated resolution refreshes a newly created directory index", async () => {
   using dir = tempDir("plugin-delegated-index", {
     "generated/seed.cjs": 'exports.value = "seed";',
