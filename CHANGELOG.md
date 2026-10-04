@@ -157,3 +157,5 @@
 - Support `ws` server-connection `pause()`, `resume()`, and `isPaused` with native socket read backpressure.
 
 - Validate `net`, `http`, and `https` listen ports synchronously before binding, preserving asynchronous bind errors and Node-compatible numeric string parsing. Adapts string routing from [oven-sh/bun#34083](https://github.com/oven-sh/bun/pull/34083). Thanks @robobun!
+
+- Match Node process property descriptors, including lazy `argv`/`execArgv` data properties and descriptor replacement in native argument readers. Adapts [oven-sh/bun#34229](https://github.com/oven-sh/bun/pull/34229) and [oven-sh/bun#44356](https://github.com/oven-sh/bun/pull/44356). Thanks @robobun!
