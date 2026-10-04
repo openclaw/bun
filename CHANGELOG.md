@@ -153,3 +153,5 @@
 - Apply `NODE_OPTIONS` and `BUN_OPTIONS` preloads in Node workers with explicit environments and `execArgv`, preserve selected CLI arguments through nested workers, and apply supported worker restrictions before preloads. Builds on [oven-sh/bun#42620](https://github.com/oven-sh/bun/pull/42620).
 
 - Emit `ws` text messages as Buffers regardless of `binaryType` on clients and server connections, preserving JSON decoding and the `isBinary=false` flag.
+
+- Support `ws` server-connection `pause()`, `resume()`, and `isPaused` with native socket read backpressure.

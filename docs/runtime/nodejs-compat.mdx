@@ -620,6 +620,8 @@ With `--expose-gc`, `globalThis.gc()` performs a synchronous full collection, li
 
 The `ws` package replacement emits text messages as `Buffer`s on clients and server connections, regardless of `binaryType`. The `isBinary` argument is `false` for text messages.
 
+The `ws` package replacement supports `pause()`, `resume()`, and `isPaused` on accepted server connections. Pausing stops native socket reads; resuming continues pending reads.
+
 ### [`WritableStream`](https://developer.mozilla.org/en-US/docs/Web/API/WritableStream)
 
 🟢 Fully implemented. Cannot be transferred with `postMessage()` or `structuredClone()`.
