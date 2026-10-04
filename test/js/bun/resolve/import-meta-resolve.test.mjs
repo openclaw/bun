@@ -122,6 +122,13 @@ wrapped("detached import.meta.resolve retains its module", () => {
   }
   assert.strictEqual(import.meta.resolve, resolve);
   assert.strictEqual(resolve.name, "resolve");
+  assert.deepStrictEqual(Object.getOwnPropertyDescriptor(resolve, "name"), {
+    value: "resolve",
+    writable: false,
+    enumerable: false,
+    configurable: true,
+  });
+  assert.strictEqual(resolve.bind(null).name, "bound resolve");
   assert.strictEqual(resolve.length, 1);
 });
 

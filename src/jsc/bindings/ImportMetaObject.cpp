@@ -511,6 +511,9 @@ JSC_DEFINE_CUSTOM_GETTER(jsImportMetaObjectGetter_resolve, (JSGlobalObject * lex
     auto source = makeSource("resolve"_s, SourceOrigin(), SourceTaintedOrigin::Untainted);
     auto* resolve = JSBoundFunction::create(vm, globalObject, target, meta, ArgList(), 1, Bun::commonStrings(vm).resolveString(), source);
     RETURN_IF_EXCEPTION(scope, {});
+    // Node's resolver name does not include JSBoundFunction's lazy "bound " prefix.
+    resolve->ensureRareData(vm)->setHasReifiedName();
+    resolve->putDirect(vm, vm.propertyNames->name, Bun::commonStrings(vm).resolveString(), PropertyAttribute::DontEnum | PropertyAttribute::ReadOnly);
     meta->putDirect(vm, propertyName, resolve, 0);
     return JSValue::encode(resolve);
 }
