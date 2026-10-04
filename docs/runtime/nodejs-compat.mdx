@@ -278,6 +278,8 @@ The same replay took Node 24 **39.7 ms at 2,500 modules and 63.4 ms at 4,000**. 
 
 ### [`node:worker_threads`](https://nodejs.org/api/worker_threads.html)
 
+`resourceLimits` reports effective heap, nursery, code-range, and stack settings. With the pinned OpenClaw WebKit, managed-heap exhaustion terminates only the affected worker with `ERR_WORKER_OUT_OF_MEMORY` and exit code 1. ArrayBuffer backing stores are excluded. `codeRangeSizeMb` is reporting-only because JSC shares its executable allocator. See [worker resource limits](/runtime/workers#node-worker-resource-limits) for defaults and limitations.
+
 File workers select `--require` and `--import` preloads from their environment independently of `execArgv`. Explicit `env` or `execArgv` options re-read the worker's `NODE_OPTIONS` and `BUN_OPTIONS` before applying the selected CLI arguments. `execArgv: []` removes CLI preloads while environment preloads still apply. Require preloads run before import preloads.
 
 `MessagePort.emit()` and `parentPort.emit()` preserve the emitted value for Node listeners. Web listeners receive `MessageEvent` objects for `message` and `messageerror`, and `CustomEvent` objects for other events.
@@ -292,7 +294,7 @@ Creating a `SHARE_ENV` worker preserves the parent's `process.env` identity. Cac
 Repeated `delete` and `Reflect.deleteProperty()` calls remove shared entries even after JIT warmup.
 Writes also reach the shared environment when value coercion creates the first worker, including on Windows. Newly assigned Windows environment variables, including native-backed variables such as `TZ`, are enumerable and survive environment copies and child-process inheritance.
 
-🟡 `Worker` ignores the `resourceLimits` and `trackUnmanagedFds` options. Some `execArgv` flags take effect in the worker, for example `--no-addons`, `--stack-trace-limit` and `--tls-min-v1.3`. Others, for example `--conditions` and `--no-deprecation`, only set `process.execArgv`. `worker.performance.eventLoopUtilization()` is a stub. Missing `moveMessagePortToContext` and `locks`.
+🟡 `Worker` ignores the `trackUnmanagedFds` option. Some `execArgv` flags take effect in the worker, for example `--no-addons`, `--stack-trace-limit` and `--tls-min-v1.3`. Others, for example `--conditions` and `--no-deprecation`, only set `process.execArgv`. `worker.performance.eventLoopUtilization()` is a stub. Missing `moveMessagePortToContext` and `locks`.
 
 ### [`node:inspector`](https://nodejs.org/api/inspector.html)
 

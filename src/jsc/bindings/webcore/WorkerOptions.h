@@ -14,6 +14,35 @@ enum class WorkerEvalMode : uint8_t {
     Module,
 };
 
+struct WorkerResourceLimits {
+    double maxYoungGenerationSizeMb { -1 };
+    double maxOldGenerationSizeMb { -1 };
+    double codeRangeSizeMb { -1 };
+    double stackSizeMb { 4 };
+
+    WorkerResourceLimits resolved() const
+    {
+        auto result = *this;
+        if (!(result.maxOldGenerationSizeMb > 0))
+            result.maxOldGenerationSizeMb = 4096;
+        if (!(result.maxYoungGenerationSizeMb > 0))
+            result.maxYoungGenerationSizeMb = 192;
+        if (!(result.codeRangeSizeMb > 0))
+            result.codeRangeSizeMb = 0;
+        return result;
+    }
+
+    static size_t bytes(double mb)
+    {
+        if (!(mb > 0) || !std::isfinite(mb))
+            return 0;
+        double value = mb * 1024.0 * 1024.0;
+        if (value >= static_cast<double>(std::numeric_limits<size_t>::max()))
+            return std::numeric_limits<size_t>::max();
+        return static_cast<size_t>(value);
+    }
+};
+
 struct WorkerOptions {
     enum class Kind : uint8_t {
         // Created by the global Worker constructor
@@ -56,6 +85,7 @@ struct WorkerOptions {
     size_t execArgvRequirePreloadCount { 0 };
     WorkerEvalMode execArgvEvalMode { WorkerEvalMode::Auto };
     String evalSource;
+    WorkerResourceLimits resourceLimits;
 };
 
 } // namespace WebCore

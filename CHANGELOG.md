@@ -171,3 +171,5 @@
 - Switch the fork’s default WebKit source to immutable openclaw/WebKit releases with a committed SHA-256 manifest, verified extraction, and digest-keyed caches.
 
 - Allow Proxy objects in VM and main-realm global prototype chains with the pinned OpenClaw WebKit, including jsdom Window prototypes. Ports [oven-sh/bun#42347](https://github.com/oven-sh/bun/pull/42347). Thanks @robobun!
+
+- Add experimental Node worker resource limits with per-VM managed-heap termination, nursery and stack sizing, and effective-limit reporting using the pinned OpenClaw WebKit. Code-range limits remain reporting-only. Adapts [oven-sh/bun#32896](https://github.com/oven-sh/bun/pull/32896). Thanks @robobun!
