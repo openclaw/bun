@@ -712,7 +712,7 @@ void ImportMetaObject::finishCreation(VM& vm)
     ASSERT(inherits(info()));
 
     // CustomValue preserves a writable data property while binding only on first access.
-    putDirectCustomAccessor(vm, vm.propertyNames->resolve, CustomGetterSetter::create(vm, jsImportMetaObjectGetter_resolve, nullptr), PropertyAttribute::CustomValue);
+    putDirectCustomAccessor(vm, vm.propertyNames->resolve, CustomGetterSetter::create(vm, jsImportMetaObjectGetter_resolve, nullptr), static_cast<unsigned>(PropertyAttribute::CustomValue));
 
     this->requireProperty.initLater([](const JSC::LazyProperty<JSC::JSObject, JSC::JSCell>::Initializer& init) {
         auto scope = DECLARE_THROW_SCOPE(init.vm);
