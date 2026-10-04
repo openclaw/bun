@@ -68,6 +68,11 @@ const webkitSensitive = [
   "test/js/node/module/node-module-module.test.js",
 ];
 
+const sourcePositionSensitive = [
+  "test/js/bun/jsc/webkit-upgrade-7b485a76e9.test.ts",
+  "test/js/node/vm/vm-sourceUrl.test.ts",
+];
+
 // Runtime implementations span JS, Rust and C++; keep their shared boundaries explicit.
 const sourceSuites: [RegExp, string[]][] = [
   [/child_process|subprocess|spawn/i, ["child_process"]],
@@ -103,6 +108,13 @@ export function selectTests(changed: string[], tracked: string[], nightly: boole
         }
       }
     } else if (path.startsWith("src/")) {
+      if (
+        /^src\/jsc\/bindings\/(?:CallSite\w*|ErrorStack\w*|FormatStackTraceForJS|ZigSourceProvider)\.(?:cpp|h)$/.test(
+          path,
+        )
+      ) {
+        sourcePositionSensitive.forEach(test => selected.add(test));
+      }
       for (const [pattern, suites] of sourceSuites) {
         if (!pattern.test(path)) continue;
         for (const test of [...smoke, ...broader]) {

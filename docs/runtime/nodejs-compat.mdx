@@ -19,7 +19,7 @@ The OpenClaw fork reports missing runtime imports without downloading npm packag
 
 `Error.prepareStackTrace` supports deletion, descriptor restoration, and accessor replacement. Nested stack formatting and throwing formatters leave later captures usable.
 
-`CallSite.getLineNumber()` and `getColumnNumber()` return one-based positions, or `null` when a frame has no source position. Stack strings include column 1 and use the same constructor positions as CallSites, including across line breaks. Some expression positions still differ from Node.js because JavaScriptCore and Bun's transpiler select different syntax locations.
+`CallSite.getLineNumber()` and `getColumnNumber()` return one-based positions, or `null` when a frame has no source position. Stack strings include column 1 and use the same constructor positions as CallSites, pointing to the `new` keyword, including across line breaks and in `node:vm` scripts. Some expression positions still differ from Node.js because JavaScriptCore and Bun's transpiler select different syntax locations.
 
 ### [`node:assert`](https://nodejs.org/api/assert.html)
 

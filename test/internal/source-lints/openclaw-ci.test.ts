@@ -36,6 +36,21 @@ test.each(["linux", "darwin"])("WebKit updates select VM, Intl, GC, hook and plu
   expect(selected).not.toContain("test/bundler/esbuild/default.test.ts");
 });
 
+test.each(["linux", "darwin"])("stack position changes select WebKit and VM sourceURL coverage on %s", platform => {
+  for (const source of [
+    "CallSitePrototype.cpp",
+    "ErrorStackFrame.cpp",
+    "ErrorStackFrame.h",
+    "ErrorStackTrace.cpp",
+    "FormatStackTraceForJS.cpp",
+    "ZigSourceProvider.cpp",
+  ]) {
+    const selected = selectTests([`src/jsc/bindings/${source}`], tracked, false, platform);
+    expect(selected).toContain("test/js/bun/jsc/webkit-upgrade-7b485a76e9.test.ts");
+    expect(selected).toContain("test/js/node/vm/vm-sourceUrl.test.ts");
+  }
+});
+
 test("changed tests are added exactly once, renamed tests use the new path, deleted tests are omitted", () => {
   const added = "test/js/node/fs/new check.test.ts";
   const deleted = "test/js/node/fs/removed.test.ts";

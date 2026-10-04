@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Align WebKit and VM source-position assertions with Node's constructor locations and select these regressions for native stack-formatting changes in both fork CI lanes.
+
 - Preserve the native-context count in the fast `v8.getHeapStatistics()` adapter and avoid appending a second strict code-generation flag to inherited worker arguments.
 
 - Return one-based CallSite columns and null native positions, preserve column 1 in stack strings, and align constructor locations across stack formats and line breaks. Adapts [oven-sh/bun#35179](https://github.com/oven-sh/bun/pull/35179) and [oven-sh/bun#37396](https://github.com/oven-sh/bun/pull/37396). Thanks @robobun!
