@@ -13,15 +13,98 @@
  * in milliseconds; the schedule's real timing is asserted separately.
  */
 import { expect, spyOn, test } from "bun:test";
-import { tempDir } from "harness";
-import { existsSync, readFileSync } from "node:fs";
+import { bunEnv, bunExe, tempDir } from "harness";
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer, type AddressInfo } from "node:net";
 import { join } from "node:path";
 
-import { downloadRetry, downloadWithRetry, type RetryPolicy } from "../../scripts/build/download.ts";
+import {
+  downloadRetry,
+  downloadWithRetry,
+  fetchPrebuilt,
+  prefetchPathForSha256,
+  prefetchPathForUrl,
+  type RetryPolicy,
+} from "../../scripts/build/download.ts";
 import { BuildError, describeError } from "../../scripts/build/error.ts";
 
 const BODY = "tarball bytes";
+
+test("prebuilt archives verify bytes before extraction and key cache hits by digest", async () => {
+  using dir = tempDir("prebuilt-sha256", { "package/value": "verified" });
+  const archive = join(String(dir), "package.tar.gz");
+  expect(spawnSync("tar", ["-czf", archive, "-C", String(dir), "package"]).status).toBe(0);
+  const bytes = readFileSync(archive);
+  const digest = createHash("sha256").update(bytes).digest("hex");
+  let responseBytes: Uint8Array = bytes;
+  let requests = 0;
+  const server = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    fetch: () => {
+      requests++;
+      return new Response(responseBytes);
+    },
+  });
+  const dest = join(String(dir), "installed");
+  try {
+    await fetchPrebuilt("fixture", server.url.href, dest, "pin", [], digest);
+    expect(readFileSync(join(dest, "value"), "utf8")).toBe("verified");
+    await fetchPrebuilt("fixture", server.url.href, dest, "pin", [], digest);
+    expect(requests).toBe(1);
+    // Malformed archive bytes distinguish checksum rejection from extraction failure.
+    responseBytes = new TextEncoder().encode("not a gzip archive");
+    await expect(fetchPrebuilt("fixture", server.url.href, dest, "pin", [], "0".repeat(64))).rejects.toThrow(
+      "SHA-256 mismatch for fixture",
+    );
+    expect(readFileSync(join(dest, "value"), "utf8")).toBe("verified");
+    expect(requests).toBe(2);
+    await expect(fetchPrebuilt("fixture", server.url.href, dest, "pin", [], "invalid")).rejects.toThrow(
+      "prebuilt: invalid SHA-256",
+    );
+    const cache = join(String(dir), "prefetch");
+    mkdirSync(join(cache, "by-url"), { recursive: true });
+    mkdirSync(join(cache, "by-sha256"), { recursive: true });
+    writeFileSync(prefetchPathForUrl(server.url.href, cache)!, "untrusted URL cache");
+    const cachedArchive = prefetchPathForSha256(digest, cache)!;
+    writeFileSync(cachedArchive, bytes);
+    const downloadModule = new URL("../../scripts/build/download.ts", import.meta.url).href;
+    async function fromPrefetch(target: string) {
+      await using child = Bun.spawn({
+        cmd: [
+          bunExe(),
+          "-e",
+          `import { fetchPrebuilt } from ${JSON.stringify(downloadModule)};
+          await fetchPrebuilt("fixture", ${JSON.stringify(server.url.href)}, ${JSON.stringify(target)}, "pin", [], ${JSON.stringify(digest)});`,
+        ],
+        env: { ...bunEnv, BUN_BUILD_PREFETCH_DIR: cache },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      return await Promise.all([child.stdout.text(), child.stderr.text(), child.exited]);
+    }
+    const unverifiedTree = join(cache, "extracted", "cached-install");
+    mkdirSync(unverifiedTree, { recursive: true });
+    writeFileSync(join(unverifiedTree, ".identity"), `pin:sha256:${digest}\n`);
+    writeFileSync(join(unverifiedTree, "value"), "unverified extracted image cache");
+    const cachedDest = join(String(dir), "cached-install");
+    const [, cachedError, cachedExit] = await fromPrefetch(cachedDest);
+    expect(cachedError).toBe("");
+    expect(cachedExit).toBe(0);
+    expect(readFileSync(join(cachedDest, "value"), "utf8")).toBe("verified");
+    expect(requests).toBe(2);
+    writeFileSync(cachedArchive, "corrupt digest cache");
+    const corruptDest = join(String(dir), "corrupt-install");
+    const [, corruptError, corruptExit] = await fromPrefetch(corruptDest);
+    expect(corruptError).toContain("SHA-256 mismatch for fixture");
+    expect(corruptExit).not.toBe(0);
+    expect(existsSync(corruptDest)).toBe(false);
+  } finally {
+    server.stop(true);
+  }
+});
 
 /** The production attempt count with no waiting between attempts. */
 const noBackoff: RetryPolicy = { ...downloadRetry, backoffMs: () => 0 };

@@ -131,24 +131,18 @@ describe.skipIf(isWindows)("Windows cross-compile LTO config (non-windows host)"
     }
   });
 
-  test("LTO selects the -lto WebKit prebuilt with a windows-keyed cache dir", () => {
+  test("LTO selects the -lto WebKit prebuilt with a digest-keyed cache dir", () => {
     // Default windows x64 cross config (baseline=true, lto=true): every x64
     // WebKit is built at the nehalem floor, so the plain -lto tarball is the
     // one baseline fetches too.
     const def = webkit.source(resolveWindowsCross());
     if (def.kind !== "prebuilt") throw new Error(`expected prebuilt WebKit source, got ${def.kind}`);
     expect(def.url).toContain("bun-webkit-windows-amd64-lto.tar.gz");
-    expect(def.destDir).toContain("-windows");
-    expect(def.destDir).toEndWith("-lto");
+    expect(def.destDir).toEndWith(`webkit-sha256-${def.sha256}`);
 
-    const plain = webkit.source(resolveWindowsCross({ lto: false }));
-    if (plain.kind !== "prebuilt") throw new Error(`expected prebuilt WebKit source, got ${plain.kind}`);
-    expect(plain.url).toContain("bun-webkit-windows-amd64.tar.gz");
-    expect(plain.destDir).not.toEndWith("-lto");
-
-    const arm64 = webkit.source(resolveWindowsCross({ arch: "aarch64" }));
-    if (arm64.kind !== "prebuilt") throw new Error(`expected prebuilt WebKit source, got ${arm64.kind}`);
-    expect(arm64.url).toContain("bun-webkit-windows-arm64.tar.gz");
+    // The fork publishes Windows x64 LTO; other Windows variants must fail closed.
+    expect(webkit.source(resolveWindowsCross({ lto: false })).kind).toBe("unavailable");
+    expect(webkit.source(resolveWindowsCross({ arch: "aarch64" })).kind).toBe("unavailable");
   });
 
   test("rust side targets pc-windows-msvc triples", () => {

@@ -808,6 +808,7 @@ const ruleLane: Record<RuleName, Lane> = {
   dep_configure: "dependencies",
   dep_fetch: "dependencies",
   dep_fetch_prebuilt: "dependencies",
+  dep_unavailable: "dependencies",
   dep_host_cc: "dependencies",
   dep_prebuild: "dependencies",
   dep_subst: "dependencies",

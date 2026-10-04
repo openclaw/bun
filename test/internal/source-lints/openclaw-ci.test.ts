@@ -26,6 +26,9 @@ test("macOS selection includes file, directory, recursive, process and child-pro
 
 test.each(["linux", "darwin"])("WebKit updates select VM, Intl, GC, hook and plugin coverage on %s", platform => {
   const selected = selectTests(["scripts/build/deps/webkit.ts"], tracked, false, platform);
+  expect(selectTests(["scripts/build/deps/webkit-artifacts.json"], tracked, false, platform)).toEqual(selected);
+  expect(selected).toContain("test/js/node/async_hooks/AsyncLocalStorage.test.ts");
+  expect(selected).toContain("test/js/node/worker_threads/worker_threads.test.ts");
   expect(selected).toContain("test/js/node/vm/vm.test.ts");
   expect(selected).toContain("test/js/web/intl/intl.test.ts");
   expect(selected).toContain("test/js/bun/jsc/bun-jsc.test.ts");

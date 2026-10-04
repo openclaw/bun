@@ -1,10 +1,20 @@
-/** Build-config regression tests for WebKit prebuilt URL computation: default
- * WEBKIT_VERSION is used as the release tag; --webkit-version overrides still
- * hit the plain `autobuild-<sha>` tag. Configure-time only. */
+/** Configure-time tests for the committed OpenClaw WebKit pin. */
 import { describe, expect, test } from "bun:test";
-
+import { bunEnv, bunExe, tempDir } from "harness";
+import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { resolveConfig, type Config, type PartialConfig, type Toolchain } from "../../../scripts/build/config.ts";
-import { webkit, WEBKIT_VERSION } from "../../../scripts/build/deps/webkit.ts";
+import {
+  webkit,
+  WEBKIT_VERSION,
+  webkitArtifact,
+  webkitTestFFIPath,
+  type WebKitArtifactManifest,
+} from "../../../scripts/build/deps/webkit.ts";
+import { Ninja } from "../../../scripts/build/ninja.ts";
+import { registerDepRules, resolveDep } from "../../../scripts/build/source.ts";
 
 /** A fully-populated fake toolchain — resolveConfig never spawns any of these. */
 function mockToolchain(): Toolchain {
@@ -56,74 +66,110 @@ function resolveLinuxRelease(partial: PartialConfig = {}): Config {
       lto: false,
       baseline: false,
       linuxSysroot: "/fake/linux-sysroot",
+      winsysroot: "/fake/windows-sysroot",
       ...partial,
     },
     mockToolchain(),
   );
 }
 
-function prebuiltUrlOf(cfg: Config): string {
-  const src = webkit.source(cfg);
-  if (src.kind !== "prebuilt") throw new Error(`expected prebuilt source, got ${src.kind}`);
-  return src.url;
+function fixture(name: string, digest = "a".repeat(64)): WebKitArtifactManifest {
+  return {
+    version: WEBKIT_VERSION,
+    artifacts: {
+      [name]: {
+        url: `https://github.com/openclaw/WebKit/releases/download/autobuild-${WEBKIT_VERSION}/${name}`,
+        sha256: digest,
+      },
+    },
+  };
 }
 
-describe("WebKit prebuilt URL", () => {
-  // Mirrors prebuiltUrl(): 40-hex shas get the autobuild- prefix, tags pass
-  // through, so these assertions hold for both WEBKIT_VERSION forms.
-  const defaultTag = WEBKIT_VERSION.startsWith("autobuild-") ? WEBKIT_VERSION : `autobuild-${WEBKIT_VERSION}`;
+describe("WebKit artifact manifest", () => {
+  test("missing variants permit graph construction but fail the dependency edge", () => {
+    using dir = tempDir("webkit-unavailable", {});
+    const cfg = resolveLinuxRelease({ buildType: "Debug", asan: true, buildDir: String(dir) });
+    const source = webkit.source(cfg);
+    if (source.kind !== "unavailable") throw new Error("expected an unavailable debug artifact");
+    expect(source.destDir).toStartWith(String(dir));
+    const ninja = new Ninja({ buildDir: cfg.buildDir });
+    registerDepRules(ninja, cfg);
+    resolveDep(ninja, cfg, webkit, new Map());
+    const encoded = /^  message = (.*)$/m.exec(ninja.toString())![1]!;
+    expect(Buffer.from(encoded, "base64url").toString("utf8")).toBe(source.message);
+    const child = spawnSync(
+      bunExe(),
+      [fileURLToPath(new URL("../../../scripts/build/fetch-cli.ts", import.meta.url)), "unavailable", encoded],
+      { env: bunEnv, encoding: "utf8" },
+    );
+    expect(child.stderr).toContain("Missing SHA-256 for WebKit target bun-webkit-linux-amd64-debug-asan.tar.gz");
+    expect(child.status).toBe(1);
+    expect(existsSync(source.destDir)).toBe(false);
+  });
 
-  test("default webkitVersion is used as the release tag", () => {
+  test("the committed pin supplies the URL, digest, cache and testFFI path", () => {
     const cfg = resolveLinuxRelease();
     expect(cfg.webkitVersion).toBe(WEBKIT_VERSION);
-    expect(prebuiltUrlOf(cfg)).toBe(
-      `https://github.com/oven-sh/WebKit/releases/download/${defaultTag}/bun-webkit-linux-amd64.tar.gz`,
-    );
+    expect(WEBKIT_VERSION).toMatch(/^[a-f0-9]{40}$/);
+    const artifact = webkitArtifact(cfg);
+    const source = webkit.source(cfg);
+    if (source.kind !== "prebuilt") throw new Error("expected prebuilt source");
+    expect(source.url).toBe(artifact.url);
+    expect(source.sha256).toBe(artifact.sha256);
+    expect(source.destDir).toEndWith(`webkit-sha256-${artifact.sha256}`);
+    expect(dirname(dirname(webkitTestFFIPath(cfg)))).toBe(source.destDir);
+    const ninja = new Ninja({ buildDir: cfg.buildDir });
+    registerDepRules(ninja, cfg);
+    resolveDep(ninja, cfg, webkit, new Map());
+    const encoded = /^  url = (.*)$/m.exec(ninja.toString())![1]!;
+    expect(encoded).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(Buffer.from(encoded, "base64url").toString("utf8")).toBe(source.url);
+    expect(ninja.toString()).toContain(`sha256 = ${artifact.sha256}`);
   });
 
-  test("lto picks the -lto artifact from the same release tag", () => {
-    const cfg = resolveLinuxRelease({ lto: true });
-    expect(prebuiltUrlOf(cfg)).toBe(
-      `https://github.com/oven-sh/WebKit/releases/download/${defaultTag}/bun-webkit-linux-amd64-lto.tar.gz`,
-    );
+  test.each([
+    [{}, "linux-amd64"],
+    [{ lto: true }, "linux-amd64-lto"],
+    [{ buildType: "Debug", asan: false }, "linux-amd64-debug"],
+    [{ buildType: "Debug", asan: true }, "linux-amd64-debug-asan"],
+    [{ asan: true }, "linux-amd64-asan"],
+    [{ abi: "musl" }, "linux-amd64-musl"],
+    [{ arch: "aarch64" }, "linux-arm64"],
+    [{ os: "darwin", arch: "aarch64" }, "macos-arm64"],
+    [{ os: "windows", abi: "msvc" }, "windows-amd64"],
+    [{ os: "windows", abi: "msvc", arch: "aarch64" }, "windows-arm64"],
+  ] as [PartialConfig, string][])("selects the exact ABI variant %j", (partial, target) => {
+    using sysroot = tempDir("webkit-sysroot", { "usr/lib/libc.so": "", "usr/include/sys/syscall.h": "" });
+    const previous = process.env.LINUX_MUSL_SYSROOT;
+    try {
+      process.env.LINUX_MUSL_SYSROOT = String(sysroot);
+      const name = `bun-webkit-${target}.tar.gz`;
+      const pin = fixture(name);
+      expect(webkitArtifact(resolveLinuxRelease({ ...partial, macosSdk: String(sysroot) }), pin)).toEqual(
+        pin.artifacts[name],
+      );
+    } finally {
+      if (previous === undefined) delete process.env.LINUX_MUSL_SYSROOT;
+      else process.env.LINUX_MUSL_SYSROOT = previous;
+    }
   });
 
-  test("debug picks the -debug artifact from the same release tag", () => {
-    const cfg = resolveConfig(
-      { os: "linux", arch: "x64", abi: "gnu", buildType: "Debug", asan: false, baseline: false, linuxSysroot: "/fake" },
-      mockToolchain(),
+  test("missing variants, invalid digests, alternate pins and upstream URLs are hard errors", () => {
+    const name = "bun-webkit-linux-amd64.tar.gz";
+    const cfg = resolveLinuxRelease();
+    expect(() => webkitArtifact(cfg, { version: WEBKIT_VERSION, artifacts: {} })).toThrow("Missing SHA-256");
+    expect(() => webkitArtifact(cfg, fixture(name, "invalid"))).toThrow("Missing SHA-256");
+    expect(() => webkitArtifact(resolveLinuxRelease({ webkitVersion: "0".repeat(40) }), fixture(name))).toThrow(
+      "update the manifest and pin together",
     );
-    expect(prebuiltUrlOf(cfg)).toBe(
-      `https://github.com/oven-sh/WebKit/releases/download/${defaultTag}/bun-webkit-linux-amd64-debug.tar.gz`,
-    );
-  });
-
-  test("baseline does not affect the suffix (every x64 WebKit is built at the nehalem floor)", () => {
-    expect(prebuiltUrlOf(resolveLinuxRelease({ lto: true, baseline: true }))).toBe(
-      `https://github.com/oven-sh/WebKit/releases/download/${defaultTag}/bun-webkit-linux-amd64-lto.tar.gz`,
-    );
-    expect(prebuiltUrlOf(resolveLinuxRelease({ asan: true, baseline: true }))).toBe(
-      `https://github.com/oven-sh/WebKit/releases/download/${defaultTag}/bun-webkit-linux-amd64-asan.tar.gz`,
-    );
-  });
-
-  test("--webkit-version=<sha> uses the plain autobuild-<sha> tag", () => {
-    const sha = "0123456789abcdef0123456789abcdef01234567";
-    const cfg = resolveLinuxRelease({ webkitVersion: sha });
-    expect(prebuiltUrlOf(cfg)).toBe(
-      `https://github.com/oven-sh/WebKit/releases/download/autobuild-${sha}/bun-webkit-linux-amd64.tar.gz`,
-    );
-  });
-
-  test("--webkit-version=autobuild-* is passed through verbatim", () => {
-    const tag = "autobuild-preview-pr-999-deadbeef";
-    const cfg = resolveLinuxRelease({ webkitVersion: tag });
-    expect(prebuiltUrlOf(cfg)).toBe(
-      `https://github.com/oven-sh/WebKit/releases/download/${tag}/bun-webkit-linux-amd64.tar.gz`,
-    );
-  });
-
-  test("WEBKIT_VERSION is either a 40-hex sha or an autobuild-* tag", () => {
-    expect(/^[0-9a-f]{40}$/.test(WEBKIT_VERSION) || WEBKIT_VERSION.startsWith("autobuild-")).toBe(true);
+    for (const url of [
+      `https://github.com/oven-sh/WebKit/releases/download/autobuild-${WEBKIT_VERSION}/${name}`,
+      "http://github.com/openclaw/WebKit/releases/download/archive.tar.gz",
+      "https://user:password@github.com/openclaw/WebKit/archive.tar.gz",
+    ]) {
+      const pin = fixture(name);
+      pin.artifacts[name]!.url = url;
+      expect(() => webkitArtifact(cfg, pin)).toThrow("pinned OpenClaw release URL");
+    }
   });
 });

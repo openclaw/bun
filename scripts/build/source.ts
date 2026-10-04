@@ -140,6 +140,8 @@ export type Source =
        * affect which tarball you need).
        */
       identity: string;
+      /** SHA-256 of the archive, checked before extraction. */
+      sha256?: string;
       /**
        * Paths to delete (relative to destDir) after extraction. WebKit
        * deletes `include/unicode` on macOS (conflicts with system ICU
@@ -155,6 +157,13 @@ export type Source =
        * (WebKit, nodejs-headers) override to `cacheDir/<name>-<version>/`.
        */
       destDir?: string;
+    }
+  | {
+      /** Keep graph-only targets usable; fail if a target requires this unavailable dependency. */
+      kind: "unavailable";
+      message: string;
+      /** Placeholder outputs live in the build directory, never in the artifact cache. */
+      destDir: string;
     };
 
 /**
@@ -612,8 +621,13 @@ export function registerDepRules(n: Ninja, cfg: Config): void {
   //
   // $rm_paths: space-separated paths (relative to dest) to delete after
   // extraction. Trailing positional args to fetch-cli, may be empty.
+  n.rule("dep_unavailable", {
+    command: `${stream} ${cfg.jsRuntime} ${fetchCli} unavailable $message`,
+    description: "unavailable $name",
+  });
+
   n.rule("dep_fetch_prebuilt", {
-    command: `${stream} ${cfg.jsRuntime} ${fetchCli} prebuilt $name $url $dest $identity $rm_paths`,
+    command: `${stream} ${cfg.jsRuntime} ${fetchCli} prebuilt $name $url $dest $identity $sha256 $rm_paths`,
     description: "fetch $name (prebuilt)",
     restat: true,
     pool: "dep",
@@ -817,7 +831,7 @@ export function resolveDep(
   // the extracted tarball IS the output, and `provides.libs` are paths into
   // it directly. buildSpec is ignored (should be `{kind:"none"}` but we
   // don't enforce it — the dep definition knows what it's doing).
-  if (source.kind === "prebuilt") {
+  if (source.kind === "prebuilt" || source.kind === "unavailable") {
     return emitPrebuilt(n, cfg, dep.name, source, provides);
   }
 
@@ -1058,7 +1072,7 @@ function emitPrebuilt(
   n: Ninja,
   cfg: Config,
   name: DepName,
-  source: Extract<Source, { kind: "prebuilt" }>,
+  source: Extract<Source, { kind: "prebuilt" | "unavailable" }>,
   provides: Provides,
 ): ResolvedDep {
   // Dest dir: default to vendor/<name>/, but deps like WebKit override to
@@ -1075,27 +1089,33 @@ function emitPrebuilt(
     return inc === "." ? destDir : resolve(destDir, inc);
   });
 
-  // Outputs: stamp + all libs. Stamp is the explicit output; libs are
-  // implicit (so deleting them correctly retriggers fetch, and restat
-  // prunes downstream when fetch was a no-op).
-  n.build({
+  // Both acquisition paths own the same outputs; an unavailable source never writes them.
+  const edge = {
     outputs: [stamp],
     implicitOutputs: libs,
-    rule: "dep_fetch_prebuilt",
     inputs: [],
-    // Only fetch-cli.ts. download.ts has a lot of shared helpers — editing
-    // those shouldn't re-download a multi-hundred-MB WebKit tarball.
     implicitInputs: [fetchCliPath],
-    vars: {
-      name,
-      url: source.url,
-      dest: destDir,
-      identity: source.identity,
-      // Space-separated relative paths. No quoting needed — paths are
-      // under our control (include/node/openssl etc.), no spaces.
-      rm_paths: (source.rmAfterExtract ?? []).join(" "),
-    },
-  });
+  };
+  if (source.kind === "unavailable") {
+    n.build({
+      ...edge,
+      rule: "dep_unavailable",
+      vars: { name, message: Buffer.from(source.message, "utf8").toString("base64url") },
+    });
+  } else {
+    n.build({
+      ...edge,
+      rule: "dep_fetch_prebuilt",
+      vars: {
+        name,
+        url: Buffer.from(source.url, "utf8").toString("base64url"),
+        dest: destDir,
+        identity: source.identity,
+        sha256: source.sha256 ?? "-",
+        rm_paths: (source.rmAfterExtract ?? []).join(" "),
+      },
+    });
+  }
   // Downstream should depend on: libs if there are any (compile-link deps),
   // otherwise the stamp (header-only deps like nodejs-headers — downstream
   // just needs the files to EXIST, stamp proves extraction happened).

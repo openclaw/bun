@@ -59,11 +59,11 @@ test("a tag that disagrees with its commit is refused, with every disagreement n
 test("the WebKit part of a tag is the previewed commit of a preview build", () => {
   expect(webkitTagPart("autobuild-preview-pr-578-caa5d805")).toBe("caa5d805");
   expect(tagFor({ ...facts, webkitVersion: "autobuild-preview-pr-578-caa5d805" })).toEndWith("-webkit-caa5d805");
-  expect(parseWebkitVersion('export const WEBKIT_VERSION = "35e8970dfd926abf6661c9d356f5d60d8f611c9b";')).toBe(
-    facts.webkitVersion,
-  );
+  expect(parseWebkitVersion(JSON.stringify({ version: facts.webkitVersion }))).toBe(facts.webkitVersion);
   expect(
-    parseWebkitVersion(readFileSync(join(import.meta.dir, "../../../scripts/build/deps/webkit.ts"), "utf8")),
+    parseWebkitVersion(
+      readFileSync(join(import.meta.dir, "../../../scripts/build/deps/webkit-artifacts.json"), "utf8"),
+    ),
   ).toMatch(/^[0-9a-f]{40}$|^autobuild-/);
 });
 

@@ -90,14 +90,21 @@ async function main(): Promise<void> {
       return checkUndefined(name, nm, rspfile, stamp, symbols.split(","));
     }
 
+    case "unavailable": {
+      assert(args[0] !== undefined, "unavailable: missing encoded error message");
+      throw new BuildError(Buffer.from(args[0], "base64url").toString("utf8"));
+    }
+
     case "prebuilt": {
-      // fetch-cli.ts prebuilt <name> <url> <dest> <identity> [...rm_paths]
-      const [name, url, dest, identity, ...rmPaths] = args;
+      // fetch-cli.ts prebuilt <name> <base64url-url> <dest> <identity> <sha256|-> [...rm_paths]
+      const [name, encodedUrl, dest, identity, sha256, ...rmPaths] = args;
       assert(
-        name !== undefined && url !== undefined && dest !== undefined && identity !== undefined,
+        name !== undefined && encodedUrl !== undefined && dest !== undefined && identity !== undefined,
         "prebuilt: missing name/url/dest/identity",
       );
-      return fetchPrebuilt(name, url, dest, identity, rmPaths);
+      assert(sha256 !== undefined, "prebuilt: missing sha256 or '-' sentinel");
+      const url = Buffer.from(encodedUrl, "base64url").toString("utf8");
+      return fetchPrebuilt(name, url, dest, identity, rmPaths, sha256 === "-" ? undefined : sha256);
     }
 
     case undefined:
@@ -117,7 +124,8 @@ Usage: bun fetch-cli.ts <kind> <args...>
 
 Kinds:
   dep             <name> <repo> <commit> <dest> <cache> [...patches]
-  prebuilt        <name> <url> <dest> <identity> [...rm_paths]
+  unavailable     <base64url-error-message>
+  prebuilt        <name> <base64url-url> <dest> <identity> <sha256|-> [...rm_paths]
   subst           <in> <out> [<from> <to>]...
   check-undefined <name> <nm> <rspfile> <stamp> <symbol,...>
 

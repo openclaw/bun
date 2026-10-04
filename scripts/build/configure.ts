@@ -184,6 +184,7 @@ function configureInputs(cwd: string): string[] {
   return [
     ...scripts,
     ...deps,
+    resolve(buildDir, "deps", "webkit-artifacts.json"),
     ...rust,
     pins,
     resolve(cwd, "scripts", "glob-sources.ts"),

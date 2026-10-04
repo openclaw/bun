@@ -1,0 +1,1746 @@
+{
+  "schema_version": 1,
+  "version": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
+  "repository": "openclaw/WebKit",
+  "tag": "autobuild-1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
+  "artifacts": {
+    "bun-webkit-linux-amd64.tar.gz": {
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-1ee09069fef6bdf26a899b3da06fc48714aa8a4d/bun-webkit-linux-amd64.tar.gz",
+      "sha256": "7ed6b2fc11f29182d0badbbb09503eb5d502b3bae447a712032b1738ad28f977",
+      "size": 470974208
+    },
+    "bun-webkit-macos-arm64.tar.gz": {
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-1ee09069fef6bdf26a899b3da06fc48714aa8a4d/bun-webkit-macos-arm64.tar.gz",
+      "sha256": "46927ae599b78e582284fc788aa68592f6480940bea997593b571c3ac0567856",
+      "size": 210014079
+    },
+    "bun-webkit-linux-amd64-lto.tar.gz": {
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-1ee09069fef6bdf26a899b3da06fc48714aa8a4d/bun-webkit-linux-amd64-lto.tar.gz",
+      "sha256": "eafc453c54530b47c8361e715bd8a30ab07145791577f53fb2378e402b14e6d9",
+      "size": 262631997
+    },
+    "bun-webkit-linux-arm64-lto.tar.gz": {
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-1ee09069fef6bdf26a899b3da06fc48714aa8a4d/bun-webkit-linux-arm64-lto.tar.gz",
+      "sha256": "a6f0ab8bff83568f52d9484ba794f2d62488b53a619d5e03bc171745caa3cec7",
+      "size": 256809785
+    },
+    "bun-webkit-macos-arm64-lto.tar.gz": {
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-1ee09069fef6bdf26a899b3da06fc48714aa8a4d/bun-webkit-macos-arm64-lto.tar.gz",
+      "sha256": "94592ed2bb267d207b60a842ea5120c1e0fc9d226aee7a85b7dae901343ee689",
+      "size": 155190017
+    },
+    "bun-webkit-macos-amd64-lto.tar.gz": {
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-1ee09069fef6bdf26a899b3da06fc48714aa8a4d/bun-webkit-macos-amd64-lto.tar.gz",
+      "sha256": "d4ff752748c049a1b4ec34c7b5ea2733ba0594d5b41ae61df39e56d664b12031",
+      "size": 159437519
+    },
+    "bun-webkit-linux-amd64-musl-lto.tar.gz": {
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-1ee09069fef6bdf26a899b3da06fc48714aa8a4d/bun-webkit-linux-amd64-musl-lto.tar.gz",
+      "sha256": "163371e2805c8a267a289e7a4d2168a972af6e98ba2a6f2d1e08aba15f37f4c5",
+      "size": 221337385
+    },
+    "bun-webkit-linux-arm64-musl-lto.tar.gz": {
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-1ee09069fef6bdf26a899b3da06fc48714aa8a4d/bun-webkit-linux-arm64-musl-lto.tar.gz",
+      "sha256": "2fe7dc96717a688073d901cca7c2d43598bece8320fae2e0aae53bde7984ed65",
+      "size": 223217216
+    },
+    "bun-webkit-windows-amd64-lto.tar.gz": {
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-1ee09069fef6bdf26a899b3da06fc48714aa8a4d/bun-webkit-windows-amd64-lto.tar.gz",
+      "sha256": "039db820abba63aafe1651cb33af685f1f104b335ba365cd97faecb501b9091f",
+      "size": 663727644
+    }
+  },
+  "variants": {
+    "bun_repository": "openclaw/bun",
+    "bun_commit": "b83b544ef744b6ab0dc1feadb59652261d64291d",
+    "base": "1600131e46b5af48bbda3559af8d8a3327230b6e",
+    "lanes": [
+      {
+        "label": "bun-webkit-linux-amd64",
+        "consumer": "openclaw-build-test.yml linux-x64: build:release --lto=off"
+      },
+      {
+        "label": "bun-webkit-macos-arm64",
+        "consumer": "openclaw-build-test.yml darwin-arm64: build:release --lto=off"
+      },
+      {
+        "label": "bun-webkit-linux-amd64-lto",
+        "consumer": "openclaw-release.yml default linux-x64"
+      },
+      {
+        "label": "bun-webkit-linux-arm64-lto",
+        "consumer": "openclaw-release.yml default linux-arm64"
+      },
+      {
+        "label": "bun-webkit-macos-arm64-lto",
+        "consumer": "openclaw-release.yml default darwin-arm64"
+      },
+      {
+        "label": "bun-webkit-macos-amd64-lto",
+        "consumer": "openclaw-release.yml default darwin-x64"
+      },
+      {
+        "label": "bun-webkit-linux-amd64-musl-lto",
+        "consumer": "openclaw-release.yml optional linux-x64-musl"
+      },
+      {
+        "label": "bun-webkit-linux-arm64-musl-lto",
+        "consumer": "openclaw-release.yml optional linux-arm64-musl"
+      },
+      {
+        "label": "bun-webkit-windows-amd64-lto",
+        "consumer": "openclaw-release.yml optional windows-x64"
+      }
+    ],
+    "excluded": "Windows arm64, Android, FreeBSD, debug and ASAN are not selected by the fork's active OpenClaw workflows. There is no separate x64 baseline WebKit archive."
+  },
+  "qualification": {
+    "passed": true,
+    "source": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
+    "bun_commit": "b83b544ef744b6ab0dc1feadb59652261d64291d",
+    "selected_files": 44,
+    "result_files": 46,
+    "als_variants_per_mode": 14,
+    "proxy_minimum": 4,
+    "resource_minimum": 14,
+    "bun_adapter_sha256": "282e7ef8a892c4f78032a5a3235a8d8eae1722a9a84929c4914f4e775cb70aae"
+  },
+  "lanes": [
+    {
+      "schema_version": 1,
+      "source": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
+      "base": "1600131e46b5af48bbda3559af8d8a3327230b6e",
+      "lane": {
+        "label": "bun-webkit-linux-amd64",
+        "runner": "linux-x64-gh",
+        "dockerfile": "Dockerfile",
+        "package_os": "linux",
+        "package_cpu": "x64",
+        "test": false,
+        "test_runner": "linux-x64-gh",
+        "test_quick": false,
+        "image": "ghcr.io/openclaw/bun-webkit-build-env:linux-glibc-e92d5cd706e3b737",
+        "build_args": {
+          "WEBKIT_RELEASE_TYPE": "Release",
+          "LTO_FLAG": "",
+          "USE_MIMALLOC": "ON",
+          "USE_EXTERNAL_MIMALLOC": "ON",
+          "ICU_VERSION": "78.3",
+          "ICU_SHA256": "3a2e7a47604ba702f345878308e6fefeca612ee895cf4a5f222e7955fabfe0c0",
+          "LINUX_ARCH": "x86_64",
+          "RELEASE_FLAGS": "-O3 -DNDEBUG=1",
+          "ENABLE_SANITIZERS": "",
+          "MARCH_FLAG": "--target=x86_64-unknown-linux-gnu -march=nehalem"
+        }
+      },
+      "patches": [
+        {
+          "commit": "49286a32907699162758f576e322a5897d08cbcb",
+          "subject": "fix(intl): preserve segment boundaries around surrogate pairs",
+          "patch_sha256": "c00e0c3c83191c04f0527d1920e10649774f1da1857fd26f7a483b12edb7885e"
+        },
+        {
+          "commit": "5aa47f6979ce50d222ade62731035deb5821989d",
+          "subject": "fix(jsc): allow opt-in Proxy global prototypes",
+          "patch_sha256": "12077938391f390ec50bd926e171e7e0531963ba399c5006db481c7ca86e451f"
+        },
+        {
+          "commit": "0ea86969847cbf6457e047eda34047fd2c378e86",
+          "subject": "fix(jsc): preserve module-loader async context",
+          "patch_sha256": "6d5e3ceadedd4a4f0f96b42d4f53b5589bca053f18ffd7b2a587d9330f22b0fa"
+        },
+        {
+          "commit": "d4629bd619c57675b55534e9e1f7cc4a66d1ced0",
+          "subject": "feat(jsc): add per-VM worker heap and stack budgets",
+          "patch_sha256": "11847006c75b609004823a471e8a8a8b02755e99b590782769272195d92b069a"
+        },
+        {
+          "commit": "ecc75afe1e4df1bc7d6949fb596872cfdf5b547d",
+          "subject": "ci: add immutable OpenClaw WebKit artifact pipeline",
+          "patch_sha256": "36980d4214adbd9bc4ae34cb2fcff988fcf4f9ab7b497d2663ab8aebb035d5f8"
+        },
+        {
+          "commit": "2200e39644d22733a8aad5814837a6cea1eb0934",
+          "subject": "fix(ci): bind qualification binaries to the Bun source revision",
+          "patch_sha256": "411ebf8fcc84e7dfce128f7ee9a2bc8af6a696e8ff276ba3f617f5d4d829f067"
+        },
+        {
+          "commit": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
+          "subject": "ci: isolate batch-one artifact publication from later engine work",
+          "patch_sha256": "ec2f19cbd075d30517073388fc00d3ae5986ecfa25ca6811e5078da373d4fa8d"
+        }
+      ],
+      "recipe_sha256": {
+        ".github/scripts/lanes.mjs": "a69a43b99d6bd98379f9bf2bcde76928788ab06fd114d3aa976342e87ea48125",
+        "Dockerfile": "444340335972f60f2ac3af4cf2d9404a1d7870571d17d5e0ad13540e2291e963",
+        "Dockerfile.macos": "dc457cc551d60e951394a28ec3b272180f397084f76d7a79ec7168e76006129c",
+        "Dockerfile.musl": "f66ba3898f2e66452b9d643929c989e261a6d8466b61f55c9f8e4e635954ec35",
+        "Dockerfile.windows": "66b6a6d02689558e9f9571c5ee05e4f91b4c860545666fe69cdac26d8a5d93b5",
+        "icu/compress-data.ts": "d01fe5b67691d5d6d96a9f66631bafec2049471318f71ac78ed49af9bdbfa93d",
+        "icu/keep-raw.txt": "5bc256dcef00b6d62e41e3311f02b73108f52b6c715823c887deb4834876b2ce",
+        "icu/source.json": "e36325676eca93b29751793fbdbc13846a24c775e1e137da5d35956e46158365",
+        "icu/udata-decompress-hook.patch": "039f68bafcb875f3e688f3461e8ec7924416e6006d517def1441ab8e4ae87c81",
+        "macos-cross/README.md": "dd1f9dbe1852e4b855c7f16a8a3c9b023c0db1af292de63384448c6969cf5b5d",
+        "macos-cross/mach/boolean.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/compat.h": "7936278356124c7f0768703c670e5c90a4e8b437616a23683fa7c067877b2b20",
+        "macos-cross/mach/kern_return.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/machine/vm_types.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/message.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/ndr.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/port.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/std_types.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
+        "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
+      },
+      "toolchain_image_id": "sha256:c79a7690fd06ff5e9c03fc980bfb01fd85347624e54f0acdef20cacc0b95cea3",
+      "commands": {
+        "base": [
+          "docker",
+          "buildx",
+          "build",
+          "-f",
+          "Dockerfile",
+          "--platform",
+          "linux/amd64",
+          "--progress=plain",
+          "--build-arg",
+          "WEBKIT_RELEASE_TYPE=Release",
+          "--build-arg",
+          "LTO_FLAG=",
+          "--build-arg",
+          "USE_MIMALLOC=ON",
+          "--build-arg",
+          "USE_EXTERNAL_MIMALLOC=ON",
+          "--build-arg",
+          "ICU_VERSION=78.3",
+          "--build-arg",
+          "ICU_SHA256=3a2e7a47604ba702f345878308e6fefeca612ee895cf4a5f222e7955fabfe0c0",
+          "--build-arg",
+          "LINUX_ARCH=x86_64",
+          "--build-arg",
+          "RELEASE_FLAGS=-O3 -DNDEBUG=1",
+          "--build-arg",
+          "ENABLE_SANITIZERS=",
+          "--build-arg",
+          "MARCH_FLAG=--target=x86_64-unknown-linux-gnu -march=nehalem",
+          "--target=base",
+          "--load",
+          "--tag",
+          "openclaw-webkit-toolchain:5748275b4d66dd938bbd5643",
+          "--metadata-file",
+          "/home/runner/_work/_temp/lane/provenance/toolchain-build.json",
+          "."
+        ],
+        "artifact": [
+          "docker",
+          "buildx",
+          "build",
+          "-f",
+          "Dockerfile",
+          "--platform",
+          "linux/amd64",
+          "--progress=plain",
+          "--build-arg",
+          "WEBKIT_RELEASE_TYPE=Release",
+          "--build-arg",
+          "LTO_FLAG=",
+          "--build-arg",
+          "USE_MIMALLOC=ON",
+          "--build-arg",
+          "USE_EXTERNAL_MIMALLOC=ON",
+          "--build-arg",
+          "ICU_VERSION=78.3",
+          "--build-arg",
+          "ICU_SHA256=3a2e7a47604ba702f345878308e6fefeca612ee895cf4a5f222e7955fabfe0c0",
+          "--build-arg",
+          "LINUX_ARCH=x86_64",
+          "--build-arg",
+          "RELEASE_FLAGS=-O3 -DNDEBUG=1",
+          "--build-arg",
+          "ENABLE_SANITIZERS=",
+          "--build-arg",
+          "MARCH_FLAG=--target=x86_64-unknown-linux-gnu -march=nehalem",
+          "--build-context",
+          "base=docker-image://openclaw-webkit-toolchain:5748275b4d66dd938bbd5643",
+          "--target=artifact",
+          "--output",
+          "type=local,dest=/home/runner/_work/_temp/lane/bun-webkit",
+          "--metadata-file",
+          "/home/runner/_work/_temp/lane/provenance/artifact-build.json",
+          "."
+        ]
+      },
+      "tool_versions": "Ubuntu clang version 23.1.2 (++20260910043923+069ef0e7cb36-1~exp1~20260910043934.72)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 4.4.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.10.0",
+      "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.2.1\n  GitCommit:        dea7da592f5d1d2b7755e3a161be07f43fad8f75\n runc:\n  Version:          1.3.4\n  GitCommit:        v1.3.4-0-gd6d73eb8\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
+      "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
+      "workflow_run": "37224066519",
+      "run_attempt": "1",
+      "elapsed_seconds": 501.94161462783813,
+      "files": {
+        "bun-webkit-linux-amd64.tar.gz": {
+          "sha256": "7ed6b2fc11f29182d0badbbb09503eb5d502b3bae447a712032b1738ad28f977",
+          "size": 470974208
+        }
+      },
+      "provenance_files": {
+        "toolchain-image.json": "d7186646e92e6c93900f5319d2155d77305001f0912ecf8894649599934314a7",
+        "toolchain-build.json": "2c491961615ef9d473e377a7df45ce559e6f668350404559e05d43fd7608ccbd",
+        "artifact-build.json": "3cb58521ab97cb44c589d25c899ca9c74d784a712f7d60d678933b66d3103749",
+        "tool-versions.txt": "1f732938c107d159895e80daffe13bc457ce53c90ec3af6123ca41de962a231f"
+      }
+    },
+    {
+      "schema_version": 1,
+      "source": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
+      "base": "1600131e46b5af48bbda3559af8d8a3327230b6e",
+      "lane": {
+        "label": "bun-webkit-macos-arm64",
+        "runner": "linux-x64-gh",
+        "dockerfile": "Dockerfile.macos",
+        "package_os": "darwin",
+        "package_cpu": "arm64",
+        "test": false,
+        "test_quick": false,
+        "image": "ghcr.io/openclaw/bun-webkit-build-env:macos-arm64-ec1a4b5476498dae",
+        "build_args": {
+          "WEBKIT_RELEASE_TYPE": "Release",
+          "LTO_FLAG": "",
+          "USE_MIMALLOC": "ON",
+          "USE_EXTERNAL_MIMALLOC": "ON",
+          "MACOS_ARCH": "arm64",
+          "MACOS_DEPLOYMENT_TARGET": "13.0",
+          "MARCH_FLAG": "-mcpu=apple-m1",
+          "CPP_FLAGS": "",
+          "ENABLE_SANITIZERS": "",
+          "ENABLE_MALLOC_HEAP_BREAKDOWN": "OFF"
+        }
+      },
+      "patches": [
+        {
+          "commit": "49286a32907699162758f576e322a5897d08cbcb",
+          "subject": "fix(intl): preserve segment boundaries around surrogate pairs",
+          "patch_sha256": "c00e0c3c83191c04f0527d1920e10649774f1da1857fd26f7a483b12edb7885e"
+        },
+        {
+          "commit": "5aa47f6979ce50d222ade62731035deb5821989d",
+          "subject": "fix(jsc): allow opt-in Proxy global prototypes",
+          "patch_sha256": "12077938391f390ec50bd926e171e7e0531963ba399c5006db481c7ca86e451f"
+        },
+        {
+          "commit": "0ea86969847cbf6457e047eda34047fd2c378e86",
+          "subject": "fix(jsc): preserve module-loader async context",
+          "patch_sha256": "6d5e3ceadedd4a4f0f96b42d4f53b5589bca053f18ffd7b2a587d9330f22b0fa"
+        },
+        {
+          "commit": "d4629bd619c57675b55534e9e1f7cc4a66d1ced0",
+          "subject": "feat(jsc): add per-VM worker heap and stack budgets",
+          "patch_sha256": "11847006c75b609004823a471e8a8a8b02755e99b590782769272195d92b069a"
+        },
+        {
+          "commit": "ecc75afe1e4df1bc7d6949fb596872cfdf5b547d",
+          "subject": "ci: add immutable OpenClaw WebKit artifact pipeline",
+          "patch_sha256": "36980d4214adbd9bc4ae34cb2fcff988fcf4f9ab7b497d2663ab8aebb035d5f8"
+        },
+        {
+          "commit": "2200e39644d22733a8aad5814837a6cea1eb0934",
+          "subject": "fix(ci): bind qualification binaries to the Bun source revision",
+          "patch_sha256": "411ebf8fcc84e7dfce128f7ee9a2bc8af6a696e8ff276ba3f617f5d4d829f067"
+        },
+        {
+          "commit": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
+          "subject": "ci: isolate batch-one artifact publication from later engine work",
+          "patch_sha256": "ec2f19cbd075d30517073388fc00d3ae5986ecfa25ca6811e5078da373d4fa8d"
+        }
+      ],
+      "recipe_sha256": {
+        ".github/scripts/lanes.mjs": "a69a43b99d6bd98379f9bf2bcde76928788ab06fd114d3aa976342e87ea48125",
+        "Dockerfile": "444340335972f60f2ac3af4cf2d9404a1d7870571d17d5e0ad13540e2291e963",
+        "Dockerfile.macos": "dc457cc551d60e951394a28ec3b272180f397084f76d7a79ec7168e76006129c",
+        "Dockerfile.musl": "f66ba3898f2e66452b9d643929c989e261a6d8466b61f55c9f8e4e635954ec35",
+        "Dockerfile.windows": "66b6a6d02689558e9f9571c5ee05e4f91b4c860545666fe69cdac26d8a5d93b5",
+        "icu/compress-data.ts": "d01fe5b67691d5d6d96a9f66631bafec2049471318f71ac78ed49af9bdbfa93d",
+        "icu/keep-raw.txt": "5bc256dcef00b6d62e41e3311f02b73108f52b6c715823c887deb4834876b2ce",
+        "icu/source.json": "e36325676eca93b29751793fbdbc13846a24c775e1e137da5d35956e46158365",
+        "icu/udata-decompress-hook.patch": "039f68bafcb875f3e688f3461e8ec7924416e6006d517def1441ab8e4ae87c81",
+        "macos-cross/README.md": "dd1f9dbe1852e4b855c7f16a8a3c9b023c0db1af292de63384448c6969cf5b5d",
+        "macos-cross/mach/boolean.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/compat.h": "7936278356124c7f0768703c670e5c90a4e8b437616a23683fa7c067877b2b20",
+        "macos-cross/mach/kern_return.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/machine/vm_types.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/message.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/ndr.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/port.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/std_types.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
+        "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
+      },
+      "toolchain_image_id": "sha256:202dbedb4e32365ab660c98ed1f0ceddd8cda07f3e84a1cc45f815ee9d16c628",
+      "commands": {
+        "base": [
+          "docker",
+          "buildx",
+          "build",
+          "-f",
+          "Dockerfile.macos",
+          "--platform",
+          "linux/amd64",
+          "--progress=plain",
+          "--build-arg",
+          "WEBKIT_RELEASE_TYPE=Release",
+          "--build-arg",
+          "LTO_FLAG=",
+          "--build-arg",
+          "USE_MIMALLOC=ON",
+          "--build-arg",
+          "USE_EXTERNAL_MIMALLOC=ON",
+          "--build-arg",
+          "MACOS_ARCH=arm64",
+          "--build-arg",
+          "MACOS_DEPLOYMENT_TARGET=13.0",
+          "--build-arg",
+          "MARCH_FLAG=-mcpu=apple-m1",
+          "--build-arg",
+          "CPP_FLAGS=",
+          "--build-arg",
+          "ENABLE_SANITIZERS=",
+          "--build-arg",
+          "ENABLE_MALLOC_HEAP_BREAKDOWN=OFF",
+          "--target=base",
+          "--load",
+          "--tag",
+          "openclaw-webkit-toolchain:ed72cde8e25508222b60489c",
+          "--metadata-file",
+          "/home/runner/_work/_temp/lane/provenance/toolchain-build.json",
+          "."
+        ],
+        "artifact": [
+          "docker",
+          "buildx",
+          "build",
+          "-f",
+          "Dockerfile.macos",
+          "--platform",
+          "linux/amd64",
+          "--progress=plain",
+          "--build-arg",
+          "WEBKIT_RELEASE_TYPE=Release",
+          "--build-arg",
+          "LTO_FLAG=",
+          "--build-arg",
+          "USE_MIMALLOC=ON",
+          "--build-arg",
+          "USE_EXTERNAL_MIMALLOC=ON",
+          "--build-arg",
+          "MACOS_ARCH=arm64",
+          "--build-arg",
+          "MACOS_DEPLOYMENT_TARGET=13.0",
+          "--build-arg",
+          "MARCH_FLAG=-mcpu=apple-m1",
+          "--build-arg",
+          "CPP_FLAGS=",
+          "--build-arg",
+          "ENABLE_SANITIZERS=",
+          "--build-arg",
+          "ENABLE_MALLOC_HEAP_BREAKDOWN=OFF",
+          "--build-context",
+          "base=docker-image://openclaw-webkit-toolchain:ed72cde8e25508222b60489c",
+          "--target=artifact",
+          "--output",
+          "type=local,dest=/home/runner/_work/_temp/lane/bun-webkit",
+          "--metadata-file",
+          "/home/runner/_work/_temp/lane/provenance/artifact-build.json",
+          "."
+        ]
+      },
+      "tool_versions": "Ubuntu clang version 23.1.2 (++20260910044232+069ef0e7cb36-1~exp1~20260910044242.70)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.11.1",
+      "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.2.1\n  GitCommit:        dea7da592f5d1d2b7755e3a161be07f43fad8f75\n runc:\n  Version:          1.3.4\n  GitCommit:        v1.3.4-0-gd6d73eb8\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
+      "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
+      "workflow_run": "37224066519",
+      "run_attempt": "1",
+      "elapsed_seconds": 283.347797870636,
+      "files": {
+        "bun-webkit-macos-arm64.tar.gz": {
+          "sha256": "46927ae599b78e582284fc788aa68592f6480940bea997593b571c3ac0567856",
+          "size": 210014079
+        }
+      },
+      "provenance_files": {
+        "artifact-build.json": "fc96e6a922a05c02d3bcb788f118d1ca663c367506722763021f596ee56322bb",
+        "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8",
+        "toolchain-build.json": "3029077a58db3132c99e36a8769b3516f895ba627f44de62924ed9f173294071",
+        "toolchain-image.json": "f43cfa26d9d9a408e3674ba14fea5aacbb60f3012bf6c915505f0ee9b87707de"
+      }
+    },
+    {
+      "schema_version": 1,
+      "source": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
+      "base": "1600131e46b5af48bbda3559af8d8a3327230b6e",
+      "lane": {
+        "label": "bun-webkit-linux-amd64-lto",
+        "runner": "linux-x64-gh",
+        "dockerfile": "Dockerfile",
+        "package_os": "linux",
+        "package_cpu": "x64",
+        "test": true,
+        "test_runner": "linux-x64-gh",
+        "test_quick": false,
+        "image": "ghcr.io/openclaw/bun-webkit-build-env:linux-glibc-e92d5cd706e3b737",
+        "build_args": {
+          "WEBKIT_RELEASE_TYPE": "Release",
+          "LTO_FLAG": "-flto=thin -fno-split-lto-unit -fwhole-program-vtables -fforce-emit-vtables",
+          "USE_MIMALLOC": "ON",
+          "USE_EXTERNAL_MIMALLOC": "ON",
+          "ICU_VERSION": "78.3",
+          "ICU_SHA256": "3a2e7a47604ba702f345878308e6fefeca612ee895cf4a5f222e7955fabfe0c0",
+          "LINUX_ARCH": "x86_64",
+          "RELEASE_FLAGS": "-O3 -DNDEBUG=1",
+          "ENABLE_SANITIZERS": "",
+          "MARCH_FLAG": "--target=x86_64-unknown-linux-gnu -march=nehalem"
+        }
+      },
+      "patches": [
+        {
+          "commit": "49286a32907699162758f576e322a5897d08cbcb",
+          "subject": "fix(intl): preserve segment boundaries around surrogate pairs",
+          "patch_sha256": "c00e0c3c83191c04f0527d1920e10649774f1da1857fd26f7a483b12edb7885e"
+        },
+        {
+          "commit": "5aa47f6979ce50d222ade62731035deb5821989d",
+          "subject": "fix(jsc): allow opt-in Proxy global prototypes",
+          "patch_sha256": "12077938391f390ec50bd926e171e7e0531963ba399c5006db481c7ca86e451f"
+        },
+        {
+          "commit": "0ea86969847cbf6457e047eda34047fd2c378e86",
+          "subject": "fix(jsc): preserve module-loader async context",
+          "patch_sha256": "6d5e3ceadedd4a4f0f96b42d4f53b5589bca053f18ffd7b2a587d9330f22b0fa"
+        },
+        {
+          "commit": "d4629bd619c57675b55534e9e1f7cc4a66d1ced0",
+          "subject": "feat(jsc): add per-VM worker heap and stack budgets",
+          "patch_sha256": "11847006c75b609004823a471e8a8a8b02755e99b590782769272195d92b069a"
+        },
+        {
+          "commit": "ecc75afe1e4df1bc7d6949fb596872cfdf5b547d",
+          "subject": "ci: add immutable OpenClaw WebKit artifact pipeline",
+          "patch_sha256": "36980d4214adbd9bc4ae34cb2fcff988fcf4f9ab7b497d2663ab8aebb035d5f8"
+        },
+        {
+          "commit": "2200e39644d22733a8aad5814837a6cea1eb0934",
+          "subject": "fix(ci): bind qualification binaries to the Bun source revision",
+          "patch_sha256": "411ebf8fcc84e7dfce128f7ee9a2bc8af6a696e8ff276ba3f617f5d4d829f067"
+        },
+        {
+          "commit": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
+          "subject": "ci: isolate batch-one artifact publication from later engine work",
+          "patch_sha256": "ec2f19cbd075d30517073388fc00d3ae5986ecfa25ca6811e5078da373d4fa8d"
+        }
+      ],
+      "recipe_sha256": {
+        ".github/scripts/lanes.mjs": "a69a43b99d6bd98379f9bf2bcde76928788ab06fd114d3aa976342e87ea48125",
+        "Dockerfile": "444340335972f60f2ac3af4cf2d9404a1d7870571d17d5e0ad13540e2291e963",
+        "Dockerfile.macos": "dc457cc551d60e951394a28ec3b272180f397084f76d7a79ec7168e76006129c",
+        "Dockerfile.musl": "f66ba3898f2e66452b9d643929c989e261a6d8466b61f55c9f8e4e635954ec35",
+        "Dockerfile.windows": "66b6a6d02689558e9f9571c5ee05e4f91b4c860545666fe69cdac26d8a5d93b5",
+        "icu/compress-data.ts": "d01fe5b67691d5d6d96a9f66631bafec2049471318f71ac78ed49af9bdbfa93d",
+        "icu/keep-raw.txt": "5bc256dcef00b6d62e41e3311f02b73108f52b6c715823c887deb4834876b2ce",
+        "icu/source.json": "e36325676eca93b29751793fbdbc13846a24c775e1e137da5d35956e46158365",
+        "icu/udata-decompress-hook.patch": "039f68bafcb875f3e688f3461e8ec7924416e6006d517def1441ab8e4ae87c81",
+        "macos-cross/README.md": "dd1f9dbe1852e4b855c7f16a8a3c9b023c0db1af292de63384448c6969cf5b5d",
+        "macos-cross/mach/boolean.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/compat.h": "7936278356124c7f0768703c670e5c90a4e8b437616a23683fa7c067877b2b20",
+        "macos-cross/mach/kern_return.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/machine/vm_types.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/message.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/ndr.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/port.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/std_types.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
+        "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
+      },
+      "toolchain_image_id": "sha256:4db566e0abce253b6433a4e9e3ed3cae3b61711e8630ae2b8d3132db30a582d5",
+      "commands": {
+        "base": [
+          "docker",
+          "buildx",
+          "build",
+          "-f",
+          "Dockerfile",
+          "--platform",
+          "linux/amd64",
+          "--progress=plain",
+          "--build-arg",
+          "WEBKIT_RELEASE_TYPE=Release",
+          "--build-arg",
+          "LTO_FLAG=-flto=thin -fno-split-lto-unit -fwhole-program-vtables -fforce-emit-vtables",
+          "--build-arg",
+          "USE_MIMALLOC=ON",
+          "--build-arg",
+          "USE_EXTERNAL_MIMALLOC=ON",
+          "--build-arg",
+          "ICU_VERSION=78.3",
+          "--build-arg",
+          "ICU_SHA256=3a2e7a47604ba702f345878308e6fefeca612ee895cf4a5f222e7955fabfe0c0",
+          "--build-arg",
+          "LINUX_ARCH=x86_64",
+          "--build-arg",
+          "RELEASE_FLAGS=-O3 -DNDEBUG=1",
+          "--build-arg",
+          "ENABLE_SANITIZERS=",
+          "--build-arg",
+          "MARCH_FLAG=--target=x86_64-unknown-linux-gnu -march=nehalem",
+          "--target=base",
+          "--load",
+          "--tag",
+          "openclaw-webkit-toolchain:5748275b4d66dd938bbd5643",
+          "--metadata-file",
+          "/home/runner/_work/_temp/lane/provenance/toolchain-build.json",
+          "."
+        ],
+        "artifact": [
+          "docker",
+          "buildx",
+          "build",
+          "-f",
+          "Dockerfile",
+          "--platform",
+          "linux/amd64",
+          "--progress=plain",
+          "--build-arg",
+          "WEBKIT_RELEASE_TYPE=Release",
+          "--build-arg",
+          "LTO_FLAG=-flto=thin -fno-split-lto-unit -fwhole-program-vtables -fforce-emit-vtables",
+          "--build-arg",
+          "USE_MIMALLOC=ON",
+          "--build-arg",
+          "USE_EXTERNAL_MIMALLOC=ON",
+          "--build-arg",
+          "ICU_VERSION=78.3",
+          "--build-arg",
+          "ICU_SHA256=3a2e7a47604ba702f345878308e6fefeca612ee895cf4a5f222e7955fabfe0c0",
+          "--build-arg",
+          "LINUX_ARCH=x86_64",
+          "--build-arg",
+          "RELEASE_FLAGS=-O3 -DNDEBUG=1",
+          "--build-arg",
+          "ENABLE_SANITIZERS=",
+          "--build-arg",
+          "MARCH_FLAG=--target=x86_64-unknown-linux-gnu -march=nehalem",
+          "--build-context",
+          "base=docker-image://openclaw-webkit-toolchain:5748275b4d66dd938bbd5643",
+          "--target=artifact",
+          "--output",
+          "type=local,dest=/home/runner/_work/_temp/lane/bun-webkit",
+          "--metadata-file",
+          "/home/runner/_work/_temp/lane/provenance/artifact-build.json",
+          "."
+        ]
+      },
+      "tool_versions": "Ubuntu clang version 23.1.2 (++20260910043923+069ef0e7cb36-1~exp1~20260910043934.72)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 4.4.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.10.0",
+      "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.2.1\n  GitCommit:        dea7da592f5d1d2b7755e3a161be07f43fad8f75\n runc:\n  Version:          1.3.4\n  GitCommit:        v1.3.4-0-gd6d73eb8\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
+      "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
+      "workflow_run": "37224066519",
+      "run_attempt": "1",
+      "elapsed_seconds": 504.2447941303253,
+      "files": {
+        "bun-webkit-linux-amd64-lto.tar.gz": {
+          "sha256": "eafc453c54530b47c8361e715bd8a30ab07145791577f53fb2378e402b14e6d9",
+          "size": 262631997
+        }
+      },
+      "provenance_files": {
+        "artifact-build.json": "1b820869ec35778c52933aac8f9e9e9d0a950006463e3eda61686fe5ae85fe12",
+        "tool-versions.txt": "1f732938c107d159895e80daffe13bc457ce53c90ec3af6123ca41de962a231f",
+        "toolchain-build.json": "f9e545d904c4dc815b7350b266c188a9851af0135ed9993b44b832818973024e",
+        "toolchain-image.json": "37b71a36b2310c288892f752687ad0378dfdd75009a5b9bf165f242be5cdc388"
+      }
+    },
+    {
+      "schema_version": 1,
+      "source": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
+      "base": "1600131e46b5af48bbda3559af8d8a3327230b6e",
+      "lane": {
+        "label": "bun-webkit-linux-arm64-lto",
+        "runner": "linux-x64-gh",
+        "dockerfile": "Dockerfile",
+        "package_os": "linux",
+        "package_cpu": "arm64",
+        "test": true,
+        "test_runner": "linux-arm64-gh",
+        "test_quick": false,
+        "image": "ghcr.io/openclaw/bun-webkit-build-env:linux-glibc-e92d5cd706e3b737",
+        "build_args": {
+          "WEBKIT_RELEASE_TYPE": "Release",
+          "LTO_FLAG": "-flto=thin -fno-split-lto-unit -fwhole-program-vtables -fforce-emit-vtables",
+          "USE_MIMALLOC": "ON",
+          "USE_EXTERNAL_MIMALLOC": "ON",
+          "ICU_VERSION": "78.3",
+          "ICU_SHA256": "3a2e7a47604ba702f345878308e6fefeca612ee895cf4a5f222e7955fabfe0c0",
+          "LINUX_ARCH": "aarch64",
+          "RELEASE_FLAGS": "-O3 -DNDEBUG=1",
+          "ENABLE_SANITIZERS": "",
+          "MARCH_FLAG": "--target=aarch64-unknown-linux-gnu -march=armv8-a+crc -mtune=ampere1"
+        }
+      },
+      "patches": [
+        {
+          "commit": "49286a32907699162758f576e322a5897d08cbcb",
+          "subject": "fix(intl): preserve segment boundaries around surrogate pairs",
+          "patch_sha256": "c00e0c3c83191c04f0527d1920e10649774f1da1857fd26f7a483b12edb7885e"
+        },
+        {
+          "commit": "5aa47f6979ce50d222ade62731035deb5821989d",
+          "subject": "fix(jsc): allow opt-in Proxy global prototypes",
+          "patch_sha256": "12077938391f390ec50bd926e171e7e0531963ba399c5006db481c7ca86e451f"
+        },
+        {
+          "commit": "0ea86969847cbf6457e047eda34047fd2c378e86",
+          "subject": "fix(jsc): preserve module-loader async context",
+          "patch_sha256": "6d5e3ceadedd4a4f0f96b42d4f53b5589bca053f18ffd7b2a587d9330f22b0fa"
+        },
+        {
+          "commit": "d4629bd619c57675b55534e9e1f7cc4a66d1ced0",
+          "subject": "feat(jsc): add per-VM worker heap and stack budgets",
+          "patch_sha256": "11847006c75b609004823a471e8a8a8b02755e99b590782769272195d92b069a"
+        },
+        {
+          "commit": "ecc75afe1e4df1bc7d6949fb596872cfdf5b547d",
+          "subject": "ci: add immutable OpenClaw WebKit artifact pipeline",
+          "patch_sha256": "36980d4214adbd9bc4ae34cb2fcff988fcf4f9ab7b497d2663ab8aebb035d5f8"
+        },
+        {
+          "commit": "2200e39644d22733a8aad5814837a6cea1eb0934",
+          "subject": "fix(ci): bind qualification binaries to the Bun source revision",
+          "patch_sha256": "411ebf8fcc84e7dfce128f7ee9a2bc8af6a696e8ff276ba3f617f5d4d829f067"
+        },
+        {
+          "commit": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
+          "subject": "ci: isolate batch-one artifact publication from later engine work",
+          "patch_sha256": "ec2f19cbd075d30517073388fc00d3ae5986ecfa25ca6811e5078da373d4fa8d"
+        }
+      ],
+      "recipe_sha256": {
+        ".github/scripts/lanes.mjs": "a69a43b99d6bd98379f9bf2bcde76928788ab06fd114d3aa976342e87ea48125",
+        "Dockerfile": "444340335972f60f2ac3af4cf2d9404a1d7870571d17d5e0ad13540e2291e963",
+        "Dockerfile.macos": "dc457cc551d60e951394a28ec3b272180f397084f76d7a79ec7168e76006129c",
+        "Dockerfile.musl": "f66ba3898f2e66452b9d643929c989e261a6d8466b61f55c9f8e4e635954ec35",
+        "Dockerfile.windows": "66b6a6d02689558e9f9571c5ee05e4f91b4c860545666fe69cdac26d8a5d93b5",
+        "icu/compress-data.ts": "d01fe5b67691d5d6d96a9f66631bafec2049471318f71ac78ed49af9bdbfa93d",
+        "icu/keep-raw.txt": "5bc256dcef00b6d62e41e3311f02b73108f52b6c715823c887deb4834876b2ce",
+        "icu/source.json": "e36325676eca93b29751793fbdbc13846a24c775e1e137da5d35956e46158365",
+        "icu/udata-decompress-hook.patch": "039f68bafcb875f3e688f3461e8ec7924416e6006d517def1441ab8e4ae87c81",
+        "macos-cross/README.md": "dd1f9dbe1852e4b855c7f16a8a3c9b023c0db1af292de63384448c6969cf5b5d",
+        "macos-cross/mach/boolean.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/compat.h": "7936278356124c7f0768703c670e5c90a4e8b437616a23683fa7c067877b2b20",
+        "macos-cross/mach/kern_return.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/machine/vm_types.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/message.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/ndr.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/port.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/std_types.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
+        "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
+      },
+      "toolchain_image_id": "sha256:70606d07a454fe6abb77bed77a2489825bfa6bacc941f96f415dc8f29074b63d",
+      "commands": {
+        "base": [
+          "docker",
+          "buildx",
+          "build",
+          "-f",
+          "Dockerfile",
+          "--platform",
+          "linux/amd64",
+          "--progress=plain",
+          "--build-arg",
+          "WEBKIT_RELEASE_TYPE=Release",
+          "--build-arg",
+          "LTO_FLAG=-flto=thin -fno-split-lto-unit -fwhole-program-vtables -fforce-emit-vtables",
+          "--build-arg",
+          "USE_MIMALLOC=ON",
+          "--build-arg",
+          "USE_EXTERNAL_MIMALLOC=ON",
+          "--build-arg",
+          "ICU_VERSION=78.3",
+          "--build-arg",
+          "ICU_SHA256=3a2e7a47604ba702f345878308e6fefeca612ee895cf4a5f222e7955fabfe0c0",
+          "--build-arg",
+          "LINUX_ARCH=aarch64",
+          "--build-arg",
+          "RELEASE_FLAGS=-O3 -DNDEBUG=1",
+          "--build-arg",
+          "ENABLE_SANITIZERS=",
+          "--build-arg",
+          "MARCH_FLAG=--target=aarch64-unknown-linux-gnu -march=armv8-a+crc -mtune=ampere1",
+          "--target=base",
+          "--load",
+          "--tag",
+          "openclaw-webkit-toolchain:5748275b4d66dd938bbd5643",
+          "--metadata-file",
+          "/home/runner/_work/_temp/lane/provenance/toolchain-build.json",
+          "."
+        ],
+        "artifact": [
+          "docker",
+          "buildx",
+          "build",
+          "-f",
+          "Dockerfile",
+          "--platform",
+          "linux/amd64",
+          "--progress=plain",
+          "--build-arg",
+          "WEBKIT_RELEASE_TYPE=Release",
+          "--build-arg",
+          "LTO_FLAG=-flto=thin -fno-split-lto-unit -fwhole-program-vtables -fforce-emit-vtables",
+          "--build-arg",
+          "USE_MIMALLOC=ON",
+          "--build-arg",
+          "USE_EXTERNAL_MIMALLOC=ON",
+          "--build-arg",
+          "ICU_VERSION=78.3",
+          "--build-arg",
+          "ICU_SHA256=3a2e7a47604ba702f345878308e6fefeca612ee895cf4a5f222e7955fabfe0c0",
+          "--build-arg",
+          "LINUX_ARCH=aarch64",
+          "--build-arg",
+          "RELEASE_FLAGS=-O3 -DNDEBUG=1",
+          "--build-arg",
+          "ENABLE_SANITIZERS=",
+          "--build-arg",
+          "MARCH_FLAG=--target=aarch64-unknown-linux-gnu -march=armv8-a+crc -mtune=ampere1",
+          "--build-context",
+          "base=docker-image://openclaw-webkit-toolchain:5748275b4d66dd938bbd5643",
+          "--target=artifact",
+          "--output",
+          "type=local,dest=/home/runner/_work/_temp/lane/bun-webkit",
+          "--metadata-file",
+          "/home/runner/_work/_temp/lane/provenance/artifact-build.json",
+          "."
+        ]
+      },
+      "tool_versions": "Ubuntu clang version 23.1.2 (++20260910043923+069ef0e7cb36-1~exp1~20260910043934.72)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 4.4.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.10.0",
+      "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.2.1\n  GitCommit:        dea7da592f5d1d2b7755e3a161be07f43fad8f75\n runc:\n  Version:          1.3.4\n  GitCommit:        v1.3.4-0-gd6d73eb8\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
+      "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
+      "workflow_run": "37224066519",
+      "run_attempt": "1",
+      "elapsed_seconds": 518.1393883228302,
+      "files": {
+        "bun-webkit-linux-arm64-lto.tar.gz": {
+          "sha256": "a6f0ab8bff83568f52d9484ba794f2d62488b53a619d5e03bc171745caa3cec7",
+          "size": 256809785
+        }
+      },
+      "provenance_files": {
+        "toolchain-build.json": "d54617100fb0f948dbfc5870ba3f6f15860a0e0d77a2b6739003a558823f4c56",
+        "artifact-build.json": "fe9d405eea1474d2e95063116e0836ede86c61888a28d8af661bd02847ffbe08",
+        "toolchain-image.json": "65d082ba688beef56630f51aea8652c36c4930b80b2a952409ef5cdeeb07d049",
+        "tool-versions.txt": "1f732938c107d159895e80daffe13bc457ce53c90ec3af6123ca41de962a231f"
+      }
+    },
+    {
+      "schema_version": 1,
+      "source": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
+      "base": "1600131e46b5af48bbda3559af8d8a3327230b6e",
+      "lane": {
+        "label": "bun-webkit-macos-arm64-lto",
+        "runner": "linux-x64-gh",
+        "dockerfile": "Dockerfile.macos",
+        "package_os": "darwin",
+        "package_cpu": "arm64",
+        "test": false,
+        "test_quick": false,
+        "image": "ghcr.io/openclaw/bun-webkit-build-env:macos-arm64-ec1a4b5476498dae",
+        "build_args": {
+          "WEBKIT_RELEASE_TYPE": "Release",
+          "LTO_FLAG": "-flto=thin -fno-split-lto-unit -fwhole-program-vtables -fforce-emit-vtables",
+          "USE_MIMALLOC": "ON",
+          "USE_EXTERNAL_MIMALLOC": "ON",
+          "MACOS_ARCH": "arm64",
+          "MACOS_DEPLOYMENT_TARGET": "13.0",
+          "MARCH_FLAG": "-mcpu=apple-m1",
+          "CPP_FLAGS": "",
+          "ENABLE_SANITIZERS": "",
+          "ENABLE_MALLOC_HEAP_BREAKDOWN": "OFF"
+        }
+      },
+      "patches": [
+        {
+          "commit": "49286a32907699162758f576e322a5897d08cbcb",
+          "subject": "fix(intl): preserve segment boundaries around surrogate pairs",
+          "patch_sha256": "c00e0c3c83191c04f0527d1920e10649774f1da1857fd26f7a483b12edb7885e"
+        },
+        {
+          "commit": "5aa47f6979ce50d222ade62731035deb5821989d",
+          "subject": "fix(jsc): allow opt-in Proxy global prototypes",
+          "patch_sha256": "12077938391f390ec50bd926e171e7e0531963ba399c5006db481c7ca86e451f"
+        },
+        {
+          "commit": "0ea86969847cbf6457e047eda34047fd2c378e86",
+          "subject": "fix(jsc): preserve module-loader async context",
+          "patch_sha256": "6d5e3ceadedd4a4f0f96b42d4f53b5589bca053f18ffd7b2a587d9330f22b0fa"
+        },
+        {
+          "commit": "d4629bd619c57675b55534e9e1f7cc4a66d1ced0",
+          "subject": "feat(jsc): add per-VM worker heap and stack budgets",
+          "patch_sha256": "11847006c75b609004823a471e8a8a8b02755e99b590782769272195d92b069a"
+        },
+        {
+          "commit": "ecc75afe1e4df1bc7d6949fb596872cfdf5b547d",
+          "subject": "ci: add immutable OpenClaw WebKit artifact pipeline",
+          "patch_sha256": "36980d4214adbd9bc4ae34cb2fcff988fcf4f9ab7b497d2663ab8aebb035d5f8"
+        },
+        {
+          "commit": "2200e39644d22733a8aad5814837a6cea1eb0934",
+          "subject": "fix(ci): bind qualification binaries to the Bun source revision",
+          "patch_sha256": "411ebf8fcc84e7dfce128f7ee9a2bc8af6a696e8ff276ba3f617f5d4d829f067"
+        },
+        {
+          "commit": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
+          "subject": "ci: isolate batch-one artifact publication from later engine work",
+          "patch_sha256": "ec2f19cbd075d30517073388fc00d3ae5986ecfa25ca6811e5078da373d4fa8d"
+        }
+      ],
+      "recipe_sha256": {
+        ".github/scripts/lanes.mjs": "a69a43b99d6bd98379f9bf2bcde76928788ab06fd114d3aa976342e87ea48125",
+        "Dockerfile": "444340335972f60f2ac3af4cf2d9404a1d7870571d17d5e0ad13540e2291e963",
+        "Dockerfile.macos": "dc457cc551d60e951394a28ec3b272180f397084f76d7a79ec7168e76006129c",
+        "Dockerfile.musl": "f66ba3898f2e66452b9d643929c989e261a6d8466b61f55c9f8e4e635954ec35",
+        "Dockerfile.windows": "66b6a6d02689558e9f9571c5ee05e4f91b4c860545666fe69cdac26d8a5d93b5",
+        "icu/compress-data.ts": "d01fe5b67691d5d6d96a9f66631bafec2049471318f71ac78ed49af9bdbfa93d",
+        "icu/keep-raw.txt": "5bc256dcef00b6d62e41e3311f02b73108f52b6c715823c887deb4834876b2ce",
+        "icu/source.json": "e36325676eca93b29751793fbdbc13846a24c775e1e137da5d35956e46158365",
+        "icu/udata-decompress-hook.patch": "039f68bafcb875f3e688f3461e8ec7924416e6006d517def1441ab8e4ae87c81",
+        "macos-cross/README.md": "dd1f9dbe1852e4b855c7f16a8a3c9b023c0db1af292de63384448c6969cf5b5d",
+        "macos-cross/mach/boolean.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/compat.h": "7936278356124c7f0768703c670e5c90a4e8b437616a23683fa7c067877b2b20",
+        "macos-cross/mach/kern_return.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/machine/vm_types.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/message.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/ndr.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/port.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/std_types.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
+        "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
+      },
+      "toolchain_image_id": "sha256:dfd363df24e96dbe6631476666bf98bf8273312f65fc8cc5c991f2f30faba631",
+      "commands": {
+        "base": [
+          "docker",
+          "buildx",
+          "build",
+          "-f",
+          "Dockerfile.macos",
+          "--platform",
+          "linux/amd64",
+          "--progress=plain",
+          "--build-arg",
+          "WEBKIT_RELEASE_TYPE=Release",
+          "--build-arg",
+          "LTO_FLAG=-flto=thin -fno-split-lto-unit -fwhole-program-vtables -fforce-emit-vtables",
+          "--build-arg",
+          "USE_MIMALLOC=ON",
+          "--build-arg",
+          "USE_EXTERNAL_MIMALLOC=ON",
+          "--build-arg",
+          "MACOS_ARCH=arm64",
+          "--build-arg",
+          "MACOS_DEPLOYMENT_TARGET=13.0",
+          "--build-arg",
+          "MARCH_FLAG=-mcpu=apple-m1",
+          "--build-arg",
+          "CPP_FLAGS=",
+          "--build-arg",
+          "ENABLE_SANITIZERS=",
+          "--build-arg",
+          "ENABLE_MALLOC_HEAP_BREAKDOWN=OFF",
+          "--target=base",
+          "--load",
+          "--tag",
+          "openclaw-webkit-toolchain:ed72cde8e25508222b60489c",
+          "--metadata-file",
+          "/home/runner/_work/_temp/lane/provenance/toolchain-build.json",
+          "."
+        ],
+        "artifact": [
+          "docker",
+          "buildx",
+          "build",
+          "-f",
+          "Dockerfile.macos",
+          "--platform",
+          "linux/amd64",
+          "--progress=plain",
+          "--build-arg",
+          "WEBKIT_RELEASE_TYPE=Release",
+          "--build-arg",
+          "LTO_FLAG=-flto=thin -fno-split-lto-unit -fwhole-program-vtables -fforce-emit-vtables",
+          "--build-arg",
+          "USE_MIMALLOC=ON",
+          "--build-arg",
+          "USE_EXTERNAL_MIMALLOC=ON",
+          "--build-arg",
+          "MACOS_ARCH=arm64",
+          "--build-arg",
+          "MACOS_DEPLOYMENT_TARGET=13.0",
+          "--build-arg",
+          "MARCH_FLAG=-mcpu=apple-m1",
+          "--build-arg",
+          "CPP_FLAGS=",
+          "--build-arg",
+          "ENABLE_SANITIZERS=",
+          "--build-arg",
+          "ENABLE_MALLOC_HEAP_BREAKDOWN=OFF",
+          "--build-context",
+          "base=docker-image://openclaw-webkit-toolchain:ed72cde8e25508222b60489c",
+          "--target=artifact",
+          "--output",
+          "type=local,dest=/home/runner/_work/_temp/lane/bun-webkit",
+          "--metadata-file",
+          "/home/runner/_work/_temp/lane/provenance/artifact-build.json",
+          "."
+        ]
+      },
+      "tool_versions": "Ubuntu clang version 23.1.2 (++20260910044232+069ef0e7cb36-1~exp1~20260910044242.70)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.11.1",
+      "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.2.1\n  GitCommit:        dea7da592f5d1d2b7755e3a161be07f43fad8f75\n runc:\n  Version:          1.3.4\n  GitCommit:        v1.3.4-0-gd6d73eb8\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
+      "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
+      "workflow_run": "37224066519",
+      "run_attempt": "1",
+      "elapsed_seconds": 273.09650707244873,
+      "files": {
+        "bun-webkit-macos-arm64-lto.tar.gz": {
+          "sha256": "94592ed2bb267d207b60a842ea5120c1e0fc9d226aee7a85b7dae901343ee689",
+          "size": 155190017
+        }
+      },
+      "provenance_files": {
+        "artifact-build.json": "d20345735ffefcbbd3a26ea068f9da8561012bc839266422206e5a7e8a3d3f38",
+        "toolchain-build.json": "71ec28667442ef46ab2d9a52264b7d163ef3d7f61c3163ca7934df466e873345",
+        "toolchain-image.json": "e46b4e71e29a532ce873478df0f7b3d0e7b5cf4ac87f49fc4b4e1663850ea9cb",
+        "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8"
+      }
+    },
+    {
+      "schema_version": 1,
+      "source": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
+      "base": "1600131e46b5af48bbda3559af8d8a3327230b6e",
+      "lane": {
+        "label": "bun-webkit-macos-amd64-lto",
+        "runner": "linux-x64-gh",
+        "dockerfile": "Dockerfile.macos",
+        "package_os": "darwin",
+        "package_cpu": "x64",
+        "test": false,
+        "test_quick": false,
+        "image": "ghcr.io/openclaw/bun-webkit-build-env:macos-amd64-8b0e95d2f7c0370d",
+        "build_args": {
+          "WEBKIT_RELEASE_TYPE": "Release",
+          "LTO_FLAG": "-flto=thin -fno-split-lto-unit -fwhole-program-vtables -fforce-emit-vtables",
+          "USE_MIMALLOC": "ON",
+          "USE_EXTERNAL_MIMALLOC": "ON",
+          "MACOS_ARCH": "x86_64",
+          "MACOS_DEPLOYMENT_TARGET": "13.0",
+          "MARCH_FLAG": "-march=nehalem",
+          "CPP_FLAGS": "",
+          "ENABLE_SANITIZERS": "",
+          "ENABLE_MALLOC_HEAP_BREAKDOWN": "OFF"
+        }
+      },
+      "patches": [
+        {
+          "commit": "49286a32907699162758f576e322a5897d08cbcb",
+          "subject": "fix(intl): preserve segment boundaries around surrogate pairs",
+          "patch_sha256": "c00e0c3c83191c04f0527d1920e10649774f1da1857fd26f7a483b12edb7885e"
+        },
+        {
+          "commit": "5aa47f6979ce50d222ade62731035deb5821989d",
+          "subject": "fix(jsc): allow opt-in Proxy global prototypes",
+          "patch_sha256": "12077938391f390ec50bd926e171e7e0531963ba399c5006db481c7ca86e451f"
+        },
+        {
+          "commit": "0ea86969847cbf6457e047eda34047fd2c378e86",
+          "subject": "fix(jsc): preserve module-loader async context",
+          "patch_sha256": "6d5e3ceadedd4a4f0f96b42d4f53b5589bca053f18ffd7b2a587d9330f22b0fa"
+        },
+        {
+          "commit": "d4629bd619c57675b55534e9e1f7cc4a66d1ced0",
+          "subject": "feat(jsc): add per-VM worker heap and stack budgets",
+          "patch_sha256": "11847006c75b609004823a471e8a8a8b02755e99b590782769272195d92b069a"
+        },
+        {
+          "commit": "ecc75afe1e4df1bc7d6949fb596872cfdf5b547d",
+          "subject": "ci: add immutable OpenClaw WebKit artifact pipeline",
+          "patch_sha256": "36980d4214adbd9bc4ae34cb2fcff988fcf4f9ab7b497d2663ab8aebb035d5f8"
+        },
+        {
+          "commit": "2200e39644d22733a8aad5814837a6cea1eb0934",
+          "subject": "fix(ci): bind qualification binaries to the Bun source revision",
+          "patch_sha256": "411ebf8fcc84e7dfce128f7ee9a2bc8af6a696e8ff276ba3f617f5d4d829f067"
+        },
+        {
+          "commit": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
+          "subject": "ci: isolate batch-one artifact publication from later engine work",
+          "patch_sha256": "ec2f19cbd075d30517073388fc00d3ae5986ecfa25ca6811e5078da373d4fa8d"
+        }
+      ],
+      "recipe_sha256": {
+        ".github/scripts/lanes.mjs": "a69a43b99d6bd98379f9bf2bcde76928788ab06fd114d3aa976342e87ea48125",
+        "Dockerfile": "444340335972f60f2ac3af4cf2d9404a1d7870571d17d5e0ad13540e2291e963",
+        "Dockerfile.macos": "dc457cc551d60e951394a28ec3b272180f397084f76d7a79ec7168e76006129c",
+        "Dockerfile.musl": "f66ba3898f2e66452b9d643929c989e261a6d8466b61f55c9f8e4e635954ec35",
+        "Dockerfile.windows": "66b6a6d02689558e9f9571c5ee05e4f91b4c860545666fe69cdac26d8a5d93b5",
+        "icu/compress-data.ts": "d01fe5b67691d5d6d96a9f66631bafec2049471318f71ac78ed49af9bdbfa93d",
+        "icu/keep-raw.txt": "5bc256dcef00b6d62e41e3311f02b73108f52b6c715823c887deb4834876b2ce",
+        "icu/source.json": "e36325676eca93b29751793fbdbc13846a24c775e1e137da5d35956e46158365",
+        "icu/udata-decompress-hook.patch": "039f68bafcb875f3e688f3461e8ec7924416e6006d517def1441ab8e4ae87c81",
+        "macos-cross/README.md": "dd1f9dbe1852e4b855c7f16a8a3c9b023c0db1af292de63384448c6969cf5b5d",
+        "macos-cross/mach/boolean.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/compat.h": "7936278356124c7f0768703c670e5c90a4e8b437616a23683fa7c067877b2b20",
+        "macos-cross/mach/kern_return.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/machine/vm_types.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/message.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/ndr.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/port.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/std_types.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
+        "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
+      },
+      "toolchain_image_id": "sha256:46a4dea1ec465f652c29c8461ac004e7fbc28f80cd561fbacde67491abf985c6",
+      "commands": {
+        "base": [
+          "docker",
+          "buildx",
+          "build",
+          "-f",
+          "Dockerfile.macos",
+          "--platform",
+          "linux/amd64",
+          "--progress=plain",
+          "--build-arg",
+          "WEBKIT_RELEASE_TYPE=Release",
+          "--build-arg",
+          "LTO_FLAG=-flto=thin -fno-split-lto-unit -fwhole-program-vtables -fforce-emit-vtables",
+          "--build-arg",
+          "USE_MIMALLOC=ON",
+          "--build-arg",
+          "USE_EXTERNAL_MIMALLOC=ON",
+          "--build-arg",
+          "MACOS_ARCH=x86_64",
+          "--build-arg",
+          "MACOS_DEPLOYMENT_TARGET=13.0",
+          "--build-arg",
+          "MARCH_FLAG=-march=nehalem",
+          "--build-arg",
+          "CPP_FLAGS=",
+          "--build-arg",
+          "ENABLE_SANITIZERS=",
+          "--build-arg",
+          "ENABLE_MALLOC_HEAP_BREAKDOWN=OFF",
+          "--target=base",
+          "--load",
+          "--tag",
+          "openclaw-webkit-toolchain:ccf46ead260ebf1d92d34ed0",
+          "--metadata-file",
+          "/home/runner/_work/_temp/lane/provenance/toolchain-build.json",
+          "."
+        ],
+        "artifact": [
+          "docker",
+          "buildx",
+          "build",
+          "-f",
+          "Dockerfile.macos",
+          "--platform",
+          "linux/amd64",
+          "--progress=plain",
+          "--build-arg",
+          "WEBKIT_RELEASE_TYPE=Release",
+          "--build-arg",
+          "LTO_FLAG=-flto=thin -fno-split-lto-unit -fwhole-program-vtables -fforce-emit-vtables",
+          "--build-arg",
+          "USE_MIMALLOC=ON",
+          "--build-arg",
+          "USE_EXTERNAL_MIMALLOC=ON",
+          "--build-arg",
+          "MACOS_ARCH=x86_64",
+          "--build-arg",
+          "MACOS_DEPLOYMENT_TARGET=13.0",
+          "--build-arg",
+          "MARCH_FLAG=-march=nehalem",
+          "--build-arg",
+          "CPP_FLAGS=",
+          "--build-arg",
+          "ENABLE_SANITIZERS=",
+          "--build-arg",
+          "ENABLE_MALLOC_HEAP_BREAKDOWN=OFF",
+          "--build-context",
+          "base=docker-image://openclaw-webkit-toolchain:ccf46ead260ebf1d92d34ed0",
+          "--target=artifact",
+          "--output",
+          "type=local,dest=/home/runner/_work/_temp/lane/bun-webkit",
+          "--metadata-file",
+          "/home/runner/_work/_temp/lane/provenance/artifact-build.json",
+          "."
+        ]
+      },
+      "tool_versions": "Ubuntu clang version 23.1.2 (++20260910044232+069ef0e7cb36-1~exp1~20260910044242.70)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.11.1",
+      "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.2.1\n  GitCommit:        dea7da592f5d1d2b7755e3a161be07f43fad8f75\n runc:\n  Version:          1.3.4\n  GitCommit:        v1.3.4-0-gd6d73eb8\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
+      "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
+      "workflow_run": "37224066519",
+      "run_attempt": "1",
+      "elapsed_seconds": 280.5889251232147,
+      "files": {
+        "bun-webkit-macos-amd64-lto.tar.gz": {
+          "sha256": "d4ff752748c049a1b4ec34c7b5ea2733ba0594d5b41ae61df39e56d664b12031",
+          "size": 159437519
+        }
+      },
+      "provenance_files": {
+        "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8",
+        "artifact-build.json": "3c79a36712e377143ba702616f15768ce70642200fedd6c663a5b383ab315f00",
+        "toolchain-image.json": "3c99e2d93c26d0a648a10b47e07344fb57b1e15d0afcc792bf3a5a343d767b5c",
+        "toolchain-build.json": "f83437f83497635cbd2ccea46c1415e9050dcb7d831895c6737cd5549a832c1f"
+      }
+    },
+    {
+      "schema_version": 1,
+      "source": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
+      "base": "1600131e46b5af48bbda3559af8d8a3327230b6e",
+      "lane": {
+        "label": "bun-webkit-linux-amd64-musl-lto",
+        "runner": "linux-x64-gh",
+        "dockerfile": "Dockerfile.musl",
+        "package_os": "linux",
+        "package_cpu": "x64",
+        "test": false,
+        "test_quick": false,
+        "image": "ghcr.io/openclaw/bun-webkit-build-env:linux-musl-a7d3deede973d629",
+        "build_args": {
+          "WEBKIT_RELEASE_TYPE": "MinSizeRel",
+          "LTO_FLAG": "-flto=thin -fno-split-lto-unit -fwhole-program-vtables -fforce-emit-vtables",
+          "USE_MIMALLOC": "ON",
+          "USE_EXTERNAL_MIMALLOC": "ON",
+          "ICU_VERSION": "78.3",
+          "ICU_SHA256": "3a2e7a47604ba702f345878308e6fefeca612ee895cf4a5f222e7955fabfe0c0",
+          "LINUX_ARCH": "x86_64",
+          "MARCH_FLAG": "-march=nehalem"
+        }
+      },
+      "patches": [
+        {
+          "commit": "49286a32907699162758f576e322a5897d08cbcb",
+          "subject": "fix(intl): preserve segment boundaries around surrogate pairs",
+          "patch_sha256": "c00e0c3c83191c04f0527d1920e10649774f1da1857fd26f7a483b12edb7885e"
+        },
+        {
+          "commit": "5aa47f6979ce50d222ade62731035deb5821989d",
+          "subject": "fix(jsc): allow opt-in Proxy global prototypes",
+          "patch_sha256": "12077938391f390ec50bd926e171e7e0531963ba399c5006db481c7ca86e451f"
+        },
+        {
+          "commit": "0ea86969847cbf6457e047eda34047fd2c378e86",
+          "subject": "fix(jsc): preserve module-loader async context",
+          "patch_sha256": "6d5e3ceadedd4a4f0f96b42d4f53b5589bca053f18ffd7b2a587d9330f22b0fa"
+        },
+        {
+          "commit": "d4629bd619c57675b55534e9e1f7cc4a66d1ced0",
+          "subject": "feat(jsc): add per-VM worker heap and stack budgets",
+          "patch_sha256": "11847006c75b609004823a471e8a8a8b02755e99b590782769272195d92b069a"
+        },
+        {
+          "commit": "ecc75afe1e4df1bc7d6949fb596872cfdf5b547d",
+          "subject": "ci: add immutable OpenClaw WebKit artifact pipeline",
+          "patch_sha256": "36980d4214adbd9bc4ae34cb2fcff988fcf4f9ab7b497d2663ab8aebb035d5f8"
+        },
+        {
+          "commit": "2200e39644d22733a8aad5814837a6cea1eb0934",
+          "subject": "fix(ci): bind qualification binaries to the Bun source revision",
+          "patch_sha256": "411ebf8fcc84e7dfce128f7ee9a2bc8af6a696e8ff276ba3f617f5d4d829f067"
+        },
+        {
+          "commit": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
+          "subject": "ci: isolate batch-one artifact publication from later engine work",
+          "patch_sha256": "ec2f19cbd075d30517073388fc00d3ae5986ecfa25ca6811e5078da373d4fa8d"
+        }
+      ],
+      "recipe_sha256": {
+        ".github/scripts/lanes.mjs": "a69a43b99d6bd98379f9bf2bcde76928788ab06fd114d3aa976342e87ea48125",
+        "Dockerfile": "444340335972f60f2ac3af4cf2d9404a1d7870571d17d5e0ad13540e2291e963",
+        "Dockerfile.macos": "dc457cc551d60e951394a28ec3b272180f397084f76d7a79ec7168e76006129c",
+        "Dockerfile.musl": "f66ba3898f2e66452b9d643929c989e261a6d8466b61f55c9f8e4e635954ec35",
+        "Dockerfile.windows": "66b6a6d02689558e9f9571c5ee05e4f91b4c860545666fe69cdac26d8a5d93b5",
+        "icu/compress-data.ts": "d01fe5b67691d5d6d96a9f66631bafec2049471318f71ac78ed49af9bdbfa93d",
+        "icu/keep-raw.txt": "5bc256dcef00b6d62e41e3311f02b73108f52b6c715823c887deb4834876b2ce",
+        "icu/source.json": "e36325676eca93b29751793fbdbc13846a24c775e1e137da5d35956e46158365",
+        "icu/udata-decompress-hook.patch": "039f68bafcb875f3e688f3461e8ec7924416e6006d517def1441ab8e4ae87c81",
+        "macos-cross/README.md": "dd1f9dbe1852e4b855c7f16a8a3c9b023c0db1af292de63384448c6969cf5b5d",
+        "macos-cross/mach/boolean.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/compat.h": "7936278356124c7f0768703c670e5c90a4e8b437616a23683fa7c067877b2b20",
+        "macos-cross/mach/kern_return.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/machine/vm_types.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/message.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/ndr.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/port.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/std_types.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
+        "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
+      },
+      "toolchain_image_id": "sha256:e3738956077f11982f5a0879bbde92d308673070607fa2085ddd3615f9d61860",
+      "commands": {
+        "base": [
+          "docker",
+          "buildx",
+          "build",
+          "-f",
+          "Dockerfile.musl",
+          "--platform",
+          "linux/amd64",
+          "--progress=plain",
+          "--build-arg",
+          "WEBKIT_RELEASE_TYPE=MinSizeRel",
+          "--build-arg",
+          "LTO_FLAG=-flto=thin -fno-split-lto-unit -fwhole-program-vtables -fforce-emit-vtables",
+          "--build-arg",
+          "USE_MIMALLOC=ON",
+          "--build-arg",
+          "USE_EXTERNAL_MIMALLOC=ON",
+          "--build-arg",
+          "ICU_VERSION=78.3",
+          "--build-arg",
+          "ICU_SHA256=3a2e7a47604ba702f345878308e6fefeca612ee895cf4a5f222e7955fabfe0c0",
+          "--build-arg",
+          "LINUX_ARCH=x86_64",
+          "--build-arg",
+          "MARCH_FLAG=-march=nehalem",
+          "--target=base",
+          "--load",
+          "--tag",
+          "openclaw-webkit-toolchain:4f22edb1433f655a428dda94",
+          "--metadata-file",
+          "/home/runner/_work/_temp/lane/provenance/toolchain-build.json",
+          "."
+        ],
+        "artifact": [
+          "docker",
+          "buildx",
+          "build",
+          "-f",
+          "Dockerfile.musl",
+          "--platform",
+          "linux/amd64",
+          "--progress=plain",
+          "--build-arg",
+          "WEBKIT_RELEASE_TYPE=MinSizeRel",
+          "--build-arg",
+          "LTO_FLAG=-flto=thin -fno-split-lto-unit -fwhole-program-vtables -fforce-emit-vtables",
+          "--build-arg",
+          "USE_MIMALLOC=ON",
+          "--build-arg",
+          "USE_EXTERNAL_MIMALLOC=ON",
+          "--build-arg",
+          "ICU_VERSION=78.3",
+          "--build-arg",
+          "ICU_SHA256=3a2e7a47604ba702f345878308e6fefeca612ee895cf4a5f222e7955fabfe0c0",
+          "--build-arg",
+          "LINUX_ARCH=x86_64",
+          "--build-arg",
+          "MARCH_FLAG=-march=nehalem",
+          "--build-context",
+          "base=docker-image://openclaw-webkit-toolchain:4f22edb1433f655a428dda94",
+          "--target=artifact",
+          "--output",
+          "type=local,dest=/home/runner/_work/_temp/lane/bun-webkit",
+          "--metadata-file",
+          "/home/runner/_work/_temp/lane/provenance/artifact-build.json",
+          "."
+        ]
+      },
+      "tool_versions": "Alpine clang version 23.1.2\nTarget: x86_64-alpine-linux-musl\nThread model: posix\nInstalledDir: /usr/lib/llvm23/bin\nConfiguration file: /etc/clang23/x86_64-alpine-linux-musl.cfg\ncmake version 4.1.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.9",
+      "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.2.1\n  GitCommit:        dea7da592f5d1d2b7755e3a161be07f43fad8f75\n runc:\n  Version:          1.3.4\n  GitCommit:        v1.3.4-0-gd6d73eb8\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
+      "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
+      "workflow_run": "37224066519",
+      "run_attempt": "1",
+      "elapsed_seconds": 660.8725075721741,
+      "files": {
+        "bun-webkit-linux-amd64-musl-lto.tar.gz": {
+          "sha256": "163371e2805c8a267a289e7a4d2168a972af6e98ba2a6f2d1e08aba15f37f4c5",
+          "size": 221337385
+        }
+      },
+      "provenance_files": {
+        "tool-versions.txt": "4792d68346e97d6f8bcf05124f904e68c9f56299be740663f00da9e1ddc96e9f",
+        "toolchain-build.json": "4ed3ffc77f7f90bc9da191e273301e16f48019b494f9dd70d3ea3728e2508981",
+        "artifact-build.json": "5a1f2432b2616c39a47f3a5418ba34a9a8ba7baee5300d3443c4957c52bcfd33",
+        "toolchain-image.json": "0a844d88fe22d5daf17b7370424ca7fe52064caacfec4f665bbb296080498014"
+      }
+    },
+    {
+      "schema_version": 1,
+      "source": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
+      "base": "1600131e46b5af48bbda3559af8d8a3327230b6e",
+      "lane": {
+        "label": "bun-webkit-linux-arm64-musl-lto",
+        "runner": "linux-x64-gh",
+        "dockerfile": "Dockerfile.musl",
+        "package_os": "linux",
+        "package_cpu": "arm64",
+        "test": false,
+        "test_quick": false,
+        "image": "ghcr.io/openclaw/bun-webkit-build-env:linux-musl-a7d3deede973d629",
+        "build_args": {
+          "WEBKIT_RELEASE_TYPE": "MinSizeRel",
+          "LTO_FLAG": "-flto=thin -fno-split-lto-unit -fwhole-program-vtables -fforce-emit-vtables",
+          "USE_MIMALLOC": "ON",
+          "USE_EXTERNAL_MIMALLOC": "ON",
+          "ICU_VERSION": "78.3",
+          "ICU_SHA256": "3a2e7a47604ba702f345878308e6fefeca612ee895cf4a5f222e7955fabfe0c0",
+          "LINUX_ARCH": "aarch64",
+          "MARCH_FLAG": "-march=armv8-a+crc -mtune=ampere1"
+        }
+      },
+      "patches": [
+        {
+          "commit": "49286a32907699162758f576e322a5897d08cbcb",
+          "subject": "fix(intl): preserve segment boundaries around surrogate pairs",
+          "patch_sha256": "c00e0c3c83191c04f0527d1920e10649774f1da1857fd26f7a483b12edb7885e"
+        },
+        {
+          "commit": "5aa47f6979ce50d222ade62731035deb5821989d",
+          "subject": "fix(jsc): allow opt-in Proxy global prototypes",
+          "patch_sha256": "12077938391f390ec50bd926e171e7e0531963ba399c5006db481c7ca86e451f"
+        },
+        {
+          "commit": "0ea86969847cbf6457e047eda34047fd2c378e86",
+          "subject": "fix(jsc): preserve module-loader async context",
+          "patch_sha256": "6d5e3ceadedd4a4f0f96b42d4f53b5589bca053f18ffd7b2a587d9330f22b0fa"
+        },
+        {
+          "commit": "d4629bd619c57675b55534e9e1f7cc4a66d1ced0",
+          "subject": "feat(jsc): add per-VM worker heap and stack budgets",
+          "patch_sha256": "11847006c75b609004823a471e8a8a8b02755e99b590782769272195d92b069a"
+        },
+        {
+          "commit": "ecc75afe1e4df1bc7d6949fb596872cfdf5b547d",
+          "subject": "ci: add immutable OpenClaw WebKit artifact pipeline",
+          "patch_sha256": "36980d4214adbd9bc4ae34cb2fcff988fcf4f9ab7b497d2663ab8aebb035d5f8"
+        },
+        {
+          "commit": "2200e39644d22733a8aad5814837a6cea1eb0934",
+          "subject": "fix(ci): bind qualification binaries to the Bun source revision",
+          "patch_sha256": "411ebf8fcc84e7dfce128f7ee9a2bc8af6a696e8ff276ba3f617f5d4d829f067"
+        },
+        {
+          "commit": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
+          "subject": "ci: isolate batch-one artifact publication from later engine work",
+          "patch_sha256": "ec2f19cbd075d30517073388fc00d3ae5986ecfa25ca6811e5078da373d4fa8d"
+        }
+      ],
+      "recipe_sha256": {
+        ".github/scripts/lanes.mjs": "a69a43b99d6bd98379f9bf2bcde76928788ab06fd114d3aa976342e87ea48125",
+        "Dockerfile": "444340335972f60f2ac3af4cf2d9404a1d7870571d17d5e0ad13540e2291e963",
+        "Dockerfile.macos": "dc457cc551d60e951394a28ec3b272180f397084f76d7a79ec7168e76006129c",
+        "Dockerfile.musl": "f66ba3898f2e66452b9d643929c989e261a6d8466b61f55c9f8e4e635954ec35",
+        "Dockerfile.windows": "66b6a6d02689558e9f9571c5ee05e4f91b4c860545666fe69cdac26d8a5d93b5",
+        "icu/compress-data.ts": "d01fe5b67691d5d6d96a9f66631bafec2049471318f71ac78ed49af9bdbfa93d",
+        "icu/keep-raw.txt": "5bc256dcef00b6d62e41e3311f02b73108f52b6c715823c887deb4834876b2ce",
+        "icu/source.json": "e36325676eca93b29751793fbdbc13846a24c775e1e137da5d35956e46158365",
+        "icu/udata-decompress-hook.patch": "039f68bafcb875f3e688f3461e8ec7924416e6006d517def1441ab8e4ae87c81",
+        "macos-cross/README.md": "dd1f9dbe1852e4b855c7f16a8a3c9b023c0db1af292de63384448c6969cf5b5d",
+        "macos-cross/mach/boolean.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/compat.h": "7936278356124c7f0768703c670e5c90a4e8b437616a23683fa7c067877b2b20",
+        "macos-cross/mach/kern_return.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/machine/vm_types.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/message.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/ndr.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/port.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/std_types.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
+        "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
+      },
+      "toolchain_image_id": "sha256:9e536c4266cae38b68f1487a2f289375aab58e33f7447b2be4ff043659ecc7b8",
+      "commands": {
+        "base": [
+          "docker",
+          "buildx",
+          "build",
+          "-f",
+          "Dockerfile.musl",
+          "--platform",
+          "linux/amd64",
+          "--progress=plain",
+          "--build-arg",
+          "WEBKIT_RELEASE_TYPE=MinSizeRel",
+          "--build-arg",
+          "LTO_FLAG=-flto=thin -fno-split-lto-unit -fwhole-program-vtables -fforce-emit-vtables",
+          "--build-arg",
+          "USE_MIMALLOC=ON",
+          "--build-arg",
+          "USE_EXTERNAL_MIMALLOC=ON",
+          "--build-arg",
+          "ICU_VERSION=78.3",
+          "--build-arg",
+          "ICU_SHA256=3a2e7a47604ba702f345878308e6fefeca612ee895cf4a5f222e7955fabfe0c0",
+          "--build-arg",
+          "LINUX_ARCH=aarch64",
+          "--build-arg",
+          "MARCH_FLAG=-march=armv8-a+crc -mtune=ampere1",
+          "--target=base",
+          "--load",
+          "--tag",
+          "openclaw-webkit-toolchain:4f22edb1433f655a428dda94",
+          "--metadata-file",
+          "/home/runner/_work/_temp/lane/provenance/toolchain-build.json",
+          "."
+        ],
+        "artifact": [
+          "docker",
+          "buildx",
+          "build",
+          "-f",
+          "Dockerfile.musl",
+          "--platform",
+          "linux/amd64",
+          "--progress=plain",
+          "--build-arg",
+          "WEBKIT_RELEASE_TYPE=MinSizeRel",
+          "--build-arg",
+          "LTO_FLAG=-flto=thin -fno-split-lto-unit -fwhole-program-vtables -fforce-emit-vtables",
+          "--build-arg",
+          "USE_MIMALLOC=ON",
+          "--build-arg",
+          "USE_EXTERNAL_MIMALLOC=ON",
+          "--build-arg",
+          "ICU_VERSION=78.3",
+          "--build-arg",
+          "ICU_SHA256=3a2e7a47604ba702f345878308e6fefeca612ee895cf4a5f222e7955fabfe0c0",
+          "--build-arg",
+          "LINUX_ARCH=aarch64",
+          "--build-arg",
+          "MARCH_FLAG=-march=armv8-a+crc -mtune=ampere1",
+          "--build-context",
+          "base=docker-image://openclaw-webkit-toolchain:4f22edb1433f655a428dda94",
+          "--target=artifact",
+          "--output",
+          "type=local,dest=/home/runner/_work/_temp/lane/bun-webkit",
+          "--metadata-file",
+          "/home/runner/_work/_temp/lane/provenance/artifact-build.json",
+          "."
+        ]
+      },
+      "tool_versions": "Alpine clang version 23.1.2\nTarget: x86_64-alpine-linux-musl\nThread model: posix\nInstalledDir: /usr/lib/llvm23/bin\nConfiguration file: /etc/clang23/x86_64-alpine-linux-musl.cfg\ncmake version 4.1.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.9",
+      "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.2.1\n  GitCommit:        dea7da592f5d1d2b7755e3a161be07f43fad8f75\n runc:\n  Version:          1.3.4\n  GitCommit:        v1.3.4-0-gd6d73eb8\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
+      "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
+      "workflow_run": "37224066519",
+      "run_attempt": "1",
+      "elapsed_seconds": 676.2115004062653,
+      "files": {
+        "bun-webkit-linux-arm64-musl-lto.tar.gz": {
+          "sha256": "2fe7dc96717a688073d901cca7c2d43598bece8320fae2e0aae53bde7984ed65",
+          "size": 223217216
+        }
+      },
+      "provenance_files": {
+        "toolchain-image.json": "d7345e716d72acc134f6d17fb9014789c8a840883c283f4a0c32261b4e3af2de",
+        "artifact-build.json": "fa2068c882c797be9e0617e06ce1d0c0c193dc2ec6dc98e8593fefd4a93ba50b",
+        "tool-versions.txt": "4792d68346e97d6f8bcf05124f904e68c9f56299be740663f00da9e1ddc96e9f",
+        "toolchain-build.json": "380dc7b13b9bb648b8cc25b526f6b1032e4416804236c0961b6a84ee0b7d30ab"
+      }
+    },
+    {
+      "schema_version": 1,
+      "source": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
+      "base": "1600131e46b5af48bbda3559af8d8a3327230b6e",
+      "lane": {
+        "label": "bun-webkit-windows-amd64-lto",
+        "runner": "linux-x64-gh",
+        "dockerfile": "Dockerfile.windows",
+        "package_os": "windows",
+        "package_cpu": "x64",
+        "test": false,
+        "test_quick": false,
+        "image": "ghcr.io/openclaw/bun-webkit-build-env:windows-33415817992ee645",
+        "build_args": {
+          "WEBKIT_RELEASE_TYPE": "Release",
+          "LTO_FLAG": "/clang:-flto=thin /clang:-fno-split-lto-unit",
+          "USE_MIMALLOC": "ON",
+          "USE_EXTERNAL_MIMALLOC": "ON",
+          "ICU_VERSION": "78.3",
+          "ICU_SHA256": "3a2e7a47604ba702f345878308e6fefeca612ee895cf4a5f222e7955fabfe0c0",
+          "WIN_ARCH": "x64",
+          "WIN_TRIPLE_ARCH": "x86_64",
+          "MARCH_FLAG": "/clang:-march=nehalem",
+          "ICU_MARCH_FLAG": "-march=nehalem",
+          "ENABLE_SANITIZERS": ""
+        }
+      },
+      "patches": [
+        {
+          "commit": "49286a32907699162758f576e322a5897d08cbcb",
+          "subject": "fix(intl): preserve segment boundaries around surrogate pairs",
+          "patch_sha256": "c00e0c3c83191c04f0527d1920e10649774f1da1857fd26f7a483b12edb7885e"
+        },
+        {
+          "commit": "5aa47f6979ce50d222ade62731035deb5821989d",
+          "subject": "fix(jsc): allow opt-in Proxy global prototypes",
+          "patch_sha256": "12077938391f390ec50bd926e171e7e0531963ba399c5006db481c7ca86e451f"
+        },
+        {
+          "commit": "0ea86969847cbf6457e047eda34047fd2c378e86",
+          "subject": "fix(jsc): preserve module-loader async context",
+          "patch_sha256": "6d5e3ceadedd4a4f0f96b42d4f53b5589bca053f18ffd7b2a587d9330f22b0fa"
+        },
+        {
+          "commit": "d4629bd619c57675b55534e9e1f7cc4a66d1ced0",
+          "subject": "feat(jsc): add per-VM worker heap and stack budgets",
+          "patch_sha256": "11847006c75b609004823a471e8a8a8b02755e99b590782769272195d92b069a"
+        },
+        {
+          "commit": "ecc75afe1e4df1bc7d6949fb596872cfdf5b547d",
+          "subject": "ci: add immutable OpenClaw WebKit artifact pipeline",
+          "patch_sha256": "36980d4214adbd9bc4ae34cb2fcff988fcf4f9ab7b497d2663ab8aebb035d5f8"
+        },
+        {
+          "commit": "2200e39644d22733a8aad5814837a6cea1eb0934",
+          "subject": "fix(ci): bind qualification binaries to the Bun source revision",
+          "patch_sha256": "411ebf8fcc84e7dfce128f7ee9a2bc8af6a696e8ff276ba3f617f5d4d829f067"
+        },
+        {
+          "commit": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
+          "subject": "ci: isolate batch-one artifact publication from later engine work",
+          "patch_sha256": "ec2f19cbd075d30517073388fc00d3ae5986ecfa25ca6811e5078da373d4fa8d"
+        }
+      ],
+      "recipe_sha256": {
+        ".github/scripts/lanes.mjs": "a69a43b99d6bd98379f9bf2bcde76928788ab06fd114d3aa976342e87ea48125",
+        "Dockerfile": "444340335972f60f2ac3af4cf2d9404a1d7870571d17d5e0ad13540e2291e963",
+        "Dockerfile.macos": "dc457cc551d60e951394a28ec3b272180f397084f76d7a79ec7168e76006129c",
+        "Dockerfile.musl": "f66ba3898f2e66452b9d643929c989e261a6d8466b61f55c9f8e4e635954ec35",
+        "Dockerfile.windows": "66b6a6d02689558e9f9571c5ee05e4f91b4c860545666fe69cdac26d8a5d93b5",
+        "icu/compress-data.ts": "d01fe5b67691d5d6d96a9f66631bafec2049471318f71ac78ed49af9bdbfa93d",
+        "icu/keep-raw.txt": "5bc256dcef00b6d62e41e3311f02b73108f52b6c715823c887deb4834876b2ce",
+        "icu/source.json": "e36325676eca93b29751793fbdbc13846a24c775e1e137da5d35956e46158365",
+        "icu/udata-decompress-hook.patch": "039f68bafcb875f3e688f3461e8ec7924416e6006d517def1441ab8e4ae87c81",
+        "macos-cross/README.md": "dd1f9dbe1852e4b855c7f16a8a3c9b023c0db1af292de63384448c6969cf5b5d",
+        "macos-cross/mach/boolean.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/compat.h": "7936278356124c7f0768703c670e5c90a4e8b437616a23683fa7c067877b2b20",
+        "macos-cross/mach/kern_return.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/machine/vm_types.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/message.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/ndr.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/port.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mach/std_types.h": "55492e527046f7b12dc9830f400ceffed79dc1d42a7f9a72afd52ed7ab85ffea",
+        "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
+        "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
+      },
+      "toolchain_image_id": "sha256:8a4d4e2cb3ebaa7bd352d9c86de62fa0d57bc2caf4ee7e7cb07dc124a997787d",
+      "commands": {
+        "base": [
+          "docker",
+          "buildx",
+          "build",
+          "-f",
+          "Dockerfile.windows",
+          "--platform",
+          "linux/amd64",
+          "--progress=plain",
+          "--build-arg",
+          "WEBKIT_RELEASE_TYPE=Release",
+          "--build-arg",
+          "LTO_FLAG=/clang:-flto=thin /clang:-fno-split-lto-unit",
+          "--build-arg",
+          "USE_MIMALLOC=ON",
+          "--build-arg",
+          "USE_EXTERNAL_MIMALLOC=ON",
+          "--build-arg",
+          "ICU_VERSION=78.3",
+          "--build-arg",
+          "ICU_SHA256=3a2e7a47604ba702f345878308e6fefeca612ee895cf4a5f222e7955fabfe0c0",
+          "--build-arg",
+          "WIN_ARCH=x64",
+          "--build-arg",
+          "WIN_TRIPLE_ARCH=x86_64",
+          "--build-arg",
+          "MARCH_FLAG=/clang:-march=nehalem",
+          "--build-arg",
+          "ICU_MARCH_FLAG=-march=nehalem",
+          "--build-arg",
+          "ENABLE_SANITIZERS=",
+          "--target=base",
+          "--load",
+          "--tag",
+          "openclaw-webkit-toolchain:1b8878c46c6d814320d2cae2",
+          "--metadata-file",
+          "/home/runner/_work/_temp/lane/provenance/toolchain-build.json",
+          "."
+        ],
+        "artifact": [
+          "docker",
+          "buildx",
+          "build",
+          "-f",
+          "Dockerfile.windows",
+          "--platform",
+          "linux/amd64",
+          "--progress=plain",
+          "--build-arg",
+          "WEBKIT_RELEASE_TYPE=Release",
+          "--build-arg",
+          "LTO_FLAG=/clang:-flto=thin /clang:-fno-split-lto-unit",
+          "--build-arg",
+          "USE_MIMALLOC=ON",
+          "--build-arg",
+          "USE_EXTERNAL_MIMALLOC=ON",
+          "--build-arg",
+          "ICU_VERSION=78.3",
+          "--build-arg",
+          "ICU_SHA256=3a2e7a47604ba702f345878308e6fefeca612ee895cf4a5f222e7955fabfe0c0",
+          "--build-arg",
+          "WIN_ARCH=x64",
+          "--build-arg",
+          "WIN_TRIPLE_ARCH=x86_64",
+          "--build-arg",
+          "MARCH_FLAG=/clang:-march=nehalem",
+          "--build-arg",
+          "ICU_MARCH_FLAG=-march=nehalem",
+          "--build-arg",
+          "ENABLE_SANITIZERS=",
+          "--build-context",
+          "base=docker-image://openclaw-webkit-toolchain:1b8878c46c6d814320d2cae2",
+          "--target=artifact",
+          "--output",
+          "type=local,dest=/home/runner/_work/_temp/lane/bun-webkit",
+          "--metadata-file",
+          "/home/runner/_work/_temp/lane/provenance/artifact-build.json",
+          "."
+        ]
+      },
+      "tool_versions": "Ubuntu clang version 23.1.2 (++20260910044232+069ef0e7cb36-1~exp1~20260910044242.70)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.11.1",
+      "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.2.1\n  GitCommit:        dea7da592f5d1d2b7755e3a161be07f43fad8f75\n runc:\n  Version:          1.3.4\n  GitCommit:        v1.3.4-0-gd6d73eb8\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
+      "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
+      "workflow_run": "37224066519",
+      "run_attempt": "1",
+      "elapsed_seconds": 691.52037358284,
+      "files": {
+        "bun-webkit-windows-amd64-lto.tar.gz": {
+          "sha256": "039db820abba63aafe1651cb33af685f1f104b335ba365cd97faecb501b9091f",
+          "size": 663727644
+        }
+      },
+      "provenance_files": {
+        "artifact-build.json": "b794d5077e77877a5737b03206699fa5b10f124533411a58f61981119665c505",
+        "toolchain-image.json": "6dcacc6b290b05b49453baf13c0cdedba46ee0b568818948d3b07fb321642dd2",
+        "toolchain-build.json": "abed8c1338f1122d8f55687c2f55c71a3052b7d65a6de8343b685862980a7307",
+        "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8"
+      }
+    }
+  ],
+  "supporting_files": {
+    "LICENSE-SOURCES.txt": {
+      "sha256": "73694af3b5d3c89e55d0da7909b52b5ff2d2c950157157a22170f55c7a7f3e27",
+      "size": 26102
+    },
+    "provenance.tar.gz": {
+      "sha256": "bb6dde1981ca8fb76b462090ca9bfd937ecfae13aa4035eca75ded869eda9536",
+      "size": 511611
+    }
+  }
+}

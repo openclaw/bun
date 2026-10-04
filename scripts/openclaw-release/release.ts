@@ -181,7 +181,7 @@ export function webkitTagPart(webkitVersion: string): string {
   return hex.slice(0, 10);
 }
 
-/** The oven-sh/WebKit release a WEBKIT_VERSION downloads from (scripts/build/deps/webkit.ts prebuiltUrl). */
+/** Immutable OpenClaw release containing the pinned engine artifacts. */
 export function webkitReleaseTag(webkitVersion: string): string {
   return webkitVersion.startsWith("autobuild-") ? webkitVersion : `autobuild-${webkitVersion}`;
 }
@@ -201,13 +201,14 @@ export function sourceFacts(source: string, rev = "HEAD"): SourceFacts {
   const epoch = Number(git(source, "log", "-1", "--format=%ct", commit));
   const date = new Date(epoch * 1000).toISOString().slice(0, 10).replaceAll("-", "");
   const pkg = JSON.parse(git(source, "show", `${commit}:package.json`)) as { version: string };
-  const webkitVersion = parseWebkitVersion(git(source, "show", `${commit}:scripts/build/deps/webkit.ts`));
+  const webkitVersion = parseWebkitVersion(git(source, "show", `${commit}:scripts/build/deps/webkit-artifacts.json`));
   return { commit, date, version: pkg.version, webkitVersion };
 }
 
-export function parseWebkitVersion(webkitTs: string): string {
-  const version = /export const WEBKIT_VERSION = "([^"]+)"/.exec(webkitTs)?.[1];
-  if (!version) throw new Error("scripts/build/deps/webkit.ts has no WEBKIT_VERSION");
+export function parseWebkitVersion(manifestJson: string): string {
+  const { version } = JSON.parse(manifestJson);
+  if (typeof version !== "string" || !/^[a-f0-9]{40}$/.test(version))
+    throw new Error("scripts/build/deps/webkit-artifacts.json must pin a full WebKit commit SHA");
   return version;
 }
 
@@ -231,7 +232,9 @@ export function tagMismatches(tag: string, facts: SourceFacts): string[] {
     problems.push(`tag names version ${parts.version}, package.json has ${facts.version}`);
   if (parts.date !== facts.date) problems.push(`tag names date ${parts.date}, the commit is dated ${facts.date}`);
   if (parts.webkit !== webkitTagPart(facts.webkitVersion)) {
-    problems.push(`tag names WebKit ${parts.webkit}, scripts/build/deps/webkit.ts pins ${facts.webkitVersion}`);
+    problems.push(
+      `tag names WebKit ${parts.webkit}, scripts/build/deps/webkit-artifacts.json pins ${facts.webkitVersion}`,
+    );
   }
   return problems;
 }
@@ -508,8 +511,8 @@ export function manifest(input: ManifestInput) {
     webkit: {
       // process.versions.webkit of every executable in this release.
       version: facts.webkitVersion,
-      repository: "oven-sh/WebKit",
-      prebuilt: `https://github.com/oven-sh/WebKit/releases/tag/${webkitReleaseTag(facts.webkitVersion)}`,
+      repository: "openclaw/WebKit",
+      prebuilt: `https://github.com/openclaw/WebKit/releases/tag/${webkitReleaseTag(facts.webkitVersion)}`,
     },
     ...(input.workflowRun ? { workflowRun: input.workflowRun } : {}),
     assets,
@@ -551,7 +554,7 @@ export function releaseNotes(m: ReturnType<typeof manifest>): string {
   });
   const unsigned = m.assets.filter(a => a.signing && a.signing.kind !== "developer-id").map(a => `\`${a.target}\``);
   return [
-    `OpenClaw Bun fork build of [\`${m.bun.commit}\`](https://github.com/${m.repository}/commit/${m.bun.commit}) (Bun ${m.bun.version}${m.bun.revision ? `, \`bun --revision\` ${m.bun.revision}` : ""}), linked against the oven-sh/WebKit prebuilt [\`${m.webkit.version}\`](${m.webkit.prebuilt}).`,
+    `OpenClaw Bun fork build of [\`${m.bun.commit}\`](https://github.com/${m.repository}/commit/${m.bun.commit}) (Bun ${m.bun.version}${m.bun.revision ? `, \`bun --revision\` ${m.bun.revision}` : ""}), linked against the checksum-pinned openclaw/WebKit prebuilt [\`${m.webkit.version}\`](${m.webkit.prebuilt}).`,
     "",
     "Pin assets by `manifest.json` (`assets[].sha256` for the archive, `assets[].executable.sha256` for the binary inside it). `SHA256SUMS` lists every file of the release. Build provenance: `gh attestation verify <file> -R " +
       m.repository +

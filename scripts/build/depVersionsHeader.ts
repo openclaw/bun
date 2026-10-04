@@ -30,6 +30,8 @@ function sourceIdentifier(source: Source): string | undefined {
       return source.commit;
     case "prebuilt":
       return source.identity;
+    case "unavailable":
+      return undefined;
     case "local":
     case "in-tree":
       // User-managed / in-tree — no pinned identifier independent of the

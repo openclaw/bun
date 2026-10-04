@@ -6,7 +6,8 @@
  * complete with no network round-trips for matching dep versions.
  *
  * Layout written (matches what scripts/build/download.ts consults):
- *   <prefetchDir>/by-url/<sha256(url)[:32]>      raw downloaded bytes
+ *   <prefetchDir>/by-url/<sha256(url)[:32]>      unpinned downloaded bytes
+ *   <prefetchDir>/by-sha256/<sha256>            checksum-pinned WebKit archives
  *   <prefetchDir>/extracted/<basename(dest)>/    pre-extracted prebuilt trees
  *
  * Everything is content-addressed: a dep version bump in scripts/build/deps/
@@ -28,7 +29,16 @@ import { basename, resolve } from "node:path";
 import { resolveConfig, type Config, type PartialConfig } from "./build/config.ts";
 import { resolveToolchain } from "./build/configure.ts";
 import { allDeps } from "./build/deps/index.ts";
-import { downloadWithRetry, extractTarGz, extractZip, prefetchPathForUrl } from "./build/download.ts";
+import { WEBKIT_MANIFEST } from "./build/deps/webkit.ts";
+import {
+  downloadRetry,
+  downloadWithRetry,
+  extractTarGz,
+  extractZip,
+  prefetchPathForSha256,
+  prefetchPathForUrl,
+  verifySha256,
+} from "./build/download.ts";
 
 const dest = process.argv[2];
 if (dest === undefined) {
@@ -36,14 +46,15 @@ if (dest === undefined) {
   process.exit(1);
 }
 const byUrlDir = resolve(dest, "by-url");
+const byDigestDir = resolve(dest, "by-sha256");
 const extractedDir = resolve(dest, "extracted");
 
 // ───────────────────────────────────────────────────────────────────────────
 // Enumerate URL-affecting config variants for the current host.
 //
 // github-archive sources are config-independent, so one base config covers
-// them. WebKit prebuilt URL varies by (musl, baseline, debug|lto, asan).
-// Iterate the cross-product, dedupe URLs.
+// them. Other dependency variants are deduplicated by URL; WebKit uses only
+// the committed artifact set below.
 // ───────────────────────────────────────────────────────────────────────────
 
 const toolchain = resolveToolchain();
@@ -63,6 +74,7 @@ for (const asan of [false, true]) {
 
 interface Item {
   url: string;
+  sha256?: string;
   /** If set, also extract into `<extractedDir>/<name>/` and write `<stamp>`. */
   extract?: {
     name: string;
@@ -90,6 +102,13 @@ function add(item: Item): void {
   items.set(item.url, item);
 }
 
+// Only published host variants are baked; pinned archives are verified again before extraction.
+const hostPrefix = `bun-webkit-${baseCfg.windows ? "windows" : baseCfg.darwin ? "macos" : "linux"}-${baseCfg.arm64 ? "arm64" : "amd64"}`;
+for (const [name, artifact] of Object.entries(WEBKIT_MANIFEST.artifacts)) {
+  if (name.startsWith(hostPrefix + "-") || name === hostPrefix + ".tar.gz")
+    add({ url: artifact.url, sha256: artifact.sha256 });
+}
+
 for (const partial of variants) {
   let cfg: Config;
   try {
@@ -103,6 +122,7 @@ for (const partial of variants) {
   }
 
   for (const dep of allDeps) {
+    if (dep.name === "WebKit") continue;
     if (dep.enabled !== undefined && !dep.enabled(cfg)) continue;
     const src = dep.source(cfg);
     if (src.kind === "github-archive") {
@@ -130,6 +150,7 @@ for (const partial of variants) {
 // ───────────────────────────────────────────────────────────────────────────
 
 await mkdir(byUrlDir, { recursive: true });
+await mkdir(byDigestDir, { recursive: true });
 await mkdir(extractedDir, { recursive: true });
 
 let ok = 0;
@@ -139,20 +160,28 @@ let missing = 0;
 async function fetchOne(item: Item): Promise<void> {
   // Same key the build's downloadWithRetry will look up — keeps producer and
   // consumer in lockstep without duplicating the hash.
-  const path = prefetchPathForUrl(item.url, dest)!;
+  const path =
+    item.sha256 === undefined ? prefetchPathForUrl(item.url, dest)! : prefetchPathForSha256(item.sha256, dest)!;
 
   if (existsSync(path)) {
     skipped++;
   } else {
     try {
-      await downloadWithRetry(item.url, path, basename(new URL(item.url).pathname));
+      await downloadWithRetry(
+        item.url,
+        path,
+        basename(new URL(item.url).pathname),
+        downloadRetry,
+        undefined,
+        item.sha256,
+      );
     } catch (err) {
       // 404 = the enumerated variant has no published artifact — expected,
       // the build will just download that one if it ever needs it. Anything
       // else (CDN outage, TLS, disk write) means a real failure that would
       // leave the cache silently incomplete; fail loud so the bake operator
       // sees it instead of shipping an empty image.
-      if (err instanceof Error && /\bHTTP 404\b/.test(err.message)) {
+      if (item.sha256 === undefined && err instanceof Error && /\bHTTP 404\b/.test(err.message)) {
         console.log(`  (skip — no artifact at ${item.url})`);
         missing++;
         return;
@@ -160,6 +189,7 @@ async function fetchOne(item: Item): Promise<void> {
       throw err;
     }
   }
+  if (item.sha256 !== undefined) await verifySha256(path, item.sha256, basename(new URL(item.url).pathname));
   ok++;
 
   if (item.extract === undefined) return;
@@ -204,8 +234,10 @@ const workers = Array.from({ length: 4 }, async () => {
 await Promise.all(workers);
 
 let bytes = 0;
-for (const f of await readdir(byUrlDir)) bytes += (await stat(resolve(byUrlDir, f))).size;
+for (const directory of [byUrlDir, byDigestDir]) {
+  for (const f of await readdir(directory)) bytes += (await stat(resolve(directory, f))).size;
+}
 
 console.log(
-  `\nprefetch: ${ok} downloads cached (${skipped} already present, ${missing} no-artifact) — ${(bytes / 1e6).toFixed(0)} MB in ${byUrlDir}`,
+  `\nprefetch: ${ok} downloads cached (${skipped} already present, ${missing} no-artifact) — ${(bytes / 1e6).toFixed(0)} MB in ${dest}`,
 );

@@ -1,16 +1,10 @@
-/**
- * WebKit commit — determines prebuilt download URL + what to checkout
- * for local mode. Override via `--webkit-version=<hash>` to test a branch.
- * From https://github.com/oven-sh/WebKit releases.
- */
-export const WEBKIT_VERSION = "1600131e46b5af48bbda3559af8d8a3327230b6e";
-
+/** The engine pin and archive checksums are updated together in webkit-artifacts.json. */
 /**
  * WebKit (JavaScriptCore) — the JS engine.
  *
  * Two modes via `cfg.webkit`:
  *
- * **prebuilt**: Download tarball from oven-sh/WebKit releases. Tarball name
+ * **prebuilt**: Download a checksum-pinned tarball from openclaw/WebKit releases. Tarball name
  *   encodes {os, arch, musl, debug|lto, asan} — each is a separate ABI.
  *   ASAN MUST match bun's setting: WTF::Vector layout changes with ASAN
  *   (see WTF/Vector.h:682), so mixing → silent memory corruption.
@@ -39,12 +33,53 @@ export const WEBKIT_VERSION = "1600131e46b5af48bbda3559af8d8a3327230b6e";
  *   like the old cmake — avoids debug/release mixing.
  */
 
+import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Config } from "../config.ts";
+import { assert } from "../error.ts";
 import { computeCpuTargetFlags } from "../flags.ts";
 import { slash } from "../shell.ts";
 import { type Dependency, type NestedCmakeBuild, type Source, depBuildDir, depSourceDir } from "../source.ts";
+
+export interface WebKitArtifactManifest {
+  version: string;
+  artifacts: Record<string, { url: string; sha256: string }>;
+}
+
+export const WEBKIT_MANIFEST: WebKitArtifactManifest = JSON.parse(
+  readFileSync(new URL("./webkit-artifacts.json", import.meta.url), "utf8"),
+);
+assert(
+  typeof WEBKIT_MANIFEST.version === "string" && /^[a-f0-9]{40}$/.test(WEBKIT_MANIFEST.version),
+  "WebKit manifest must pin a full commit SHA",
+);
+export const WEBKIT_VERSION = WEBKIT_MANIFEST.version;
+
+/** Resolve only committed artifacts; unsupported variants and alternate pins fail closed. */
+export function webkitArtifact(
+  cfg: Config,
+  pin: WebKitArtifactManifest = WEBKIT_MANIFEST,
+): { url: string; sha256: string } {
+  assert(
+    cfg.webkitVersion === pin.version,
+    "WebKit version must match webkit-artifacts.json; update the manifest and pin together",
+  );
+  return manifestArtifact(prebuiltName(cfg), pin);
+}
+
+function manifestArtifact(name: string, pin: WebKitArtifactManifest): { url: string; sha256: string } {
+  const artifact = pin.artifacts?.[name];
+  assert(
+    artifact && typeof artifact.sha256 === "string" && /^[a-f0-9]{64}$/.test(artifact.sha256),
+    `Missing SHA-256 for WebKit target ${name}`,
+  );
+  const expected = `https://github.com/openclaw/WebKit/releases/download/autobuild-${pin.version}/${name}`;
+  assert(artifact.url === expected, `WebKit target ${name} must use its pinned OpenClaw release URL`);
+  return artifact;
+}
+
+for (const name of Object.keys(WEBKIT_MANIFEST.artifacts)) manifestArtifact(name, WEBKIT_MANIFEST);
 
 // ───────────────────────────────────────────────────────────────────────────
 // Prebuilt URL computation
@@ -65,41 +100,16 @@ function prebuiltSuffix(cfg: Config): string {
   return s;
 }
 
-function prebuiltUrl(cfg: Config): string {
+function prebuiltName(cfg: Config): string {
   const os = cfg.windows ? "windows" : cfg.darwin ? "macos" : cfg.freebsd ? "freebsd" : "linux";
   const arch = cfg.arm64 ? "arm64" : "amd64";
-  const name = `bun-webkit-${os}-${arch}${prebuiltSuffix(cfg)}`;
-  const version = cfg.webkitVersion;
-  const tag = version.startsWith("autobuild-") ? version : `autobuild-${version}`;
-  return `https://github.com/oven-sh/WebKit/releases/download/${tag}/${name}.tar.gz`;
+  return `bun-webkit-${os}-${arch}${prebuiltSuffix(cfg)}.tar.gz`;
 }
 
-/**
- * Prebuilt extraction dir. Suffix in the key so switching debug ↔ release
- * doesn't reuse a wrong-ABI extraction.
- */
 function prebuiltDestDir(cfg: Config): string {
-  // For 40-hex shas, 16 chars is plenty. For autobuild-preview-* tags, the
-  // meaningful sha is at the end, so use the whole thing.
-  const v = cfg.webkitVersion;
-  const version16 = v.startsWith("autobuild-") ? v.slice("autobuild-".length) : v.slice(0, 16);
-  // Cross-compiled targets share a host (and cache dir) with native builds,
-  // so include os+arch in the key — otherwise a FreeBSD/arm64, macOS/x64, or
-  // Windows-cross extraction collides with a Linux/x64 one at the same WebKit
-  // version. Windows is keyed only when cross-compiling so native Windows
-  // dev machines keep their existing cache dirs.
-  const osKey =
-    cfg.windows && cfg.host.os !== "windows"
-      ? "-windows"
-      : cfg.freebsd
-        ? "-freebsd"
-        : cfg.darwin
-          ? "-macos"
-          : cfg.abi === "android"
-            ? "-android"
-            : "";
-  const archKey = cfg.arm64 ? "-arm64" : "";
-  return resolve(cfg.cacheDir, `webkit-${version16}${osKey}${archKey}${prebuiltSuffix(cfg)}`);
+  if (!Object.hasOwn(WEBKIT_MANIFEST.artifacts, prebuiltName(cfg)))
+    return resolve(cfg.buildDir, "deps", `unavailable-${prebuiltName(cfg)}`);
+  return resolve(cfg.cacheDir, `webkit-sha256-${webkitArtifact(cfg).sha256}`);
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -191,9 +201,23 @@ export const webkit: Dependency = {
 
   source: cfg => {
     if (cfg.webkit === "prebuilt") {
+      assert(
+        cfg.webkitVersion === WEBKIT_VERSION,
+        "WebKit version must match webkit-artifacts.json; update the manifest and pin together",
+      );
+      const name = prebuiltName(cfg);
+      if (!Object.hasOwn(WEBKIT_MANIFEST.artifacts, name)) {
+        return {
+          kind: "unavailable",
+          message: `Missing SHA-256 for WebKit target ${name} in webkit-artifacts.json; publish this variant or use --webkit=local`,
+          destDir: prebuiltDestDir(cfg),
+        };
+      }
+      const artifact = webkitArtifact(cfg);
       const src: Source = {
         kind: "prebuilt",
-        url: prebuiltUrl(cfg),
+        url: artifact.url,
+        sha256: artifact.sha256,
         // Identity = version + suffix. Suffix ensures profile switches
         // (debug ↔ release, asan toggle) trigger re-download. Without it,
         // same version stamp would skip, leaving the wrong ABI on disk.
@@ -217,7 +241,7 @@ export const webkit: Dependency = {
       path: webkitSrcDir(cfg),
       hint: env
         ? `$BUN_WEBKIT_PATH is set to '${env}' but that path does not contain a WebKit checkout`
-        : "Clone oven-sh/WebKit to vendor/WebKit/, or set $BUN_WEBKIT_PATH to an existing clone (useful for worktrees)",
+        : "Clone openclaw/WebKit to vendor/WebKit/, or set $BUN_WEBKIT_PATH to an existing clone (useful for worktrees)",
     };
   },
 

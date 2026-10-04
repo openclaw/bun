@@ -46,7 +46,7 @@
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { createWriteStream, existsSync, readFileSync } from "node:fs";
+import { createReadStream, createWriteStream, existsSync, readFileSync } from "node:fs";
 import { chmod, copyFile, cp, lstat, mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
 import { Readable } from "node:stream";
@@ -71,7 +71,8 @@ const tarExe =
  * here first and copy on hit instead of hitting the network.
  *
  * Layout:
- *   <prefetchDir>/by-url/<sha256(url)[:32]>   raw downloaded bytes (any URL)
+ *   <prefetchDir>/by-url/<sha256(url)[:32]>   unpinned downloaded bytes
+ *   <prefetchDir>/by-sha256/<sha256>          checksum-pinned archive bytes
  *   <prefetchDir>/extracted/<basename(dest)>/ pre-extracted prebuilt trees
  *                                             (.identity inside)
  *
@@ -103,6 +104,18 @@ export function prefetchPathForUrl(url: string, dir = prefetchDir): string | und
   if (dir === undefined) return undefined;
   const key = createHash("sha256").update(url).digest("hex").slice(0, 32);
   return resolve(dir, "by-url", key);
+}
+
+/** Raw pinned archives use their content digest, independently of their download URL. */
+export function prefetchPathForSha256(sha256: string, dir = prefetchDir): string | undefined {
+  assert(/^[a-f0-9]{64}$/.test(sha256), "prebuilt: invalid SHA-256");
+  return dir === undefined ? undefined : resolve(dir, "by-sha256", sha256);
+}
+
+export async function verifySha256(path: string, sha256: string, name: string): Promise<void> {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(path)) hash.update(chunk);
+  assert(hash.digest("hex") === sha256, `SHA-256 mismatch for ${name}`);
 }
 
 /**
@@ -166,8 +179,8 @@ export const downloadRetry: RetryPolicy = {
 /**
  * Download a URL to a file with retry. Atomic: temp file → rename on success.
  *
- * Checks `prefetchDir/by-url/` first — on a CI image with a warm prefetch
- * cache the network is never touched for matching URLs.
+ * Checks the image prefetch cache first: by content digest for pinned archives,
+ * otherwise by URL. Pinned callers verify the bytes before using them.
  *
  * @param logPrefix Unused: under ninja, stream.ts already prefixes every line
  *   with the dep name.
@@ -181,8 +194,9 @@ export async function downloadWithRetry(
   retry: RetryPolicy = downloadRetry,
   /** Gives the whole download up when it fires (an `AbortSignal.timeout`): for a caller that has a fallback. */
   signal?: AbortSignal,
+  sha256?: string,
 ): Promise<void> {
-  const prefetched = prefetchPathForUrl(url);
+  const prefetched = sha256 === undefined ? prefetchPathForUrl(url) : prefetchPathForSha256(sha256);
   if (prefetched !== undefined && existsSync(prefetched)) {
     console.log(`using prefetch cache: ${prefetched}`);
     await mkdir(resolve(dest, ".."), { recursive: true });
@@ -315,27 +329,11 @@ export async function extractZip(zipPath: string, dest: string): Promise<void> {
   );
 }
 
-/**
- * A missing prebuilt tarball is a bad pin, not a network blip. The
- * `autobuild-preview-pr-*` WebKit tags are the sharp edge: GitHub deletes the
- * preview release when the PR merges or closes, so every build 404s at once.
- * Say so, and say which line to edit.
- */
+/** A missing prebuilt tarball is a bad pin, not a network blip. */
 function prebuiltDownloadError(name: string, url: string, cause: unknown): Error {
   const message = cause instanceof Error ? cause.message : String(cause);
   // 404 only: a 403/429 is GitHub rate-limiting us, not a deleted release.
   const missing = message.includes("HTTP 404");
-  if (name === "WebKit" && missing && url.includes("/autobuild-preview-pr-")) {
-    return new BuildError(`WebKit preview release is gone: ${message}`, {
-      cause,
-      file: "scripts/build/deps/webkit.ts",
-      hint:
-        "WEBKIT_VERSION points at an `autobuild-preview-pr-*` tag. Those releases only exist " +
-        "while the WebKit PR is open — this one has merged, closed, or been re-tagged. Set " +
-        "WEBKIT_VERSION in scripts/build/deps/webkit.ts to the merged main sha (see " +
-        "https://github.com/oven-sh/WebKit/releases).",
-    });
-  }
   if (missing) {
     return new BuildError(`Prebuilt ${name} is not published at that URL: ${message}`, {
       cause,
@@ -369,7 +367,12 @@ export async function fetchPrebuilt(
   dest: string,
   identity: string,
   rmPaths: string[] = [],
+  sha256?: string,
 ): Promise<void> {
+  if (sha256 !== undefined) {
+    assert(/^[a-f0-9]{64}$/.test(sha256), "prebuilt: invalid SHA-256");
+    identity = `${identity}:sha256:${sha256}`;
+  }
   const stampPath = resolve(dest, ".identity");
 
   // ─── Short-circuit: already at this identity? ───
@@ -383,7 +386,8 @@ export async function fetchPrebuilt(
   }
 
   // ─── Prefetch cache: pre-extracted tree with matching identity? ───
-  if (await tryPrefetchExtracted(dest, ".identity", identity)) return;
+  // A pre-extracted image cache cannot prove the archive digest.
+  if (sha256 === undefined && (await tryPrefetchExtracted(dest, ".identity", identity))) return;
 
   console.log(`fetching ${url}`);
   const started = performance.now();
@@ -397,7 +401,7 @@ export async function fetchPrebuilt(
   await mkdir(destParent, { recursive: true });
   const tarballPath = `${dest}${suffix}.tar.gz`;
   try {
-    await downloadWithRetry(url, tarballPath, name);
+    await downloadWithRetry(url, tarballPath, name, downloadRetry, undefined, sha256);
   } catch (err) {
     throw prebuiltDownloadError(name, url, err);
   }
@@ -410,6 +414,9 @@ export async function fetchPrebuilt(
   await mkdir(stagingDir, { recursive: true });
 
   try {
+    if (sha256 !== undefined) {
+      await verifySha256(tarballPath, sha256, name);
+    }
     // stripComponents=0: keep top-level dir for hoisting.
     await extractTarGz(tarballPath, stagingDir, 0);
     await rm(tarballPath, { force: true });

@@ -46,6 +46,8 @@ export const darwinSmoke = [
 ];
 
 const webkitSensitive = [
+  "test/js/node/async_hooks/AsyncLocalStorage.test.ts",
+  "test/js/node/worker_threads/worker_threads.test.ts",
   "test/js/bun/jsc/webkit-upgrade-7b485a76e9.test.ts",
   "test/js/bun/jsc/webkit-upgrade-9b02218df6.test.ts",
   "test/js/bun/jsc/webkit-upgrade-3722912f.test.ts",
@@ -94,7 +96,7 @@ export function selectTests(changed: string[], tracked: string[], nightly: boole
   const selected = new Set([...(platform === "darwin" ? darwinSmoke : smoke), ...(nightly ? broader : [])]);
   const tests = tracked.filter(isTest);
   for (const path of changed) {
-    if (path === "scripts/build/deps/webkit.ts") {
+    if (path === "scripts/build/deps/webkit.ts" || path === "scripts/build/deps/webkit-artifacts.json") {
       webkitSensitive.forEach(test => selected.add(test));
     } else if (isTest(path)) {
       if (available.has(path)) selected.add(path);

@@ -173,3 +173,11 @@ Each dep becomes three ninja build statements, each with `restat = 1`:
 
 `restat` is what makes incremental builds fast — if step N was a no-op,
 ninja prunes everything after it.
+
+## OpenClaw WebKit pin
+
+`scripts/build/deps/webkit-artifacts.json` is the single source for the WebKit commit and archive checksums. Replace it with the manifest from a verified immutable `openclaw/WebKit` release to update the engine. Revert that file to roll back the pin and checksums together.
+
+Prebuilt builds require an entry for the exact OS, architecture, libc, LTO, debug, and ASan variant. Missing entries stop targets that require WebKit; codegen-only and dependency-clone targets can still use the build graph. Alternate `--webkit-version` values and checksum mismatches stop the build. Each archive is verified before extraction; the full SHA-256 keys both its raw image-prefetch cache and its extracted cache. Image baking includes only committed WebKit variants for its host. Unverified pre-extracted image caches are excluded. The manifest is a Ninja regeneration input and is included by the fork CI's `scripts/build/**` cache keys.
+
+Use `--webkit=local` and `BUN_WEBKIT_PATH` for engine development. Prebuilt builds always use the committed manifest.
