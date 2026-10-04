@@ -155,3 +155,5 @@
 - Emit `ws` text messages as Buffers regardless of `binaryType` on clients and server connections, preserving JSON decoding and the `isBinary=false` flag.
 
 - Support `ws` server-connection `pause()`, `resume()`, and `isPaused` with native socket read backpressure.
+
+- Use glibc's vectorized comparison for long, same-encoding VM compilation-cache sources on Linux x64 while preserving complete source validation.

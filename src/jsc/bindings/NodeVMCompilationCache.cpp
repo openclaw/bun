@@ -13,6 +13,7 @@
 #include <wtf/Hasher.h>
 #include <charconv>
 #include <cstdlib>
+#include <cstring>
 
 namespace Bun {
 
@@ -38,6 +39,19 @@ static unsigned cacheHash(const SourceCode& source, const NodeVMCompilationCache
     unsigned hash = WTF::computeHash(importerIdentity, source.hash(), source.provider()->sourceURL(), identity.lineOffset, identity.columnOffset,
         static_cast<unsigned>(identity.kind), identity.filenameProvided, identity.produceCachedData, identity.codeGenerationMode.toRaw(), identity.lexicalFeatures);
     return 1 + (hash & 0x7ffffffe); // Reserve the HashMap's empty/deleted integer sentinels.
+}
+
+static bool sourceMatches(const String& cached, StringView source)
+{
+#if OS(LINUX) && CPU(X86_64) && defined(__GLIBC__) && !ASAN_ENABLED
+    // WTF compares long x64 strings one word at a time; glibc uses wider comparisons.
+    if (source.length() >= 256 && cached.length() == source.length() && cached.is8Bit() == source.is8Bit()) {
+        if (source.is8Bit())
+            return !memcmp(cached.span8().data(), source.span8().data(), source.span8().size_bytes());
+        return !memcmp(cached.span16().data(), source.span16().data(), source.span16().size_bytes());
+    }
+#endif
+    return cached == source;
 }
 
 void NodeVMCompilationCache::initialize()
@@ -101,7 +115,7 @@ NodeVMCompilationCache::Entry* NodeVMCompilationCache::find(const SourceCode& so
         return nullptr;
     auto& entry = *it->value;
     JSValue importer = importerFor(source);
-    if (!(entry.identity == identity) || entry.filename != source.provider()->sourceURL() || entry.source != source.view()
+    if (!(entry.identity == identity) || entry.filename != source.provider()->sourceURL() || !sourceMatches(entry.source, source.view())
         || entry.hasImporter != importer.isCell() || (entry.hasImporter && entry.importer.get() != importer.asCell()))
         return nullptr;
     entry.remove();

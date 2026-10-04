@@ -2846,6 +2846,41 @@ describe("bounded vm compilation cache", () => {
     `);
   });
 
+  test.concurrent("compilation cache compares complete long Latin1 and UTF16 sources", async () => {
+    const fixture = `
+      const assert = require("node:assert/strict");
+      const vm = require("node:vm");
+      const { nodeVMCompilationCacheStats: stats } = require("bun:internal-for-testing");
+      for (const length of [0, 63, 255, 256, 257, 4096]) {
+        for (const marker of ["x", "é", "λ", "😀"]) {
+          const valueLength = Math.max(0, length - 10);
+          const value = marker.repeat(Math.floor(valueLength / marker.length)) + "x".repeat(valueLength % marker.length);
+          const source = "(() => " + JSON.stringify(value) + ")";
+          const options = { filename: "long-source.js" };
+          const first = new vm.Script(source, options).runInThisContext();
+          const before = stats();
+          const second = new vm.Script(source, options).runInThisContext();
+          assert.equal(stats().hits, before.hits + 1);
+          assert.notEqual(first, second);
+          assert.equal(first(), value);
+          assert.equal(second(), value);
+          const changed = "(() => " + JSON.stringify(value + "!") + ")";
+          assert.equal(new vm.Script(changed, options).runInThisContext()(), value + "!");
+          assert.equal(new vm.Script(source, options).runInThisContext()(), value);
+        }
+      }
+      console.log("ok");
+    `;
+    await using proc = Bun.spawn({
+      cmd: [bunExe(), "--expose-internals", "-e", fixture],
+      env: { ...bunEnv, BUN_VM_COMPILE_CACHE_THRESHOLD: "0" },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect({ stdout, stderr, exitCode }).toEqual({ stdout: "ok\n", stderr: "", exitCode: 0 });
+  });
+
   test.concurrent("evicts by bytes, updates recency and keeps decoded functions alive", async () => {
     await runCacheFixture(
       `
