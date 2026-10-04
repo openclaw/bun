@@ -21,6 +21,8 @@ The OpenClaw fork reports missing runtime imports without downloading npm packag
 
 `CallSite.getLineNumber()` and `getColumnNumber()` return one-based positions, or `null` when a frame has no source position. Stack strings include column 1 and use the same constructor positions as CallSites, pointing to the `new` keyword, including across line breaks and in `node:vm` scripts. Some expression positions still differ from Node.js because JavaScriptCore and Bun's transpiler select different syntax locations.
 
+`Intl.Segments.containing()` respects surrogate-pair boundaries for grapheme, word, and sentence segmentation with the pinned OpenClaw WebKit.
+
 ### [`node:assert`](https://nodejs.org/api/assert.html)
 
 🟢 Fully implemented. Legacy-mode `deepEqual` uses `Bun.deepEquals` semantics rather than Node's loose `==` comparison, and function-valued or `printf`-style `message` arguments are not formatted.
