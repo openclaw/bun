@@ -156,4 +156,6 @@
 
 - Support `ws` server-connection `pause()`, `resume()`, and `isPaused` with native socket read backpressure.
 
+- Validate `net`, `http`, and `https` listen ports synchronously before binding, preserving asynchronous bind errors and Node-compatible numeric string parsing. Adapts string routing from [oven-sh/bun#34083](https://github.com/oven-sh/bun/pull/34083). Thanks @robobun!
+
 - Use glibc's vectorized comparison for long, same-encoding VM compilation-cache sources on Linux x64 while preserving complete source validation.

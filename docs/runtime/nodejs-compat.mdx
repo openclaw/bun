@@ -63,6 +63,8 @@ On macOS, `fs.copyFile` and `fs.cp` accept regular-file `/dev/fd` sources withou
 
 ### [`node:http`](https://nodejs.org/api/http.html)
 
+`net`, `http`, and `https` servers validate listen ports synchronously with `ERR_SOCKET_BAD_PORT`. Bind failures such as `EADDRINUSE` emit an asynchronous `error` event.
+
 `server.close()` followed by `server.closeAllConnections()` also disconnects clients that connect without sending a request on Linux.
 
 Destroying an unfinished request or response closes its connection, including asynchronous destruction after `writeHead()`. Bun does not complete the response as an empty success.
