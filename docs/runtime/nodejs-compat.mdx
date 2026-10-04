@@ -256,6 +256,8 @@ Map and Set serialization copies entries and ignores custom own properties, like
 
 ### [`node:vm`](https://nodejs.org/api/vm.html)
 
+Contextified globals, `DONT_CONTEXTIFY` globals, and the main realm allow a Proxy in their prototype chain, including jsdom Window prototypes. This requires the fork’s pinned OpenClaw WebKit.
+
 🟢 Fully implemented, including `vm.Script`, `vm.createContext`, `vm.runInContext`, `vm.runInNewContext`, `vm.runInThisContext`, `vm.compileFunction`, `vm.isContext`, the ES module classes `vm.Module`, `vm.SourceTextModule` and `vm.SyntheticModule` (exported without `--experimental-vm-modules`), and `importModuleDynamically` support. The `timeout`, `breakOnSigint`, `cachedData`, `microtaskMode` and `codeGeneration` options are supported. An `importModuleDynamically` callback that returns a promise for a `vm.Module` resolves `import()` to the module object rather than its namespace. `vm.measureMemory()` reports whole-heap figures for every context.
 
 The OpenClaw fork caches repeated `vm.Script` and `vm.compileFunction` compilations, including the `runInThisContext`, `runInContext`, and `runInNewContext` helpers. Each evaluation still creates fresh values and uses the target context's global object. Source text, filenames, offsets, compilation options, and dynamic import callback identity distinguish entries. Explicit `cachedData` uses the existing validation path.
