@@ -372,16 +372,18 @@ mod _impl {
         if let Some(worker) = vm.worker_ref() {
             // was explicitly overridden for the worker?
             if let Some(exec_argv) = worker.exec_argv() {
+                let mut has_strict = false;
                 let array =
                     JSValue::create_array_from_iter(global_object, exec_argv.iter(), |&wtf| {
-                        super::worker_option_string(wtf).into_js(global_object)
+                        let argument = super::worker_option_string(wtf);
+                        has_strict |=
+                            argument.eql_utf8(b"--disallow-code-generation-from-strings=strict");
+                        argument.into_js(global_object)
                     })?;
-                // `=strict` is the process's and no Worker runs without it, so a Worker reads it
-                // here whatever `execArgv` it was given (which cannot contain it: the Worker
-                // constructor throws). Node.js's flag is not added: in Node.js a Worker's
-                // `process.execArgv` is what it was given.
+                // Inherited Node-worker options may already contain the process-wide strict flag.
                 if bun_core::code_generation_from_strings()
                     == bun_core::CodeGenerationFromStrings::Disallowed
+                    && !has_strict
                 {
                     array.push(
                         global_object,
