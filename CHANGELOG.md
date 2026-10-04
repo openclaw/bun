@@ -131,6 +131,8 @@
 
 - Cache repeated `node:vm` compilations after 1,750 distinct source fingerprints with a 256 MiB per-VM byte LRU, configurable through `BUN_VM_COMPILE_CACHE_SIZE`, while preserving fresh evaluations, context globals, import callback identities, and cached-data validation.
 
+- Use glibc's vectorized comparison for long, same-encoding VM compilation-cache sources on Linux x64 while preserving complete source validation.
+
 - Match Node 24.21 package metadata validation during import and require, preserve lazy scope/condition checks and ignored fields, reject unreadable selected metadata, and retain CommonJS parent paths in resolution diagnostics. Adapts [oven-sh/bun#33890](https://github.com/oven-sh/bun/pull/33890) and [oven-sh/bun#35711](https://github.com/oven-sh/bun/pull/35711). Thanks @robobun and @cirospaciari!
 
 - Preserve Node's deferred JSON diagnostics for both package maps and accept JSON-encoded maps in string fields.
@@ -157,5 +159,3 @@
 - Support `ws` server-connection `pause()`, `resume()`, and `isPaused` with native socket read backpressure.
 
 - Validate `net`, `http`, and `https` listen ports synchronously before binding, preserving asynchronous bind errors and Node-compatible numeric string parsing. Adapts string routing from [oven-sh/bun#34083](https://github.com/oven-sh/bun/pull/34083). Thanks @robobun!
-
-- Use glibc's vectorized comparison for long, same-encoding VM compilation-cache sources on Linux x64 while preserving complete source validation.
