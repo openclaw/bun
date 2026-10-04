@@ -155,3 +155,5 @@
 - Emit `ws` text messages as Buffers regardless of `binaryType` on clients and server connections, preserving JSON decoding and the `isBinary=false` flag.
 
 - Support `ws` server-connection `pause()`, `resume()`, and `isPaused` with native socket read backpressure.
+
+- Validate `net`, `http`, and `https` listen ports synchronously before binding, preserving asynchronous bind errors and Node-compatible numeric string parsing. Adapts string routing from [oven-sh/bun#34083](https://github.com/oven-sh/bun/pull/34083). Thanks @robobun!

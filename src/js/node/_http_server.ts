@@ -18,6 +18,7 @@ const {
   validateNumber,
   validateFunction,
   validateOneOf,
+  validatePort,
 } = require("internal/validators");
 const { kArmHandshakeTimeout } = require("internal/net/symbols");
 const {
@@ -820,17 +821,16 @@ Server.prototype.listen = function () {
     }
   }
 
-  // Bun defaults to port 3000.
-  // Node defaults to port 0.
-  if (port === undefined && !socketPath) {
+  if (port === null || (port === undefined && !socketPath)) {
     port = 0;
   }
 
-  if (typeof port === "string") {
-    const portNumber = parseInt(port);
-    if (!Number.isNaN(portNumber)) {
-      port = portNumber;
-    }
+  // Validate before DNS/binding: argument errors throw, bind failures emit 'error'.
+  // https://github.com/nodejs/node/blob/v24.19.0/lib/net.js#L2332-L2334
+  if (typeof port === "number" || typeof port === "string") {
+    validatePort(port, "options.port");
+    port = +port | 0;
+    socketPath = undefined;
   }
 
   const lastArg = arguments[argc - 1];
