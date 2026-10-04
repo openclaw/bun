@@ -87,6 +87,54 @@ it("import.meta.resolveSync", () => {
   expect(import.meta.resolveSync("./" + import.meta.file, import.meta.path)).toBe(path);
 });
 
+it.concurrent("detached import.meta.resolve keeps each module's origin and explicit parents", async () => {
+  using dir = tempDir("import-meta-detached", {
+    "entry.mjs": `
+      import assert from "node:assert/strict";
+      import { registerHooks } from "node:module";
+      import { resolve as first } from "./first/module.mjs";
+      import { resolve as second } from "./second/module.mjs";
+      import { value } from "./overwritten.mjs";
+      import { absent } from "./deleted.mjs";
+      assert.equal(value, 42);
+      assert.equal(absent, undefined);
+      assert.notEqual(first, second);
+      for (const [resolve, directory] of [[first, "first"], [second, "second"]]) {
+        assert.equal(resolve("./missing.mjs"), new URL(directory + "/missing.mjs", import.meta.url).href);
+        assert.equal(resolve("./missing.mjs", import.meta.url), new URL("./missing.mjs", import.meta.url).href);
+      }
+      const hooks = registerHooks({
+        resolve(specifier, context, nextResolve) {
+          return specifier === "detached:origin"
+            ? { url: context.parentURL, shortCircuit: true }
+            : nextResolve(specifier, context);
+        },
+      });
+      try {
+        assert.equal(first("detached:origin"), new URL("first/module.mjs", import.meta.url).href);
+        assert.equal(second("detached:origin"), new URL("second/module.mjs", import.meta.url).href);
+        assert.equal(first("detached:origin", import.meta.url), import.meta.url);
+      } finally {
+        hooks.deregister();
+      }
+      console.log("ok");
+    `,
+    "first/module.mjs": "export const { resolve } = import.meta;",
+    "second/module.mjs": "export const { resolve } = import.meta;",
+    "overwritten.mjs": "import.meta.resolve = 42; export const value = import.meta.resolve;",
+    "deleted.mjs": "delete import.meta.resolve; export const absent = import.meta.resolve;",
+  });
+  await using proc = Bun.spawn({
+    cmd: [bunExe(), "entry.mjs"],
+    cwd: String(dir),
+    env: bunEnv,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect({ stdout: stdout.trim(), stderr, exitCode }).toEqual({ stdout: "ok", stderr: "", exitCode: 0 });
+});
+
 it("Module.createRequire", () => {
   const require = Module.createRequire(import.meta.path);
   expect(require.resolve(import.meta.path)).toBe(path);
