@@ -14,7 +14,7 @@ test("an imported namespace has no inherited or writable __esModule marker", () 
   expect(Self.__esModule).toBeUndefined();
 });
 
-for (const order of ["import-first", "require-first"]) {
+for (const order of ["import-first", "require-first", "cache-first"]) {
   test.concurrent(`require(esm) marker reflection and live bindings (${order})`, async () => {
     using dir = tempDir("namespace-marker", {
       "default.mjs": "export default {}; export let value = 1; export function bump() { value++; }",
@@ -50,9 +50,10 @@ for (const [name, hasDefault, explicit, value] of [
   ['false', true, true, false], ['undefined', true, true, undefined], ['true', true, true, true],
 ]) {
   let imported, required;
-  if (${JSON.stringify(order)} === 'import-first') {
+  if (${JSON.stringify(order)} !== 'require-first') {
     imported = await import('./' + name + '.mjs');
     marker(imported, explicit, value);
+    if (${JSON.stringify(order)} === 'cache-first') void require.cache[require.resolve('./' + name + '.mjs')];
     required = require('./' + name + '.mjs');
   } else {
     required = require('./' + name + '.mjs');
@@ -64,7 +65,8 @@ for (const [name, hasDefault, explicit, value] of [
   assert.equal(require('./' + name + '.mjs'), required);
   delete require.cache[require.resolve('./' + name + '.mjs')];
   const reloaded = require('./' + name + '.mjs');
-  assert.equal(reloaded === required, explicit || !hasDefault);
+  // Bun also evicts the ESM registry on cache deletion; only check the added facade's identity.
+  if (hasDefault && !explicit) assert.notEqual(reloaded, required);
   marker(reloaded, explicit || hasDefault, explicit ? value : hasDefault ? true : undefined);
   if (name === 'default') {
     imported.bump();
@@ -106,6 +108,8 @@ test.concurrent("CommonJS-as-ESM namespaces preserve explicit markers and own-ke
     "false.cjs": "exports.__esModule = false; exports.value = 1;",
     "undefined.cjs": "exports.__esModule = undefined; exports.value = 1;",
     "collision.cjs": "exports['module.exports'] = 3; exports.value = 1;",
+    "forwarded.mjs": "export default 'kept'; export const value = 1;",
+    "forwarder.cjs": "module.exports = require('./forwarded.mjs');",
     "entry.mjs": `
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
@@ -126,6 +130,10 @@ for (const [name, present, value] of [
   assert.equal(ns['module.exports'], require('./' + name + '.cjs'));
   assert.equal(Reflect.set(ns, '__esModule', true), false);
 }
+const forwarded = await import('./forwarder.cjs');
+assert.equal(forwarded.default, require('./forwarder.cjs'));
+assert.equal(forwarded.default.default, 'kept');
+assert.equal(forwarded['module.exports'], forwarded.default);
 console.log('ok');
 `,
   });

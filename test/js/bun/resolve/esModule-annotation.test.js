@@ -21,20 +21,20 @@ describe('without type: "module"', () => {
       __esModule: true,
     });
 
-    // The module namespace object will not have the __esModule property.
-    expect(WithoutTypeModuleExportEsModuleAnnotationNoDefault.__esModule).toBeUndefined();
+    expect(Object.hasOwn(WithoutTypeModuleExportEsModuleAnnotationNoDefault, "__esModule")).toBe(true);
+    expect(WithoutTypeModuleExportEsModuleAnnotationNoDefault.__esModule).toBeTrue();
   });
 
   test("exports.default = true; exports.__esModule = true;", () => {
     expect(WithoutTypeModuleExportEsModuleAnnotation.default).toBeTrue();
-    expect(WithoutTypeModuleExportEsModuleAnnotation.__esModule).toBeUndefined();
+    expect(WithoutTypeModuleExportEsModuleAnnotation.__esModule).toBeTrue();
   });
 
   test("exports.default = true;", () => {
     expect(WithoutTypeModuleExportEsModuleNoAnnotation.default).toEqual({
       default: true,
     });
-    expect(WithoutTypeModuleExportEsModuleAnnotation.__esModule).toBeUndefined();
+    expect(WithoutTypeModuleExportEsModuleNoAnnotation.__esModule).toBeUndefined();
   });
 });
 
@@ -65,7 +65,7 @@ describe('with type: "module"', () => {
     expect(WithTypeModuleExportEsModuleNoAnnotation.default).toEqual({
       default: true,
     });
-    expect(WithTypeModuleExportEsModuleAnnotation.__esModule).toBeTrue();
+    expect(WithTypeModuleExportEsModuleNoAnnotation.__esModule).toBeUndefined();
   });
 });
 

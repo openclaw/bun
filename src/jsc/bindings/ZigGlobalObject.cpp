@@ -811,9 +811,11 @@ JSC_DEFINE_HOST_FUNCTION(functionEsmNamespaceForCjs, (JSC::JSGlobalObject * glob
     RETURN_IF_EXCEPTION(scope, {});
     if (!record)
         return JSValue::encode(jsUndefined());
-    auto* ns = record->getModuleNamespace(globalObject, false);
+    auto* ns = record->getModuleNamespace(globalObject);
     RETURN_IF_EXCEPTION(scope, {});
-    return JSValue::encode(ns);
+    auto* required = ns->createNamespaceForRequire(globalObject);
+    RETURN_IF_EXCEPTION(scope, {});
+    return JSValue::encode(required);
 }
 
 JSC_DEFINE_HOST_FUNCTION(functionEsmRegistryHasEvaluated, (JSC::JSGlobalObject * globalObject, JSC::CallFrame* callFrame))

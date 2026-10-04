@@ -1188,7 +1188,8 @@ void populateESMExports(
 
     if (auto* exports = result.getObject()) {
         bool hasESModuleMarker = false;
-        if (!ignoreESModuleAnnotation) {
+        // A native namespace forwarded by CJS keeps its default binding inside that namespace.
+        if (!ignoreESModuleAnnotation && !jsDynamicCast<JSModuleNamespaceObject*>(exports)) {
             PropertySlot slot(exports, PropertySlot::InternalMethodType::VMInquiry, &vm);
             auto has = exports->getPropertySlot(globalObject, esModuleMarker, slot);
             RETURN_IF_EXCEPTION(scope, );
