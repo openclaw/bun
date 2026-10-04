@@ -173,3 +173,5 @@
 - Allow Proxy objects in VM and main-realm global prototype chains with the pinned OpenClaw WebKit, including jsdom Window prototypes. Ports [oven-sh/bun#42347](https://github.com/oven-sh/bun/pull/42347). Thanks @robobun!
 
 - Add experimental Node worker resource limits with per-VM managed-heap termination, nursery and stack sizing, and effective-limit reporting using the pinned OpenClaw WebKit. Code-range limits remain reporting-only. Adapts [oven-sh/bun#32896](https://github.com/oven-sh/bun/pull/32896). Thanks @robobun!
+
+- Preserve importing AsyncLocalStorage contexts across module-loader hooks, static and dynamic dependencies, top-level await, shared imports, and errors with the pinned OpenClaw WebKit; add Node-comparable loader regressions. Related to [oven-sh/bun#37933](https://github.com/oven-sh/bun/pull/37933). Thanks @robobun!

@@ -1,7 +1,7 @@
 import { AsyncLocalStorage, AsyncResource } from "async_hooks";
 import { heapStats } from "bun:jsc";
 import { describe, expect, test } from "bun:test";
-import { bunEnv, bunExe } from "harness";
+import { bunEnv, bunExe, tempDir } from "harness";
 import http2 from "http2";
 
 describe("AsyncLocalStorage", () => {
@@ -1800,4 +1800,48 @@ test("cleared timers release their callback async context", async () => {
   }
   expect(references.map(reference => reference.deref())).toEqual([undefined, undefined, undefined]);
   expect(handles.map(handle => handle._destroyed)).toEqual([true, true, true]);
+});
+
+describe("module loading async context", () => {
+  const variants = [
+    "static",
+    "dynamic",
+    "nested",
+    "tla",
+    "tla-dependency",
+    "cjs",
+    "cjs-direct",
+    "concurrent-distinct",
+    "concurrent-shared",
+    "concurrent-shared-reverse",
+    "concurrent-overlap",
+    "cached",
+    "unscoped",
+    "throw",
+  ];
+  for (const hooks of ["plugin", "native-hooks"]) {
+    test.each(variants)(`${hooks}: %s`, async variant => {
+      using dir = tempDir("module-loading-async-context", {});
+      await using proc = Bun.spawn({
+        cmd: [
+          bunExe(),
+          import.meta.dir + "/fixtures/module-context.fixture.mjs",
+          variant,
+          ...(hooks === "native-hooks" ? ["--native-hooks"] : []),
+        ],
+        env: { ...bunEnv, MODULE_CONTEXT_FIXTURE_ROOT: String(dir) },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      const result = JSON.parse(stdout);
+      expect({ variant: result.variant, failures: result.failures, error: result.error, stderr, exitCode }).toEqual({
+        variant,
+        failures: [],
+        error: undefined,
+        stderr: "",
+        exitCode: 0,
+      });
+    });
+  }
 });

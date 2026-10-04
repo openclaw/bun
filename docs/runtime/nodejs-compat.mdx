@@ -127,6 +127,8 @@ Upgrade requests emit `upgrade` while an earlier response on the connection is s
 
 ### [`node:async_hooks`](https://nodejs.org/api/async_hooks.html)
 
+With the pinned OpenClaw WebKit, module resolution, loading, and evaluation preserve the importing `AsyncLocalStorage` context, including top-level await. Concurrent imports of a shared module retain the first importer’s evaluation context while each caller resumes in its own context.
+
 `WORKER` resources emit `destroy` after native exit, including workers that are terminated or throw an error.
 
 🟡 `createHook()` emits `init` for `TickObject`, `WORKER`, `Timeout`, and `Immediate`, and `destroy` for workers and timers. The `before`, `after`, `promiseResolve`, and other resource events are not implemented. `executionAsyncId()` and `triggerAsyncId()` return `0`. Node.js [strongly discourages](https://nodejs.org/docs/latest/api/async_hooks.html#async-hooks) these APIs in favor of `AsyncLocalStorage`.
