@@ -1,0 +1,50 @@
+{
+  "version": "641c15f9283845195dd3520dddc1fbd668379350",
+  "artifacts": {
+    "bun-webkit-linux-amd64.tar.gz": {
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-641c15f9283845195dd3520dddc1fbd668379350/bun-webkit-linux-amd64.tar.gz",
+      "sha256": "d61986f0a11e9a9d61bb75e04c2beee0b88e10ef9c0ce7b95cf54a323cbd1278",
+      "size": 471787972
+    },
+    "bun-webkit-macos-arm64.tar.gz": {
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-641c15f9283845195dd3520dddc1fbd668379350/bun-webkit-macos-arm64.tar.gz",
+      "sha256": "c79da09f380f3d333ac9e364975fbc5a7b5d77dfcce3626f783bc3c52be6e3f7",
+      "size": 210440301
+    },
+    "bun-webkit-linux-amd64-lto.tar.gz": {
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-641c15f9283845195dd3520dddc1fbd668379350/bun-webkit-linux-amd64-lto.tar.gz",
+      "sha256": "70c1738615a63e56faf47986c5d5be65a6fdb2fe2f7b1143a375d6ce8bb8f434",
+      "size": 262896009
+    },
+    "bun-webkit-linux-arm64-lto.tar.gz": {
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-641c15f9283845195dd3520dddc1fbd668379350/bun-webkit-linux-arm64-lto.tar.gz",
+      "sha256": "e806e804f6a779dcdef5c49bba1a706a03d22eff2ab14f1c82dc6dbbbaaedf0f",
+      "size": 257003174
+    },
+    "bun-webkit-macos-arm64-lto.tar.gz": {
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-641c15f9283845195dd3520dddc1fbd668379350/bun-webkit-macos-arm64-lto.tar.gz",
+      "sha256": "0ec0d82afe985adba810304b51874a007a62b76287f423c383ea465885e6edd2",
+      "size": 155379558
+    },
+    "bun-webkit-macos-amd64-lto.tar.gz": {
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-641c15f9283845195dd3520dddc1fbd668379350/bun-webkit-macos-amd64-lto.tar.gz",
+      "sha256": "997d71179b40fcaf571580db4c3cd76ec3a36c022f23d86b30746d167d3b1e00",
+      "size": 159735426
+    },
+    "bun-webkit-linux-amd64-musl-lto.tar.gz": {
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-641c15f9283845195dd3520dddc1fbd668379350/bun-webkit-linux-amd64-musl-lto.tar.gz",
+      "sha256": "7d7cff6f0bcef0c83304119c6f38b048199584ee968a087322f3b929317dc4fa",
+      "size": 221692208
+    },
+    "bun-webkit-linux-arm64-musl-lto.tar.gz": {
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-641c15f9283845195dd3520dddc1fbd668379350/bun-webkit-linux-arm64-musl-lto.tar.gz",
+      "sha256": "63603b515c0a30fe491887912ca83fc6868c6c15ff6aa47768d84195c3e94df4",
+      "size": 223545757
+    },
+    "bun-webkit-windows-amd64-lto.tar.gz": {
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-641c15f9283845195dd3520dddc1fbd668379350/bun-webkit-windows-amd64-lto.tar.gz",
+      "sha256": "1aad2dfe66b6c081799fae3a68f9fbd7db666923e97ca918b46600bc6620fc3f",
+      "size": 665625129
+    }
+  }
+}
