@@ -238,6 +238,8 @@ if (!isMainThread && ["busy", "wait", "shutdown", "startup"].includes(kind)) {
   parentPort.on("message", async message => {
     if (message instanceof ArrayBuffer) {
       globalThis.held = message;
+      // Only held should retain the payload when the later release command runs.
+      message = null;
       parentPort.postMessage(sample());
     } else if (message === "release") {
       globalThis.held = null;
