@@ -265,7 +265,7 @@ jobs:
   sign-windows:
     name: Sign Windows releases
     needs: [plan, build]
-    if: needs.plan.outputs.windows == 'true' && needs.plan.outputs.publish == 'true'
+    if: github.event_name != 'pull_request' && (github.event_name == 'push' || inputs.publish == true) && needs.plan.outputs.windows == 'true' && needs.plan.outputs.publish == 'true'
     # The signing dlib requires x64 even when the executable being signed is ARM64.
     runs-on: windows-2025
     timeout-minutes: 30
