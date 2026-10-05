@@ -4183,10 +4183,15 @@ describe("new tls.TLSSocket(socket) on the client side", () => {
 
     // Not covered here: setSession() after the handshake started on a tls.connect() socket aborts the process (#41671).
     it.skipIf(skip)("a session that is set before the handshake starts is resumed", async () => {
+      const nodeVersion = bunEnv.BUN_TEST_NODE_VERSION ?? "v26.3.0";
+      // Node 24.21's direct constructor bypasses the bound-session unwrap used by tls.connect().
+      const boundNodeSession = _runtime === "node" && nodeVersion === "v24.21.0";
       expect(await session()).toEqual({
+        nodeVersion: _runtime === "node" ? nodeVersion : null,
+        boundSession: boundNodeSession,
         "tls.connect({ port, session })": true,
         "tls.connect({ socket, session })": true,
-        "new TLSSocket(socket, { session })": true,
+        "new TLSSocket(socket, { session })": !boundNodeSession,
         "tls.connect({ port }), then setSession()": true,
       });
     });
