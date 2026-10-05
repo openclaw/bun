@@ -4,6 +4,9 @@
 #include <JavaScriptCore/JSCJSValue.h>
 
 JSC_DECLARE_HOST_FUNCTION(jsFunction_collectInspectorGarbage);
+JSC_DECLARE_HOST_FUNCTION(jsFunction_startAllocationSampling);
+JSC_DECLARE_HOST_FUNCTION(jsFunction_stopAllocationSampling);
+JSC_DECLARE_HOST_FUNCTION(jsFunction_getAllocationSamplingProfile);
 JSC_DECLARE_HOST_FUNCTION(jsFunction_startCPUProfiler);
 JSC_DECLARE_HOST_FUNCTION(jsFunction_stopCPUProfiler);
 JSC_DECLARE_HOST_FUNCTION(jsFunction_setCPUSamplingInterval);

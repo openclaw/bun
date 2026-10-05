@@ -50,6 +50,7 @@ namespace WebCore {
 
 class Event;
 class Worker;
+class WorkerHeapLimitObserver;
 
 // The only object shared between a Worker (parent thread, script-visible) and the thread that runs
 // its global scope. Created with the Worker; outlives both the Worker object and the thread.
@@ -113,6 +114,12 @@ public:
     void workerGlobalScopeDestroyed(int32_t exitCode, bool stoppedByParent);
     void drainMessagesToWorkerGlobalScope(ScriptExecutionContext&);
 
+    // Node workers stop at the managed-heap limit and report ERR_WORKER_OUT_OF_MEMORY.
+    void installHeapLimitObserver(JSC::VM&, void* workerThread);
+    bool resourceLimitsReady() const { return m_resourceLimitsReady.load(std::memory_order_acquire); }
+    // The collections run by exit handlers and teardown must not be reported as running out of memory.
+    void disarmHeapLimitObserver() { m_heapLimitDisarmed.store(true, std::memory_order_release); }
+
     // -- Either thread ---------------------------------------------------------------------------
     WorkerOptions& options() { return m_options; }
     ScriptExecutionContextIdentifier workerContextIdentifier() const { return m_workerContextIdentifier; }
@@ -152,6 +159,13 @@ private:
     void* m_workerThread { nullptr };
 
     std::atomic<State> m_state { State::Pending };
+
+    // The observer runs on whichever thread finished a collection (hence the atomics) and is never unregistered: this proxy outlives the heap it watches.
+    friend class WorkerHeapLimitObserver;
+    std::unique_ptr<WorkerHeapLimitObserver> m_heapLimitObserver;
+    std::atomic<bool> m_heapLimitDisarmed { false };
+    std::atomic<bool> m_stoppedByHeapLimit { false };
+    std::atomic<bool> m_resourceLimitsReady { false };
 
     // Pending -> Running happens under this lock so a task posted while Pending is either queued here
     // (and run by workerGlobalScopeStarted) or posted directly, never lost.

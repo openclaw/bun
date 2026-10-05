@@ -1142,6 +1142,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                 let this = p.new_expr(E::This {}, loc);
                 let member = p.new_expr(
                     E::Index {
+                        open_bracket_loc: bun_ast::Loc::EMPTY,
                         target: this,
                         index: key,
                         optional_chain: None,
@@ -1438,6 +1439,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                 );
                 self.new_expr(
                     E::Index {
+                        open_bracket_loc: bun_ast::Loc::EMPTY,
                         target: object,
                         index: key,
                         optional_chain: None,

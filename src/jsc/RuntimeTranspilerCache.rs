@@ -66,7 +66,9 @@ bun_core::declare_scope!(cache, visible);
 /// Version 34: Discard output containing a previous runtime plugin's resolved import paths.
 /// Version 35: Preserve inferred names and inline type-only runtime evaluation edges.
 /// Version 36: Runtime plugin imports retain their original specifiers and resolve when executed.
-const EXPECTED_VERSION: u32 = 36;
+/// Version 37: Preserve builtin error constructors and their stack positions and frames.
+/// Version 38: Retain runtime call syntax and map opening call/property delimiters.
+const EXPECTED_VERSION: u32 = 38;
 
 /// Source files smaller than this are not written to / read from the on-disk
 /// transpiler cache. Originally 50 KiB, which excluded almost every file in a
@@ -812,6 +814,12 @@ impl RuntimeTranspilerCache {
         if cache_file_path.is_empty() {
             return Ok(());
         }
+
+        // Concurrent file creation and renames contend inside APFS, even across directories.
+        #[cfg(target_os = "macos")]
+        static WRITE_LOCK: bun_threading::Mutex = bun_threading::Mutex::new();
+        #[cfg(target_os = "macos")]
+        let _write_guard = WRITE_LOCK.lock_guard();
 
         let cache_dir_fd: Fd = 'brk: {
             let dirname = path_handler::dirname::<platform::Auto>(cache_file_path.as_bytes());

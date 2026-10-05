@@ -238,6 +238,31 @@ describe.skipIf(isWindows).concurrent("locale variables in the environment", () 
 // ---------------------------------------------------------------------------
 
 describe("Intl.Segmenter", () => {
+  test.each(["grapheme", "word", "sentence"] as const)(
+    "containing agrees with iteration at surrogate boundaries: %s",
+    granularity => {
+      const inputs = ["a😀b", "Hello, world! 👍🏽 x", "a🇯🇵b", "a👨‍👩‍👧‍👦b", "Hi. 👍 Bye.", "👍🏽", "x\ud83d", "abc"];
+      for (const input of inputs) {
+        const segments = new Intl.Segmenter("en", { granularity }).segment(input);
+        const expected = Array.from(segments);
+        for (const direction of [1, -1]) {
+          for (
+            let index = direction > 0 ? 0 : input.length - 1;
+            index >= 0 && index < input.length;
+            index += direction
+          ) {
+            const result = expected.find(
+              segment => segment.index <= index && index < segment.index + segment.segment.length,
+            );
+            expect(segments.containing(index)).toEqual(result);
+          }
+        }
+        expect(segments.containing(-1)).toBeUndefined();
+        expect(segments.containing(input.length)).toBeUndefined();
+      }
+    },
+  );
+
   const seg = (loc: string, g: Intl.SegmenterOptions["granularity"], s: string) =>
     [...new Intl.Segmenter(loc, { granularity: g }).segment(s)].map(x => x.segment);
 

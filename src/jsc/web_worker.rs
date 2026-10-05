@@ -234,6 +234,13 @@ unsafe extern "C" {
         message: BunString,
         err: JSValue,
     );
+    safe fn WebWorker__installHeapLimitObserver(
+        proxy: *mut c_void,
+        global: &JSGlobalObject,
+        worker_thread: *const c_void,
+    );
+    safe fn WebWorker__disarmHeapLimitObserver(proxy: *mut c_void);
+    safe fn WebWorker__stackSize(proxy: *mut c_void) -> usize;
     safe fn Bun__freeSharedHeaderBufferForThreadExit();
     // Raw FFI (no RAII guard) so `thread_main` can take the API lock and abandon
     // it with the VM — see the note there.
@@ -652,7 +659,11 @@ impl WebWorker {
             _parent_ticket: parent_ticket,
         };
         let spawn = std::thread::Builder::new()
-            .stack_size(bun_threading::thread_pool::DEFAULT_THREAD_STACK_SIZE as usize)
+            .stack_size({
+                let bytes = WebWorker__stackSize(proxy);
+                // Keep native initialization and exception handling headroom; JSC enforces the requested script stack.
+                bytes.max(bun_threading::thread_pool::DEFAULT_THREAD_STACK_SIZE as usize)
+            })
             .spawn(move || {
                 let start = start;
                 start.worker.thread_main(start.init);
@@ -729,7 +740,7 @@ impl WebWorker {
     /// TerminationException in its VM at the next safepoint, wake its loop.
     /// Any thread that holds a ref (the proxy) may call this.
     #[unsafe(export_name = "WebWorker__requestTermination")]
-    pub(crate) extern "C" fn request_termination(this: *mut WebWorker) {
+    pub(crate) extern "C" fn request_termination(this: *mut WebWorker) -> bool {
         let this = bun_ptr::ParentRef::from(NonNull::new(this).expect("WebWorker FFI ptr"));
         // The handle's lock is taken *before* the flag is published: a worker
         // that breaks out of its loop because it saw the flag then blocks in
@@ -737,7 +748,7 @@ impl WebWorker {
         // set here, instead of racing past with neither.
         let handle = this.vm_handle.lock();
         if this.set_requested_terminate() {
-            return;
+            return false;
         }
         log!("[{}] requestTermination", this.execution_context_id);
         if let Some(handle) = &*handle {
@@ -750,6 +761,7 @@ impl WebWorker {
             // safepoint and its loop woken.
             handle.request_termination();
         }
+        true
     }
 
     /// The parent reading this worker's loop counters for `eventLoopUtilization()`: false outside
@@ -987,6 +999,12 @@ impl WebWorker {
         self.vm.set(vm);
         // SAFETY: `vm` is the live VM just built on this thread.
         *self.vm_handle.lock() = Some(unsafe { (*vm).handle() });
+        WebWorker__installHeapLimitObserver(
+            self.messaging_proxy,
+            // SAFETY: vm was initialized above and is owned by this worker thread.
+            JSGlobalObject::opaque_ref(unsafe { (*vm).global }),
+            core::ptr::from_ref(self).cast(),
+        );
 
         // SAFETY: `vm` is a valid heap-allocated VM ptr (checked above).
         unsafe {
@@ -1282,6 +1300,9 @@ impl WebWorker {
         self.set_status(Status::Terminated);
         bun_analytics::features::workers_terminated.fetch_add(1, Ordering::Relaxed);
         log!("[{}] shutdown", self.execution_context_id);
+
+        // The exit handlers' and teardown's collections must not report out of memory.
+        WebWorker__disarmHeapLimitObserver(self.messaging_proxy);
 
         // worker-thread only field; no other thread reads `arena`.
         let mut arena = self.arena.replace(None);

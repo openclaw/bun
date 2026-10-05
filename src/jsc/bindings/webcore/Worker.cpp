@@ -147,7 +147,7 @@ void Worker::dispatchEvent(Event& event)
     EventTargetWithInlineData::dispatchEvent(event);
 }
 
-void Worker::dispatchCloseEvent(Event& event)
+void Worker::dispatchExitEvent(Event& event)
 {
     EventTargetWithInlineData::dispatchEvent(event);
 }
@@ -248,6 +248,17 @@ JSC_DEFINE_HOST_FUNCTION(jsFunctionWorkerEventLoopUtilization, (JSGlobalObject *
     RETURN_IF_EXCEPTION(scope, {});
     result->putDirectIndex(lexicalGlobalObject, 1, jsNumber(idleMs));
     RELEASE_AND_RETURN(scope, JSValue::encode(result));
+}
+
+JSObject* createResourceLimitsObject(JSGlobalObject* globalObject, const WorkerResourceLimits& limits)
+{
+    auto& vm = JSC::getVM(globalObject);
+    auto* object = constructEmptyObject(globalObject, globalObject->objectPrototype(), 4);
+    object->putDirect(vm, Identifier::fromString(vm, "maxYoungGenerationSizeMb"_s), jsNumber(limits.maxYoungGenerationSizeMb));
+    object->putDirect(vm, Identifier::fromString(vm, "maxOldGenerationSizeMb"_s), jsNumber(limits.maxOldGenerationSizeMb));
+    object->putDirect(vm, Identifier::fromString(vm, "codeRangeSizeMb"_s), jsNumber(limits.codeRangeSizeMb));
+    object->putDirect(vm, Identifier::fromString(vm, "stackSizeMb"_s), jsNumber(limits.stackSizeMb));
+    return object;
 }
 
 JSC_DEFINE_HOST_FUNCTION(jsReceiveMessageOnPort, (JSGlobalObject * lexicalGlobalObject, CallFrame* callFrame))
@@ -381,7 +392,7 @@ JSValue createNodeWorkerThreadsBinding(Zig::GlobalObject* globalObject)
 
     bool isNodeWorker = proxy && proxy->options().kind == WorkerOptions::Kind::Node;
 
-    JSObject* array = constructEmptyArray(globalObject, nullptr, 19);
+    JSObject* array = constructEmptyArray(globalObject, nullptr, 20);
     RETURN_IF_EXCEPTION(scope, {});
     array->putDirectIndex(globalObject, 0, workerData);
     RETURN_IF_EXCEPTION(scope, {});
@@ -422,6 +433,10 @@ JSValue createNodeWorkerThreadsBinding(Zig::GlobalObject* globalObject)
     array->putDirectIndex(globalObject, 17, JSFunction::create(vm, globalObject, 1, "workerHasRef"_s, jsFunctionWorkerHasRef, ImplementationVisibility::Public, NoIntrinsic));
     RETURN_IF_EXCEPTION(scope, {});
     array->putDirectIndex(globalObject, 18, JSFunction::create(vm, globalObject, 1, "workerEventLoopUtilization"_s, jsFunctionWorkerEventLoopUtilization, ImplementationVisibility::Public, NoIntrinsic));
+    RETURN_IF_EXCEPTION(scope, {});
+    JSObject* resourceLimits = isNodeWorker ? createResourceLimitsObject(globalObject, proxy->options().resourceLimits.resolved()) : constructEmptyObject(globalObject);
+    RETURN_IF_EXCEPTION(scope, {});
+    array->putDirectIndex(globalObject, 19, resourceLimits);
     RETURN_IF_EXCEPTION(scope, {});
     return array;
 }

@@ -2,7 +2,7 @@ import "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import fs from "fs";
 import { bunEnv, bunExe, isWindows, normalizeBunSnapshot, ospath, tempDir } from "harness";
-import Module, { _nodeModulePaths, builtinModules, createRequire, isBuiltin, wrap } from "module";
+import Module, { _nodeModulePaths, builtinModules, createRequire, isBuiltin, stripTypeScriptTypes, wrap } from "module";
 import path from "path";
 import { Worker } from "worker_threads";
 
@@ -1781,7 +1781,7 @@ console.log("survived", require("./late.js"));`,
       expect(stderr).toMatchInlineSnapshot(`
         "1 | require("module").runMain = () => {
         2 |   throw new RangeError("from the override");
-                        ^
+                    ^
         RangeError: from the override
             at <anonymous> (file:NN:NN)
 
@@ -1926,4 +1926,287 @@ test("registerHooks resolves, loads, chains, and deregisters synchronous hooks",
   expect(stdout.trim()).toBe("hooks passed");
   expect(stderr).toBe("");
   expect(exitCode).toBe(0);
+});
+
+describe("stripTypeScriptTypes", () => {
+  test("exports the same function through both module entry points", () => {
+    expect(stripTypeScriptTypes).toBe(Module.stripTypeScriptTypes);
+    expect(stripTypeScriptTypes).toBe(require("node:module").stripTypeScriptTypes);
+    expect(stripTypeScriptTypes.name).toBe("stripTypeScriptTypes");
+    expect(stripTypeScriptTypes.length).toBe(1);
+  });
+
+  test("preserves JavaScript exports and erases only TypeScript exports", () => {
+    expect(stripTypeScriptTypes("export const old = 1;")).toBe("export const old = 1;");
+    expect(stripTypeScriptTypes("export const old: number = 1;")).toBe("export const old         = 1;");
+    expect(stripTypeScriptTypes("export type T = string; export const value: number = 1;")).toBe(
+      "                        export const value         = 1;",
+    );
+  });
+
+  test("normalizes lone surrogates before stripping", () => {
+    expect(stripTypeScriptTypes('const x: string = "\ud800";')).toBe('const x         = "\ufffd";');
+  });
+  test("strips types in place, preserving positions", () => {
+    expect(stripTypeScriptTypes("const x: number = 1;")).toBe("const x         = 1;");
+    expect(stripTypeScriptTypes("let x: string = 1 as any;")).toBe("let x         = 1       ;");
+    expect(stripTypeScriptTypes("let x: Ту = 1;")).toBe("let x  \u00a0\u00a0 = 1;");
+  });
+
+  test("mode: 'strip' explicit", () => {
+    expect(stripTypeScriptTypes("const x: number = 1;", { mode: "strip" })).toBe("const x         = 1;");
+  });
+
+  test("erased statements", () => {
+    expect(stripTypeScriptTypes("interface A { x: string }\nlet y = 1;")).toBe("                         \nlet y = 1;");
+    expect(stripTypeScriptTypes("type A = string;\nlet y = 1;")).toBe("                \nlet y = 1;");
+    expect(stripTypeScriptTypes("declare function f(): void;\nlet y = 1;")).toBe(
+      "                           \nlet y = 1;",
+    );
+    expect(stripTypeScriptTypes("export type { A };")).toBe("                  ");
+    expect(stripTypeScriptTypes("declare enum E { A }")).toBe("                    ");
+    expect(stripTypeScriptTypes("declare namespace N { const x: number }")).toBe(
+      "                                       ",
+    );
+    expect(stripTypeScriptTypes('declare module "m" { const x: number }')).toBe(
+      "                                      ",
+    );
+    expect(stripTypeScriptTypes("function f(): void;\nfunction f() {}")).toBe("                   \nfunction f() {}");
+  });
+
+  test("strips declaration-heavy generated source", () => {
+    const declarations = Array.from({ length: 50_000 }, (_, i) => `type T${i} = number;`).join("\n");
+    expect(stripTypeScriptTypes(declarations)).toBe(declarations.replace(/[^\n]/g, " "));
+  });
+
+  test("import/export type specifiers", () => {
+    expect(stripTypeScriptTypes('import type { A } from "x";\nlet y = 1;')).toBe(
+      "                           \nlet y = 1;",
+    );
+    expect(stripTypeScriptTypes('import { type A, B } from "x";')).toBe('import {         B } from "x";');
+    // A specifier list that erases to nothing keeps the side-effect import.
+    expect(stripTypeScriptTypes('import { type A } from "x";')).toBe('import {        } from "x";');
+    expect(stripTypeScriptTypes("export { type A, B };")).toBe("export {         B };");
+    expect(stripTypeScriptTypes("export { type A };")).toBe("export {        };");
+    // `type` used as a real import name is kept.
+    expect(stripTypeScriptTypes('import { type as xxx } from "m";')).toBe('import { type as xxx } from "m";');
+  });
+
+  test("functions and classes", () => {
+    expect(stripTypeScriptTypes("function f<T>(a: T, b?: number): T { return a; }")).toBe(
+      "function f   (a   , b         )    { return a; }",
+    );
+    expect(stripTypeScriptTypes("function f(this: void, a: number) {}")).toBe("function f(            a        ) {}");
+    expect(stripTypeScriptTypes("class C<T> extends B<T> {}")).toBe("class C    extends B    {}");
+    expect(stripTypeScriptTypes("class C extends B implements I, J {}")).toBe("class C extends B                 {}");
+    expect(stripTypeScriptTypes("abstract class C { abstract foo(): void }")).toBe(
+      "         class C {                      }",
+    );
+    expect(stripTypeScriptTypes("class C { declare x: number }")).toBe("class C {                   }");
+    expect(stripTypeScriptTypes("class C { private readonly x: number = 1 }")).toBe(
+      "class C {                  x         = 1 }",
+    );
+    expect(stripTypeScriptTypes("class C { x!: number }")).toBe("class C { x          }");
+    expect(stripTypeScriptTypes("class C { m?(): void {} }")).toBe("class C { m ()       {} }");
+    expect(stripTypeScriptTypes("class C { [k: string]: any }")).toBe("class C {                  }");
+    // A modifier keyword used as a member name is not a modifier.
+    expect(stripTypeScriptTypes("class C { public public() {} }")).toBe("class C {        public() {} }");
+  });
+
+  test("expressions", () => {
+    expect(stripTypeScriptTypes("let a = x!;")).toBe("let a = x ;");
+    expect(stripTypeScriptTypes("f<number>(1);")).toBe("f        (1);");
+    expect(stripTypeScriptTypes("new C<number>();")).toBe("new C        ();");
+    expect(stripTypeScriptTypes("let v = f<T>;")).toBe("let v = f   ;");
+    expect(stripTypeScriptTypes("let x = a satisfies number;")).toBe("let x = a                 ;");
+    expect(stripTypeScriptTypes("x as const;")).toBe("x         ;");
+    expect(stripTypeScriptTypes("let x = `a${1 as number}b`;")).toBe("let x = `a${1          }b`;");
+  });
+
+  test("preserves parenthesized calls with TypeScript suffixes", () => {
+    expect(stripTypeScriptTypes("(f)!<number>(1);")).toBe("(f)         (1);");
+    expect(stripTypeScriptTypes("(f)<<T>() => T>(g);")).toBe("(f)            (g);");
+    expect(stripTypeScriptTypes("(f!)<Array<number>>(1);")).toBe("(f )               (1);");
+  });
+
+  test("ASI protection", () => {
+    // Removing an erased span must not fuse the next line onto the previous
+    // statement; amaro writes a `;` into the blank.
+    expect(stripTypeScriptTypes("let a = b as any\n(c);")).toBe("let a = b ;     \n(c);");
+    expect(stripTypeScriptTypes("let a = b as any\n[c];")).toBe("let a = b ;     \n[c];");
+    expect(stripTypeScriptTypes("let a = b as any\nc;")).toBe("let a = b       \nc;");
+    expect(stripTypeScriptTypes("let x = 1\ntype A = string\n(f)()")).toBe("let x = 1\n;              \n(f)()");
+    expect(stripTypeScriptTypes("let x = 1\ntype A = string\nlet y = 2")).toBe("let x = 1\n               \nlet y = 2");
+    expect(stripTypeScriptTypes("type A=1;type B=2;let c=3;")).toBe("                  let c=3;");
+  });
+
+  test("preserves a regex statement beginning with /=", () => {
+    const output = stripTypeScriptTypes('let x = 1\ntype T = number\n/=/.test("=");');
+    expect(output).toBe('let x = 1\n;              \n/=/.test("=");');
+    expect(Function(`${output}\nreturn x;`)()).toBe(1);
+  });
+
+  test("generic arrows", () => {
+    expect(stripTypeScriptTypes("const f = (x?: number) => x;")).toBe("const f = (x         ) => x;");
+    expect(stripTypeScriptTypes("const f = (x?) => x;")).toBe("const f = (x ) => x;");
+    expect(stripTypeScriptTypes("let f = <T>(v: T) => v;")).toBe("let f =    (v   ) => v;");
+    expect(stripTypeScriptTypes("const x = async <\nT\n>(value);")).toBe("const x = async  \n \n (value);");
+    expect(() => stripTypeScriptTypes("const x = <T>(value);")).toThrow(
+      expect.objectContaining({ code: "ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX" }),
+    );
+    expect(() => stripTypeScriptTypes("const x = <T>(() => 1);")).toThrow(
+      expect.objectContaining({ code: "ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX" }),
+    );
+    expect(stripTypeScriptTypes("let f = async <T>(v: T) => v;")).toBe("let f = async    (v   ) => v;");
+    // Newline inside async generics: `<` is rewritten to `(`.
+    expect(stripTypeScriptTypes("let f = async <\nT\n>(v: T) => v;")).toBe("let f = async (\n \n  v   ) => v;");
+    expect(stripTypeScriptTypes("function g() { return <T>\n(v: T) => v; }")).toBe(
+      "function g() { return (  \n v   ) => v; }",
+    );
+    expect(stripTypeScriptTypes("function f() { return <\nT\n>(x: T) => x; }")).toBe(
+      "function f() { return (\n \n  x   ) => x; }",
+    );
+    // Node 24 preserves this newline even though the resulting JavaScript is invalid.
+    expect(stripTypeScriptTypes("const f = async <T>\n(x: T) => x;")).toBe("const f = async    \n(x   ) => x;");
+    // Return type spanning a newline: `)` is moved down to stay on the `=>` line.
+    expect(stripTypeScriptTypes("let f = ()\n: any =>\n    1;")).toBe("let f = ( \n    ) =>\n    1;");
+  });
+
+  test("keeps an empty statement for erased control-flow bodies", () => {
+    expect(stripTypeScriptTypes("if (x) type T = number;\nf();")).toBe("if (x) ;               \nf();");
+    expect(stripTypeScriptTypes("if (x) type T = number; else f();")).toBe("if (x) ;                else f();");
+    expect(stripTypeScriptTypes("while(x) interface T {}\nf();")).toBe("while(x) ;             \nf();");
+    expect(stripTypeScriptTypes("for(;;) type T = number;\nf();")).toBe("for(;;) ;               \nf();");
+    expect(stripTypeScriptTypes("do type T=number; while(x);")).toBe("do ;              while(x);");
+    expect(stripTypeScriptTypes("label: type T = number;\nf();")).toBe("label:                 \nf();");
+    expect(stripTypeScriptTypes("if (x) { type T = number; }\nf();")).toBe("if (x) {                  }\nf();");
+  });
+
+  test("erases decorators with declared class fields", () => {
+    expect(stripTypeScriptTypes("abstract class C { @dec abstract x: number }")).toBe(
+      "         class C {                         }",
+    );
+    expect(stripTypeScriptTypes("abstract class C { @dec(()\n: any => 0) abstract x: number }")).toBe(
+      "         class C {        \n                               }",
+    );
+    expect(stripTypeScriptTypes("class C { @dec declare x: number }")).toBe("class C {                        }");
+    expect(stripTypeScriptTypes("class C { @dec declare x: number\n y=1 }")).toBe(
+      "class C {                       \n y=1 }",
+    );
+    expect(stripTypeScriptTypes("class C { @dec(()\n: any => 0) declare x: number }")).toBe(
+      "class C {        \n                              }",
+    );
+    expect(stripTypeScriptTypes("declare namespace N { let x = a as any\n(b); }")).toBe(
+      "                                      \n      ",
+    );
+  });
+
+  test("comments and hashbang survive", () => {
+    expect(stripTypeScriptTypes("let x: number /*keep*/ = 1;")).toBe("let x         /*keep*/ = 1;");
+    expect(stripTypeScriptTypes("let x: /*in*/ number = 1;")).toBe("let x                = 1;");
+    expect(stripTypeScriptTypes("#!/usr/bin/env node\nlet x: number = 1;")).toBe(
+      "#!/usr/bin/env node\nlet x         = 1;",
+    );
+  });
+
+  test("sourceUrl appends a sourceURL comment", () => {
+    expect(stripTypeScriptTypes("const x: number = 1;", { mode: "strip", sourceUrl: "foo.ts" })).toBe(
+      "const x         = 1;\n\n//# sourceURL=foo.ts",
+    );
+    expect(stripTypeScriptTypes("", { sourceUrl: "foo.ts" })).toBe("\n\n//# sourceURL=foo.ts");
+  });
+
+  test("argument validation", () => {
+    expect(() => stripTypeScriptTypes({})).toThrow(expect.objectContaining({ code: "ERR_INVALID_ARG_TYPE" }));
+    expect(() => stripTypeScriptTypes("const x: number = 1;", { mode: "invalid" })).toThrow(
+      expect.objectContaining({ code: "ERR_INVALID_ARG_VALUE" }),
+    );
+    // This API currently implements strip mode only.
+    expect(() => stripTypeScriptTypes("const x: number = 1;", { mode: "transform" })).toThrow(
+      expect.objectContaining({ code: "ERR_INVALID_ARG_VALUE" }),
+    );
+    expect(() => stripTypeScriptTypes("const x: number = 1;", { mode: "strip", sourceMap: true })).toThrow(
+      expect.objectContaining({ code: "ERR_INVALID_ARG_VALUE" }),
+    );
+    expect(() => stripTypeScriptTypes("x", { sourceUrl: 1 })).toThrow(
+      expect.objectContaining({ code: "ERR_INVALID_ARG_TYPE" }),
+    );
+    // sourceMap: undefined is explicitly allowed.
+    expect(stripTypeScriptTypes("let x: number;", { sourceMap: undefined })).toBe("let x        ;");
+  });
+
+  test("unsupported syntax throws ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX", () => {
+    const cases = [
+      ["enum E { A }", "TypeScript enum is not supported in strip-only mode"],
+      ["const enum E { A }", "TypeScript enum is not supported in strip-only mode"],
+      ["namespace N { export const x = 1 }", "TypeScript namespace declaration is not supported in strip-only mode"],
+      ["module N { }", "`module` keyword is not supported. Use `namespace` instead."],
+      ['import x = require("x");', "TypeScript import equals declaration is not supported in strip-only mode"],
+      ["export = 1;", "TypeScript export assignment is not supported in strip-only mode"],
+      [
+        "class C { constructor(private a: number) {} }",
+        "TypeScript parameter property is not supported in strip-only mode",
+      ],
+      ["class C { constructor(readonly a) {} }", "TypeScript parameter property is not supported in strip-only mode"],
+      [
+        "let b = <string>y;",
+        "The angle-bracket syntax for type assertions, `<T>expr`, is not supported in type strip mode. Instead, use the 'as' syntax: `expr as T`.",
+      ],
+    ];
+    for (const [code, message] of cases) {
+      expect(() => stripTypeScriptTypes(code)).toThrow(
+        expect.objectContaining({
+          code: "ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX",
+          name: "SyntaxError",
+          message,
+        }),
+      );
+    }
+    // Ambient contexts suppress the error (the whole construct is erased).
+    expect(stripTypeScriptTypes("declare namespace O { enum E {} }")).toBe("                                 ");
+    // Type stripping preserves the source expression grouping.
+    expect(() => stripTypeScriptTypes("let x = 1 + 2 as any * 3;")).toThrow(
+      expect.objectContaining({ code: "ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX" }),
+    );
+    expect(() => stripTypeScriptTypes("let x = 1 + 2 as const * 3;")).toThrow(
+      expect.objectContaining({ code: "ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX" }),
+    );
+    expect(() => stripTypeScriptTypes("let x = 1 + 2 satisfies any * 3;")).toThrow(
+      expect.objectContaining({ code: "ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX" }),
+    );
+    expect(() => stripTypeScriptTypes("let x = 1 + 2 as A as B * 3;")).toThrow(
+      expect.objectContaining({ code: "ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX" }),
+    );
+    expect(stripTypeScriptTypes("let x = 1 + 2 as any + 3;")).toBe("let x = 1 + 2        + 3;");
+    expect(stripTypeScriptTypes("let x = (1 + 2) as any * 3;")).toBe("let x = (1 + 2)        * 3;");
+  });
+
+  test("invalid syntax throws ERR_INVALID_TYPESCRIPT_SYNTAX", () => {
+    expect(() => stripTypeScriptTypes("let x: = 1;")).toThrow(
+      expect.objectContaining({ code: "ERR_INVALID_TYPESCRIPT_SYNTAX", name: "SyntaxError" }),
+    );
+    expect(() => stripTypeScriptTypes("let x?: number;")).toThrow(
+      expect.objectContaining({ code: "ERR_INVALID_TYPESCRIPT_SYNTAX" }),
+    );
+  });
+
+  test("emits ExperimentalWarning once", async () => {
+    await using proc = Bun.spawn({
+      cmd: [
+        bunExe(),
+        "-e",
+        `const { stripTypeScriptTypes } = require('node:module');
+         stripTypeScriptTypes('let a: number = 1;');
+         stripTypeScriptTypes('let b: number = 2;');`,
+      ],
+      env: bunEnv,
+      stderr: "pipe",
+    });
+    const [stderr, exitCode] = await Promise.all([proc.stderr.text(), proc.exited]);
+    const warnings = stderr
+      .split("\n")
+      .filter(l => l.includes("stripTypeScriptTypes is an experimental feature and might change at any time"));
+    expect(warnings).toHaveLength(1);
+    expect(exitCode).toBe(0);
+  });
 });
