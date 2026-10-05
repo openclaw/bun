@@ -9,6 +9,7 @@ import {
   realpathSync,
   rmSync,
   statSync,
+  symlinkSync,
   unlinkSync,
   writeFileSync,
 } from "fs";
@@ -84,6 +85,32 @@ describe("transpiler cache", () => {
     expect(newCacheCount()).toBe(1);
     expect(await bunRun(join(temp_dir, "a.js"), env)).toSpawn("");
     expect(newCacheCount()).toBe(0);
+  });
+  test("concurrent imports populate a reusable cache through symlinked paths", async () => {
+    const files: Record<string, string> = {
+      "main.mjs": `
+        const modules = await Promise.all(Array.from({ length: 64 }, (_, i) => import('./modules/' + i + '.mjs')));
+        const alias = await import('./alias/0.mjs');
+        console.log(JSON.stringify({ sum: modules.reduce((sum, m) => sum + m.value, 0), same: alias === modules[0] }));
+      `,
+    };
+    const padding = Buffer.alloc(8 * 1024, "x").toString();
+    for (let i = 0; i < 64; i++) {
+      files[`modules/${i}.mjs`] = `export const value = ${i}; export const padding = ${JSON.stringify(padding)};`;
+    }
+    using dir = tempDir("transpiler-cache-concurrent", files);
+    symlinkSync(join(String(dir), "modules"), join(String(dir), "alias"), isWindows ? "junction" : "dir");
+    const cache = join(String(dir), ".cache");
+    const run = () => bunRun(join(String(dir), "main.mjs"), { ...env, BUN_RUNTIME_TRANSPILER_CACHE_PATH: cache });
+    const expected = JSON.stringify({ sum: 2016, same: true });
+    expect(await run()).toSpawn(expected);
+    const entries = readdirSync(cache).sort();
+    expect(entries).toHaveLength(64);
+    const snapshots = () => entries.map(file => statSync(join(cache, file), { bigint: true }).mtimeNs);
+    const initial = snapshots();
+    expect(await run()).toSpawn(expected);
+    expect(readdirSync(cache).sort()).toEqual(entries);
+    expect(snapshots()).toEqual(initial);
   });
   test("ignores files under the minimum cache size", async () => {
     // MINIMUM_CACHE_SIZE is 4 KiB (src/jsc/RuntimeTranspilerCache.rs); files
@@ -168,10 +195,15 @@ describe("transpiler cache", () => {
       const run = (target: string) => bunRun([join(String(dir), "main.js"), target], childEnv);
 
       expect(await run("a")).toSpawn(JSON.stringify({ value: "A", seen: true }));
+      const entries = readdirSync(cache);
+      expect(entries).toHaveLength(1);
+      const filename = join(cache, entries[0]);
+      const original = readFileSync(filename);
       expect(await run("b")).toSpawn(JSON.stringify({ value: "B", seen: true }));
       unlinkSync(join(String(dir), "a.js"));
       expect(await run("b")).toSpawn(JSON.stringify({ value: "B", seen: true }));
-      expect(existsSync(cache) ? readdirSync(cache) : []).toEqual([]);
+      expect(readdirSync(cache)).toEqual(entries);
+      expect(readFileSync(filename).equals(original)).toBeTrue();
     });
 
     test("resolves identical source in a new module generation", async () => {
@@ -236,7 +268,7 @@ describe("transpiler cache", () => {
       expect(readFileSync(filename).equals(original)).toBeTrue();
     });
 
-    test("does not cache an accepted onResolve answer that leaves the path unchanged", async () => {
+    test("a cached import still calls onResolve when its accepted answer leaves the path unchanged", async () => {
       using dir = tempDir("transpiler-cache-identity", {
         "dependency.mjs": 'export default "A";',
         "main.mjs": `
@@ -260,10 +292,16 @@ describe("transpiler cache", () => {
         `export { default } from ${JSON.stringify(join(String(dir), "dependency.mjs"))};${filler}`,
       );
       const cache = join(String(dir), ".cache");
-      expect(await bunRun(join(String(dir), "main.mjs"), { ...env, BUN_RUNTIME_TRANSPILER_CACHE_PATH: cache })).toSpawn(
-        JSON.stringify({ value: "A", seen: true }),
-      );
-      expect(existsSync(cache) ? readdirSync(cache) : []).toEqual([]);
+      const run = () => bunRun(join(String(dir), "main.mjs"), { ...env, BUN_RUNTIME_TRANSPILER_CACHE_PATH: cache });
+      const expected = JSON.stringify({ value: "A", seen: true });
+      expect(await run()).toSpawn(expected);
+      const entries = readdirSync(cache);
+      expect(entries).toHaveLength(1);
+      const filename = join(cache, entries[0]);
+      const original = readFileSync(filename);
+      expect(await run()).toSpawn(expected);
+      expect(readdirSync(cache)).toEqual(entries);
+      expect(readFileSync(filename).equals(original)).toBeTrue();
     });
   });
 

@@ -177,3 +177,5 @@
 - Preserve importing AsyncLocalStorage contexts across module-loader hooks, static and dynamic dependencies, top-level await, shared imports, and errors with the pinned OpenClaw WebKit; add Node-comparable loader regressions. Related to [oven-sh/bun#37933](https://github.com/oven-sh/bun/pull/37933). Thanks @robobun!
 
 - Fix Intl.Segments.containing() at both halves of surrogate pairs with the pinned OpenClaw WebKit; cover grapheme, word, and sentence boundaries in both lookup directions. Ports [oven-sh/WebKit#753](https://github.com/oven-sh/WebKit/pull/753). Thanks @robobun!
+
+- Reduce kernel CPU during cold module imports on macOS by serializing transpiler-cache writes while preserving parallel parsing and cache reads.

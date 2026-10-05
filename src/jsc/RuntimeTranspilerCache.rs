@@ -813,6 +813,12 @@ impl RuntimeTranspilerCache {
             return Ok(());
         }
 
+        // Concurrent file creation and renames contend inside APFS, even across directories.
+        #[cfg(target_os = "macos")]
+        static WRITE_LOCK: bun_threading::Mutex = bun_threading::Mutex::new();
+        #[cfg(target_os = "macos")]
+        let _write_guard = WRITE_LOCK.lock_guard();
+
         let cache_dir_fd: Fd = 'brk: {
             let dirname = path_handler::dirname::<platform::Auto>(cache_file_path.as_bytes());
             if !dirname.is_empty() {
