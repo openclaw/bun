@@ -12,15 +12,11 @@ use bun_jsc::{self as jsc, CallFrame, JSGlobalObject, JSValue, JsResult, StringJ
 fn line_and_snippet(source: &[u8], lo: u32, hi: u32) -> (u32, Vec<u8>) {
     let lo = (lo as usize).min(source.len());
     let hi = (hi as usize).min(source.len()).max(lo);
-    let line_start = source[..lo]
-        .iter()
-        .rposition(|&b| b == b'\n')
-        .map_or(0, |i| i + 1);
-    let line_end = source[lo..]
-        .iter()
-        .position(|&b| b == b'\n')
+    let line_start =
+        bun_core::strings::last_index_of_char(&source[..lo], b'\n').map_or(0, |i| i + 1);
+    let line_end = bun_core::strings::index_of_char_usize(&source[lo..], b'\n')
         .map_or(source.len(), |i| lo + i);
-    let line_no = 1 + source[..lo].iter().filter(|&&b| b == b'\n').count() as u32;
+    let line_no = 1 + bun_core::strings::count_char(&source[..lo], b'\n') as u32;
 
     // `<line>\n<caret marks under the offending span>` like amaro's
     // diagnostic snippet (clamped to the first line of the construct).

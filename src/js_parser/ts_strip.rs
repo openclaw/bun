@@ -245,13 +245,12 @@ impl Strip<'_> {
 
 fn span_has_newline(src: &[u8], lo: u32, hi: u32) -> bool {
     let bytes = &src[lo as usize..hi as usize];
-    if bytes.iter().any(|&b| b == b'\n' || b == b'\r') {
+    if bun_core::strings::index_of_any(bytes, b"\n\r").is_some() {
         return true;
     }
     // U+2028/U+2029 line separators (E2 80 A8 / E2 80 A9).
-    bytes
-        .windows(3)
-        .any(|w| w[0] == 0xe2 && w[1] == 0x80 && (w[2] == 0xa8 || w[2] == 0xa9))
+    bun_core::strings::index_of(bytes, b"\xe2\x80\xa8").is_some()
+        || bun_core::strings::index_of(bytes, b"\xe2\x80\xa9").is_some()
 }
 
 fn outer_spans(mut spans: Vec<(u32, u32)>) -> Vec<(u32, u32)> {
