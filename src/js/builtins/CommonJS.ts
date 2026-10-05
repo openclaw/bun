@@ -11,8 +11,10 @@ export function main() {
 }
 
 // This function is bound when constructing instances of CommonJSModule
+// Keep its implementation name distinct from static builtin require() imports.
 $visibility = "Private";
-export function require(this: JSCommonJSModule, _: string) {
+$overriddenName = "require";
+export function requireFunction(this: JSCommonJSModule, _: string) {
   // Do not use $tailCallForwardArguments here, it causes https://github.com/oven-sh/bun/issues/9225
   return $overridableRequire.$apply(this, arguments);
 }
