@@ -4,7 +4,7 @@
 // build works.
 import { expect, test } from "bun:test";
 import { tempDir } from "harness";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { generateImage, imageKey, images } from "../../../scripts/build/ci-images/spec.ts";
 import { computeBunTriplet } from "../../../scripts/build/ci.ts";
@@ -16,6 +16,7 @@ import {
   matrix,
   parseTag,
   parseWebkitVersion,
+  planTargets,
   provisionScript,
   releaseNotes,
   releaseTargets,
@@ -74,7 +75,8 @@ test("the zips carry upstream's artifact names", () => {
     const cfg = { os: t.os, arch: t.buildArch, abi: t.os === "linux" ? t.abi : undefined } as Config;
     expect(t.triplet).toBe(computeBunTriplet(cfg));
   }
-  expect(releaseTargets).toEqual([
+  expect(releaseTargets()).toEqual(["darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64"]);
+  expect(releaseTargets(true)).toEqual([
     "darwin-arm64",
     "darwin-x64",
     "linux-x64",
@@ -111,11 +113,63 @@ test("the zips carry upstream's artifact names", () => {
   ]);
 });
 
+test("publication requires exactly the enabled platform coverage while dry-run Windows stays test-only", () => {
+  expect(planTargets("", true)).toEqual(releaseTargets());
+  expect(planTargets("", true, true)).toEqual(releaseTargets(true));
+  for (const windowsSigned of [false, true]) {
+    const required = releaseTargets(windowsSigned);
+    expect(planTargets(required.join(","), true, windowsSigned)).toEqual(required);
+    for (const missing of required) {
+      expect(() => planTargets(required.filter(name => name !== missing).join(","), true, windowsSigned)).toThrow(
+        "a published release has every release target",
+      );
+    }
+    expect(planTargets("", false, windowsSigned)).toEqual(releaseTargets(true));
+    const windows = planTargets("windows-x64,windows-arm64", false, windowsSigned);
+    expect(windows).toEqual(["windows-x64", "windows-arm64"]);
+    expect(matrix(windows).map(t => t.artifact)).toEqual(["test-only-windows", "test-only-windows"]);
+  }
+  for (const name of ["windows-x64", "windows-arm64"]) {
+    expect(() => planTargets([...releaseTargets(), name].join(","), true)).toThrow(
+      "Windows publication requires --windows-signed",
+    );
+  }
+});
+
+test("a default published manifest needs all four Darwin/Linux targets and rejects any Windows archive", () => {
+  using dir = tempDir("openclaw-unix-manifest", {});
+  const dist = String(dir);
+  const file = join(dist, "bun");
+  writeFileSync(file, "executable");
+  for (const name of releaseTargets()) {
+    const t = targets[name];
+    zip(join(dist, `${t.triplet}.zip`), t.triplet, [file], 1790353014);
+  }
+  const input = { tag: tagFor(facts), repository: "openclaw/bun", facts, dist, signing: {}, publish: true };
+  expect(manifest(input).assets.map(a => a.target)).toEqual(releaseTargets());
+  expect(() => manifest({ ...input, windowsSigned: true })).toThrow("a published release has every release target");
+  for (const name of releaseTargets()) {
+    const archive = join(dist, `${targets[name].triplet}.zip`);
+    const bytes = readFileSync(archive);
+    rmSync(archive);
+    expect(() => manifest(input)).toThrow("a published release has every release target");
+    writeFileSync(archive, bytes);
+  }
+  for (const triplet of ["bun-windows-x64", "bun-windows-aarch64"]) {
+    for (const suffix of [".zip", "-profile.zip"]) {
+      const archive = join(dist, `${triplet}${suffix}`);
+      writeFileSync(archive, "must be rejected before reading unsigned bytes");
+      expect(() => manifest(input)).toThrow("Windows publication requires --windows-signed");
+      rmSync(archive);
+    }
+  }
+});
+
 test("Windows manifest binds signature receipts to final archive and executable bytes", () => {
   using dir = tempDir("openclaw-windows-manifest", {});
   const dist = String(dir);
   const records: Record<string, WindowsSigning> = {};
-  for (const name of releaseTargets) {
+  for (const name of releaseTargets(true)) {
     const t = targets[name];
     const file = join(dist, t.exe);
     writeFileSync(file, `${name} executable`);
@@ -133,7 +187,7 @@ test("Windows manifest binds signature receipts to final archive and executable 
       profileArchiveSha256: sha256File(join(dist, `${t.triplet}-profile.zip`)),
     };
   }
-  const input = { tag: tagFor(facts), repository: "openclaw/bun", facts, dist, signing: {} };
+  const input = { tag: tagFor(facts), repository: "openclaw/bun", facts, dist, signing: {}, windowsSigned: true };
   const unsigned = manifest(input).assets.filter(a => a.os === "windows");
   expect(unsigned.map(a => [a.executable.authenticodeSigned, a.executable.testOnly])).toEqual([
     [false, true],
@@ -141,6 +195,9 @@ test("Windows manifest binds signature receipts to final archive and executable 
   ]);
   expect(() => manifest({ ...input, publish: true })).toThrow("release requires Authenticode");
   const signed = manifest({ ...input, windowsSigning: records, publish: true });
+  expect(() => manifest({ ...input, windowsSigning: records, publish: true, windowsSigned: false })).toThrow(
+    "Windows publication requires --windows-signed",
+  );
   expect(
     signed.assets
       .filter(a => a.os === "windows")
@@ -160,6 +217,22 @@ test("Windows manifest binds signature receipts to final archive and executable 
       publish: true,
     }),
   ).toThrow("unexpected Authenticode signer");
+  for (const name of ["windows-x64", "windows-arm64"] as const) {
+    const archive = join(dist, `${targets[name].triplet}.zip`);
+    const bytes = readFileSync(archive);
+    rmSync(archive);
+    expect(() => manifest({ ...input, windowsSigning: records, publish: true })).toThrow(
+      "a published release has every release target",
+    );
+    writeFileSync(archive, bytes);
+    expect(() =>
+      manifest({
+        ...input,
+        windowsSigning: { ...records, [name]: { ...records[name]!, authenticodeSigned: false } },
+        publish: true,
+      }),
+    ).toThrow("release requires Authenticode signing");
+  }
 });
 
 test("the upstream build image still has every section the pipeline provisions", () => {
