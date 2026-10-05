@@ -1,4 +1,4 @@
-name: OpenClaw transferred PR Windows qualification
+name: OpenClaw module PR Windows qualification
 
 on:
   workflow_dispatch:
@@ -7,16 +7,23 @@ on:
         description: "Exact PR runtime source SHA"
         required: true
         type: string
-      test_commit:
-        description: "Optional reviewed PR123 test-only source SHA; empty uses runtime source tests"
-        type: string
-        default: ""
+      pr_number:
+        description: "Module regression selection, in addition to every Windows compatibility test"
+        required: true
+        type: choice
+        options: ["116", "119", "120", "126", "127"]
+      targets:
+        description: "Native Windows architectures to qualify"
+        required: true
+        type: choice
+        default: windows-x64
+        options: ["windows-x64", "windows-x64,windows-arm64"]
 
 permissions:
   contents: read
 
 concurrency:
-  group: w173-transferred-windows-${{ inputs.source_commit }}
+  group: module-pr-windows-${{ inputs.source_commit }}
   cancel-in-progress: false
 
 env:
@@ -42,10 +49,12 @@ jobs:
       - name: Validate exact source inputs
         env:
           SOURCE_COMMIT: ${{ inputs.source_commit }}
-          TEST_COMMIT: ${{ inputs.test_commit }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          TARGETS: ${{ inputs.targets }}
         run: |
           [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
-          [[ -z "$TEST_COMMIT" || "$TEST_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          case "$PR_NUMBER" in 116|119|120|126|127) ;; *) exit 1 ;; esac
+          case "$TARGETS" in windows-x64|windows-x64,windows-arm64) ;; *) exit 1 ;; esac
       - name: Checkout pipeline
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -70,7 +79,7 @@ jobs:
       - name: Plan
         id: plan
         env:
-          TARGETS: windows-x64
+          TARGETS: ${{ inputs.targets }}
         run: |
           args=(--source source --main origin/main)
           [ -n "$RELEASE_TAG" ] && args+=(--tag "$RELEASE_TAG")
@@ -265,43 +274,13 @@ jobs:
         with:
           name: ${{ matrix.artifact }}
           path: dist
-      - name: Checkout optional reviewed test source
-        if: inputs.test_commit != ''
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          path: test-source
-          ref: ${{ inputs.test_commit }}
-          persist-credentials: false
-          sparse-checkout: |
-            test/js/node/process/process.test.js
-            test/js/node/tls/node-tls-client-wrap-fixture.mjs
-            test/js/node/tls/node-tls-connect.test.ts
-          sparse-checkout-cone-mode: false
-      - name: Record exact runtime and test source provenance
-        working-directory: source
-        shell: pwsh
-        env:
-          SOURCE_COMMIT: ${{ inputs.source_commit }}
-          TEST_COMMIT: ${{ inputs.test_commit }}
-        run: |
-          $source = git rev-parse HEAD
-          if ($LASTEXITCODE -ne 0 -or $source -cne $env:SOURCE_COMMIT) { throw 'Runtime source mismatch.' }
-          $files = @('test/js/node/process/process.test.js', 'test/js/node/tls/node-tls-client-wrap-fixture.mjs', 'test/js/node/tls/node-tls-connect.test.ts')
-          if ($env:TEST_COMMIT) {
-            $testSource = git -C ../test-source rev-parse HEAD
-            if ($LASTEXITCODE -ne 0 -or $testSource -cne $env:TEST_COMMIT) { throw 'Test source mismatch.' }
-            foreach ($file in $files) { Copy-Item -LiteralPath "../test-source/$file" -Destination $file }
-          }
-          New-Item -ItemType Directory -Force build/openclaw-ci | Out-Null
-          $hashes = @{}
-          foreach ($file in $files) { $hashes[$file] = (Get-FileHash -Algorithm SHA256 $file).Hash.ToLowerInvariant() }
-          @{ runtimeCommit = $source; testCommit = $env:TEST_COMMIT; testFiles = $hashes } | ConvertTo-Json -Depth 8 | Set-Content build/openclaw-ci/source-provenance.json
       - name: Run shared Windows compatibility selection
         working-directory: source
         shell: pwsh
         env:
           TRIPLET: ${{ matrix.triplet }}
           EXPECTED_ARCH: ${{ matrix.target == 'windows-arm64' && 'arm64' || 'x64' }}
+          PR_NUMBER: ${{ inputs.pr_number }}
         run: |
           Expand-Archive -LiteralPath "../dist/$env:TRIPLET.zip" -DestinationPath ../runtime
           $exe = (Resolve-Path "../runtime/$env:TRIPLET/bun.exe").Path
@@ -312,12 +291,36 @@ jobs:
           $env:PATH = "$(Split-Path $exe);$env:PATH"
           & $exe ../pipeline/scripts/openclaw-ci/tests.ts select-windows
           if ($LASTEXITCODE -ne 0) { throw 'Test selection failed.' }
+          $extra = switch ($env:PR_NUMBER) {
+            '116' { @('test/js/bun/resolve/import-meta-resolve.test.mjs', 'test/js/bun/resolve/import-meta.test.js') }
+            '119' { @('test/js/bun/resolve/resolve.test.ts') }
+            '120' { @('test/js/bun/resolve/import-query.test.ts') }
+            '126' { @('test/js/node/module/require-extensions.test.ts', 'test/napi/napi.test.ts') }
+            '127' { @('test/js/node/module/module-resolve-filename-paths.test.js') }
+            default { throw 'Unknown module PR selection.' }
+          }
+          $selected = @(@(Get-Content build/openclaw-ci/selected.json -Raw | ConvertFrom-Json) + $extra | Sort-Object -Unique)
+          $hashes = @{}
+          foreach ($file in @($selected) + @('test/harness.ts')) {
+            if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw "Missing selected source: $file" }
+            $hashes[$file] = (Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash.ToLowerInvariant()
+          }
+          $selected | ConvertTo-Json -AsArray | Set-Content build/openclaw-ci/selected.json
+          $source = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $source -cne '${{ needs.plan.outputs.commit }}') { throw 'Runtime source mismatch.' }
+          git diff --exit-code HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Source changed before qualification.' }
+          $binaryHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $exe).Hash.ToLowerInvariant()
+          @{ runtimeCommit = $source; prNumber = $env:PR_NUMBER; architecture = $arch; binarySha256 = $binaryHash; testFiles = $hashes } | ConvertTo-Json -Depth 8 | Set-Content build/openclaw-ci/source-provenance.json
           & $exe ../pipeline/scripts/openclaw-ci/tests.ts test
           $testExit = $LASTEXITCODE
           $receipt = Get-Content build/openclaw-ci/source-provenance.json -Raw | ConvertFrom-Json
           foreach ($item in $receipt.testFiles.psobject.Properties) {
             if ((Get-FileHash -Algorithm SHA256 $item.Name).Hash.ToLowerInvariant() -cne $item.Value) { throw 'Test source changed during qualification.' }
           }
+          if ((Get-FileHash -Algorithm SHA256 -LiteralPath $exe).Hash.ToLowerInvariant() -cne $receipt.binarySha256) { throw 'Runtime changed during qualification.' }
+          git diff --exit-code HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Source changed during qualification.' }
           if ($testExit -ne 0) { throw 'Windows compatibility tests failed.' }
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
