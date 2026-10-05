@@ -276,6 +276,8 @@ Admission tracking adds a small cost to smaller graphs. In a Linux replay of cap
 
 The same replay took Node 24 **39.7 ms at 2,500 modules and 63.4 ms at 4,000**. Bun's bounded cache remained 32.7% and 34.3% slower, respectively. These workload-specific measurements do not promise Node parity. Further engine work could provide a retained-size and growth contract for complete unlinked-code graphs, or explicit ownership for decoded code that borrows storage from evictable bytecode payloads. Either approach would need separate lifetime and performance validation. This cache changes neither WebKit nor application dependencies.
 
+Valid `vm.Script` cached data is accepted when JSC runs without a JIT. Validation decodes the payload; each execution links its own program through the normal runtime path.
+
 ### [`node:wasi`](https://nodejs.org/api/wasi.html)
 
 🟡 Partially implemented. `WASI` supports `args`, `env`, `preopens`, `wasiImport` and `start()`, and `bun ./program.wasm` runs a WASI command directly. Missing `getImportObject()` (use `wasiImport`), `initialize()` and the `sock_accept` import. Bun ignores the `version`, `returnOnExit`, `stdin`, `stdout` and `stderr` options, so `proc_exit` exits the Bun process.
