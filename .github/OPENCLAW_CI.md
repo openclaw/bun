@@ -84,6 +84,12 @@ test/js/node/process/process.test.js
 test/js/bun/sqlite/column-types.test.js
 ```
 
+The `vm.Script` leak regression checks live `Script` cells after collection and
+collects between allocation batches. It measures RSS growth over all 10,000 scripts
+after a separate 5,000-script cache and allocator warmup. It retains the 200 MiB release and 700 MiB ASAN limits; a deliberately
+retained-script control must fail the live-cell assertion when qualifying changes
+to this guard.
+
 ## Windows release qualification
 
 The separate [`openclaw-release.yml`](workflows/openclaw-release.yml) keeps
