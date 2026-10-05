@@ -181,6 +181,8 @@ Unreadable selected package metadata also throws `ERR_INVALID_PACKAGE_CONFIG`, r
 
 Detached `import.meta.resolve` functions retain their originating module's resolution base, including on Windows. Calling a resolver with a different receiver leaves that base unchanged. You can still pass an explicit parent as the second argument.
 
+Modules embedded by `bun build --compile` share one module record across query and fragment spellings of their path or file URL. Files loaded from the filesystem keep separate ESM identities for distinct suffixes.
+
 Async imports of CommonJS files preserve package-scope interop. A `.cjs` file inside a `"type": "module"` package keeps `module.exports` as its default export and exposes its `__esModule` property, while the file still executes as CommonJS.
 
 `registerHooks()` supports synchronous resolve/load chaining, source transformation, and deregistration. `nextResolve` honors parent URLs and custom conditions, and hooks preserve query/fragment module identities. Dynamic-import attributes, including attributes returned by resolve hooks, reach the matching load hook.
@@ -230,7 +232,7 @@ Socket close notifications use internal scheduling and continue to run when user
 
 `process.platform`, `arch`, `version`, `versions`, `pid`, and `release` expose Node-compatible data descriptors. `argv` and `execArgv` initialize lazily and support descriptor-based replacement. `ppid` and `title` retain their native behavior behind data descriptors. `exitCode` remains a non-configurable accessor.
 
-Initializing `process.stdout` or `process.stderr` does not retain a duplicate pipe writer. Explicitly closing the underlying descriptor publishes EOF while the process remains alive. On POSIX, socket and pipe stdio use nonblocking writes. `end()` and pipeline completion flush pending output and shut down the write side of socket stdio, so peers receive EOF before process exit. Actual pipes stay open until process exit or explicit descriptor closure. `destroy()` preserves fd 1/2; after POSIX socket or pipe finalization, later stream writes fail with `EPIPE`. On Windows, piped stdout/stderr reset their writable state after `end()` or pipeline completion and accept subsequent writes.
+On POSIX, initializing `process.stdout` or `process.stderr` does not retain a duplicate pipe writer. Explicitly closing the underlying descriptor publishes EOF while the process remains alive. On Windows, the initialized pipe handle retains the writer until process exit, matching Node. On POSIX, socket and pipe stdio use nonblocking writes. `end()` and pipeline completion flush pending output and shut down the write side of socket stdio, so peers receive EOF before process exit. Actual pipes stay open until process exit or explicit descriptor closure. `destroy()` preserves fd 1/2; after POSIX socket or pipe finalization, later stream writes fail with `EPIPE`. On Windows, piped stdout/stderr reset their writable state after `end()` or pipeline completion and accept subsequent writes.
 
 `NODE_OPTIONS` applies Bun-supported Node runtime flags before command-line arguments, including `--require`/`-r` and `--import` preloads. Injected flags are absent from `process.execArgv`. Unsupported Node flags remain ignored; flags outside the Node allowlist warn and are ignored. `process.config.variables.node_without_node_options` remains `true` because support is partial.
 

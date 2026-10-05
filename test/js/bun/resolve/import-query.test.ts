@@ -1046,6 +1046,57 @@ test.concurrent("a module embedded by bun build --compile loads with a ?query or
   expect(exitCode).toBe(0);
 });
 
+test.concurrent("embedded module suffixes share identity for non-ASCII names", async () => {
+  using dir = tempDir("embedded-unicode-suffix", {
+    "café-日本語.mjs": `globalThis.embeddedEvaluations = (globalThis.embeddedEvaluations ?? 0) + 1; export default "embedded";`,
+    "entry.mjs": `
+      const relative = "./café-日本語.mjs";
+      const url = new URL(relative, import.meta.url).href;
+      const modules = [];
+      for (const specifier of [url, url + "?q=1", url + "#a", url + "?q=1#a", relative + "?q=1", relative + "#a"]) {
+        modules.push(await import(specifier));
+      }
+      console.log(JSON.stringify({
+        values: modules.map(module => module.default),
+        same: modules.every(module => module === modules[0]),
+        evaluations: globalThis.embeddedEvaluations,
+      }));
+    `,
+    "elsewhere/.keep": "",
+  });
+  const exe = path.join(String(dir), isWindows ? "app.exe" : "app");
+  {
+    await using build = Bun.spawn({
+      cmd: [bunExe(), "build", "--compile", "entry.mjs", "café-日本語.mjs", "--outfile", exe],
+      env: bunEnv,
+      cwd: String(dir),
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([build.stdout.text(), build.stderr.text(), build.exited]);
+    expect({ stdout: exitCode === 0 ? "" : stdout, stderr: exitCode === 0 ? "" : stderr, exitCode }).toEqual({
+      stdout: "",
+      stderr: "",
+      exitCode: 0,
+    });
+  }
+  await using proc = Bun.spawn({
+    cmd: [exe],
+    env: bunEnv,
+    cwd: path.join(String(dir), "elsewhere"),
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect(stderr).toBe("");
+  expect(JSON.parse(stdout)).toEqual({
+    values: ["embedded", "embedded", "embedded", "embedded", "embedded", "embedded"],
+    same: true,
+    evaluations: 1,
+  });
+  expect(exitCode).toBe(0);
+});
+
 // Each suffix is its own module, evaluated in import order. import.meta.url keeps the suffix,
 // and a module that carries one can still import its neighbours.
 test.concurrent("file URL queries and fragments preserve module identity and import.meta.url", async () => {

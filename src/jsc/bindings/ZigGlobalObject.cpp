@@ -3456,6 +3456,13 @@ static String fileURLSuffix(const URL& url)
 
 static String resolvedModuleKey(const String& resolved, const String& suffix)
 {
+    if (!suffix.isEmpty() && Bun__hasStandaloneModuleGraph()) {
+        auto path = resolved.utf8();
+        size_t canonicalLength = 0;
+        // Embedded modules have one canonical record, including when a URL supplied the suffix.
+        if (Bun__standaloneModuleKey(std::bit_cast<const Latin1Character*>(path.data()), path.length(), &canonicalLength))
+            return resolved;
+    }
     // Keep literal '#' paths keyed like require() and moduleKeyFromFileURL; only '?' splits a module key.
     if (isAbsolutePath(resolved) && resolved.find('?') != WTF::notFound)
         return makeString(URL::fileURLWithFileSystemPath(resolved).string(), suffix);
