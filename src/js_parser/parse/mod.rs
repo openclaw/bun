@@ -155,12 +155,15 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
             // does and it probably doesn't have that high of a performance overhead
             // because "extends" clauses aren't that frequent, so it should be ok.
             if Self::IS_TYPESCRIPT_ENABLED {
+                let type_args_lo = p.lexer.start as u32;
                 let _ = p.skip_type_script_type_arguments::<false, false>()?; // isInsideJSXElement
+                p.ts_strip_record_to_here(crate::ts_strip::EntryKind::Blank, type_args_lo);
             }
         }
 
         if Self::IS_TYPESCRIPT_ENABLED {
             if p.lexer.is_contextual_keyword(b"implements") {
+                let implements_lo = p.lexer.start as u32;
                 p.lexer.next()?;
 
                 loop {
@@ -170,6 +173,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                     }
                     p.lexer.next()?;
                 }
+                p.ts_strip_record_to_here(crate::ts_strip::EntryKind::Blank, implements_lo);
             }
         }
 
@@ -214,10 +218,25 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                 has_decorators = has_decorators || opts.ts_decorators.len() > 0;
             }
 
+            if p.ts_strip_active() {
+                opts.ts_strip_member_lo = Some(first_decorator_loc.start as u32);
+            }
+
             // This property may turn out to be a type in TypeScript, which should be ignored
             if let Some(property) =
                 p.parse_property(js_ast::g::PropertyKind::Normal, &mut opts, None)?
             {
+                if p.ts_strip_active()
+                    && matches!(
+                        property.kind,
+                        js_ast::g::PropertyKind::Declare | js_ast::g::PropertyKind::Abstract
+                    )
+                {
+                    p.ts_strip_record_to_here(
+                        crate::ts_strip::EntryKind::BlankMember,
+                        first_decorator_loc.start as u32,
+                    );
+                }
                 // read fields before move (G::Property is not Copy).
                 let prop_kind = property.kind;
                 let prop_key = property.key;
@@ -471,6 +490,10 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                 type_colon_range = p.lexer.range();
                 p.lexer.next()?;
                 p.skip_type_script_type(Level::Lowest)?;
+                p.ts_strip_record_to_here(
+                    crate::ts_strip::EntryKind::Blank,
+                    type_colon_range.loc.start as u32,
+                );
             }
 
             // There may be a "=" after the type (but not after an "as" cast)
@@ -568,6 +591,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
             // whether this is an arrow function, and only pick an arrow function if
             // there were no conversion errors.
             if Self::IS_TYPESCRIPT_ENABLED && p.lexer.token == T::TColon && invalid_log.is_empty() {
+                let colon_lo = p.lexer.start as u32;
                 if opts.is_after_question_and_before_colon {
                     // Only do this very expensive check if we must
                     is_arrow_fn = p
@@ -582,6 +606,12 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                 } else {
                     // Otherwise, do the less expensive check
                     is_arrow_fn = p.try_skip_type_script_arrow_return_type_with_backtracking();
+                }
+                if is_arrow_fn {
+                    p.ts_strip_record_to_here(
+                        crate::ts_strip::EntryKind::ArrowReturnType,
+                        colon_lo,
+                    );
                 }
             }
 
@@ -727,10 +757,12 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
 
         // Even anonymous classes can have TypeScript type parameters
         if Self::IS_TYPESCRIPT_ENABLED {
+            let type_params_lo = p.lexer.start as u32;
             let _ = p.skip_type_script_type_parameters(
                 TypeParameterFlag::ALLOW_IN_OUT_VARIANCE_ANNOTATIONS
                     | TypeParameterFlag::ALLOW_CONST_MODIFIER,
             )?;
+            p.ts_strip_record_to_here(crate::ts_strip::EntryKind::Blank, type_params_lo);
         }
         let mut class_opts = ParseClassOptions {
             allow_ts_decorators: true,
@@ -753,6 +785,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                     p.has_non_local_export_declare_inside_namespace = true;
                 }
 
+                p.ts_strip_record_to_here(crate::ts_strip::EntryKind::BlankStmt, loc.start as u32);
                 return Ok(p.s(S::TypeScript {}, loc));
             }
         }
@@ -1306,13 +1339,18 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                 let is_definite_assignment_assertion =
                     p.lexer.token == T::TExclamation && !p.lexer.has_newline_before;
                 if is_definite_assignment_assertion {
+                    let bang_lo = p.lexer.start as u32;
+                    let bang_hi = u32::try_from(p.lexer.end).expect("source offset");
                     p.lexer.next()?;
+                    p.ts_strip_record_span(crate::ts_strip::EntryKind::Blank, bang_lo, bang_hi);
                 }
 
                 // "let foo: number"
                 if is_definite_assignment_assertion || p.lexer.token == T::TColon {
+                    let colon_lo = p.lexer.start as u32;
                     p.lexer.expect(T::TColon)?;
                     p.skip_type_script_type(Level::Lowest)?;
+                    p.ts_strip_record_to_here(crate::ts_strip::EntryKind::Blank, colon_lo);
                 }
             }
 
@@ -1474,6 +1512,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
 
         let mut return_without_semicolon_start: i32 = -1;
         opts.lexical_decl = LexicalDecl::AllowAll;
+        opts.is_control_flow_body = false;
         let mut is_directive_prologue = true;
 
         loop {
@@ -1699,13 +1738,15 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                     if Self::IS_TYPESCRIPT_ENABLED
                         && (!p.is_jsx_enabled() || p.is_ts_arrow_fn_jsx()?)
                     {
+                        let type_params_lo = p.lexer.start as u32;
                         match p
                             .try_skip_type_script_type_parameters_then_open_paren_with_backtracking(
                             ) {
                             SkipTypeParameterResult::DidNotSkipAnything => {}
                             result => {
+                                let type_params_hi = p.lexer.start as u32;
                                 p.lexer.next()?;
-                                return p.parse_paren_expr(
+                                let value = p.parse_paren_expr(
                                     async_range.loc,
                                     level,
                                     ParenExprOpts {
@@ -1714,7 +1755,20 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                                             == SkipTypeParameterResult::DefinitelyTypeParameters,
                                         ..Default::default()
                                     },
-                                );
+                                )?;
+                                if p.ts_strip_active() {
+                                    let kind = if matches!(value.data, js_ast::ExprData::EArrow(_))
+                                        && value.loc.eql(async_range.loc)
+                                    {
+                                        crate::ts_strip::EntryKind::ArrowTypeParams {
+                                            is_async: true,
+                                        }
+                                    } else {
+                                        crate::ts_strip::EntryKind::Blank
+                                    };
+                                    p.ts_strip_record_span(kind, type_params_lo, type_params_hi);
+                                }
+                                return Ok(value);
                             }
                         }
                     }

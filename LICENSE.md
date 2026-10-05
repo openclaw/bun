@@ -83,3 +83,4 @@ For compatibility reasons, the following packages are embedded into Bun's binary
 - Bun's JS transpiler, CSS lexer, and Node.js module resolver source code is a port of [@evanw](https://github.com/evanw)’s [esbuild](https://github.com/evanw/esbuild) project.
 - Credit to [@kipply](https://github.com/kipply) for the name "Bun"!
 - Package-map JSON diagnostics use [V8](https://v8.dev/) diagnostic templates and formatting rules under the [BSD-3-Clause license](src/parsers/node_json_diagnostic.LICENSE).
+- TypeScript strip-mode processing adapts [SWC's `swc_ts_fast_strip`](https://github.com/swc-project/swc/tree/main/crates/swc_ts_fast_strip) under the [Apache-2.0 license](src/js_parser/ts_strip.LICENSE).

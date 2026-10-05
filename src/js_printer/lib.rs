@@ -3502,6 +3502,9 @@ pub(crate) mod __gated_printer {
                         && self.is_unbound_eval_identifier(e.target)
                         && e.optional_chain.is_none();
 
+                    if e.preserve_parenthesized_target {
+                        self.print(b"(");
+                    }
                     if is_unbound_eval {
                         self.print(b"(0,");
                         self.print_space();
@@ -3513,8 +3516,14 @@ pub(crate) mod __gated_printer {
                         self.print_expr(e.target, Level::Postfix, target_flags);
                     }
 
+                    if e.preserve_parenthesized_target {
+                        self.print(b")");
+                    }
                     if e.optional_chain == Some(js_ast::OptionalChain::Start) {
                         self.print(b"?.");
+                    }
+                    if !e.open_paren_loc.is_empty() {
+                        self.add_source_mapping(e.open_paren_loc);
                     }
                     self.print(b"(");
                     let args = e.args.slice();
@@ -3765,6 +3774,9 @@ pub(crate) mod __gated_printer {
                             self.print_symbol(priv_.ref_);
                         }
                         _ => {
+                            if !e.open_bracket_loc.is_empty() {
+                                self.add_source_mapping(e.open_bracket_loc);
+                            }
                             self.print(b"[");
                             self.add_source_mapping(e.index.loc);
                             self.print_expr(e.index, Level::Lowest, ExprFlag::none());
@@ -4063,6 +4075,7 @@ pub(crate) mod __gated_printer {
                     // would be a cross-thread data race. Re-prints recompute
                     // the identical fold, so emitted output is unchanged.
                     let mut e = E::Template {
+                        head_loc: e.head_loc,
                         tag: e.tag,
                         parts: e.parts,
                         head: match &e.head {
@@ -4128,6 +4141,7 @@ pub(crate) mod __gated_printer {
                             // parts slice stays valid past this block.
                             let parts_slice = js_ast::StoreSlice::from_bump(replaced);
                             let mut copy = E::Template {
+                                head_loc: e.head_loc,
                                 tag: e.tag,
                                 parts: parts_slice,
                                 head: match &e.head {
@@ -4157,6 +4171,7 @@ pub(crate) mod __gated_printer {
                                     // fields out is safe even though `t` itself may
                                     // point at `copy`.
                                     e = E::Template {
+                                        head_loc: t.head_loc,
                                         tag: t.tag,
                                         parts: t.parts,
                                         head: match &t.head {
@@ -4204,6 +4219,9 @@ pub(crate) mod __gated_printer {
                         self.add_source_mapping(expr.loc);
                     }
 
+                    if !e.head_loc.is_empty() {
+                        self.add_source_mapping(e.head_loc);
+                    }
                     self.print(b"`");
                     match &e.head {
                         E::TemplateContents::Raw(raw) => self.print_raw_template_literal(raw),

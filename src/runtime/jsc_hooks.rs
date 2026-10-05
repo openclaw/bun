@@ -4466,6 +4466,7 @@ pub(crate) unsafe extern "C" fn Bun__transpileFile(
                     referrer.clone(),
                     concurrent_loader,
                     module_type,
+                    lr.package_json,
                     module_loader,
                 )
             };
