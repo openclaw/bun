@@ -84,6 +84,12 @@ test/js/node/process/process.test.js
 test/js/bun/sqlite/column-types.test.js
 ```
 
+The `vm.Script` leak regression checks live `Script` cells after collection and
+collects between allocation batches. It measures RSS growth over the second half
+of the workload, after warming the code cache and allocator with the first half. It retains the 200 MiB release and 700 MiB ASAN limits; a deliberately
+retained-script control must fail the live-cell assertion when qualifying changes
+to this guard.
+
 ## Caches and artifacts
 
 The lane caches the build system's download/prebuilt/ccache directory, Rust

@@ -203,3 +203,5 @@
 - Add position-preserving `module.stripTypeScriptTypes()` strip mode for tooling that analyzes TypeScript exports. Adapts [oven-sh/bun#35517](https://github.com/oven-sh/bun/pull/35517); thanks @cirospaciari!
 
 - Keep query and fragment imports of compiled embedded modules on their canonical module record, including Windows and non-ASCII filenames.
+
+- Check live `vm.Script` counts and post-warmup RSS growth in the leak regression, preserving the 200 MiB release and 700 MiB ASAN RSS limits. Adapts [oven-sh/bun#42474](https://github.com/oven-sh/bun/pull/42474); thanks @robobun!
