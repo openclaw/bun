@@ -3149,7 +3149,7 @@ setImmediate(() => parentPort.postMessage("worker-warned:" + warned));`,
 });
 
 it("delete process.env.TZ invalidates existing Date instances", async () => {
-  // Deleting TZ restores the host zone, not the UTC startup override.
+  // The runner need not be in UTC. Observe the same TZ-free startup zone as the fixture.
   const defaultEnv = { ...bunEnv };
   for (const key of Object.keys(defaultEnv)) {
     if (key.toUpperCase() === "TZ") delete defaultEnv[key];
@@ -3188,7 +3188,7 @@ it("delete process.env.TZ invalidates existing Date instances", async () => {
        const afterReSet = d.getHours();
        console.log(JSON.stringify({ zoned, afterDelete, has, afterReSet }));`,
     ],
-    env: { ...bunEnv, TZ: "UTC" },
+    env: defaultEnv,
     stdout: "pipe",
     stderr: "pipe",
   });
