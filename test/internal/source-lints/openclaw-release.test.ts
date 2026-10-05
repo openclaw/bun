@@ -26,9 +26,11 @@ import {
   tagMismatches,
   targets,
   webkitTagPart,
+  windowsSignerSubject,
   zip,
   type SourceFacts,
   type TargetName,
+  type WindowsSigning,
 } from "../../../scripts/openclaw-release/release.ts";
 
 const facts: SourceFacts = {
@@ -72,7 +74,25 @@ test("the zips carry upstream's artifact names", () => {
     const cfg = { os: t.os, arch: t.buildArch, abi: t.os === "linux" ? t.abi : undefined } as Config;
     expect(t.triplet).toBe(computeBunTriplet(cfg));
   }
-  expect(releaseTargets).toEqual(["darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64"]);
+  expect(releaseTargets).toEqual([
+    "darwin-arm64",
+    "darwin-x64",
+    "linux-x64",
+    "linux-arm64",
+    "windows-x64",
+    "windows-arm64",
+  ]);
+  expect(matrix(["windows-x64", "windows-arm64"]).map(t => t.artifact)).toEqual([
+    "test-only-windows",
+    "test-only-windows",
+  ]);
+  expect(matrix(["windows-arm64"], true)[0]).toEqual({
+    target: "windows-arm64",
+    triplet: "bun-windows-aarch64",
+    runner: "windows-11-arm",
+    container: "",
+    artifact: "signed-windows",
+  });
   expect(matrix(["darwin-x64", "linux-arm64"])).toEqual([
     {
       target: "darwin-x64",
@@ -89,6 +109,57 @@ test("the zips carry upstream's artifact names", () => {
       artifact: "build-linux-arm64",
     },
   ]);
+});
+
+test("Windows manifest binds signature receipts to final archive and executable bytes", () => {
+  using dir = tempDir("openclaw-windows-manifest", {});
+  const dist = String(dir);
+  const records: Record<string, WindowsSigning> = {};
+  for (const name of releaseTargets) {
+    const t = targets[name];
+    const file = join(dist, t.exe);
+    writeFileSync(file, `${name} executable`);
+    zip(join(dist, `${t.triplet}.zip`), t.triplet, [file], 1790353014);
+    if (t.os !== "windows") continue;
+    const profile = join(dist, "bun-profile.exe");
+    writeFileSync(profile, `${name} profile executable`);
+    zip(join(dist, `${t.triplet}-profile.zip`), `${t.triplet}-profile`, [profile], 1790353014);
+    records[name] = {
+      authenticodeSigned: true,
+      signerSubject: windowsSignerSubject,
+      executableSha256: sha256File(file),
+      profileExecutableSha256: sha256File(profile),
+      archiveSha256: sha256File(join(dist, `${t.triplet}.zip`)),
+      profileArchiveSha256: sha256File(join(dist, `${t.triplet}-profile.zip`)),
+    };
+  }
+  const input = { tag: tagFor(facts), repository: "openclaw/bun", facts, dist, signing: {} };
+  const unsigned = manifest(input).assets.filter(a => a.os === "windows");
+  expect(unsigned.map(a => [a.executable.authenticodeSigned, a.executable.testOnly])).toEqual([
+    [false, true],
+    [false, true],
+  ]);
+  expect(() => manifest({ ...input, publish: true })).toThrow("release requires Authenticode");
+  const signed = manifest({ ...input, windowsSigning: records, publish: true });
+  expect(
+    signed.assets
+      .filter(a => a.os === "windows")
+      .map(a => [a.executable.authenticodeSigned, a.executable.signerSubject, a.executable.testOnly]),
+  ).toEqual([
+    [true, windowsSignerSubject, false],
+    [true, windowsSignerSubject, false],
+  ]);
+  for (const key of ["executableSha256", "profileExecutableSha256", "archiveSha256", "profileArchiveSha256"]) {
+    const changed = { ...records, "windows-arm64": { ...records["windows-arm64"]!, [key]: "0".repeat(64) } };
+    expect(() => manifest({ ...input, windowsSigning: changed, publish: true })).toThrow("receipt does not match");
+  }
+  expect(() =>
+    manifest({
+      ...input,
+      windowsSigning: { ...records, "windows-arm64": { ...records["windows-arm64"]!, signerSubject: "CN=Other" } },
+      publish: true,
+    }),
+  ).toThrow("unexpected Authenticode signer");
 });
 
 test("the upstream build image still has every section the pipeline provisions", () => {
