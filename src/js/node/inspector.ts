@@ -25,6 +25,13 @@ const startPreciseCoverage = $newCppFunction("JSInspectorProfiler.cpp", "jsFunct
 const stopPreciseCoverage = $newCppFunction("JSInspectorProfiler.cpp", "jsFunction_stopPreciseCoverage", 0);
 const collectPreciseCoverage = $newCppFunction("JSInspectorProfiler.cpp", "jsFunction_collectPreciseCoverage", 0);
 const collectInspectorGarbage = $newCppFunction("JSInspectorProfiler.cpp", "jsFunction_collectInspectorGarbage", 0);
+const startAllocationSampling = $newCppFunction("JSInspectorProfiler.cpp", "jsFunction_startAllocationSampling", 3);
+const stopAllocationSampling = $newCppFunction("JSInspectorProfiler.cpp", "jsFunction_stopAllocationSampling", 0);
+const getAllocationSamplingProfile = $newCppFunction(
+  "JSInspectorProfiler.cpp",
+  "jsFunction_getAllocationSamplingProfile",
+  0,
+);
 
 // Native bindings for inspector.open(): they start Bun's debugger thread with a
 // WebSocket server that speaks the V8 Chrome DevTools Protocol (see
@@ -428,6 +435,7 @@ class Session extends EventEmitter {
   #preciseCoverageCallCount = false;
   #preciseCoverageDetailed = false;
   #forwardedDebugger = false;
+  #samplingAllocations = false;
   #pendingCollections: Set<{ callback: (err: Error | null, result?: any) => void }> = new SafeSet();
   // Baseline for delta semantics: takePreciseCoverage must reset counters, but
   // JSC has no counter-reset API, so subtract the previous take instead.
@@ -470,6 +478,10 @@ class Session extends EventEmitter {
 
   disconnect() {
     if (!this.#connected) return;
+    if (this.#samplingAllocations) {
+      stopAllocationSampling();
+      this.#samplingAllocations = false;
+    }
     if (isCPUProfilerRunning()) stopCPUProfiler();
     if (this.#preciseCoverageEnabled) {
       stopPreciseCoverage();
@@ -514,7 +526,27 @@ class Session extends EventEmitter {
     }
 
     if (method === "HeapProfiler.enable" || method === "HeapProfiler.disable") {
+      if (method === "HeapProfiler.disable" && this.#samplingAllocations) {
+        stopAllocationSampling();
+        this.#samplingAllocations = false;
+      }
       if (callback) this.#heapCallback(callback, {});
+      return;
+    }
+
+    if (
+      !this.#connectedToMainThread &&
+      (method === "HeapProfiler.startSampling" ||
+        method === "HeapProfiler.stopSampling" ||
+        method === "HeapProfiler.getSamplingProfile")
+    ) {
+      const result = this.#allocationSampling(method, params as Record<string, unknown> | undefined);
+      if (callback)
+        this.#heapCallback(
+          callback,
+          result instanceof Error ? undefined : result,
+          result instanceof Error ? result : null,
+        );
       return;
     }
 
@@ -558,12 +590,42 @@ class Session extends EventEmitter {
     }
   }
 
-  #heapCallback(callback: (err: Error | null, result?: any) => void, result: any) {
+  #heapCallback(callback: (err: Error | null, result?: any) => void, result: any, error: Error | null = null) {
     try {
-      callback(null, result);
+      callback(error, result);
     } catch (error) {
       process.emitWarning(error as Error);
     }
+  }
+
+  #allocationSampling(method: string, params?: Record<string, unknown>): object | Error {
+    if (method === "HeapProfiler.startSampling") {
+      const interval = params?.samplingInterval === undefined ? 32768 : params.samplingInterval;
+      const major =
+        params?.includeObjectsCollectedByMajorGC === undefined ? false : params.includeObjectsCollectedByMajorGC;
+      const minor =
+        params?.includeObjectsCollectedByMinorGC === undefined ? false : params.includeObjectsCollectedByMinorGC;
+      if (
+        typeof interval !== "number" ||
+        !$isFinite(interval) ||
+        typeof major !== "boolean" ||
+        typeof minor !== "boolean"
+      ) {
+        return $ERR_INSPECTOR_COMMAND("-32602: Invalid parameters");
+      }
+      // V8 truncates the byte interval; sub-byte intervals cannot sample safely.
+      if (interval < 1) return $ERR_INSPECTOR_COMMAND("-32000: Invalid sampling interval");
+      startAllocationSampling(interval, major, minor);
+      this.#samplingAllocations = true;
+      return {};
+    }
+    const raw = getAllocationSamplingProfile();
+    if (raw === null) return $ERR_INSPECTOR_COMMAND("-32000: V8 sampling heap profiler was not started.");
+    if (method === "HeapProfiler.stopSampling") {
+      stopAllocationSampling();
+      this.#samplingAllocations = false;
+    }
+    return { profile: JSON.parse(raw) };
   }
 
   #handleMethod(method: string, params?: object): any {
