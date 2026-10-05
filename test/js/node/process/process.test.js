@@ -3149,35 +3149,55 @@ setImmediate(() => parentPort.postMessage("worker-warned:" + warned));`,
 });
 
 it("delete process.env.TZ invalidates existing Date instances", async () => {
+  // The runner need not be in UTC. Observe the same TZ-free startup zone as the fixture.
+  const defaultEnv = { ...bunEnv };
+  for (const key of Object.keys(defaultEnv)) {
+    if (key.toUpperCase() === "TZ") delete defaultEnv[key];
+  }
+  await using control = Bun.spawn({
+    cmd: ["node", "-p", 'new Date("2024-01-15T12:00:00Z").getHours()'],
+    env: defaultEnv,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [controlOut, controlErr, controlExit] = await Promise.all([
+    control.stdout.text(),
+    control.stderr.text(),
+    control.exited,
+  ]);
+  expect(controlOut.trim()).toMatch(/^(?:[0-9]|1[0-9]|2[0-3])$/);
+  expect({ stderr: controlErr, exitCode: controlExit }).toEqual({ stderr: "", exitCode: 0 });
+  const defaultHour = Number(controlOut.trim());
+  // A stale Date cache must also fail when the host is already in New York.
+  const overrideZone = defaultHour === 7 ? "Asia/Tokyo" : "America/New_York";
+  const overrideHour = defaultHour === 7 ? 21 : 7;
   await using proc = Bun.spawn({
     cmd: [
       bunExe(),
       "-e",
       `const d = new Date("2024-01-15T12:00:00Z");
-       process.env.TZ = "America/New_York";
-       const ny = d.getHours();
+       process.env.TZ = ${JSON.stringify(overrideZone)};
+       const zoned = d.getHours();
        delete process.env.TZ;
        const afterDelete = d.getHours();
        const has = "TZ" in process.env;
        // set-after-delete must still fire the timezone side effect: Node's
        // RealEnvStore::Set name-matches TZ on every write, not via a
        // once-installed accessor.
-       process.env.TZ = "America/New_York";
+       process.env.TZ = ${JSON.stringify(overrideZone)};
        const afterReSet = d.getHours();
-       console.log(JSON.stringify({ ny, afterDelete, has, afterReSet }));`,
+       console.log(JSON.stringify({ zoned, afterDelete, has, afterReSet }));`,
     ],
-    env: { ...bunEnv, TZ: "UTC" },
+    env: defaultEnv,
     stdout: "pipe",
     stderr: "pipe",
   });
   const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
-  // NY is UTC-5 in January; after delete the override is cleared so getHours
-  // reverts to the UTC start value (12) and the property is gone.
   expect({ ...JSON.parse(stdout), exitCode }).toEqual({
-    ny: 7,
-    afterDelete: 12,
+    zoned: overrideHour,
+    afterDelete: defaultHour,
     has: false,
-    afterReSet: 7,
+    afterReSet: overrideHour,
     exitCode: 0,
   });
 });
