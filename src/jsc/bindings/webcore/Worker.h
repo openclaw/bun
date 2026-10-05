@@ -33,6 +33,7 @@
 
 namespace JSC {
 class JSGlobalObject;
+class JSObject;
 class JSValue;
 }
 
@@ -71,9 +72,9 @@ public:
     bool eventLoopUtilization(double& elapsedMs, double& idleMs);
 
     // Node worker_threads: 'message'/'error'/'messageerror' are not delivered once terminate() was
-    // called; 'close' (which carries the exit code) always is.
+    // called; the final OOM error and close event are always delivered.
     void dispatchEvent(Event&) final;
-    void dispatchCloseEvent(Event&);
+    void dispatchExitEvent(Event&);
 
     const String& name() const { return m_name; }
     // Both identifiers are process-unique; threadId is derived from the worker's.
@@ -100,6 +101,8 @@ private:
 };
 
 JSC::JSValue createNodeWorkerThreadsBinding(Zig::GlobalObject* globalObject);
+// Shared by the in-worker `resourceLimits` export and the worker.resourceLimits getter (JSWorker.cpp).
+JSC::JSObject* createResourceLimitsObject(JSC::JSGlobalObject*, const WorkerResourceLimits&);
 
 JSC_DECLARE_HOST_FUNCTION(jsFunctionPostMessage);
 

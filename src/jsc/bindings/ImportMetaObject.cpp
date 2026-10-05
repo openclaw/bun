@@ -514,6 +514,7 @@ JSC_DEFINE_CUSTOM_GETTER(jsImportMetaObjectGetter_resolve, (JSGlobalObject * lex
     // Node's resolver name does not include JSBoundFunction's lazy "bound " prefix.
     resolve->ensureRareData(vm)->setHasReifiedName();
     resolve->putDirect(vm, vm.propertyNames->name, Bun::commonStrings(vm).resolveString(), PropertyAttribute::DontEnum | PropertyAttribute::ReadOnly);
+    // Freeze/seal reify this CustomValue before changing its attributes.
     meta->putDirect(vm, propertyName, resolve, 0);
     return JSValue::encode(resolve);
 }

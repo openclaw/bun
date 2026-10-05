@@ -147,14 +147,22 @@ it("pauseOnConnect acts on the first handshake only, not on a renegotiation", as
       "-e",
       `
         const tls = require("tls");
+        const { createInterface } = require("readline");
         const server = tls.createServer(
           { cert: process.env.SERVER_CERT, key: process.env.SERVER_KEY, minVersion: "TLSv1.2", maxVersion: "TLSv1.2" },
           socket => {
             socket.on("error", () => {});
-            socket.on("data", () => socket.end("second"));
-            socket.renegotiate({ rejectUnauthorized: false }, err => {
-              if (err) socket.destroy(err);
-              else socket.write("first");
+            createInterface({ input: socket }).on("line", line => {
+              if (line === "ready") {
+                socket.renegotiate({ rejectUnauthorized: false }, err => {
+                  if (err) socket.destroy(err);
+                  else socket.write("first");
+                });
+              } else if (line === "ack") {
+                socket.end("second");
+              } else {
+                socket.destroy(new Error("unexpected client message"));
+              }
             });
           },
         );
@@ -179,11 +187,15 @@ it("pauseOnConnect acts on the first handshake only, not on a renegotiation", as
     pauseOnConnect: true,
     socket: {
       handshake(socket) {
-        if (++handshakes === 1) socket.resume();
+        if (++handshakes === 1) {
+          socket.resume();
+          // The server must not coalesce renegotiation with the initial handshake.
+          socket.write("ready\n");
+        }
       },
       data(socket, chunk) {
         received += chunk.toString();
-        if (received === "first") socket.write("ack");
+        if (received === "first") socket.write("ack\n");
         else if (received === "firstsecond") outcome.resolve({ handshakes, received });
       },
       error(_socket, error) {

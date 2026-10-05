@@ -3,6 +3,7 @@ declare const self: Omit<typeof globalThis, "onmessage"> & {
   onmessageerror: ((this: typeof globalThis, ev: MessageEvent) => unknown) | null;
 };
 type WebWorker = InstanceType<typeof globalThis.Worker> & {
+  readonly resourceLimits: Record<string, number>;
   getHeapSnapshot(options: unknown): Promise<string>;
   getHeapStatistics(): Promise<Record<string, number | boolean>>;
   startCpuProfileInternal(): Promise<void>;
@@ -88,6 +89,7 @@ const {
   16: WebWorker,
   17: _workerHasRef,
   18: _workerEventLoopUtilization,
+  19: resourceLimits,
 } = $cpp("Worker.cpp", "createNodeWorkerThreadsBinding") as [
   unknown,
   number,
@@ -113,6 +115,7 @@ const {
   ) => WebWorker,
   (worker: WebWorker) => boolean | undefined,
   (worker: WebWorker) => [number, number] | null,
+  Record<string, number>,
 ];
 
 type NodeWorkerOptions = import("node:worker_threads").WorkerOptions;
@@ -341,8 +344,6 @@ Object.defineProperty(MessagePort.prototype, kInspectCustom, {
   enumerable: false,
   configurable: true,
 });
-
-let resourceLimits = {};
 
 const BUN_WORKER_STDIO_KEY = "@@bunWorkerThreadsStdio";
 const BUN_WORKER_MESSAGING_KEY = "@@bunWorkerThreadsMessaging";
@@ -1076,6 +1077,11 @@ class Worker extends EventEmitter {
 
   get threadName() {
     return this.#exited ? null : this.#name;
+  }
+
+  get resourceLimits() {
+    // Read back from the single native parse; {} once the worker stopped.
+    return this.#worker.resourceLimits;
   }
 
   ref() {

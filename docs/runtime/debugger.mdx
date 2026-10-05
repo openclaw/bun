@@ -322,3 +322,25 @@ Error: here!
 Error: here!
     at /path/to/index.ts:18
 ```
+
+## In-process allocation sampling
+
+`node:inspector` and `node:inspector/promises` support `HeapProfiler.startSampling`,
+`HeapProfiler.getSamplingProfile`, and `HeapProfiler.stopSampling`. A local session
+samples its own JavaScriptCore VM, including in a worker. The profile contains a
+`head` allocation-site tree with estimated allocated bytes in `selfSize`, and
+`samples` with `nodeId`, `size`, and unique `ordinal` fields.
+
+`samplingInterval` is the mean byte interval and defaults to 32,768. The profiler
+samples JavaScriptCore cells, newly reported string backing storage, and GC-managed
+auxiliary storage; other native allocations and external buffer storage are outside
+this measurement. Engine object layouts
+and sampling randomness affect the estimates.
+
+Getting or stopping a profile synchronously runs full garbage collection, matching Node.
+By default, collected allocations disappear from the profile. Set
+`includeObjectsCollectedByMajorGC` and `includeObjectsCollectedByMinorGC` to `true`
+to measure cumulative allocations across both collection types. Sampling does not
+retain the sampled objects. A repeated start keeps the current profile. Stop,
+`HeapProfiler.disable`, or disconnect releases sampling started by that session.
+Sampling through a worker's `connectToMainThread()` is not supported.

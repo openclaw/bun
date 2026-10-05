@@ -669,6 +669,7 @@ fn codegen_reactive_scope(
     let cache_slot = |index: u32| {
         Expr::init(
             E::Index {
+                open_bracket_loc: bun_ast::Loc::EMPTY,
                 target: cache_ident(),
                 index: Expr::init(E::Number::new(index as f64), loc),
                 optional_chain: None,
@@ -2005,6 +2006,7 @@ fn codegen_base_instruction_value(
             let prop = codegen_place_to_expression(cx, property)?;
             Ok(Expr::init(
                 E::Index {
+                    open_bracket_loc: bun_ast::Loc::EMPTY,
                     target: obj,
                     index: prop,
                     optional_chain: None,
@@ -2027,6 +2029,7 @@ fn codegen_base_instruction_value(
                     op: OpCode::BinAssign,
                     left: Expr::init(
                         E::Index {
+                            open_bracket_loc: bun_ast::Loc::EMPTY,
                             target: obj,
                             index: prop,
                             optional_chain: None,
@@ -2049,6 +2052,7 @@ fn codegen_base_instruction_value(
                     op: OpCode::UnDelete,
                     value: Expr::init(
                         E::Index {
+                            open_bracket_loc: bun_ast::Loc::EMPTY,
                             target: obj,
                             index: prop,
                             optional_chain: None,
@@ -2179,6 +2183,7 @@ fn codegen_base_instruction_value(
             let tag_expr = codegen_place_to_expression(cx, tag)?;
             Ok(Expr::init(
                 E::Template {
+                    head_loc: bun_ast::Loc::EMPTY,
                     tag: Some(tag_expr),
                     head: E::TemplateContents::Raw(value.raw),
                     parts: StoreSlice::EMPTY,
@@ -2204,6 +2209,7 @@ fn codegen_base_instruction_value(
             }
             Ok(Expr::init(
                 E::Template {
+                    head_loc: bun_ast::Loc::EMPTY,
                     tag: None,
                     head,
                     parts: StoreSlice::new_mut(parts.leak()),
@@ -2369,6 +2375,7 @@ fn codegen_function_expression(
         });
         let wrapped = Expr::init(
             E::Index {
+                open_bracket_loc: bun_ast::Loc::EMPTY,
                 target: Expr::init(
                     E::Object {
                         properties: props,
@@ -3311,6 +3318,7 @@ fn property_access_expr(
         ),
         PropertyLiteral::Number(n) => Expr::init(
             E::Index {
+                open_bracket_loc: bun_ast::Loc::EMPTY,
                 target,
                 index: Expr::init(E::Number::new(n.value()), loc),
                 optional_chain,

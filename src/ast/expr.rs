@@ -2000,7 +2000,9 @@ impl Data {
                         .try_deep_clone_with(|e| e.deep_clone_no_detach(bump))?,
                     optional_chain: el.optional_chain,
                     is_direct_eval: el.is_direct_eval,
+                    open_paren_loc: el.open_paren_loc,
                     close_paren_loc: el.close_paren_loc,
+                    preserve_parenthesized_target: el.preserve_parenthesized_target,
                     can_be_unwrapped_if_unused: el.can_be_unwrapped_if_unused,
                     was_jsx_element: el.was_jsx_element,
                 });
@@ -2020,6 +2022,7 @@ impl Data {
             }
             Data::EIndex(el) => {
                 let item = bump.alloc(E::Index {
+                    open_bracket_loc: el.open_bracket_loc,
                     target: el.target.deep_clone_no_detach(bump)?,
                     index: el.index.deep_clone_no_detach(bump)?,
                     optional_chain: el.optional_chain,
@@ -2080,6 +2083,7 @@ impl Data {
             }
             Data::ETemplate(el) => {
                 let item = bump.alloc(E::Template {
+                    head_loc: el.head_loc,
                     tag: match &el.tag {
                         Some(tag) => Some(tag.deep_clone_no_detach(bump)?),
                         None => None,

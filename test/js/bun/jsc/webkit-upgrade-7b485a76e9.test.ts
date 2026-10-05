@@ -150,8 +150,8 @@ describe("WebKit 7b485a76e9 upgrade", () => {
     const frames = [...stack.matchAll(/positions\.js:(\d+):(\d+)/g)].map(m => [Number(m[1]), Number(m[2])]);
     expect(frames).toEqual([
       [6, 28],
-      [4, 15],
-      [7, 6],
+      [4, 10],
+      [7, 1],
     ]);
 
     // lineOffset and columnOffset move the first line. columnOffset does not move later lines.
