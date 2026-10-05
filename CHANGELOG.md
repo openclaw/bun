@@ -234,3 +234,5 @@
 - Measure live allocations in the synchronous socket-connect leak regression so shared allocator page occupancy does not masquerade as a native socket leak; preserve the original workload and leak detection.
 
 - Bind socket-read test listeners to IPv4 loopback so `localhost` address-family differences do not cause connection-refused failures in containers.
+
+- Wake idle event loops when the engine schedules immediate garbage-collection work, including requests from collector threads, without extending worker lifetime.

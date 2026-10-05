@@ -4256,7 +4256,7 @@ describe("resourceLimits", () => {
     expect(reads).toBe(2);
   });
 
-  async function runLimitedWorker(limits: object, body: string) {
+  async function runLimitedWorker(limits: object, body: string, env: Record<string, string> = {}) {
     await using child = Bun.spawn({
       cmd: [
         bunExe(),
@@ -4271,7 +4271,7 @@ describe("resourceLimits", () => {
         w.on('exit',code=>{result.events.push('exit');result.exit=code;result.after=w.resourceLimits;console.log(JSON.stringify(result));});
       `,
       ],
-      env: bunEnv,
+      env: { ...bunEnv, ...env },
       stdout: "pipe",
       stderr: "pipe",
     });
@@ -4311,6 +4311,40 @@ describe("resourceLimits", () => {
       }).toEqual({ online: limits, inside: limits, after: {}, exit: 0 });
     },
   );
+
+  test.concurrent("wakes a parked worker for an immediate GC timer", async () => {
+    const result = await runLimitedWorker(
+      {},
+      `
+        parentPort.on('message', () => {});
+        globalThis.live = Array.from({ length: 700000 }, (_, i) => ({ i, next: [i, i + 1, i + 2] }));
+        Bun.gc(true);
+        globalThis.registry = new FinalizationRegistry(() => {
+          parentPort.postMessage('collected');
+          parentPort.close();
+        });
+        (function registerVictim() {
+          const victim = { payload: new Array(10000).fill(7) };
+          registry.register(victim, 1);
+        })();
+        Bun.gc(false);
+        // The allocation slow path starts the request before this callback parks.
+        globalThis.kick = new Array(32768).fill(7);
+      `,
+      {
+        BUN_GC_TIMER_DISABLE: "1",
+        BUN_IDLE_GC_SECONDS: "0",
+        BUN_DISABLE_STOP_IF_NECESSARY_TIMER: "0",
+        BUN_GC_RUNS_UNTIL_SKIP_RELEASE_ACCESS: "0",
+        // bun -e normally selects one marker; exercise a collector-thread wake.
+        BUN_JSC_numberOfGCMarkers: "2",
+        BUN_JSC_useGenerationalGC: "false",
+        BUN_JSC_minimumGCPauseMS: "0.01",
+      },
+    );
+    expect(result.messages.at(-1)).toBe("collected");
+    expect({ events: result.events, exit: result.exit }).toEqual({ events: ["exit"], exit: 0 });
+  });
 
   test("terminates only the worker with the Node heap OOM event contract", async () => {
     const result = await runLimitedWorker(
