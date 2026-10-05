@@ -573,10 +573,12 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
 
         // Even anonymous classes can have TypeScript type parameters
         if Self::IS_TYPESCRIPT_ENABLED {
+            let type_params_lo = p.lexer.start as u32;
             let _ = p.skip_type_script_type_parameters(
                 TypeParameterFlag::ALLOW_IN_OUT_VARIANCE_ANNOTATIONS
                     | TypeParameterFlag::ALLOW_CONST_MODIFIER,
             )?;
+            p.ts_strip_record_to_here(crate::ts_strip::EntryKind::Blank, type_params_lo);
         }
 
         let class = p.parse_class(
@@ -636,10 +638,12 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
 
         // Even anonymous classes can have TypeScript type parameters
         if Self::IS_TYPESCRIPT_ENABLED {
+            let type_params_lo = p.lexer.start as u32;
             let _ = p.skip_type_script_type_parameters(
                 TypeParameterFlag::ALLOW_IN_OUT_VARIANCE_ANNOTATIONS
                     | TypeParameterFlag::ALLOW_CONST_MODIFIER,
             )?;
+            p.ts_strip_record_to_here(crate::ts_strip::EntryKind::Blank, type_params_lo);
         }
 
         // spec passes the arena-backed `[]ExprNodeIndex` slice directly into
@@ -693,7 +697,10 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
         if Self::IS_TYPESCRIPT_ENABLED {
             // Skip over TypeScript type arguments here if there are any
             if p.lexer.token == T::TLessThan {
-                let _ = p.try_skip_type_script_type_arguments_with_backtracking();
+                let type_args_lo = p.lexer.start as u32;
+                if p.try_skip_type_script_type_arguments_with_backtracking() {
+                    p.ts_strip_record_to_here(crate::ts_strip::EntryKind::Blank, type_args_lo);
+                }
             }
         }
 
@@ -962,11 +969,13 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
 
             // "<T>(x)"
             // "<T>(x) => {}"
+            let type_params_lo = p.lexer.start as u32;
             match p.try_skip_type_script_type_parameters_then_open_paren_with_backtracking() {
                 SkipTypeParameterResult::DidNotSkipAnything => {}
                 result => {
+                    let type_params_hi = p.lexer.start as u32;
                     p.lexer.expect(T::TOpenParen)?;
-                    return p.parse_paren_expr(
+                    let value = p.parse_paren_expr(
                         loc,
                         level,
                         ParenExprOpts {
@@ -974,14 +983,36 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                                 == SkipTypeParameterResult::DefinitelyTypeParameters,
                             ..Default::default()
                         },
-                    );
+                    )?;
+                    if p.ts_strip_active() {
+                        let kind = if matches!(value.data, js_ast::ExprData::EArrow(_))
+                            && value.loc.eql(loc)
+                        {
+                            crate::ts_strip::EntryKind::ArrowTypeParams { is_async: false }
+                        } else {
+                            crate::ts_strip::EntryKind::Unsupported(
+                                crate::ts_strip::UnsupportedKind::TypeAssertion,
+                            )
+                        };
+                        p.ts_strip_record_span(kind, type_params_lo, type_params_hi);
+                    }
+                    return Ok(value);
                 }
             }
 
-            // "<T>x"
+            // "<T>x": amaro refuses to strip angle-bracket type assertions
+            // (erasing them is not position-safe).
             p.lexer.next()?;
             p.skip_type_script_type(Level::Lowest)?;
             p.lexer.expect_greater_than::<false>()?;
+            let assertion_hi = p.lexer.start as u32;
+            p.ts_strip_record_span(
+                crate::ts_strip::EntryKind::Unsupported(
+                    crate::ts_strip::UnsupportedKind::TypeAssertion,
+                ),
+                type_params_lo,
+                assertion_hi,
+            );
             return p.parse_prefix(level, errors, flags);
         }
 

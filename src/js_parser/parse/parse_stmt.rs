@@ -213,6 +213,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
             p.lexer.expect(T::TCloseParen)?;
             let mut stmt_opts = ParseStatementOptions {
                 lexical_decl: LexicalDecl::AllowFnInsideIf,
+                is_control_flow_body: true,
                 ..Default::default()
             };
             let yes = p.parse_stmt(&mut stmt_opts)?;
@@ -255,6 +256,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
             if p.lexer.token != T::TIf {
                 stmt_opts = ParseStatementOptions {
                     lexical_decl: LexicalDecl::AllowFnInsideIf,
+                    is_control_flow_body: true,
                     ..Default::default()
                 };
                 // current_if was set just above in this iteration; `StoreRef` `DerefMut`.
@@ -273,7 +275,10 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
     #[inline(never)]
     fn t_do(p: &mut Self, _: &mut ParseStatementOptions, loc: bun_ast::Loc) -> Result<Stmt> {
         p.lexer.next()?;
-        let mut stmt_opts = ParseStatementOptions::default();
+        let mut stmt_opts = ParseStatementOptions {
+            is_control_flow_body: true,
+            ..Default::default()
+        };
         let body = p.parse_stmt(&mut stmt_opts)?;
         p.lexer.expect(T::TWhile)?;
         p.lexer.expect(T::TOpenParen)?;
@@ -296,7 +301,10 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
         let test = p.parse_expr(Level::Lowest)?;
         p.lexer.expect(T::TCloseParen)?;
 
-        let mut stmt_opts = ParseStatementOptions::default();
+        let mut stmt_opts = ParseStatementOptions {
+            is_control_flow_body: true,
+            ..Default::default()
+        };
         let body = p.parse_stmt(&mut stmt_opts)?;
 
         Ok(p.s(S::While { body, test }, loc))
@@ -315,7 +323,10 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
         // within the body from being renamed. Renaming them might change the
         // semantics of the code.
         let _ = p.push_scope_for_parse_pass(js_ast::scope::Kind::With, body_loc)?;
-        let mut stmt_opts = ParseStatementOptions::default();
+        let mut stmt_opts = ParseStatementOptions {
+            is_control_flow_body: true,
+            ..Default::default()
+        };
         let body = p.parse_stmt(&mut stmt_opts)?;
         p.pop_scope();
 
@@ -430,8 +441,10 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
 
                 // Skip over types
                 if Self::IS_TYPESCRIPT_ENABLED && p.lexer.token == T::TColon {
+                    let colon_lo = p.lexer.start as u32;
                     p.lexer.expect(T::TColon)?;
                     p.skip_type_script_type(Level::Lowest)?;
+                    p.ts_strip_record_to_here(crate::ts_strip::EntryKind::Blank, colon_lo);
                 }
 
                 p.lexer.expect(T::TCloseParen)?;
@@ -656,7 +669,10 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                 p.lexer.next()?;
                 let value = p.parse_expr(Level::Comma)?;
                 p.lexer.expect(T::TCloseParen)?;
-                let mut stmt_opts = ParseStatementOptions::default();
+                let mut stmt_opts = ParseStatementOptions {
+                    is_control_flow_body: true,
+                    ..Default::default()
+                };
                 let body = p.parse_stmt(&mut stmt_opts)?;
                 return Ok(p.s(
                     S::ForOf {
@@ -675,7 +691,10 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                 p.lexer.next()?;
                 let value = p.parse_expr(Level::Lowest)?;
                 p.lexer.expect(T::TCloseParen)?;
-                let mut stmt_opts = ParseStatementOptions::default();
+                let mut stmt_opts = ParseStatementOptions {
+                    is_control_flow_body: true,
+                    ..Default::default()
+                };
                 let body = p.parse_stmt(&mut stmt_opts)?;
                 return Ok(p.s(
                     S::ForIn {
@@ -711,7 +730,10 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
             }
 
             p.lexer.expect(T::TCloseParen)?;
-            let mut stmt_opts = ParseStatementOptions::default();
+            let mut stmt_opts = ParseStatementOptions {
+                is_control_flow_body: true,
+                ..Default::default()
+            };
             let body = p.parse_stmt(&mut stmt_opts)?;
             Ok(p.s(
                 S::For {
@@ -857,14 +879,18 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
         match p.lexer.token {
             T::TClass | T::TConst | T::TFunction | T::TVar | T::TAt => {
                 opts.is_export = true;
-                p.parse_stmt(opts)
+                let stmt = p.parse_stmt(opts)?;
+                p.ts_strip_forward_export(loc.start as u32, &stmt);
+                Ok(stmt)
             }
 
             T::TImport => {
                 // "export import foo = bar"
                 if Self::IS_TYPESCRIPT_ENABLED && opts.scope != StatementScope::Nested {
                     opts.is_export = true;
-                    return p.parse_stmt(opts);
+                    let stmt = p.parse_stmt(opts)?;
+                    p.ts_strip_forward_export(loc.start as u32, &stmt);
+                    return Ok(stmt);
                 }
 
                 p.lexer.unexpected()?;
@@ -878,7 +904,9 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                 }
 
                 opts.is_export = true;
-                p.parse_stmt(opts)
+                let stmt = p.parse_stmt(opts)?;
+                p.ts_strip_forward_export(loc.start as u32, &stmt);
+                Ok(stmt)
             }
 
             T::TIdentifier => {
@@ -895,6 +923,9 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                         p.lexer.expect(T::TIdentifier)?;
                         p.lexer.expect_or_insert_semicolon()?;
 
+                        // Strip mode: amaro leaves `export as namespace ns;`
+                        // verbatim (no TsStrip visitor handles
+                        // TsNamespaceExportDecl), so no span is recorded.
                         return Ok(p.s(S::TypeScript {}, loc));
                     }
                 }
@@ -941,6 +972,10 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                                     ..Default::default()
                                 };
                                 p.skip_type_script_type_stmt(&mut skipper)?;
+                                p.ts_strip_record_to_here(
+                                    crate::ts_strip::EntryKind::BlankStmt,
+                                    loc.start as u32,
+                                );
                                 return Ok(p.s(S::TypeScript {}, loc));
                             }
                             StmtIdentifier::SNamespace
@@ -952,13 +987,17 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                                 // "export module Foo {}"
                                 // "export interface Foo {}"
                                 opts.is_export = true;
-                                return p.parse_stmt(opts);
+                                let stmt = p.parse_stmt(opts)?;
+                                p.ts_strip_forward_export(loc.start as u32, &stmt);
+                                return Ok(stmt);
                             }
                             StmtIdentifier::SDeclare => {
                                 // "export declare class Foo {}"
                                 opts.is_export = true;
                                 opts.lexical_decl = LexicalDecl::AllowAll;
-                                return p.parse_stmt(opts);
+                                let stmt = p.parse_stmt(opts)?;
+                                p.ts_strip_forward_export(loc.start as u32, &stmt);
+                                return Ok(stmt);
                             }
                         }
                     }
@@ -1000,6 +1039,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                         let stmt = p.parse_fn_stmt(loc, &mut stmt_opts, Some(async_range))?;
                         if matches!(stmt.data, js_ast::StmtData::STypeScript(_)) {
                             // This was just a type annotation
+                            p.ts_strip_forward_export(loc.start as u32, &stmt);
                             return Ok(stmt);
                         }
 
@@ -1058,6 +1098,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                         match &stmt.data {
                             // This was just a type annotation
                             js_ast::StmtData::STypeScript(_) => {
+                                p.ts_strip_forward_export(loc.start as u32, &stmt);
                                 return Ok(stmt);
                             }
 
@@ -1382,6 +1423,12 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                     p.lexer.next()?;
                     let value = p.parse_expr(Level::Lowest)?;
                     p.lexer.expect_or_insert_semicolon()?;
+                    p.ts_strip_record_to_here(
+                        crate::ts_strip::EntryKind::Unsupported(
+                            crate::ts_strip::UnsupportedKind::ExportAssignment,
+                        ),
+                        loc.start as u32,
+                    );
                     return Ok(p.s(S::ExportEquals { value }, loc));
                 }
                 p.lexer.unexpected()?;
@@ -1591,6 +1638,10 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                                         p.lexer.expect_contextual_keyword(b"from")?;
                                         let _ = p.parse_path()?;
                                         p.lexer.expect_or_insert_semicolon()?;
+                                        p.ts_strip_record_to_here(
+                                            crate::ts_strip::EntryKind::BlankStmt,
+                                            loc.start as u32,
+                                        );
                                         return Ok(p.s(S::TypeScript {}, loc));
                                     }
                                 }
@@ -1603,6 +1654,10 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                                 p.lexer.expect_contextual_keyword(b"from")?;
                                 let _ = p.parse_path()?;
                                 p.lexer.expect_or_insert_semicolon()?;
+                                p.ts_strip_record_to_here(
+                                    crate::ts_strip::EntryKind::BlankStmt,
+                                    loc.start as u32,
+                                );
                                 return Ok(p.s(S::TypeScript {}, loc));
                             }
 
@@ -1612,6 +1667,10 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                                 p.lexer.expect_contextual_keyword(b"from")?;
                                 let _ = p.parse_path()?;
                                 p.lexer.expect_or_insert_semicolon()?;
+                                p.ts_strip_record_to_here(
+                                    crate::ts_strip::EntryKind::BlankStmt,
+                                    loc.start as u32,
+                                );
                                 return Ok(p.s(S::TypeScript {}, loc));
                             }
                             _ => {}
@@ -1797,6 +1856,10 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                         ..Default::default()
                     };
                     p.skip_type_script_type_stmt(&mut stmt_opts)?;
+                    p.ts_strip_record_to_here(
+                        crate::ts_strip::EntryKind::BlankStmt,
+                        loc.start as u32,
+                    );
                     return Ok(Some(p.s(S::TypeScript {}, loc)));
                 }
             }
@@ -1825,6 +1888,10 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                     };
 
                     p.skip_type_script_interface_stmt(&mut stmt_opts)?;
+                    p.ts_strip_record_to_here(
+                        crate::ts_strip::EntryKind::BlankStmt,
+                        loc.start as u32,
+                    );
                     return Ok(Some(p.s(S::TypeScript {}, loc)));
                 }
                 // "interface \n Foo {}"
@@ -1840,6 +1907,12 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                 if !p.lexer.has_newline_before
                     && (p.lexer.token == T::TClass || opts.ts_decorators.is_some())
                 {
+                    // swc strips the `abstract` keyword itself (visit_class).
+                    p.ts_strip_record_span(
+                        crate::ts_strip::EntryKind::Blank,
+                        loc.start as u32,
+                        loc.start as u32 + b"abstract".len() as u32,
+                    );
                     return Ok(Some(p.parse_class_stmt(loc, opts)?));
                 }
                 if opts.ts_decorators.is_some() {
@@ -1858,6 +1931,10 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                     p.lexer.next()?;
                     let _ = p.parse_stmts_up_to(T::TCloseBrace, opts)?;
                     p.lexer.next()?;
+                    p.ts_strip_record_to_here(
+                        crate::ts_strip::EntryKind::BlankStmt,
+                        loc.start as u32,
+                    );
                     return Ok(Some(p.s(S::TypeScript {}, loc)));
                 }
             }
@@ -1893,6 +1970,10 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                     // The statements inside are dropped, so discard any scopes they
                     // recorded or the visit pass will hit a scope order mismatch.
                     p.discard_scopes_up_to(scope_index);
+                    p.ts_strip_record_to_here(
+                        crate::ts_strip::EntryKind::BlankStmt,
+                        loc.start as u32,
+                    );
                     return Ok(Some(p.s(S::TypeScript {}, loc)));
                 }
 
@@ -1978,6 +2059,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                     }
                 }
 
+                p.ts_strip_record_to_here(crate::ts_strip::EntryKind::BlankStmt, loc.start as u32);
                 return Ok(Some(p.s(S::TypeScript {}, loc)));
             }
         }
@@ -1992,7 +2074,8 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
         }
 
         let loc = self.lexer.loc();
-        match self.lexer.token {
+        let is_control_flow_body = opts.is_control_flow_body;
+        let stmt = match self.lexer.token {
             T::TSemicolon => Self::t_semicolon(self),
             T::TAt => Self::t_at(self, opts),
 
@@ -2018,6 +2101,13 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
             T::TOpenBrace => Self::t_open_brace(self, opts, loc),
 
             _ => Self::parse_stmt_fallthrough(self, opts, loc),
+        }?;
+        if self.ts_strip_active()
+            && is_control_flow_body
+            && matches!(stmt.data, js_ast::StmtData::STypeScript(_))
+        {
+            self.ts_strip_record_to_here(crate::ts_strip::EntryKind::BlankBody, loc.start as u32);
         }
+        Ok(stmt)
     }
 }

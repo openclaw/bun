@@ -200,7 +200,9 @@ CommonJS named exports include nonenumerable data properties even when an `__esM
 
 Package imports and exports match the `module-sync` condition for both `import` and `require`. Conditions retain package.json key order. Bun and Node build targets include this condition; the browser target does not.
 
-🟡 Missing `Module#load()`, `findPackageJSON`, `stripTypeScriptTypes`, `getSourceMapsSupport`/`setSourceMapsSupport`. Overriding `require.cache`, `require.extensions` and `module._resolveFilename` is supported. `syncBuiltinESMExports`, `module._load`, `module._pathCache` and `module.register` are no-ops (we recommend [`Bun.plugin`](/runtime/plugins) instead). `findSourceMap` always returns `undefined`.
+🟡 Missing `Module#load()`, `findPackageJSON`, `getSourceMapsSupport`/`setSourceMapsSupport`. Overriding `require.cache`, `require.extensions` and `module._resolveFilename` is supported. `syncBuiltinESMExports`, `module._load`, `module._pathCache` and `module.register` are no-ops (we recommend [`Bun.plugin`](/runtime/plugins) instead). `findSourceMap` always returns `undefined`.
+
+`module.stripTypeScriptTypes()` supports `mode: "strip"`. Type syntax is replaced with whitespace while preserving source positions and runtime imports and exports. `sourceUrl` is supported. TypeScript syntax that requires transformation throws `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX`. The Node 24 `transform` mode and source maps are not supported.
 
 `NODE_COMPILE_CACHE` and `module.enableCompileCache()` generate and atomically write cache entries during idle time. Normal exits wait for pending cache work. After a native SIGTERM, SIGINT, or SIGHUP, Bun limits automatic exit-time cache waiting to 250 ms, including when JavaScript handled the signal. Unfinished entries compile normally on the next run. Explicit `module.flushCompileCache()` calls always wait for persistence to finish. Standalone executables ignore `NODE_COMPILE_CACHE`.
 

@@ -244,6 +244,7 @@ impl<'a> Options<'a> {
                 minify_whitespace: f.minify_whitespace,
                 dead_code_elimination: f.dead_code_elimination,
                 set_breakpoint_on_first_line: f.set_breakpoint_on_first_line,
+                ts_strip_mode: f.ts_strip_mode,
                 trim_unused_imports: f.trim_unused_imports,
                 auto_polyfill_require: f.auto_polyfill_require,
                 replace_exports: Default::default(),
@@ -422,6 +423,40 @@ impl<'a> Parser<'a> {
                 self._parse::<false>()
             }
         }
+    }
+
+    /// Strip types without running the transformation or binding passes.
+    pub fn strip_types(mut self) -> Result<crate::ts_strip::Output, Error> {
+        type Pi<'a> = P<'a, true, false>;
+        let lexer = core::mem::replace(
+            &mut self.lexer,
+            js_lexer::Lexer::init_without_reading(
+                self.bump.alloc(bun_ast::Log::default()),
+                self.source,
+                self.bump,
+            ),
+        );
+        let mut options = core::mem::take(&mut self.options);
+        options.features.ts_strip_mode = true;
+        let mut slot = init_p!(Pi<'_>;
+            self.bump, self.log, self.source, self.define, lexer, options);
+        // SAFETY: init_p! returns only after initializing the guarded slot.
+        let p = unsafe { slot.assume_init_mut() };
+        if p.lexer.token == js_lexer::T::THashbang {
+            p.lexer.next()?;
+        }
+        if p.log().errors > self.orig_error_count {
+            return Err(Error::SyntaxError);
+        }
+        let mut opts = ParseStatementOptions {
+            scope: StatementScope::Module,
+            ..Default::default()
+        };
+        p.parse_stmts_up_to(js_lexer::T::TEndOfFile, &mut opts)?;
+        if p.log().errors > self.orig_error_count {
+            return Err(Error::SyntaxError);
+        }
+        Ok(p.take_ts_strip_output())
     }
 
     /// Parses, and visits nothing: `f` gets the statements as they were written (nothing folded, dropped or bound).
