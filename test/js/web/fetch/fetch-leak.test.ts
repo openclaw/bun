@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { bunEnv, bunExe, tls as COMMON_CERT, gc, isASAN, isCI, isDebug } from "harness";
+import { bunEnv, bunExe, tls as COMMON_CERT, isASAN, isCI, isDebug } from "harness";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import net from "node:net";
@@ -164,40 +164,45 @@ describe.each(["FormData", "Blob", "Buffer", "String", "URLSearchParams", "strea
 });
 
 test("do not leak", async () => {
+  let requests = 0;
   await using server = createServer((req, res) => {
-    res.end();
+    requests++;
+    res.end("ok");
   });
-
-  let url;
-  let isDone = false;
-  server.listen(0, "127.0.0.1", function attack() {
-    if (isDone) {
-      return;
+  await once(server.listen(0, "127.0.0.1"), "listening");
+  const url = `http://127.0.0.1:${server.address().port}`;
+  // Isolate object counts from the other leak tests and join all work before disposing the server.
+  const script = `
+    const { heapStats } = require("bun:jsc");
+    async function request() {
+      const response = await fetch(${JSON.stringify(url)}, { signal: new AbortController().signal });
+      if (await response.text() !== "ok") throw new Error("unexpected response body");
     }
-    url ??= new URL(`http://127.0.0.1:${server.address().port}`);
-    const controller = new AbortController();
-    fetch(url, { signal: controller.signal })
-      .then(res => res.arrayBuffer())
-      .catch(() => {})
-      .then(attack);
+    for (let i = 0; i < 32; i++) await request();
+    let counts;
+    for (let i = 0; i < 10; i++) {
+      Bun.gc(true);
+      await new Promise(resolve => setImmediate(resolve));
+      counts = heapStats().objectTypeCounts;
+      if ((counts.Response ?? 0) <= 2 && (counts.AbortSignal ?? 0) <= 2) break;
+    }
+    console.log(JSON.stringify({ Response: counts.Response ?? 0, AbortSignal: counts.AbortSignal ?? 0 }));
+  `;
+  await using proc = Bun.spawn({
+    cmd: [bunExe(), "--smol", "-e", script],
+    env: bunEnv,
+    stdout: "pipe",
+    stderr: "pipe",
   });
-
-  let prev = Infinity;
-  let count = 0;
-  var interval = setInterval(() => {
-    isDone = true;
-    gc();
-    const next = process.memoryUsage().heapUsed;
-    if (next <= prev) {
-      expect(true).toBe(true);
-      clearInterval(interval);
-    } else if (count++ > 20) {
-      clearInterval(interval);
-      expect.unreachable();
-    } else {
-      prev = next;
-    }
-  }, 1e3);
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect(stderr).toBe("");
+  expect(requests).toBe(32);
+  const counts = JSON.parse(stdout.trim());
+  // Each class's prototype is included; retaining all request objects would report at least 32.
+  expect(counts.Response).toBeLessThanOrEqual(2);
+  expect(counts.AbortSignal).toBeLessThanOrEqual(2);
+  expect(proc.signalCode).toBeNull();
+  expect(exitCode).toBe(0);
 });
 
 test("fetch(data:) with percent-encoding does not leak", async () => {

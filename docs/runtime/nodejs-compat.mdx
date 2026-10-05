@@ -15,6 +15,8 @@ Stdin and eval scripts report malformed ancestor package metadata only when an i
 
 The OpenClaw fork reports missing runtime imports without downloading npm packages. This default covers scripts, workers, and child processes running the fork. You can opt in with `--install=auto|fallback|force` or an explicit bunfig `install.auto` setting. Package-manager commands (`bun install`, `bun add`, `bun x`, and `bunx`) are unchanged. See [Auto-install](/runtime/auto-install).
 
+Module namespaces have a null prototype. `require(esm)` adds an own enumerable `__esModule` marker only for modules with a default export and no explicit marker, without modifying the imported namespace. CommonJS namespaces preserve explicit markers and expose the original exports as `module.exports`.
+
 ## Built-in Node.js modules
 
 `Error.prepareStackTrace` supports deletion, descriptor restoration, and accessor replacement. Nested stack formatting and throwing formatters leave later captures usable.
@@ -176,6 +178,8 @@ Reading a selected dependency package materializes both `exports` and `imports`.
 Unreadable selected package metadata also throws `ERR_INVALID_PACKAGE_CONFIG`, rather than falling through to an index file. This deliberately follows Node 24.21; Node 24.19 treated these read failures as absent metadata. Missing files, non-directory path components, and a `package.json` directory remain absence cases.
 
 `import.meta.resolve()` validates the package scope of existing `.js`, `.ts`, and extensionless files. Missing-file URLs and `require.resolve()` defer that scope validation. Loading an already-resolved CommonJS file through the ESM loader preserves the original resolution mode.
+
+Async imports of CommonJS files preserve package-scope interop. A `.cjs` file inside a `"type": "module"` package keeps `module.exports` as its default export and exposes its `__esModule` property, while the file still executes as CommonJS.
 
 `registerHooks()` supports synchronous resolve/load chaining, source transformation, and deregistration. `nextResolve` honors parent URLs and custom conditions, and hooks preserve query/fragment module identities. Dynamic-import attributes, including attributes returned by resolve hooks, reach the matching load hook.
 

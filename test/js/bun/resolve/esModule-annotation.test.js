@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { tempDir } from "harness";
+import { bunEnv, bunExe, tempDir } from "harness";
 import { join } from "path";
 import * as WithTypeModuleExportEsModuleAnnotationMissingDefault from "./with-type-module/export-esModule-annotation-empty.cjs";
 import * as WithTypeModuleExportEsModuleAnnotationNoDefault from "./with-type-module/export-esModule-annotation-no-default.cjs";
@@ -9,6 +9,36 @@ import * as WithoutTypeModuleExportEsModuleAnnotationMissingDefault from "./with
 import * as WithoutTypeModuleExportEsModuleAnnotationNoDefault from "./without-type-module/export-esModule-annotation-no-default.cjs";
 import * as WithoutTypeModuleExportEsModuleAnnotation from "./without-type-module/export-esModule-annotation.cjs";
 import * as WithoutTypeModuleExportEsModuleNoAnnotation from "./without-type-module/export-esModule-no-annotation.cjs";
+
+test.concurrent("async CJS imports preserve package interop without changing their format", async () => {
+  using dir = tempDir("cjs-package-interop", {
+    "package.json": JSON.stringify({ type: "module" }),
+    "annotated.cjs": "exports.default = 42; exports.__esModule = true;",
+    "plain.cjs": "globalThis.hasCommonJSThis = this !== undefined && this !== null;",
+    "entry.mjs": `
+      import * as annotated from "./annotated.cjs";
+      import "./plain.cjs";
+      console.log(JSON.stringify({
+        default: annotated.default,
+        marker: annotated.__esModule,
+        hasCommonJSThis: globalThis.hasCommonJSThis,
+      }));
+    `,
+  });
+  await using proc = Bun.spawn({
+    cmd: [bunExe(), "entry.mjs"],
+    cwd: String(dir),
+    env: bunEnv,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect({ result: JSON.parse(stdout), stderr, exitCode }).toEqual({
+    result: { default: { default: 42, __esModule: true }, marker: true, hasCommonJSThis: true },
+    stderr: "",
+    exitCode: 0,
+  });
+});
 
 describe('without type: "module"', () => {
   test("module.exports = {}", () => {
@@ -21,20 +51,20 @@ describe('without type: "module"', () => {
       __esModule: true,
     });
 
-    // The module namespace object will not have the __esModule property.
-    expect(WithoutTypeModuleExportEsModuleAnnotationNoDefault.__esModule).toBeUndefined();
+    expect(Object.hasOwn(WithoutTypeModuleExportEsModuleAnnotationNoDefault, "__esModule")).toBe(true);
+    expect(WithoutTypeModuleExportEsModuleAnnotationNoDefault.__esModule).toBeTrue();
   });
 
   test("exports.default = true; exports.__esModule = true;", () => {
     expect(WithoutTypeModuleExportEsModuleAnnotation.default).toBeTrue();
-    expect(WithoutTypeModuleExportEsModuleAnnotation.__esModule).toBeUndefined();
+    expect(WithoutTypeModuleExportEsModuleAnnotation.__esModule).toBeTrue();
   });
 
   test("exports.default = true;", () => {
     expect(WithoutTypeModuleExportEsModuleNoAnnotation.default).toEqual({
       default: true,
     });
-    expect(WithoutTypeModuleExportEsModuleAnnotation.__esModule).toBeUndefined();
+    expect(WithoutTypeModuleExportEsModuleNoAnnotation.__esModule).toBeUndefined();
   });
 });
 
@@ -65,7 +95,7 @@ describe('with type: "module"', () => {
     expect(WithTypeModuleExportEsModuleNoAnnotation.default).toEqual({
       default: true,
     });
-    expect(WithTypeModuleExportEsModuleAnnotation.__esModule).toBeTrue();
+    expect(WithTypeModuleExportEsModuleNoAnnotation.__esModule).toBeUndefined();
   });
 });
 

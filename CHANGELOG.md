@@ -184,4 +184,15 @@
 
 - Reduce kernel CPU during cold module imports on macOS by serializing transpiler-cache writes while preserving parallel parsing and cache reads.
 
+- Keep ESM namespaces free of inherited `__esModule` markers and preserve the own marker and live exports for `require(esm)`, fixing Vite/tsx namespace interop. Adapts [oven-sh/bun#33894](https://github.com/oven-sh/bun/pull/33894) and [oven-sh/WebKit#279](https://github.com/oven-sh/WebKit/pull/279). Thanks @robobun!
+
+
+- Sync oven-sh/bun through `c7b06d94bac19817ba34b6677bb1099fb4f6d2be`, preserving fork fixes and incorporating TLS handshake shutdown, macOS split-DNS failover, file-body cloning, Buffer write validation, mimalloc 3.5.3 and idle-memory release.
+- Pin immutable [OpenClaw WebKit `42ab38d705`](https://github.com/openclaw/WebKit/releases/tag/autobuild-42ab38d705d4838748ccee77e7deb0e4e35515ee) by archive checksum, together with the required namespace facade integration from #106; retain fail-closed artifact selection.
+
+- Preserve package-scope CommonJS interop in async imports without replacing the file's parser format. Adapts [oven-sh/bun#40940](https://github.com/oven-sh/bun/pull/40940). Thanks @robobun!
+
+- Sync upstream nightly through `d4928764f23213ecf3cd61fa0b5b4a44369a5096`, configuring fetch TLS once per connection so pooled sockets can be reused during renegotiation without repeating session setup.
+- Sync upstream nightly through `9bd19c98eacc01530a4e7609bc427abffa87d77e`, preserving PostgreSQL query ordering through errors and limiting MySQL row-decoding failures to the affected query.
+
 - Build Windows ARM64 alongside x64, require Foundation Authenticode signatures before Windows release packaging, and qualify both architectures with the same native compatibility selection. Unsigned CI artifacts are explicitly test-only.
