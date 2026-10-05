@@ -1,59 +1,59 @@
 {
   "schema_version": 1,
-  "version": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
+  "version": "42ab38d705d4838748ccee77e7deb0e4e35515ee",
   "repository": "openclaw/WebKit",
-  "tag": "autobuild-1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
+  "tag": "autobuild-42ab38d705d4838748ccee77e7deb0e4e35515ee",
   "artifacts": {
     "bun-webkit-linux-amd64.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-1ee09069fef6bdf26a899b3da06fc48714aa8a4d/bun-webkit-linux-amd64.tar.gz",
-      "sha256": "7ed6b2fc11f29182d0badbbb09503eb5d502b3bae447a712032b1738ad28f977",
-      "size": 470974208
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-42ab38d705d4838748ccee77e7deb0e4e35515ee/bun-webkit-linux-amd64.tar.gz",
+      "sha256": "3f212b2d35218fa53244857a0f87be73a35bfd8a1a7a524a8574c4eb1c545bb5",
+      "size": 471708368
     },
     "bun-webkit-macos-arm64.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-1ee09069fef6bdf26a899b3da06fc48714aa8a4d/bun-webkit-macos-arm64.tar.gz",
-      "sha256": "46927ae599b78e582284fc788aa68592f6480940bea997593b571c3ac0567856",
-      "size": 210014079
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-42ab38d705d4838748ccee77e7deb0e4e35515ee/bun-webkit-macos-arm64.tar.gz",
+      "sha256": "6e97f2b3027ecaed2ea6999404c3e21a957236be83879cf6110bc2afcbc648ba",
+      "size": 210465154
     },
     "bun-webkit-linux-amd64-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-1ee09069fef6bdf26a899b3da06fc48714aa8a4d/bun-webkit-linux-amd64-lto.tar.gz",
-      "sha256": "eafc453c54530b47c8361e715bd8a30ab07145791577f53fb2378e402b14e6d9",
-      "size": 262631997
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-42ab38d705d4838748ccee77e7deb0e4e35515ee/bun-webkit-linux-amd64-lto.tar.gz",
+      "sha256": "13a30c6f94b9a3044514136ed8e73e7213a72c99c0296aad27fae0d94266110c",
+      "size": 262892415
     },
     "bun-webkit-linux-arm64-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-1ee09069fef6bdf26a899b3da06fc48714aa8a4d/bun-webkit-linux-arm64-lto.tar.gz",
-      "sha256": "a6f0ab8bff83568f52d9484ba794f2d62488b53a619d5e03bc171745caa3cec7",
-      "size": 256809785
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-42ab38d705d4838748ccee77e7deb0e4e35515ee/bun-webkit-linux-arm64-lto.tar.gz",
+      "sha256": "43b6d9ca2c94ef340d190c6a97806ca848f866c1b2a9225b9922925e3db8c460",
+      "size": 257000294
     },
     "bun-webkit-macos-arm64-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-1ee09069fef6bdf26a899b3da06fc48714aa8a4d/bun-webkit-macos-arm64-lto.tar.gz",
-      "sha256": "94592ed2bb267d207b60a842ea5120c1e0fc9d226aee7a85b7dae901343ee689",
-      "size": 155190017
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-42ab38d705d4838748ccee77e7deb0e4e35515ee/bun-webkit-macos-arm64-lto.tar.gz",
+      "sha256": "9f2da37e7282fe0aa76e4bc2836eb77eca0465f0b1aeef2aaf00e6fdb10d49f7",
+      "size": 155369091
     },
     "bun-webkit-macos-amd64-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-1ee09069fef6bdf26a899b3da06fc48714aa8a4d/bun-webkit-macos-amd64-lto.tar.gz",
-      "sha256": "d4ff752748c049a1b4ec34c7b5ea2733ba0594d5b41ae61df39e56d664b12031",
-      "size": 159437519
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-42ab38d705d4838748ccee77e7deb0e4e35515ee/bun-webkit-macos-amd64-lto.tar.gz",
+      "sha256": "a26c41479171a1f1bedb2ba50760da1eeff9a43bda4c28ee879e91388accb5e7",
+      "size": 159719837
     },
     "bun-webkit-linux-amd64-musl-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-1ee09069fef6bdf26a899b3da06fc48714aa8a4d/bun-webkit-linux-amd64-musl-lto.tar.gz",
-      "sha256": "163371e2805c8a267a289e7a4d2168a972af6e98ba2a6f2d1e08aba15f37f4c5",
-      "size": 221337385
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-42ab38d705d4838748ccee77e7deb0e4e35515ee/bun-webkit-linux-amd64-musl-lto.tar.gz",
+      "sha256": "ffc6b56895fdeb1a50929f6f23d598b5aa3077c582ba91139a13b045b05495db",
+      "size": 221673403
     },
     "bun-webkit-linux-arm64-musl-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-1ee09069fef6bdf26a899b3da06fc48714aa8a4d/bun-webkit-linux-arm64-musl-lto.tar.gz",
-      "sha256": "2fe7dc96717a688073d901cca7c2d43598bece8320fae2e0aae53bde7984ed65",
-      "size": 223217216
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-42ab38d705d4838748ccee77e7deb0e4e35515ee/bun-webkit-linux-arm64-musl-lto.tar.gz",
+      "sha256": "b851b7c8b623a3f36e70d389768e97a184cf914b5157f660fd8dfc921d47e3d7",
+      "size": 223555281
     },
     "bun-webkit-windows-amd64-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-1ee09069fef6bdf26a899b3da06fc48714aa8a4d/bun-webkit-windows-amd64-lto.tar.gz",
-      "sha256": "039db820abba63aafe1651cb33af685f1f104b335ba365cd97faecb501b9091f",
-      "size": 663727644
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-42ab38d705d4838748ccee77e7deb0e4e35515ee/bun-webkit-windows-amd64-lto.tar.gz",
+      "sha256": "af35f42d056d4b346fe83e01d8840f63c9303b1dc517e0545cb68e906fcc5af0",
+      "size": 665538527
     }
   },
   "variants": {
     "bun_repository": "openclaw/bun",
     "bun_commit": "b83b544ef744b6ab0dc1feadb59652261d64291d",
-    "base": "1600131e46b5af48bbda3559af8d8a3327230b6e",
+    "base": "5718a6ec579b98362ea7276a426deedcc6281ef5",
     "lanes": [
       {
         "label": "bun-webkit-linux-amd64",
@@ -92,24 +92,88 @@
         "consumer": "openclaw-release.yml optional windows-x64"
       }
     ],
-    "excluded": "Windows arm64, Android, FreeBSD, debug and ASAN are not selected by the fork's active OpenClaw workflows. There is no separate x64 baseline WebKit archive."
+    "excluded": "Windows arm64, Android, FreeBSD, debug and ASAN are not selected by the fork's active OpenClaw workflows. There is no separate x64 baseline WebKit archive.",
+    "upstream_sync": {
+      "base_commit": "d2d2a26ef973cdd97b37953f5dba58052acad74f",
+      "upstream_commit": "1878660bb47a6a87ebe518cea0581ef4bf9b71f8",
+      "prepared_tree": "d9ec052fccc81afbf43a5344e52bc980f439d587",
+      "paired_tree": "aee7cd52d7efcb9835b434a24fa47de06cc664f6",
+      "required_namespace_adapter_sha256": "6fdc093961584d2bd77176dcbaf487ab7ec07e14e5a19d11f881d751976a569d"
+    }
   },
   "qualification": {
     "passed": true,
-    "source": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
+    "source": "42ab38d705d4838748ccee77e7deb0e4e35515ee",
     "bun_commit": "b83b544ef744b6ab0dc1feadb59652261d64291d",
     "selected_files": 44,
     "result_files": 46,
     "als_variants_per_mode": 14,
     "proxy_minimum": 4,
     "resource_minimum": 14,
-    "bun_adapter_sha256": "282e7ef8a892c4f78032a5a3235a8d8eae1722a9a84929c4914f4e775cb70aae"
+    "bun_adapter_sha256": "efd7464bbf2eb5f6a8844b22e271303ca3846743d7815ab0e3b59d38dd0db8f9",
+    "upstream_sync": {
+      "passed": true,
+      "base_commit": "d2d2a26ef973cdd97b37953f5dba58052acad74f",
+      "prepared_tree": "d9ec052fccc81afbf43a5344e52bc980f439d587",
+      "selected_files": 83,
+      "result_rows": 85,
+      "regressions": 0,
+      "tests": {
+        "memory-release": 3,
+        "proxy": 4,
+        "resource-limits": 14,
+        "namespace": 41,
+        "inspector": 78,
+        "als-suites": 223,
+        "stack-positions": 343,
+        "stack-minifier": 68,
+        "arraybuffer": 19,
+        "worker-statistics": 7,
+        "arraybuffer-native": 1,
+        "arraybuffer-serializer": 60,
+        "inspection-idle": 1
+      },
+      "adapter_sha256": "1ad8cdbac31abe252fdaaf933a3ceeada0e7f43d2067469cda6d245d7878effc"
+    },
+    "engine": {
+      "passed": true,
+      "source": "42ab38d705d4838748ccee77e7deb0e4e35515ee",
+      "stress_counts": {
+        "jsc-stress": 1674,
+        "jsc-modules": 1639
+      },
+      "sampling_tiers": 4,
+      "arraybuffer_execution_modes": 5,
+      "stack_execution_modes": 4,
+      "stack_cache": {
+        "owned": {
+          "files": 3,
+          "bytes": 33024
+        },
+        "persistent": {
+          "files": 3,
+          "bytes": 33024
+        }
+      }
+    },
+    "compatibility": {
+      "passed": true,
+      "source": "42ab38d705d4838748ccee77e7deb0e4e35515ee",
+      "base_commit": "d2d2a26ef973cdd97b37953f5dba58052acad74f",
+      "prepared_tree": "d9ec052fccc81afbf43a5344e52bc980f439d587",
+      "paired_tree": "aee7cd52d7efcb9835b434a24fa47de06cc664f6",
+      "required_namespace_adapter_sha256": "6fdc093961584d2bd77176dcbaf487ab7ec07e14e5a19d11f881d751976a569d",
+      "only_manifest_changed_after_pairing": true,
+      "memory_tests": 3,
+      "startup": true,
+      "manifest_patch_sha256": "a9c7a9df7e4dba3fedfdb257aa814b1efffdc3b1ce60dc1353a451e673e3a295"
+    }
   },
   "lanes": [
     {
       "schema_version": 1,
-      "source": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
-      "base": "1600131e46b5af48bbda3559af8d8a3327230b6e",
+      "source": "42ab38d705d4838748ccee77e7deb0e4e35515ee",
+      "base": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "lane": {
         "label": "bun-webkit-linux-amd64",
         "runner": "linux-x64-gh",
@@ -168,6 +232,116 @@
           "commit": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
           "subject": "ci: isolate batch-one artifact publication from later engine work",
           "patch_sha256": "ec2f19cbd075d30517073388fc00d3ae5986ecfa25ca6811e5078da373d4fa8d"
+        },
+        {
+          "commit": "72feb0be76fd1ac55f034dc979c0ad3c51d6278f",
+          "subject": "fix(jsc): give require(esm) its own namespace marker (#1)",
+          "patch_sha256": "7f0aa66d664843dd927b954227f01d97407b50273f6e681df4181aa0f70d7207"
+        },
+        {
+          "commit": "594794f9d021d9debde5fe713b021e6e1978395e",
+          "subject": "feat(jsc): add byte-based heap allocation sampling (#2)",
+          "patch_sha256": "f7d840462b1ae22b8ada916e5b5777efc2afefb01cfed5f1d4ef6738dc4c5885"
+        },
+        {
+          "commit": "aa631fd8d6a48a092d4fa8089ff1ff5b532353bc",
+          "subject": "fix(intl): preserve segment boundaries around surrogate pairs",
+          "patch_sha256": "c00e0c3c83191c04f0527d1920e10649774f1da1857fd26f7a483b12edb7885e"
+        },
+        {
+          "commit": "297efd07d765336410671c36218dfe233dee5540",
+          "subject": "fix(jsc): allow opt-in Proxy global prototypes",
+          "patch_sha256": "12077938391f390ec50bd926e171e7e0531963ba399c5006db481c7ca86e451f"
+        },
+        {
+          "commit": "fcda75076bdcffeef3973cdf1376cfb9cd22048e",
+          "subject": "fix(jsc): preserve module-loader async context",
+          "patch_sha256": "6d5e3ceadedd4a4f0f96b42d4f53b5589bca053f18ffd7b2a587d9330f22b0fa"
+        },
+        {
+          "commit": "602011ef916a0b756d628e2f1ab2344f3e7a2594",
+          "subject": "feat(jsc): add per-VM worker heap and stack budgets",
+          "patch_sha256": "11847006c75b609004823a471e8a8a8b02755e99b590782769272195d92b069a"
+        },
+        {
+          "commit": "6ec8002ae1e3388a5ec7984608bbac4063ef2e66",
+          "subject": "ci: add immutable OpenClaw WebKit artifact pipeline",
+          "patch_sha256": "36980d4214adbd9bc4ae34cb2fcff988fcf4f9ab7b497d2663ab8aebb035d5f8"
+        },
+        {
+          "commit": "85513c6d6f4636d9378508d001079109057aabc8",
+          "subject": "fix(ci): bind qualification binaries to the Bun source revision",
+          "patch_sha256": "411ebf8fcc84e7dfce128f7ee9a2bc8af6a696e8ff276ba3f617f5d4d829f067"
+        },
+        {
+          "commit": "010f0d898d24c488efcf8aef72932108de771a9e",
+          "subject": "ci: isolate batch-one artifact publication from later engine work",
+          "patch_sha256": "ec2f19cbd075d30517073388fc00d3ae5986ecfa25ca6811e5078da373d4fa8d"
+        },
+        {
+          "commit": "8367b3b8ebf5901418b68b10d60f8f5f32385b4b",
+          "subject": "fix(jsc): give require(esm) its own namespace marker (#1)",
+          "patch_sha256": "7f0aa66d664843dd927b954227f01d97407b50273f6e681df4181aa0f70d7207"
+        },
+        {
+          "commit": "25931e1f0fdec40b11f690067bd31f4f4190be90",
+          "subject": "feat(jsc): add byte-based heap allocation sampling (#2)",
+          "patch_sha256": "f7d840462b1ae22b8ada916e5b5777efc2afefb01cfed5f1d4ef6738dc4c5885"
+        },
+        {
+          "commit": "3d5a89ec92c686406f23d7cbde49dc14f841818c",
+          "subject": "build(webkit): record the rebased upstream engine target",
+          "patch_sha256": "d29f543ef609bcf94b6dab4c1163117bc0676678955f607280e5a8af84a2d158"
+        },
+        {
+          "commit": "e1d5f3504b4f7bfcb0499c8beea4db5bf6cf5f85",
+          "subject": "ci: qualify rebased WebKit with upstream-synced Bun",
+          "patch_sha256": "054da8412a0939c111668943a45b5241ce1d864e5322f5873944706d837be0e2"
+        },
+        {
+          "commit": "c34e80468daad729d1c82de497920116579164c6",
+          "subject": "build(webkit): qualify rebased engine and upstream-synced Bun (#4)",
+          "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "commit": "e9d324af5e808691f1c1ad9874f0f07e80bbddd3",
+          "subject": "fix(jsc): retain syntax-selected stack source positions",
+          "patch_sha256": "a8e42625359f866f879dfcacb81fac5fc69242402a92fef8fe221c1006d2f054"
+        },
+        {
+          "commit": "47ad5343455b112acfb54325738f302d269d4f65",
+          "subject": "ci: qualify stack positions and exact Bun sync compatibility",
+          "patch_sha256": "352e7334c6826c2a193a860c68babc47942668cb86b8d030b1df3757dec47ff1"
+        },
+        {
+          "commit": "25bd0667289b4ee2c9bc35e087b1e7257fbfffd6",
+          "subject": "test(jsc): align promise stack goldens with syntax positions",
+          "patch_sha256": "bdc4c9790c952a2f967edbabe6345ff14d7cb8d8429156cccdaa1747d4971f0f"
+        },
+        {
+          "commit": "6fceea99edb111efebf25032935b75cfe7bf3a7f",
+          "subject": "fix(jsc): track ArrayBuffer ownership and inspect worker memory (#5)",
+          "patch_sha256": "64a37019bbd69aae6716ec27c4f385bb42f883631977dd1424aa4c79150860a1"
+        },
+        {
+          "commit": "228016b0eb4b9d80fc5148cf46a5f6c3c116b38f",
+          "subject": "build(webkit): qualify the complete rebased engine batch",
+          "patch_sha256": "6fc5f2c3afe8e80098f35da8bdb95f3e11ac3879907c2a6b5196fb7545e24de6"
+        },
+        {
+          "commit": "85e51313e8ce7279c2700432f0d24dda78b56c8d",
+          "subject": "ci: pin the required namespace counterpart for Bun sync",
+          "patch_sha256": "646e6877930066ea6de645b543803c75cba0eb8cf2de25b3756bbc4f933a1d15"
+        },
+        {
+          "commit": "8bf4642bf8f6f091f250ca79b05dc0ab3baf2ac7",
+          "subject": "test: align inspected error caret in sync qualification",
+          "patch_sha256": "4b2ddfd4a834d38a39402e6a59b982d634ac421315399fec1807ae2e61ec2223"
+        },
+        {
+          "commit": "42ab38d705d4838748ccee77e7deb0e4e35515ee",
+          "subject": "build(webkit): qualify complete rebased engine batch (#6)",
+          "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         }
       ],
       "recipe_sha256": {
@@ -192,7 +366,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:c79a7690fd06ff5e9c03fc980bfb01fd85347624e54f0acdef20cacc0b95cea3",
+      "toolchain_image_id": "sha256:7688c9e0a58e3410c90d6cfa0655daa67eeb6dabc1b006792c84511129811a21",
       "commands": {
         "base": [
           "docker",
@@ -273,26 +447,26 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910043923+069ef0e7cb36-1~exp1~20260910043934.72)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 4.4.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.10.0",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.2.1\n  GitCommit:        dea7da592f5d1d2b7755e3a161be07f43fad8f75\n runc:\n  Version:          1.3.4\n  GitCommit:        v1.3.4-0-gd6d73eb8\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "37224066519",
+      "workflow_run": "37254059740",
       "run_attempt": "1",
-      "elapsed_seconds": 501.94161462783813,
+      "elapsed_seconds": 498.0978660583496,
       "files": {
         "bun-webkit-linux-amd64.tar.gz": {
-          "sha256": "7ed6b2fc11f29182d0badbbb09503eb5d502b3bae447a712032b1738ad28f977",
-          "size": 470974208
+          "sha256": "3f212b2d35218fa53244857a0f87be73a35bfd8a1a7a524a8574c4eb1c545bb5",
+          "size": 471708368
         }
       },
       "provenance_files": {
-        "toolchain-image.json": "d7186646e92e6c93900f5319d2155d77305001f0912ecf8894649599934314a7",
-        "toolchain-build.json": "2c491961615ef9d473e377a7df45ce559e6f668350404559e05d43fd7608ccbd",
-        "artifact-build.json": "3cb58521ab97cb44c589d25c899ca9c74d784a712f7d60d678933b66d3103749",
-        "tool-versions.txt": "1f732938c107d159895e80daffe13bc457ce53c90ec3af6123ca41de962a231f"
+        "toolchain-image.json": "a1e434af7fd07bc13bb34c37e50025b21bb0c93b8af75384985805f159e04d7b",
+        "tool-versions.txt": "1f732938c107d159895e80daffe13bc457ce53c90ec3af6123ca41de962a231f",
+        "toolchain-build.json": "84b62eadd843a1461cc8e1392c803cc6a2c7f46334c216ec1edb783cbfb46f67",
+        "artifact-build.json": "61b88855a9b9ef8bff855441f838d270b6efc75803c58c839b763e381264a551"
       }
     },
     {
       "schema_version": 1,
-      "source": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
-      "base": "1600131e46b5af48bbda3559af8d8a3327230b6e",
+      "source": "42ab38d705d4838748ccee77e7deb0e4e35515ee",
+      "base": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "lane": {
         "label": "bun-webkit-macos-arm64",
         "runner": "linux-x64-gh",
@@ -350,6 +524,116 @@
           "commit": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
           "subject": "ci: isolate batch-one artifact publication from later engine work",
           "patch_sha256": "ec2f19cbd075d30517073388fc00d3ae5986ecfa25ca6811e5078da373d4fa8d"
+        },
+        {
+          "commit": "72feb0be76fd1ac55f034dc979c0ad3c51d6278f",
+          "subject": "fix(jsc): give require(esm) its own namespace marker (#1)",
+          "patch_sha256": "7f0aa66d664843dd927b954227f01d97407b50273f6e681df4181aa0f70d7207"
+        },
+        {
+          "commit": "594794f9d021d9debde5fe713b021e6e1978395e",
+          "subject": "feat(jsc): add byte-based heap allocation sampling (#2)",
+          "patch_sha256": "f7d840462b1ae22b8ada916e5b5777efc2afefb01cfed5f1d4ef6738dc4c5885"
+        },
+        {
+          "commit": "aa631fd8d6a48a092d4fa8089ff1ff5b532353bc",
+          "subject": "fix(intl): preserve segment boundaries around surrogate pairs",
+          "patch_sha256": "c00e0c3c83191c04f0527d1920e10649774f1da1857fd26f7a483b12edb7885e"
+        },
+        {
+          "commit": "297efd07d765336410671c36218dfe233dee5540",
+          "subject": "fix(jsc): allow opt-in Proxy global prototypes",
+          "patch_sha256": "12077938391f390ec50bd926e171e7e0531963ba399c5006db481c7ca86e451f"
+        },
+        {
+          "commit": "fcda75076bdcffeef3973cdf1376cfb9cd22048e",
+          "subject": "fix(jsc): preserve module-loader async context",
+          "patch_sha256": "6d5e3ceadedd4a4f0f96b42d4f53b5589bca053f18ffd7b2a587d9330f22b0fa"
+        },
+        {
+          "commit": "602011ef916a0b756d628e2f1ab2344f3e7a2594",
+          "subject": "feat(jsc): add per-VM worker heap and stack budgets",
+          "patch_sha256": "11847006c75b609004823a471e8a8a8b02755e99b590782769272195d92b069a"
+        },
+        {
+          "commit": "6ec8002ae1e3388a5ec7984608bbac4063ef2e66",
+          "subject": "ci: add immutable OpenClaw WebKit artifact pipeline",
+          "patch_sha256": "36980d4214adbd9bc4ae34cb2fcff988fcf4f9ab7b497d2663ab8aebb035d5f8"
+        },
+        {
+          "commit": "85513c6d6f4636d9378508d001079109057aabc8",
+          "subject": "fix(ci): bind qualification binaries to the Bun source revision",
+          "patch_sha256": "411ebf8fcc84e7dfce128f7ee9a2bc8af6a696e8ff276ba3f617f5d4d829f067"
+        },
+        {
+          "commit": "010f0d898d24c488efcf8aef72932108de771a9e",
+          "subject": "ci: isolate batch-one artifact publication from later engine work",
+          "patch_sha256": "ec2f19cbd075d30517073388fc00d3ae5986ecfa25ca6811e5078da373d4fa8d"
+        },
+        {
+          "commit": "8367b3b8ebf5901418b68b10d60f8f5f32385b4b",
+          "subject": "fix(jsc): give require(esm) its own namespace marker (#1)",
+          "patch_sha256": "7f0aa66d664843dd927b954227f01d97407b50273f6e681df4181aa0f70d7207"
+        },
+        {
+          "commit": "25931e1f0fdec40b11f690067bd31f4f4190be90",
+          "subject": "feat(jsc): add byte-based heap allocation sampling (#2)",
+          "patch_sha256": "f7d840462b1ae22b8ada916e5b5777efc2afefb01cfed5f1d4ef6738dc4c5885"
+        },
+        {
+          "commit": "3d5a89ec92c686406f23d7cbde49dc14f841818c",
+          "subject": "build(webkit): record the rebased upstream engine target",
+          "patch_sha256": "d29f543ef609bcf94b6dab4c1163117bc0676678955f607280e5a8af84a2d158"
+        },
+        {
+          "commit": "e1d5f3504b4f7bfcb0499c8beea4db5bf6cf5f85",
+          "subject": "ci: qualify rebased WebKit with upstream-synced Bun",
+          "patch_sha256": "054da8412a0939c111668943a45b5241ce1d864e5322f5873944706d837be0e2"
+        },
+        {
+          "commit": "c34e80468daad729d1c82de497920116579164c6",
+          "subject": "build(webkit): qualify rebased engine and upstream-synced Bun (#4)",
+          "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "commit": "e9d324af5e808691f1c1ad9874f0f07e80bbddd3",
+          "subject": "fix(jsc): retain syntax-selected stack source positions",
+          "patch_sha256": "a8e42625359f866f879dfcacb81fac5fc69242402a92fef8fe221c1006d2f054"
+        },
+        {
+          "commit": "47ad5343455b112acfb54325738f302d269d4f65",
+          "subject": "ci: qualify stack positions and exact Bun sync compatibility",
+          "patch_sha256": "352e7334c6826c2a193a860c68babc47942668cb86b8d030b1df3757dec47ff1"
+        },
+        {
+          "commit": "25bd0667289b4ee2c9bc35e087b1e7257fbfffd6",
+          "subject": "test(jsc): align promise stack goldens with syntax positions",
+          "patch_sha256": "bdc4c9790c952a2f967edbabe6345ff14d7cb8d8429156cccdaa1747d4971f0f"
+        },
+        {
+          "commit": "6fceea99edb111efebf25032935b75cfe7bf3a7f",
+          "subject": "fix(jsc): track ArrayBuffer ownership and inspect worker memory (#5)",
+          "patch_sha256": "64a37019bbd69aae6716ec27c4f385bb42f883631977dd1424aa4c79150860a1"
+        },
+        {
+          "commit": "228016b0eb4b9d80fc5148cf46a5f6c3c116b38f",
+          "subject": "build(webkit): qualify the complete rebased engine batch",
+          "patch_sha256": "6fc5f2c3afe8e80098f35da8bdb95f3e11ac3879907c2a6b5196fb7545e24de6"
+        },
+        {
+          "commit": "85e51313e8ce7279c2700432f0d24dda78b56c8d",
+          "subject": "ci: pin the required namespace counterpart for Bun sync",
+          "patch_sha256": "646e6877930066ea6de645b543803c75cba0eb8cf2de25b3756bbc4f933a1d15"
+        },
+        {
+          "commit": "8bf4642bf8f6f091f250ca79b05dc0ab3baf2ac7",
+          "subject": "test: align inspected error caret in sync qualification",
+          "patch_sha256": "4b2ddfd4a834d38a39402e6a59b982d634ac421315399fec1807ae2e61ec2223"
+        },
+        {
+          "commit": "42ab38d705d4838748ccee77e7deb0e4e35515ee",
+          "subject": "build(webkit): qualify complete rebased engine batch (#6)",
+          "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         }
       ],
       "recipe_sha256": {
@@ -374,7 +658,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:202dbedb4e32365ab660c98ed1f0ceddd8cda07f3e84a1cc45f815ee9d16c628",
+      "toolchain_image_id": "sha256:bf7b4f77e1ee7761443528f7a72d63e1bb9693050578510b5d2da0e428699464",
       "commands": {
         "base": [
           "docker",
@@ -455,26 +739,26 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910044232+069ef0e7cb36-1~exp1~20260910044242.70)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.11.1",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.2.1\n  GitCommit:        dea7da592f5d1d2b7755e3a161be07f43fad8f75\n runc:\n  Version:          1.3.4\n  GitCommit:        v1.3.4-0-gd6d73eb8\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "37224066519",
+      "workflow_run": "37254059740",
       "run_attempt": "1",
-      "elapsed_seconds": 283.347797870636,
+      "elapsed_seconds": 264.0893898010254,
       "files": {
         "bun-webkit-macos-arm64.tar.gz": {
-          "sha256": "46927ae599b78e582284fc788aa68592f6480940bea997593b571c3ac0567856",
-          "size": 210014079
+          "sha256": "6e97f2b3027ecaed2ea6999404c3e21a957236be83879cf6110bc2afcbc648ba",
+          "size": 210465154
         }
       },
       "provenance_files": {
-        "artifact-build.json": "fc96e6a922a05c02d3bcb788f118d1ca663c367506722763021f596ee56322bb",
+        "toolchain-build.json": "ba0711835b7c90b2444ce71679fd188c0c940c9b0050490bce796bf86fb33785",
         "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8",
-        "toolchain-build.json": "3029077a58db3132c99e36a8769b3516f895ba627f44de62924ed9f173294071",
-        "toolchain-image.json": "f43cfa26d9d9a408e3674ba14fea5aacbb60f3012bf6c915505f0ee9b87707de"
+        "toolchain-image.json": "c0d20bff6bfd1dbefe1e0705b2a1eb43aaaad5d0e530fd5ba77772a8f55d0ecb",
+        "artifact-build.json": "023c27240a88bec583a06e1aa243a9075fc5d07a33386d2d627ed63eec9fc4cd"
       }
     },
     {
       "schema_version": 1,
-      "source": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
-      "base": "1600131e46b5af48bbda3559af8d8a3327230b6e",
+      "source": "42ab38d705d4838748ccee77e7deb0e4e35515ee",
+      "base": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "lane": {
         "label": "bun-webkit-linux-amd64-lto",
         "runner": "linux-x64-gh",
@@ -533,6 +817,116 @@
           "commit": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
           "subject": "ci: isolate batch-one artifact publication from later engine work",
           "patch_sha256": "ec2f19cbd075d30517073388fc00d3ae5986ecfa25ca6811e5078da373d4fa8d"
+        },
+        {
+          "commit": "72feb0be76fd1ac55f034dc979c0ad3c51d6278f",
+          "subject": "fix(jsc): give require(esm) its own namespace marker (#1)",
+          "patch_sha256": "7f0aa66d664843dd927b954227f01d97407b50273f6e681df4181aa0f70d7207"
+        },
+        {
+          "commit": "594794f9d021d9debde5fe713b021e6e1978395e",
+          "subject": "feat(jsc): add byte-based heap allocation sampling (#2)",
+          "patch_sha256": "f7d840462b1ae22b8ada916e5b5777efc2afefb01cfed5f1d4ef6738dc4c5885"
+        },
+        {
+          "commit": "aa631fd8d6a48a092d4fa8089ff1ff5b532353bc",
+          "subject": "fix(intl): preserve segment boundaries around surrogate pairs",
+          "patch_sha256": "c00e0c3c83191c04f0527d1920e10649774f1da1857fd26f7a483b12edb7885e"
+        },
+        {
+          "commit": "297efd07d765336410671c36218dfe233dee5540",
+          "subject": "fix(jsc): allow opt-in Proxy global prototypes",
+          "patch_sha256": "12077938391f390ec50bd926e171e7e0531963ba399c5006db481c7ca86e451f"
+        },
+        {
+          "commit": "fcda75076bdcffeef3973cdf1376cfb9cd22048e",
+          "subject": "fix(jsc): preserve module-loader async context",
+          "patch_sha256": "6d5e3ceadedd4a4f0f96b42d4f53b5589bca053f18ffd7b2a587d9330f22b0fa"
+        },
+        {
+          "commit": "602011ef916a0b756d628e2f1ab2344f3e7a2594",
+          "subject": "feat(jsc): add per-VM worker heap and stack budgets",
+          "patch_sha256": "11847006c75b609004823a471e8a8a8b02755e99b590782769272195d92b069a"
+        },
+        {
+          "commit": "6ec8002ae1e3388a5ec7984608bbac4063ef2e66",
+          "subject": "ci: add immutable OpenClaw WebKit artifact pipeline",
+          "patch_sha256": "36980d4214adbd9bc4ae34cb2fcff988fcf4f9ab7b497d2663ab8aebb035d5f8"
+        },
+        {
+          "commit": "85513c6d6f4636d9378508d001079109057aabc8",
+          "subject": "fix(ci): bind qualification binaries to the Bun source revision",
+          "patch_sha256": "411ebf8fcc84e7dfce128f7ee9a2bc8af6a696e8ff276ba3f617f5d4d829f067"
+        },
+        {
+          "commit": "010f0d898d24c488efcf8aef72932108de771a9e",
+          "subject": "ci: isolate batch-one artifact publication from later engine work",
+          "patch_sha256": "ec2f19cbd075d30517073388fc00d3ae5986ecfa25ca6811e5078da373d4fa8d"
+        },
+        {
+          "commit": "8367b3b8ebf5901418b68b10d60f8f5f32385b4b",
+          "subject": "fix(jsc): give require(esm) its own namespace marker (#1)",
+          "patch_sha256": "7f0aa66d664843dd927b954227f01d97407b50273f6e681df4181aa0f70d7207"
+        },
+        {
+          "commit": "25931e1f0fdec40b11f690067bd31f4f4190be90",
+          "subject": "feat(jsc): add byte-based heap allocation sampling (#2)",
+          "patch_sha256": "f7d840462b1ae22b8ada916e5b5777efc2afefb01cfed5f1d4ef6738dc4c5885"
+        },
+        {
+          "commit": "3d5a89ec92c686406f23d7cbde49dc14f841818c",
+          "subject": "build(webkit): record the rebased upstream engine target",
+          "patch_sha256": "d29f543ef609bcf94b6dab4c1163117bc0676678955f607280e5a8af84a2d158"
+        },
+        {
+          "commit": "e1d5f3504b4f7bfcb0499c8beea4db5bf6cf5f85",
+          "subject": "ci: qualify rebased WebKit with upstream-synced Bun",
+          "patch_sha256": "054da8412a0939c111668943a45b5241ce1d864e5322f5873944706d837be0e2"
+        },
+        {
+          "commit": "c34e80468daad729d1c82de497920116579164c6",
+          "subject": "build(webkit): qualify rebased engine and upstream-synced Bun (#4)",
+          "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "commit": "e9d324af5e808691f1c1ad9874f0f07e80bbddd3",
+          "subject": "fix(jsc): retain syntax-selected stack source positions",
+          "patch_sha256": "a8e42625359f866f879dfcacb81fac5fc69242402a92fef8fe221c1006d2f054"
+        },
+        {
+          "commit": "47ad5343455b112acfb54325738f302d269d4f65",
+          "subject": "ci: qualify stack positions and exact Bun sync compatibility",
+          "patch_sha256": "352e7334c6826c2a193a860c68babc47942668cb86b8d030b1df3757dec47ff1"
+        },
+        {
+          "commit": "25bd0667289b4ee2c9bc35e087b1e7257fbfffd6",
+          "subject": "test(jsc): align promise stack goldens with syntax positions",
+          "patch_sha256": "bdc4c9790c952a2f967edbabe6345ff14d7cb8d8429156cccdaa1747d4971f0f"
+        },
+        {
+          "commit": "6fceea99edb111efebf25032935b75cfe7bf3a7f",
+          "subject": "fix(jsc): track ArrayBuffer ownership and inspect worker memory (#5)",
+          "patch_sha256": "64a37019bbd69aae6716ec27c4f385bb42f883631977dd1424aa4c79150860a1"
+        },
+        {
+          "commit": "228016b0eb4b9d80fc5148cf46a5f6c3c116b38f",
+          "subject": "build(webkit): qualify the complete rebased engine batch",
+          "patch_sha256": "6fc5f2c3afe8e80098f35da8bdb95f3e11ac3879907c2a6b5196fb7545e24de6"
+        },
+        {
+          "commit": "85e51313e8ce7279c2700432f0d24dda78b56c8d",
+          "subject": "ci: pin the required namespace counterpart for Bun sync",
+          "patch_sha256": "646e6877930066ea6de645b543803c75cba0eb8cf2de25b3756bbc4f933a1d15"
+        },
+        {
+          "commit": "8bf4642bf8f6f091f250ca79b05dc0ab3baf2ac7",
+          "subject": "test: align inspected error caret in sync qualification",
+          "patch_sha256": "4b2ddfd4a834d38a39402e6a59b982d634ac421315399fec1807ae2e61ec2223"
+        },
+        {
+          "commit": "42ab38d705d4838748ccee77e7deb0e4e35515ee",
+          "subject": "build(webkit): qualify complete rebased engine batch (#6)",
+          "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         }
       ],
       "recipe_sha256": {
@@ -557,7 +951,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:4db566e0abce253b6433a4e9e3ed3cae3b61711e8630ae2b8d3132db30a582d5",
+      "toolchain_image_id": "sha256:74bac7197805a7429614cb6a96e3c1cd594e118063cd54e43d24b2196a66c513",
       "commands": {
         "base": [
           "docker",
@@ -638,26 +1032,26 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910043923+069ef0e7cb36-1~exp1~20260910043934.72)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 4.4.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.10.0",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.2.1\n  GitCommit:        dea7da592f5d1d2b7755e3a161be07f43fad8f75\n runc:\n  Version:          1.3.4\n  GitCommit:        v1.3.4-0-gd6d73eb8\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "37224066519",
+      "workflow_run": "37254059740",
       "run_attempt": "1",
-      "elapsed_seconds": 504.2447941303253,
+      "elapsed_seconds": 571.4663543701172,
       "files": {
         "bun-webkit-linux-amd64-lto.tar.gz": {
-          "sha256": "eafc453c54530b47c8361e715bd8a30ab07145791577f53fb2378e402b14e6d9",
-          "size": 262631997
+          "sha256": "13a30c6f94b9a3044514136ed8e73e7213a72c99c0296aad27fae0d94266110c",
+          "size": 262892415
         }
       },
       "provenance_files": {
-        "artifact-build.json": "1b820869ec35778c52933aac8f9e9e9d0a950006463e3eda61686fe5ae85fe12",
-        "tool-versions.txt": "1f732938c107d159895e80daffe13bc457ce53c90ec3af6123ca41de962a231f",
-        "toolchain-build.json": "f9e545d904c4dc815b7350b266c188a9851af0135ed9993b44b832818973024e",
-        "toolchain-image.json": "37b71a36b2310c288892f752687ad0378dfdd75009a5b9bf165f242be5cdc388"
+        "artifact-build.json": "73ccbcc57ab4193a5547c0b1a75866265cc581b7d72e94b45c8e19fc33b9c308",
+        "toolchain-image.json": "15256f89bb4e79fb0d393b15f0b4ba672c321aa48cbfe155d53ccc5d9ff9f3d4",
+        "toolchain-build.json": "e7b854246d252b176ba4c484194e5bd452439d70b204c5f54f04964b62afe1a0",
+        "tool-versions.txt": "1f732938c107d159895e80daffe13bc457ce53c90ec3af6123ca41de962a231f"
       }
     },
     {
       "schema_version": 1,
-      "source": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
-      "base": "1600131e46b5af48bbda3559af8d8a3327230b6e",
+      "source": "42ab38d705d4838748ccee77e7deb0e4e35515ee",
+      "base": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "lane": {
         "label": "bun-webkit-linux-arm64-lto",
         "runner": "linux-x64-gh",
@@ -716,6 +1110,116 @@
           "commit": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
           "subject": "ci: isolate batch-one artifact publication from later engine work",
           "patch_sha256": "ec2f19cbd075d30517073388fc00d3ae5986ecfa25ca6811e5078da373d4fa8d"
+        },
+        {
+          "commit": "72feb0be76fd1ac55f034dc979c0ad3c51d6278f",
+          "subject": "fix(jsc): give require(esm) its own namespace marker (#1)",
+          "patch_sha256": "7f0aa66d664843dd927b954227f01d97407b50273f6e681df4181aa0f70d7207"
+        },
+        {
+          "commit": "594794f9d021d9debde5fe713b021e6e1978395e",
+          "subject": "feat(jsc): add byte-based heap allocation sampling (#2)",
+          "patch_sha256": "f7d840462b1ae22b8ada916e5b5777efc2afefb01cfed5f1d4ef6738dc4c5885"
+        },
+        {
+          "commit": "aa631fd8d6a48a092d4fa8089ff1ff5b532353bc",
+          "subject": "fix(intl): preserve segment boundaries around surrogate pairs",
+          "patch_sha256": "c00e0c3c83191c04f0527d1920e10649774f1da1857fd26f7a483b12edb7885e"
+        },
+        {
+          "commit": "297efd07d765336410671c36218dfe233dee5540",
+          "subject": "fix(jsc): allow opt-in Proxy global prototypes",
+          "patch_sha256": "12077938391f390ec50bd926e171e7e0531963ba399c5006db481c7ca86e451f"
+        },
+        {
+          "commit": "fcda75076bdcffeef3973cdf1376cfb9cd22048e",
+          "subject": "fix(jsc): preserve module-loader async context",
+          "patch_sha256": "6d5e3ceadedd4a4f0f96b42d4f53b5589bca053f18ffd7b2a587d9330f22b0fa"
+        },
+        {
+          "commit": "602011ef916a0b756d628e2f1ab2344f3e7a2594",
+          "subject": "feat(jsc): add per-VM worker heap and stack budgets",
+          "patch_sha256": "11847006c75b609004823a471e8a8a8b02755e99b590782769272195d92b069a"
+        },
+        {
+          "commit": "6ec8002ae1e3388a5ec7984608bbac4063ef2e66",
+          "subject": "ci: add immutable OpenClaw WebKit artifact pipeline",
+          "patch_sha256": "36980d4214adbd9bc4ae34cb2fcff988fcf4f9ab7b497d2663ab8aebb035d5f8"
+        },
+        {
+          "commit": "85513c6d6f4636d9378508d001079109057aabc8",
+          "subject": "fix(ci): bind qualification binaries to the Bun source revision",
+          "patch_sha256": "411ebf8fcc84e7dfce128f7ee9a2bc8af6a696e8ff276ba3f617f5d4d829f067"
+        },
+        {
+          "commit": "010f0d898d24c488efcf8aef72932108de771a9e",
+          "subject": "ci: isolate batch-one artifact publication from later engine work",
+          "patch_sha256": "ec2f19cbd075d30517073388fc00d3ae5986ecfa25ca6811e5078da373d4fa8d"
+        },
+        {
+          "commit": "8367b3b8ebf5901418b68b10d60f8f5f32385b4b",
+          "subject": "fix(jsc): give require(esm) its own namespace marker (#1)",
+          "patch_sha256": "7f0aa66d664843dd927b954227f01d97407b50273f6e681df4181aa0f70d7207"
+        },
+        {
+          "commit": "25931e1f0fdec40b11f690067bd31f4f4190be90",
+          "subject": "feat(jsc): add byte-based heap allocation sampling (#2)",
+          "patch_sha256": "f7d840462b1ae22b8ada916e5b5777efc2afefb01cfed5f1d4ef6738dc4c5885"
+        },
+        {
+          "commit": "3d5a89ec92c686406f23d7cbde49dc14f841818c",
+          "subject": "build(webkit): record the rebased upstream engine target",
+          "patch_sha256": "d29f543ef609bcf94b6dab4c1163117bc0676678955f607280e5a8af84a2d158"
+        },
+        {
+          "commit": "e1d5f3504b4f7bfcb0499c8beea4db5bf6cf5f85",
+          "subject": "ci: qualify rebased WebKit with upstream-synced Bun",
+          "patch_sha256": "054da8412a0939c111668943a45b5241ce1d864e5322f5873944706d837be0e2"
+        },
+        {
+          "commit": "c34e80468daad729d1c82de497920116579164c6",
+          "subject": "build(webkit): qualify rebased engine and upstream-synced Bun (#4)",
+          "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "commit": "e9d324af5e808691f1c1ad9874f0f07e80bbddd3",
+          "subject": "fix(jsc): retain syntax-selected stack source positions",
+          "patch_sha256": "a8e42625359f866f879dfcacb81fac5fc69242402a92fef8fe221c1006d2f054"
+        },
+        {
+          "commit": "47ad5343455b112acfb54325738f302d269d4f65",
+          "subject": "ci: qualify stack positions and exact Bun sync compatibility",
+          "patch_sha256": "352e7334c6826c2a193a860c68babc47942668cb86b8d030b1df3757dec47ff1"
+        },
+        {
+          "commit": "25bd0667289b4ee2c9bc35e087b1e7257fbfffd6",
+          "subject": "test(jsc): align promise stack goldens with syntax positions",
+          "patch_sha256": "bdc4c9790c952a2f967edbabe6345ff14d7cb8d8429156cccdaa1747d4971f0f"
+        },
+        {
+          "commit": "6fceea99edb111efebf25032935b75cfe7bf3a7f",
+          "subject": "fix(jsc): track ArrayBuffer ownership and inspect worker memory (#5)",
+          "patch_sha256": "64a37019bbd69aae6716ec27c4f385bb42f883631977dd1424aa4c79150860a1"
+        },
+        {
+          "commit": "228016b0eb4b9d80fc5148cf46a5f6c3c116b38f",
+          "subject": "build(webkit): qualify the complete rebased engine batch",
+          "patch_sha256": "6fc5f2c3afe8e80098f35da8bdb95f3e11ac3879907c2a6b5196fb7545e24de6"
+        },
+        {
+          "commit": "85e51313e8ce7279c2700432f0d24dda78b56c8d",
+          "subject": "ci: pin the required namespace counterpart for Bun sync",
+          "patch_sha256": "646e6877930066ea6de645b543803c75cba0eb8cf2de25b3756bbc4f933a1d15"
+        },
+        {
+          "commit": "8bf4642bf8f6f091f250ca79b05dc0ab3baf2ac7",
+          "subject": "test: align inspected error caret in sync qualification",
+          "patch_sha256": "4b2ddfd4a834d38a39402e6a59b982d634ac421315399fec1807ae2e61ec2223"
+        },
+        {
+          "commit": "42ab38d705d4838748ccee77e7deb0e4e35515ee",
+          "subject": "build(webkit): qualify complete rebased engine batch (#6)",
+          "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         }
       ],
       "recipe_sha256": {
@@ -740,7 +1244,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:70606d07a454fe6abb77bed77a2489825bfa6bacc941f96f415dc8f29074b63d",
+      "toolchain_image_id": "sha256:f651976e7743e4e484097bf24df183216bd0def69136b92c40ab630728f4ca0a",
       "commands": {
         "base": [
           "docker",
@@ -821,26 +1325,26 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910043923+069ef0e7cb36-1~exp1~20260910043934.72)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 4.4.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.10.0",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.2.1\n  GitCommit:        dea7da592f5d1d2b7755e3a161be07f43fad8f75\n runc:\n  Version:          1.3.4\n  GitCommit:        v1.3.4-0-gd6d73eb8\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "37224066519",
+      "workflow_run": "37254059740",
       "run_attempt": "1",
-      "elapsed_seconds": 518.1393883228302,
+      "elapsed_seconds": 516.0187137126923,
       "files": {
         "bun-webkit-linux-arm64-lto.tar.gz": {
-          "sha256": "a6f0ab8bff83568f52d9484ba794f2d62488b53a619d5e03bc171745caa3cec7",
-          "size": 256809785
+          "sha256": "43b6d9ca2c94ef340d190c6a97806ca848f866c1b2a9225b9922925e3db8c460",
+          "size": 257000294
         }
       },
       "provenance_files": {
-        "toolchain-build.json": "d54617100fb0f948dbfc5870ba3f6f15860a0e0d77a2b6739003a558823f4c56",
-        "artifact-build.json": "fe9d405eea1474d2e95063116e0836ede86c61888a28d8af661bd02847ffbe08",
-        "toolchain-image.json": "65d082ba688beef56630f51aea8652c36c4930b80b2a952409ef5cdeeb07d049",
-        "tool-versions.txt": "1f732938c107d159895e80daffe13bc457ce53c90ec3af6123ca41de962a231f"
+        "tool-versions.txt": "1f732938c107d159895e80daffe13bc457ce53c90ec3af6123ca41de962a231f",
+        "toolchain-build.json": "a82032a22ec352b13a11ae55f0bd7ff79124f9da30b5b89a2e7b129d0e8f6eb2",
+        "artifact-build.json": "883722c60181a6c8455e0080bab625730611684ec15339633e47852fb8cc05a0",
+        "toolchain-image.json": "f4f22657f6b4e905aa99240e5ccd546ea1055379b5ff87a3d25a666d14ec1b6d"
       }
     },
     {
       "schema_version": 1,
-      "source": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
-      "base": "1600131e46b5af48bbda3559af8d8a3327230b6e",
+      "source": "42ab38d705d4838748ccee77e7deb0e4e35515ee",
+      "base": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "lane": {
         "label": "bun-webkit-macos-arm64-lto",
         "runner": "linux-x64-gh",
@@ -898,6 +1402,116 @@
           "commit": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
           "subject": "ci: isolate batch-one artifact publication from later engine work",
           "patch_sha256": "ec2f19cbd075d30517073388fc00d3ae5986ecfa25ca6811e5078da373d4fa8d"
+        },
+        {
+          "commit": "72feb0be76fd1ac55f034dc979c0ad3c51d6278f",
+          "subject": "fix(jsc): give require(esm) its own namespace marker (#1)",
+          "patch_sha256": "7f0aa66d664843dd927b954227f01d97407b50273f6e681df4181aa0f70d7207"
+        },
+        {
+          "commit": "594794f9d021d9debde5fe713b021e6e1978395e",
+          "subject": "feat(jsc): add byte-based heap allocation sampling (#2)",
+          "patch_sha256": "f7d840462b1ae22b8ada916e5b5777efc2afefb01cfed5f1d4ef6738dc4c5885"
+        },
+        {
+          "commit": "aa631fd8d6a48a092d4fa8089ff1ff5b532353bc",
+          "subject": "fix(intl): preserve segment boundaries around surrogate pairs",
+          "patch_sha256": "c00e0c3c83191c04f0527d1920e10649774f1da1857fd26f7a483b12edb7885e"
+        },
+        {
+          "commit": "297efd07d765336410671c36218dfe233dee5540",
+          "subject": "fix(jsc): allow opt-in Proxy global prototypes",
+          "patch_sha256": "12077938391f390ec50bd926e171e7e0531963ba399c5006db481c7ca86e451f"
+        },
+        {
+          "commit": "fcda75076bdcffeef3973cdf1376cfb9cd22048e",
+          "subject": "fix(jsc): preserve module-loader async context",
+          "patch_sha256": "6d5e3ceadedd4a4f0f96b42d4f53b5589bca053f18ffd7b2a587d9330f22b0fa"
+        },
+        {
+          "commit": "602011ef916a0b756d628e2f1ab2344f3e7a2594",
+          "subject": "feat(jsc): add per-VM worker heap and stack budgets",
+          "patch_sha256": "11847006c75b609004823a471e8a8a8b02755e99b590782769272195d92b069a"
+        },
+        {
+          "commit": "6ec8002ae1e3388a5ec7984608bbac4063ef2e66",
+          "subject": "ci: add immutable OpenClaw WebKit artifact pipeline",
+          "patch_sha256": "36980d4214adbd9bc4ae34cb2fcff988fcf4f9ab7b497d2663ab8aebb035d5f8"
+        },
+        {
+          "commit": "85513c6d6f4636d9378508d001079109057aabc8",
+          "subject": "fix(ci): bind qualification binaries to the Bun source revision",
+          "patch_sha256": "411ebf8fcc84e7dfce128f7ee9a2bc8af6a696e8ff276ba3f617f5d4d829f067"
+        },
+        {
+          "commit": "010f0d898d24c488efcf8aef72932108de771a9e",
+          "subject": "ci: isolate batch-one artifact publication from later engine work",
+          "patch_sha256": "ec2f19cbd075d30517073388fc00d3ae5986ecfa25ca6811e5078da373d4fa8d"
+        },
+        {
+          "commit": "8367b3b8ebf5901418b68b10d60f8f5f32385b4b",
+          "subject": "fix(jsc): give require(esm) its own namespace marker (#1)",
+          "patch_sha256": "7f0aa66d664843dd927b954227f01d97407b50273f6e681df4181aa0f70d7207"
+        },
+        {
+          "commit": "25931e1f0fdec40b11f690067bd31f4f4190be90",
+          "subject": "feat(jsc): add byte-based heap allocation sampling (#2)",
+          "patch_sha256": "f7d840462b1ae22b8ada916e5b5777efc2afefb01cfed5f1d4ef6738dc4c5885"
+        },
+        {
+          "commit": "3d5a89ec92c686406f23d7cbde49dc14f841818c",
+          "subject": "build(webkit): record the rebased upstream engine target",
+          "patch_sha256": "d29f543ef609bcf94b6dab4c1163117bc0676678955f607280e5a8af84a2d158"
+        },
+        {
+          "commit": "e1d5f3504b4f7bfcb0499c8beea4db5bf6cf5f85",
+          "subject": "ci: qualify rebased WebKit with upstream-synced Bun",
+          "patch_sha256": "054da8412a0939c111668943a45b5241ce1d864e5322f5873944706d837be0e2"
+        },
+        {
+          "commit": "c34e80468daad729d1c82de497920116579164c6",
+          "subject": "build(webkit): qualify rebased engine and upstream-synced Bun (#4)",
+          "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "commit": "e9d324af5e808691f1c1ad9874f0f07e80bbddd3",
+          "subject": "fix(jsc): retain syntax-selected stack source positions",
+          "patch_sha256": "a8e42625359f866f879dfcacb81fac5fc69242402a92fef8fe221c1006d2f054"
+        },
+        {
+          "commit": "47ad5343455b112acfb54325738f302d269d4f65",
+          "subject": "ci: qualify stack positions and exact Bun sync compatibility",
+          "patch_sha256": "352e7334c6826c2a193a860c68babc47942668cb86b8d030b1df3757dec47ff1"
+        },
+        {
+          "commit": "25bd0667289b4ee2c9bc35e087b1e7257fbfffd6",
+          "subject": "test(jsc): align promise stack goldens with syntax positions",
+          "patch_sha256": "bdc4c9790c952a2f967edbabe6345ff14d7cb8d8429156cccdaa1747d4971f0f"
+        },
+        {
+          "commit": "6fceea99edb111efebf25032935b75cfe7bf3a7f",
+          "subject": "fix(jsc): track ArrayBuffer ownership and inspect worker memory (#5)",
+          "patch_sha256": "64a37019bbd69aae6716ec27c4f385bb42f883631977dd1424aa4c79150860a1"
+        },
+        {
+          "commit": "228016b0eb4b9d80fc5148cf46a5f6c3c116b38f",
+          "subject": "build(webkit): qualify the complete rebased engine batch",
+          "patch_sha256": "6fc5f2c3afe8e80098f35da8bdb95f3e11ac3879907c2a6b5196fb7545e24de6"
+        },
+        {
+          "commit": "85e51313e8ce7279c2700432f0d24dda78b56c8d",
+          "subject": "ci: pin the required namespace counterpart for Bun sync",
+          "patch_sha256": "646e6877930066ea6de645b543803c75cba0eb8cf2de25b3756bbc4f933a1d15"
+        },
+        {
+          "commit": "8bf4642bf8f6f091f250ca79b05dc0ab3baf2ac7",
+          "subject": "test: align inspected error caret in sync qualification",
+          "patch_sha256": "4b2ddfd4a834d38a39402e6a59b982d634ac421315399fec1807ae2e61ec2223"
+        },
+        {
+          "commit": "42ab38d705d4838748ccee77e7deb0e4e35515ee",
+          "subject": "build(webkit): qualify complete rebased engine batch (#6)",
+          "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         }
       ],
       "recipe_sha256": {
@@ -922,7 +1536,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:dfd363df24e96dbe6631476666bf98bf8273312f65fc8cc5c991f2f30faba631",
+      "toolchain_image_id": "sha256:2779b1ddddf18b31136bd190aec8bc17cfb70bd393d5968c2a846f4eb12c55d7",
       "commands": {
         "base": [
           "docker",
@@ -1003,26 +1617,26 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910044232+069ef0e7cb36-1~exp1~20260910044242.70)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.11.1",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.2.1\n  GitCommit:        dea7da592f5d1d2b7755e3a161be07f43fad8f75\n runc:\n  Version:          1.3.4\n  GitCommit:        v1.3.4-0-gd6d73eb8\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "37224066519",
+      "workflow_run": "37254059740",
       "run_attempt": "1",
-      "elapsed_seconds": 273.09650707244873,
+      "elapsed_seconds": 302.5395154953003,
       "files": {
         "bun-webkit-macos-arm64-lto.tar.gz": {
-          "sha256": "94592ed2bb267d207b60a842ea5120c1e0fc9d226aee7a85b7dae901343ee689",
-          "size": 155190017
+          "sha256": "9f2da37e7282fe0aa76e4bc2836eb77eca0465f0b1aeef2aaf00e6fdb10d49f7",
+          "size": 155369091
         }
       },
       "provenance_files": {
-        "artifact-build.json": "d20345735ffefcbbd3a26ea068f9da8561012bc839266422206e5a7e8a3d3f38",
-        "toolchain-build.json": "71ec28667442ef46ab2d9a52264b7d163ef3d7f61c3163ca7934df466e873345",
-        "toolchain-image.json": "e46b4e71e29a532ce873478df0f7b3d0e7b5cf4ac87f49fc4b4e1663850ea9cb",
-        "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8"
+        "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8",
+        "toolchain-build.json": "30e303a76c7db5014617c82d551ad6c0aaa984ecd6498bd01800670df355f655",
+        "toolchain-image.json": "fcbeab53512bbbe54df4181abe63b7f76a6859f33bfa964f0aa0cbe0fe5971e3",
+        "artifact-build.json": "2225d838cb43ded9d219c35f8480637042c7f09d775d448e6472ed4cc3d52e95"
       }
     },
     {
       "schema_version": 1,
-      "source": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
-      "base": "1600131e46b5af48bbda3559af8d8a3327230b6e",
+      "source": "42ab38d705d4838748ccee77e7deb0e4e35515ee",
+      "base": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "lane": {
         "label": "bun-webkit-macos-amd64-lto",
         "runner": "linux-x64-gh",
@@ -1080,6 +1694,116 @@
           "commit": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
           "subject": "ci: isolate batch-one artifact publication from later engine work",
           "patch_sha256": "ec2f19cbd075d30517073388fc00d3ae5986ecfa25ca6811e5078da373d4fa8d"
+        },
+        {
+          "commit": "72feb0be76fd1ac55f034dc979c0ad3c51d6278f",
+          "subject": "fix(jsc): give require(esm) its own namespace marker (#1)",
+          "patch_sha256": "7f0aa66d664843dd927b954227f01d97407b50273f6e681df4181aa0f70d7207"
+        },
+        {
+          "commit": "594794f9d021d9debde5fe713b021e6e1978395e",
+          "subject": "feat(jsc): add byte-based heap allocation sampling (#2)",
+          "patch_sha256": "f7d840462b1ae22b8ada916e5b5777efc2afefb01cfed5f1d4ef6738dc4c5885"
+        },
+        {
+          "commit": "aa631fd8d6a48a092d4fa8089ff1ff5b532353bc",
+          "subject": "fix(intl): preserve segment boundaries around surrogate pairs",
+          "patch_sha256": "c00e0c3c83191c04f0527d1920e10649774f1da1857fd26f7a483b12edb7885e"
+        },
+        {
+          "commit": "297efd07d765336410671c36218dfe233dee5540",
+          "subject": "fix(jsc): allow opt-in Proxy global prototypes",
+          "patch_sha256": "12077938391f390ec50bd926e171e7e0531963ba399c5006db481c7ca86e451f"
+        },
+        {
+          "commit": "fcda75076bdcffeef3973cdf1376cfb9cd22048e",
+          "subject": "fix(jsc): preserve module-loader async context",
+          "patch_sha256": "6d5e3ceadedd4a4f0f96b42d4f53b5589bca053f18ffd7b2a587d9330f22b0fa"
+        },
+        {
+          "commit": "602011ef916a0b756d628e2f1ab2344f3e7a2594",
+          "subject": "feat(jsc): add per-VM worker heap and stack budgets",
+          "patch_sha256": "11847006c75b609004823a471e8a8a8b02755e99b590782769272195d92b069a"
+        },
+        {
+          "commit": "6ec8002ae1e3388a5ec7984608bbac4063ef2e66",
+          "subject": "ci: add immutable OpenClaw WebKit artifact pipeline",
+          "patch_sha256": "36980d4214adbd9bc4ae34cb2fcff988fcf4f9ab7b497d2663ab8aebb035d5f8"
+        },
+        {
+          "commit": "85513c6d6f4636d9378508d001079109057aabc8",
+          "subject": "fix(ci): bind qualification binaries to the Bun source revision",
+          "patch_sha256": "411ebf8fcc84e7dfce128f7ee9a2bc8af6a696e8ff276ba3f617f5d4d829f067"
+        },
+        {
+          "commit": "010f0d898d24c488efcf8aef72932108de771a9e",
+          "subject": "ci: isolate batch-one artifact publication from later engine work",
+          "patch_sha256": "ec2f19cbd075d30517073388fc00d3ae5986ecfa25ca6811e5078da373d4fa8d"
+        },
+        {
+          "commit": "8367b3b8ebf5901418b68b10d60f8f5f32385b4b",
+          "subject": "fix(jsc): give require(esm) its own namespace marker (#1)",
+          "patch_sha256": "7f0aa66d664843dd927b954227f01d97407b50273f6e681df4181aa0f70d7207"
+        },
+        {
+          "commit": "25931e1f0fdec40b11f690067bd31f4f4190be90",
+          "subject": "feat(jsc): add byte-based heap allocation sampling (#2)",
+          "patch_sha256": "f7d840462b1ae22b8ada916e5b5777efc2afefb01cfed5f1d4ef6738dc4c5885"
+        },
+        {
+          "commit": "3d5a89ec92c686406f23d7cbde49dc14f841818c",
+          "subject": "build(webkit): record the rebased upstream engine target",
+          "patch_sha256": "d29f543ef609bcf94b6dab4c1163117bc0676678955f607280e5a8af84a2d158"
+        },
+        {
+          "commit": "e1d5f3504b4f7bfcb0499c8beea4db5bf6cf5f85",
+          "subject": "ci: qualify rebased WebKit with upstream-synced Bun",
+          "patch_sha256": "054da8412a0939c111668943a45b5241ce1d864e5322f5873944706d837be0e2"
+        },
+        {
+          "commit": "c34e80468daad729d1c82de497920116579164c6",
+          "subject": "build(webkit): qualify rebased engine and upstream-synced Bun (#4)",
+          "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "commit": "e9d324af5e808691f1c1ad9874f0f07e80bbddd3",
+          "subject": "fix(jsc): retain syntax-selected stack source positions",
+          "patch_sha256": "a8e42625359f866f879dfcacb81fac5fc69242402a92fef8fe221c1006d2f054"
+        },
+        {
+          "commit": "47ad5343455b112acfb54325738f302d269d4f65",
+          "subject": "ci: qualify stack positions and exact Bun sync compatibility",
+          "patch_sha256": "352e7334c6826c2a193a860c68babc47942668cb86b8d030b1df3757dec47ff1"
+        },
+        {
+          "commit": "25bd0667289b4ee2c9bc35e087b1e7257fbfffd6",
+          "subject": "test(jsc): align promise stack goldens with syntax positions",
+          "patch_sha256": "bdc4c9790c952a2f967edbabe6345ff14d7cb8d8429156cccdaa1747d4971f0f"
+        },
+        {
+          "commit": "6fceea99edb111efebf25032935b75cfe7bf3a7f",
+          "subject": "fix(jsc): track ArrayBuffer ownership and inspect worker memory (#5)",
+          "patch_sha256": "64a37019bbd69aae6716ec27c4f385bb42f883631977dd1424aa4c79150860a1"
+        },
+        {
+          "commit": "228016b0eb4b9d80fc5148cf46a5f6c3c116b38f",
+          "subject": "build(webkit): qualify the complete rebased engine batch",
+          "patch_sha256": "6fc5f2c3afe8e80098f35da8bdb95f3e11ac3879907c2a6b5196fb7545e24de6"
+        },
+        {
+          "commit": "85e51313e8ce7279c2700432f0d24dda78b56c8d",
+          "subject": "ci: pin the required namespace counterpart for Bun sync",
+          "patch_sha256": "646e6877930066ea6de645b543803c75cba0eb8cf2de25b3756bbc4f933a1d15"
+        },
+        {
+          "commit": "8bf4642bf8f6f091f250ca79b05dc0ab3baf2ac7",
+          "subject": "test: align inspected error caret in sync qualification",
+          "patch_sha256": "4b2ddfd4a834d38a39402e6a59b982d634ac421315399fec1807ae2e61ec2223"
+        },
+        {
+          "commit": "42ab38d705d4838748ccee77e7deb0e4e35515ee",
+          "subject": "build(webkit): qualify complete rebased engine batch (#6)",
+          "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         }
       ],
       "recipe_sha256": {
@@ -1104,7 +1828,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:46a4dea1ec465f652c29c8461ac004e7fbc28f80cd561fbacde67491abf985c6",
+      "toolchain_image_id": "sha256:4bdbdfd4c0cadcd2737a6900eb09d6f871453753b1f7c7bf7900a102828ceafe",
       "commands": {
         "base": [
           "docker",
@@ -1185,26 +1909,26 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910044232+069ef0e7cb36-1~exp1~20260910044242.70)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.11.1",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.2.1\n  GitCommit:        dea7da592f5d1d2b7755e3a161be07f43fad8f75\n runc:\n  Version:          1.3.4\n  GitCommit:        v1.3.4-0-gd6d73eb8\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "37224066519",
+      "workflow_run": "37254059740",
       "run_attempt": "1",
-      "elapsed_seconds": 280.5889251232147,
+      "elapsed_seconds": 301.75275921821594,
       "files": {
         "bun-webkit-macos-amd64-lto.tar.gz": {
-          "sha256": "d4ff752748c049a1b4ec34c7b5ea2733ba0594d5b41ae61df39e56d664b12031",
-          "size": 159437519
+          "sha256": "a26c41479171a1f1bedb2ba50760da1eeff9a43bda4c28ee879e91388accb5e7",
+          "size": 159719837
         }
       },
       "provenance_files": {
+        "toolchain-image.json": "1b85e0430351703297c5a998c2040d38567a8f2a435066a63e58e7ac088862cc",
         "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8",
-        "artifact-build.json": "3c79a36712e377143ba702616f15768ce70642200fedd6c663a5b383ab315f00",
-        "toolchain-image.json": "3c99e2d93c26d0a648a10b47e07344fb57b1e15d0afcc792bf3a5a343d767b5c",
-        "toolchain-build.json": "f83437f83497635cbd2ccea46c1415e9050dcb7d831895c6737cd5549a832c1f"
+        "artifact-build.json": "100e0bdcc628ceb37ce17e1f7e9791abe14106a3b808b9d4cdaf50cbfda8501f",
+        "toolchain-build.json": "a14a557ac12c358ef6924abfc3ad4c1ee0759583b87c3862d3bfe979cc280f9b"
       }
     },
     {
       "schema_version": 1,
-      "source": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
-      "base": "1600131e46b5af48bbda3559af8d8a3327230b6e",
+      "source": "42ab38d705d4838748ccee77e7deb0e4e35515ee",
+      "base": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "lane": {
         "label": "bun-webkit-linux-amd64-musl-lto",
         "runner": "linux-x64-gh",
@@ -1260,6 +1984,116 @@
           "commit": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
           "subject": "ci: isolate batch-one artifact publication from later engine work",
           "patch_sha256": "ec2f19cbd075d30517073388fc00d3ae5986ecfa25ca6811e5078da373d4fa8d"
+        },
+        {
+          "commit": "72feb0be76fd1ac55f034dc979c0ad3c51d6278f",
+          "subject": "fix(jsc): give require(esm) its own namespace marker (#1)",
+          "patch_sha256": "7f0aa66d664843dd927b954227f01d97407b50273f6e681df4181aa0f70d7207"
+        },
+        {
+          "commit": "594794f9d021d9debde5fe713b021e6e1978395e",
+          "subject": "feat(jsc): add byte-based heap allocation sampling (#2)",
+          "patch_sha256": "f7d840462b1ae22b8ada916e5b5777efc2afefb01cfed5f1d4ef6738dc4c5885"
+        },
+        {
+          "commit": "aa631fd8d6a48a092d4fa8089ff1ff5b532353bc",
+          "subject": "fix(intl): preserve segment boundaries around surrogate pairs",
+          "patch_sha256": "c00e0c3c83191c04f0527d1920e10649774f1da1857fd26f7a483b12edb7885e"
+        },
+        {
+          "commit": "297efd07d765336410671c36218dfe233dee5540",
+          "subject": "fix(jsc): allow opt-in Proxy global prototypes",
+          "patch_sha256": "12077938391f390ec50bd926e171e7e0531963ba399c5006db481c7ca86e451f"
+        },
+        {
+          "commit": "fcda75076bdcffeef3973cdf1376cfb9cd22048e",
+          "subject": "fix(jsc): preserve module-loader async context",
+          "patch_sha256": "6d5e3ceadedd4a4f0f96b42d4f53b5589bca053f18ffd7b2a587d9330f22b0fa"
+        },
+        {
+          "commit": "602011ef916a0b756d628e2f1ab2344f3e7a2594",
+          "subject": "feat(jsc): add per-VM worker heap and stack budgets",
+          "patch_sha256": "11847006c75b609004823a471e8a8a8b02755e99b590782769272195d92b069a"
+        },
+        {
+          "commit": "6ec8002ae1e3388a5ec7984608bbac4063ef2e66",
+          "subject": "ci: add immutable OpenClaw WebKit artifact pipeline",
+          "patch_sha256": "36980d4214adbd9bc4ae34cb2fcff988fcf4f9ab7b497d2663ab8aebb035d5f8"
+        },
+        {
+          "commit": "85513c6d6f4636d9378508d001079109057aabc8",
+          "subject": "fix(ci): bind qualification binaries to the Bun source revision",
+          "patch_sha256": "411ebf8fcc84e7dfce128f7ee9a2bc8af6a696e8ff276ba3f617f5d4d829f067"
+        },
+        {
+          "commit": "010f0d898d24c488efcf8aef72932108de771a9e",
+          "subject": "ci: isolate batch-one artifact publication from later engine work",
+          "patch_sha256": "ec2f19cbd075d30517073388fc00d3ae5986ecfa25ca6811e5078da373d4fa8d"
+        },
+        {
+          "commit": "8367b3b8ebf5901418b68b10d60f8f5f32385b4b",
+          "subject": "fix(jsc): give require(esm) its own namespace marker (#1)",
+          "patch_sha256": "7f0aa66d664843dd927b954227f01d97407b50273f6e681df4181aa0f70d7207"
+        },
+        {
+          "commit": "25931e1f0fdec40b11f690067bd31f4f4190be90",
+          "subject": "feat(jsc): add byte-based heap allocation sampling (#2)",
+          "patch_sha256": "f7d840462b1ae22b8ada916e5b5777efc2afefb01cfed5f1d4ef6738dc4c5885"
+        },
+        {
+          "commit": "3d5a89ec92c686406f23d7cbde49dc14f841818c",
+          "subject": "build(webkit): record the rebased upstream engine target",
+          "patch_sha256": "d29f543ef609bcf94b6dab4c1163117bc0676678955f607280e5a8af84a2d158"
+        },
+        {
+          "commit": "e1d5f3504b4f7bfcb0499c8beea4db5bf6cf5f85",
+          "subject": "ci: qualify rebased WebKit with upstream-synced Bun",
+          "patch_sha256": "054da8412a0939c111668943a45b5241ce1d864e5322f5873944706d837be0e2"
+        },
+        {
+          "commit": "c34e80468daad729d1c82de497920116579164c6",
+          "subject": "build(webkit): qualify rebased engine and upstream-synced Bun (#4)",
+          "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "commit": "e9d324af5e808691f1c1ad9874f0f07e80bbddd3",
+          "subject": "fix(jsc): retain syntax-selected stack source positions",
+          "patch_sha256": "a8e42625359f866f879dfcacb81fac5fc69242402a92fef8fe221c1006d2f054"
+        },
+        {
+          "commit": "47ad5343455b112acfb54325738f302d269d4f65",
+          "subject": "ci: qualify stack positions and exact Bun sync compatibility",
+          "patch_sha256": "352e7334c6826c2a193a860c68babc47942668cb86b8d030b1df3757dec47ff1"
+        },
+        {
+          "commit": "25bd0667289b4ee2c9bc35e087b1e7257fbfffd6",
+          "subject": "test(jsc): align promise stack goldens with syntax positions",
+          "patch_sha256": "bdc4c9790c952a2f967edbabe6345ff14d7cb8d8429156cccdaa1747d4971f0f"
+        },
+        {
+          "commit": "6fceea99edb111efebf25032935b75cfe7bf3a7f",
+          "subject": "fix(jsc): track ArrayBuffer ownership and inspect worker memory (#5)",
+          "patch_sha256": "64a37019bbd69aae6716ec27c4f385bb42f883631977dd1424aa4c79150860a1"
+        },
+        {
+          "commit": "228016b0eb4b9d80fc5148cf46a5f6c3c116b38f",
+          "subject": "build(webkit): qualify the complete rebased engine batch",
+          "patch_sha256": "6fc5f2c3afe8e80098f35da8bdb95f3e11ac3879907c2a6b5196fb7545e24de6"
+        },
+        {
+          "commit": "85e51313e8ce7279c2700432f0d24dda78b56c8d",
+          "subject": "ci: pin the required namespace counterpart for Bun sync",
+          "patch_sha256": "646e6877930066ea6de645b543803c75cba0eb8cf2de25b3756bbc4f933a1d15"
+        },
+        {
+          "commit": "8bf4642bf8f6f091f250ca79b05dc0ab3baf2ac7",
+          "subject": "test: align inspected error caret in sync qualification",
+          "patch_sha256": "4b2ddfd4a834d38a39402e6a59b982d634ac421315399fec1807ae2e61ec2223"
+        },
+        {
+          "commit": "42ab38d705d4838748ccee77e7deb0e4e35515ee",
+          "subject": "build(webkit): qualify complete rebased engine batch (#6)",
+          "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         }
       ],
       "recipe_sha256": {
@@ -1284,7 +2118,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:e3738956077f11982f5a0879bbde92d308673070607fa2085ddd3615f9d61860",
+      "toolchain_image_id": "sha256:81527131a43664cd03effdf2564c929e414cc253e2b739cf07a77cfc7f5dc3f9",
       "commands": {
         "base": [
           "docker",
@@ -1357,26 +2191,26 @@
       "tool_versions": "Alpine clang version 23.1.2\nTarget: x86_64-alpine-linux-musl\nThread model: posix\nInstalledDir: /usr/lib/llvm23/bin\nConfiguration file: /etc/clang23/x86_64-alpine-linux-musl.cfg\ncmake version 4.1.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.9",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.2.1\n  GitCommit:        dea7da592f5d1d2b7755e3a161be07f43fad8f75\n runc:\n  Version:          1.3.4\n  GitCommit:        v1.3.4-0-gd6d73eb8\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "37224066519",
+      "workflow_run": "37254059740",
       "run_attempt": "1",
-      "elapsed_seconds": 660.8725075721741,
+      "elapsed_seconds": 666.6592268943787,
       "files": {
         "bun-webkit-linux-amd64-musl-lto.tar.gz": {
-          "sha256": "163371e2805c8a267a289e7a4d2168a972af6e98ba2a6f2d1e08aba15f37f4c5",
-          "size": 221337385
+          "sha256": "ffc6b56895fdeb1a50929f6f23d598b5aa3077c582ba91139a13b045b05495db",
+          "size": 221673403
         }
       },
       "provenance_files": {
         "tool-versions.txt": "4792d68346e97d6f8bcf05124f904e68c9f56299be740663f00da9e1ddc96e9f",
-        "toolchain-build.json": "4ed3ffc77f7f90bc9da191e273301e16f48019b494f9dd70d3ea3728e2508981",
-        "artifact-build.json": "5a1f2432b2616c39a47f3a5418ba34a9a8ba7baee5300d3443c4957c52bcfd33",
-        "toolchain-image.json": "0a844d88fe22d5daf17b7370424ca7fe52064caacfec4f665bbb296080498014"
+        "artifact-build.json": "c6920fafd5a457c2874739a2b72a7f6f27ef70826c6d44cae6f7ee479c189f83",
+        "toolchain-image.json": "23db5680caccd6926074ffcddd530f3f771a113f387c0c45a06a318ed8dd2c20",
+        "toolchain-build.json": "4a03764226facbc57cb6409bf2aaca1ed26513819cfa4f6523234b8942c7b7ea"
       }
     },
     {
       "schema_version": 1,
-      "source": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
-      "base": "1600131e46b5af48bbda3559af8d8a3327230b6e",
+      "source": "42ab38d705d4838748ccee77e7deb0e4e35515ee",
+      "base": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "lane": {
         "label": "bun-webkit-linux-arm64-musl-lto",
         "runner": "linux-x64-gh",
@@ -1432,6 +2266,116 @@
           "commit": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
           "subject": "ci: isolate batch-one artifact publication from later engine work",
           "patch_sha256": "ec2f19cbd075d30517073388fc00d3ae5986ecfa25ca6811e5078da373d4fa8d"
+        },
+        {
+          "commit": "72feb0be76fd1ac55f034dc979c0ad3c51d6278f",
+          "subject": "fix(jsc): give require(esm) its own namespace marker (#1)",
+          "patch_sha256": "7f0aa66d664843dd927b954227f01d97407b50273f6e681df4181aa0f70d7207"
+        },
+        {
+          "commit": "594794f9d021d9debde5fe713b021e6e1978395e",
+          "subject": "feat(jsc): add byte-based heap allocation sampling (#2)",
+          "patch_sha256": "f7d840462b1ae22b8ada916e5b5777efc2afefb01cfed5f1d4ef6738dc4c5885"
+        },
+        {
+          "commit": "aa631fd8d6a48a092d4fa8089ff1ff5b532353bc",
+          "subject": "fix(intl): preserve segment boundaries around surrogate pairs",
+          "patch_sha256": "c00e0c3c83191c04f0527d1920e10649774f1da1857fd26f7a483b12edb7885e"
+        },
+        {
+          "commit": "297efd07d765336410671c36218dfe233dee5540",
+          "subject": "fix(jsc): allow opt-in Proxy global prototypes",
+          "patch_sha256": "12077938391f390ec50bd926e171e7e0531963ba399c5006db481c7ca86e451f"
+        },
+        {
+          "commit": "fcda75076bdcffeef3973cdf1376cfb9cd22048e",
+          "subject": "fix(jsc): preserve module-loader async context",
+          "patch_sha256": "6d5e3ceadedd4a4f0f96b42d4f53b5589bca053f18ffd7b2a587d9330f22b0fa"
+        },
+        {
+          "commit": "602011ef916a0b756d628e2f1ab2344f3e7a2594",
+          "subject": "feat(jsc): add per-VM worker heap and stack budgets",
+          "patch_sha256": "11847006c75b609004823a471e8a8a8b02755e99b590782769272195d92b069a"
+        },
+        {
+          "commit": "6ec8002ae1e3388a5ec7984608bbac4063ef2e66",
+          "subject": "ci: add immutable OpenClaw WebKit artifact pipeline",
+          "patch_sha256": "36980d4214adbd9bc4ae34cb2fcff988fcf4f9ab7b497d2663ab8aebb035d5f8"
+        },
+        {
+          "commit": "85513c6d6f4636d9378508d001079109057aabc8",
+          "subject": "fix(ci): bind qualification binaries to the Bun source revision",
+          "patch_sha256": "411ebf8fcc84e7dfce128f7ee9a2bc8af6a696e8ff276ba3f617f5d4d829f067"
+        },
+        {
+          "commit": "010f0d898d24c488efcf8aef72932108de771a9e",
+          "subject": "ci: isolate batch-one artifact publication from later engine work",
+          "patch_sha256": "ec2f19cbd075d30517073388fc00d3ae5986ecfa25ca6811e5078da373d4fa8d"
+        },
+        {
+          "commit": "8367b3b8ebf5901418b68b10d60f8f5f32385b4b",
+          "subject": "fix(jsc): give require(esm) its own namespace marker (#1)",
+          "patch_sha256": "7f0aa66d664843dd927b954227f01d97407b50273f6e681df4181aa0f70d7207"
+        },
+        {
+          "commit": "25931e1f0fdec40b11f690067bd31f4f4190be90",
+          "subject": "feat(jsc): add byte-based heap allocation sampling (#2)",
+          "patch_sha256": "f7d840462b1ae22b8ada916e5b5777efc2afefb01cfed5f1d4ef6738dc4c5885"
+        },
+        {
+          "commit": "3d5a89ec92c686406f23d7cbde49dc14f841818c",
+          "subject": "build(webkit): record the rebased upstream engine target",
+          "patch_sha256": "d29f543ef609bcf94b6dab4c1163117bc0676678955f607280e5a8af84a2d158"
+        },
+        {
+          "commit": "e1d5f3504b4f7bfcb0499c8beea4db5bf6cf5f85",
+          "subject": "ci: qualify rebased WebKit with upstream-synced Bun",
+          "patch_sha256": "054da8412a0939c111668943a45b5241ce1d864e5322f5873944706d837be0e2"
+        },
+        {
+          "commit": "c34e80468daad729d1c82de497920116579164c6",
+          "subject": "build(webkit): qualify rebased engine and upstream-synced Bun (#4)",
+          "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "commit": "e9d324af5e808691f1c1ad9874f0f07e80bbddd3",
+          "subject": "fix(jsc): retain syntax-selected stack source positions",
+          "patch_sha256": "a8e42625359f866f879dfcacb81fac5fc69242402a92fef8fe221c1006d2f054"
+        },
+        {
+          "commit": "47ad5343455b112acfb54325738f302d269d4f65",
+          "subject": "ci: qualify stack positions and exact Bun sync compatibility",
+          "patch_sha256": "352e7334c6826c2a193a860c68babc47942668cb86b8d030b1df3757dec47ff1"
+        },
+        {
+          "commit": "25bd0667289b4ee2c9bc35e087b1e7257fbfffd6",
+          "subject": "test(jsc): align promise stack goldens with syntax positions",
+          "patch_sha256": "bdc4c9790c952a2f967edbabe6345ff14d7cb8d8429156cccdaa1747d4971f0f"
+        },
+        {
+          "commit": "6fceea99edb111efebf25032935b75cfe7bf3a7f",
+          "subject": "fix(jsc): track ArrayBuffer ownership and inspect worker memory (#5)",
+          "patch_sha256": "64a37019bbd69aae6716ec27c4f385bb42f883631977dd1424aa4c79150860a1"
+        },
+        {
+          "commit": "228016b0eb4b9d80fc5148cf46a5f6c3c116b38f",
+          "subject": "build(webkit): qualify the complete rebased engine batch",
+          "patch_sha256": "6fc5f2c3afe8e80098f35da8bdb95f3e11ac3879907c2a6b5196fb7545e24de6"
+        },
+        {
+          "commit": "85e51313e8ce7279c2700432f0d24dda78b56c8d",
+          "subject": "ci: pin the required namespace counterpart for Bun sync",
+          "patch_sha256": "646e6877930066ea6de645b543803c75cba0eb8cf2de25b3756bbc4f933a1d15"
+        },
+        {
+          "commit": "8bf4642bf8f6f091f250ca79b05dc0ab3baf2ac7",
+          "subject": "test: align inspected error caret in sync qualification",
+          "patch_sha256": "4b2ddfd4a834d38a39402e6a59b982d634ac421315399fec1807ae2e61ec2223"
+        },
+        {
+          "commit": "42ab38d705d4838748ccee77e7deb0e4e35515ee",
+          "subject": "build(webkit): qualify complete rebased engine batch (#6)",
+          "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         }
       ],
       "recipe_sha256": {
@@ -1456,7 +2400,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:9e536c4266cae38b68f1487a2f289375aab58e33f7447b2be4ff043659ecc7b8",
+      "toolchain_image_id": "sha256:c50870b96551722e712703c14a07245285edf5339120bf3c19454d77fce155c5",
       "commands": {
         "base": [
           "docker",
@@ -1529,26 +2473,26 @@
       "tool_versions": "Alpine clang version 23.1.2\nTarget: x86_64-alpine-linux-musl\nThread model: posix\nInstalledDir: /usr/lib/llvm23/bin\nConfiguration file: /etc/clang23/x86_64-alpine-linux-musl.cfg\ncmake version 4.1.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.9",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.2.1\n  GitCommit:        dea7da592f5d1d2b7755e3a161be07f43fad8f75\n runc:\n  Version:          1.3.4\n  GitCommit:        v1.3.4-0-gd6d73eb8\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "37224066519",
+      "workflow_run": "37254059740",
       "run_attempt": "1",
-      "elapsed_seconds": 676.2115004062653,
+      "elapsed_seconds": 673.2071342468262,
       "files": {
         "bun-webkit-linux-arm64-musl-lto.tar.gz": {
-          "sha256": "2fe7dc96717a688073d901cca7c2d43598bece8320fae2e0aae53bde7984ed65",
-          "size": 223217216
+          "sha256": "b851b7c8b623a3f36e70d389768e97a184cf914b5157f660fd8dfc921d47e3d7",
+          "size": 223555281
         }
       },
       "provenance_files": {
-        "toolchain-image.json": "d7345e716d72acc134f6d17fb9014789c8a840883c283f4a0c32261b4e3af2de",
-        "artifact-build.json": "fa2068c882c797be9e0617e06ce1d0c0c193dc2ec6dc98e8593fefd4a93ba50b",
+        "artifact-build.json": "a21c8fc6b53b7a6d0f6a700f655cf57903c95755077bf34fa1e3b1d034cc6df2",
+        "toolchain-build.json": "1b1d7bfb5ec5d70a93792e75e50ac61339dec021864e898c5c71a2aa025f5bb1",
         "tool-versions.txt": "4792d68346e97d6f8bcf05124f904e68c9f56299be740663f00da9e1ddc96e9f",
-        "toolchain-build.json": "380dc7b13b9bb648b8cc25b526f6b1032e4416804236c0961b6a84ee0b7d30ab"
+        "toolchain-image.json": "1793295ac1092cab438ff01d5a7142fb962cf84af64854cd376ab16158ef3b4d"
       }
     },
     {
       "schema_version": 1,
-      "source": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
-      "base": "1600131e46b5af48bbda3559af8d8a3327230b6e",
+      "source": "42ab38d705d4838748ccee77e7deb0e4e35515ee",
+      "base": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "lane": {
         "label": "bun-webkit-windows-amd64-lto",
         "runner": "linux-x64-gh",
@@ -1607,6 +2551,116 @@
           "commit": "1ee09069fef6bdf26a899b3da06fc48714aa8a4d",
           "subject": "ci: isolate batch-one artifact publication from later engine work",
           "patch_sha256": "ec2f19cbd075d30517073388fc00d3ae5986ecfa25ca6811e5078da373d4fa8d"
+        },
+        {
+          "commit": "72feb0be76fd1ac55f034dc979c0ad3c51d6278f",
+          "subject": "fix(jsc): give require(esm) its own namespace marker (#1)",
+          "patch_sha256": "7f0aa66d664843dd927b954227f01d97407b50273f6e681df4181aa0f70d7207"
+        },
+        {
+          "commit": "594794f9d021d9debde5fe713b021e6e1978395e",
+          "subject": "feat(jsc): add byte-based heap allocation sampling (#2)",
+          "patch_sha256": "f7d840462b1ae22b8ada916e5b5777efc2afefb01cfed5f1d4ef6738dc4c5885"
+        },
+        {
+          "commit": "aa631fd8d6a48a092d4fa8089ff1ff5b532353bc",
+          "subject": "fix(intl): preserve segment boundaries around surrogate pairs",
+          "patch_sha256": "c00e0c3c83191c04f0527d1920e10649774f1da1857fd26f7a483b12edb7885e"
+        },
+        {
+          "commit": "297efd07d765336410671c36218dfe233dee5540",
+          "subject": "fix(jsc): allow opt-in Proxy global prototypes",
+          "patch_sha256": "12077938391f390ec50bd926e171e7e0531963ba399c5006db481c7ca86e451f"
+        },
+        {
+          "commit": "fcda75076bdcffeef3973cdf1376cfb9cd22048e",
+          "subject": "fix(jsc): preserve module-loader async context",
+          "patch_sha256": "6d5e3ceadedd4a4f0f96b42d4f53b5589bca053f18ffd7b2a587d9330f22b0fa"
+        },
+        {
+          "commit": "602011ef916a0b756d628e2f1ab2344f3e7a2594",
+          "subject": "feat(jsc): add per-VM worker heap and stack budgets",
+          "patch_sha256": "11847006c75b609004823a471e8a8a8b02755e99b590782769272195d92b069a"
+        },
+        {
+          "commit": "6ec8002ae1e3388a5ec7984608bbac4063ef2e66",
+          "subject": "ci: add immutable OpenClaw WebKit artifact pipeline",
+          "patch_sha256": "36980d4214adbd9bc4ae34cb2fcff988fcf4f9ab7b497d2663ab8aebb035d5f8"
+        },
+        {
+          "commit": "85513c6d6f4636d9378508d001079109057aabc8",
+          "subject": "fix(ci): bind qualification binaries to the Bun source revision",
+          "patch_sha256": "411ebf8fcc84e7dfce128f7ee9a2bc8af6a696e8ff276ba3f617f5d4d829f067"
+        },
+        {
+          "commit": "010f0d898d24c488efcf8aef72932108de771a9e",
+          "subject": "ci: isolate batch-one artifact publication from later engine work",
+          "patch_sha256": "ec2f19cbd075d30517073388fc00d3ae5986ecfa25ca6811e5078da373d4fa8d"
+        },
+        {
+          "commit": "8367b3b8ebf5901418b68b10d60f8f5f32385b4b",
+          "subject": "fix(jsc): give require(esm) its own namespace marker (#1)",
+          "patch_sha256": "7f0aa66d664843dd927b954227f01d97407b50273f6e681df4181aa0f70d7207"
+        },
+        {
+          "commit": "25931e1f0fdec40b11f690067bd31f4f4190be90",
+          "subject": "feat(jsc): add byte-based heap allocation sampling (#2)",
+          "patch_sha256": "f7d840462b1ae22b8ada916e5b5777efc2afefb01cfed5f1d4ef6738dc4c5885"
+        },
+        {
+          "commit": "3d5a89ec92c686406f23d7cbde49dc14f841818c",
+          "subject": "build(webkit): record the rebased upstream engine target",
+          "patch_sha256": "d29f543ef609bcf94b6dab4c1163117bc0676678955f607280e5a8af84a2d158"
+        },
+        {
+          "commit": "e1d5f3504b4f7bfcb0499c8beea4db5bf6cf5f85",
+          "subject": "ci: qualify rebased WebKit with upstream-synced Bun",
+          "patch_sha256": "054da8412a0939c111668943a45b5241ce1d864e5322f5873944706d837be0e2"
+        },
+        {
+          "commit": "c34e80468daad729d1c82de497920116579164c6",
+          "subject": "build(webkit): qualify rebased engine and upstream-synced Bun (#4)",
+          "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "commit": "e9d324af5e808691f1c1ad9874f0f07e80bbddd3",
+          "subject": "fix(jsc): retain syntax-selected stack source positions",
+          "patch_sha256": "a8e42625359f866f879dfcacb81fac5fc69242402a92fef8fe221c1006d2f054"
+        },
+        {
+          "commit": "47ad5343455b112acfb54325738f302d269d4f65",
+          "subject": "ci: qualify stack positions and exact Bun sync compatibility",
+          "patch_sha256": "352e7334c6826c2a193a860c68babc47942668cb86b8d030b1df3757dec47ff1"
+        },
+        {
+          "commit": "25bd0667289b4ee2c9bc35e087b1e7257fbfffd6",
+          "subject": "test(jsc): align promise stack goldens with syntax positions",
+          "patch_sha256": "bdc4c9790c952a2f967edbabe6345ff14d7cb8d8429156cccdaa1747d4971f0f"
+        },
+        {
+          "commit": "6fceea99edb111efebf25032935b75cfe7bf3a7f",
+          "subject": "fix(jsc): track ArrayBuffer ownership and inspect worker memory (#5)",
+          "patch_sha256": "64a37019bbd69aae6716ec27c4f385bb42f883631977dd1424aa4c79150860a1"
+        },
+        {
+          "commit": "228016b0eb4b9d80fc5148cf46a5f6c3c116b38f",
+          "subject": "build(webkit): qualify the complete rebased engine batch",
+          "patch_sha256": "6fc5f2c3afe8e80098f35da8bdb95f3e11ac3879907c2a6b5196fb7545e24de6"
+        },
+        {
+          "commit": "85e51313e8ce7279c2700432f0d24dda78b56c8d",
+          "subject": "ci: pin the required namespace counterpart for Bun sync",
+          "patch_sha256": "646e6877930066ea6de645b543803c75cba0eb8cf2de25b3756bbc4f933a1d15"
+        },
+        {
+          "commit": "8bf4642bf8f6f091f250ca79b05dc0ab3baf2ac7",
+          "subject": "test: align inspected error caret in sync qualification",
+          "patch_sha256": "4b2ddfd4a834d38a39402e6a59b982d634ac421315399fec1807ae2e61ec2223"
+        },
+        {
+          "commit": "42ab38d705d4838748ccee77e7deb0e4e35515ee",
+          "subject": "build(webkit): qualify complete rebased engine batch (#6)",
+          "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         }
       ],
       "recipe_sha256": {
@@ -1631,7 +2685,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:8a4d4e2cb3ebaa7bd352d9c86de62fa0d57bc2caf4ee7e7cb07dc124a997787d",
+      "toolchain_image_id": "sha256:487bcf22d867b1d16cc02d3bf15dffe636c3cdb181c1724b3a12a832be1839d5",
       "commands": {
         "base": [
           "docker",
@@ -1716,31 +2770,31 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910044232+069ef0e7cb36-1~exp1~20260910044242.70)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.11.1",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.2.1\n  GitCommit:        dea7da592f5d1d2b7755e3a161be07f43fad8f75\n runc:\n  Version:          1.3.4\n  GitCommit:        v1.3.4-0-gd6d73eb8\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "37224066519",
+      "workflow_run": "37254059740",
       "run_attempt": "1",
-      "elapsed_seconds": 691.52037358284,
+      "elapsed_seconds": 695.2037205696106,
       "files": {
         "bun-webkit-windows-amd64-lto.tar.gz": {
-          "sha256": "039db820abba63aafe1651cb33af685f1f104b335ba365cd97faecb501b9091f",
-          "size": 663727644
+          "sha256": "af35f42d056d4b346fe83e01d8840f63c9303b1dc517e0545cb68e906fcc5af0",
+          "size": 665538527
         }
       },
       "provenance_files": {
-        "artifact-build.json": "b794d5077e77877a5737b03206699fa5b10f124533411a58f61981119665c505",
-        "toolchain-image.json": "6dcacc6b290b05b49453baf13c0cdedba46ee0b568818948d3b07fb321642dd2",
-        "toolchain-build.json": "abed8c1338f1122d8f55687c2f55c71a3052b7d65a6de8343b685862980a7307",
-        "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8"
+        "toolchain-build.json": "bb8bcccc977d7a76980eae301de902232d2e60c6f028cac96eb1033c1b598440",
+        "artifact-build.json": "6a467d425f31cb08d299c4d7a4b1f736acb95380bb094a5b14a3354a1d1e591c",
+        "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8",
+        "toolchain-image.json": "2fa252d6d51f99181a3a73170ede4b14218b07c2fcd4fc924df797a1adaf4777"
       }
     }
   ],
   "supporting_files": {
     "LICENSE-SOURCES.txt": {
-      "sha256": "73694af3b5d3c89e55d0da7909b52b5ff2d2c950157157a22170f55c7a7f3e27",
+      "sha256": "4a3435cd8b5dbeea7a68faa1d9b315917eb29849018943a88201ccb5fa46b64f",
       "size": 26102
     },
     "provenance.tar.gz": {
-      "sha256": "bb6dde1981ca8fb76b462090ca9bfd937ecfae13aa4035eca75ded869eda9536",
-      "size": 511611
+      "sha256": "a1bedace2ee9431653b39cead947391c3804872b5010ae57e989971952757bfc",
+      "size": 856881
     }
   }
 }
