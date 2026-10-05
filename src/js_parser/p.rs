@@ -178,6 +178,8 @@ pub(crate) struct ParserSnapshot<'a> {
     should_fold_typescript_constant_expressions: bool,
     fn_or_arrow_data_parse: FnOrArrowDataParse,
     latest_arrow_arg_loc: bun_ast::Loc,
+    parenthesized_target_loc: bun_ast::Loc,
+    parenthesized_suffix_loc: bun_ast::Loc,
     forbid_suffix_after_as_loc: bun_ast::Loc,
     after_arrow_body_loc: bun_ast::Loc,
     esm_import_keyword: bun_ast::Range,
@@ -271,6 +273,8 @@ pub struct P<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> {
     // allocated_names: ListManaged(string) = ListManaged(string).init(bun.default_allocator),
     // allocated_names_pool: ?*AllocatedNamesPool.Node = null,
     pub(crate) latest_arrow_arg_loc: bun_ast::Loc,
+    pub(crate) parenthesized_target_loc: bun_ast::Loc,
+    pub(crate) parenthesized_suffix_loc: bun_ast::Loc,
     pub(crate) forbid_suffix_after_as_loc: bun_ast::Loc,
     pub(crate) current_scope: js_ast::StoreRef<js_ast::Scope>,
     pub(crate) scopes_for_current_part: List<'a, *mut js_ast::Scope>,
@@ -397,6 +401,7 @@ pub struct P<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> {
     /// (found by fuzzing). Kept sorted for binary search; stays empty (no allocation)
     /// until a constraint attempt actually backtracks, which is rare in real code.
     pub(crate) ts_infer_constraint_backtracks: Vec<u32>,
+    pub ts_strip: Option<Box<crate::ts_strip::Recorder>>,
 
     /// Outcomes of `is_type_script_arrow_return_type_after_question_and_before_colon`,
     /// keyed by the byte offset of the `:` shifted left by one, with the low bit set
@@ -5486,7 +5491,23 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
         });
     }
 
+    pub(crate) fn preserve_parenthesized_call_target(&self, expr: Expr) -> bool {
+        self.options.features.dont_bundle_twice
+            && self.parenthesized_target_loc.eql(expr.loc)
+            && self.parenthesized_suffix_loc.eql(self.lexer.loc())
+    }
+
     pub(crate) fn mark_expr_as_parenthesized(&mut self, expr: &mut Expr) {
+        if let Some(recorder) = &mut self.ts_strip {
+            if let js_ast::ExprData::EBinary(binary) = expr.data {
+                let _ = recorder
+                    .parenthesized_binaries
+                    .insert(binary.as_ptr().addr(), ());
+            }
+        }
+        // Runtime loads retain the callee parentheses that select JSC's call position.
+        self.parenthesized_target_loc = expr.loc;
+        self.parenthesized_suffix_loc = self.lexer.loc();
         match &mut expr.data {
             js_ast::ExprData::EArray(ex) => ex.is_parenthesized = true,
             js_ast::ExprData::EObject(ex) => ex.is_parenthesized = true,
@@ -7564,6 +7585,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                             }
                             _ => self.new_expr(
                                 E::Index {
+                                    open_bracket_loc: bun_ast::Loc::EMPTY,
                                     target,
                                     index: key,
                                     optional_chain: None,
@@ -8351,6 +8373,8 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                 .should_fold_typescript_constant_expressions,
             fn_or_arrow_data_parse: self.fn_or_arrow_data_parse.clone(),
             latest_arrow_arg_loc: self.latest_arrow_arg_loc,
+            parenthesized_target_loc: self.parenthesized_target_loc,
+            parenthesized_suffix_loc: self.parenthesized_suffix_loc,
             forbid_suffix_after_as_loc: self.forbid_suffix_after_as_loc,
             after_arrow_body_loc: self.after_arrow_body_loc,
             esm_import_keyword: self.esm_import_keyword,
@@ -8385,6 +8409,8 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
             snapshot.should_fold_typescript_constant_expressions;
         self.fn_or_arrow_data_parse = snapshot.fn_or_arrow_data_parse;
         self.latest_arrow_arg_loc = snapshot.latest_arrow_arg_loc;
+        self.parenthesized_target_loc = snapshot.parenthesized_target_loc;
+        self.parenthesized_suffix_loc = snapshot.parenthesized_suffix_loc;
         self.forbid_suffix_after_as_loc = snapshot.forbid_suffix_after_as_loc;
         self.after_arrow_body_loc = snapshot.after_arrow_body_loc;
         self.esm_import_keyword = snapshot.esm_import_keyword;
@@ -9736,6 +9762,11 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
         lexer.track_comments = opts.features.minify_identifiers;
         let track_scope_uses = opts.bundle && !opts.features.minify_identifiers;
         lexer.track_react_suppressions = opts.features.react_compiler.is_enabled();
+        lexer.track_tokens = opts.features.ts_strip_mode;
+        if lexer.track_tokens {
+            // Lexer::init already scanned the first token.
+            lexer.capture_token();
+        }
 
         if !TYPESCRIPT {
             // This is so it doesn't impact runtime transpiler caching when not in use
@@ -9809,6 +9840,11 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
             starts_for_parse_only: None,
             reported_stack_overflow: core::cell::Cell::new(false),
             ts_infer_constraint_backtracks: Vec::new(),
+            ts_strip: if opts.features.ts_strip_mode {
+                Some(Box::default())
+            } else {
+                None
+            },
             ts_conditional_arrow_attempts: Vec::new(),
             arena,
             then_catch_chain: ThenCatchChain {
@@ -9841,6 +9877,8 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
             fn_only_data_visit: FnOnlyDataVisit::default(),
             allocated_names: BumpVec::new_in(arena),
             latest_arrow_arg_loc: bun_ast::Loc::EMPTY,
+            parenthesized_target_loc: bun_ast::Loc::EMPTY,
+            parenthesized_suffix_loc: bun_ast::Loc::EMPTY,
             forbid_suffix_after_as_loc: bun_ast::Loc::EMPTY,
             scopes_for_current_part: BumpVec::new_in(arena),
             symbols: BumpVec::with_capacity_in(estimated_symbol_count, arena),

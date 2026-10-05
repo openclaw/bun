@@ -1038,6 +1038,145 @@ test.concurrent("accepts valid bytecode when the JIT is unavailable", async () =
   expect(exitCode).toBe(0);
 });
 
+describe("cachedData across execution modes", () => {
+  const source = `(() => {
+    function add(a, b) { return a + b; }
+    let value;
+    for (let i = 0; i < 2000; i++) value = add(40, 2);
+    return value;
+  })()`;
+  const filename = "cached-data-modes.js";
+  // Bun 1.4.2 (744846f84437), Linux x64: new Script("40+2", { filename: "cached-data-legacy.js", produceCachedData: true }).cachedData.
+  const legacyData =
+    "jMs8w7EAAACis+FK////fwAAAAAEAAAAIAAAAAAAAAAEAAAA////fwIAAADYB6EA/////5QAAAAIAAAAAAAAACQAAABMAAAA////f////3////9/AAAAAAAAAAAAAAAABAAAAB0AAAhrXZ0AAAAAAGZpbGU6Ly8vY2FjaGVkLWRhdGEtbGVnYWN5LmpzAAAAFQAACNt5/QABAAAAY2FjaGVkLWRhdGEtbGVnYWN5LmpzhJH6EWn6AAEAAAAABQAA////fyoAAABYAAAAAAAAAAAAAAAEAAAA////f////38AAAAA////fwAAAAD///9/AAAAAP///38AAAAA////fwgXAAYAAhYCDAAAAAIMAAoJCgwCAQAAAG8AAABjDsAKAAAAAAEAAAAyGG1RAAAAAA==";
+  const modes: [string, Record<string, string>][] = [
+    ["default", {}],
+    ["interpreter", { BUN_JSC_useJIT: "false" }],
+    ["baseline", { BUN_JSC_useDFGJIT: "false", BUN_JSC_useFTLJIT: "false" }],
+    [
+      "DFG",
+      { BUN_JSC_useFTLJIT: "false", BUN_JSC_useConcurrentJIT: "false", BUN_JSC_thresholdForOptimizeAfterWarmUp: "10" },
+    ],
+    [
+      "FTL",
+      {
+        BUN_JSC_useConcurrentJIT: "false",
+        BUN_JSC_thresholdForOptimizeAfterWarmUp: "10",
+        BUN_JSC_thresholdForFTLOptimizeAfterWarmUp: "20",
+      },
+    ],
+  ];
+
+  test.concurrent.each(modes)("round-trips and rejects invalid data in %s mode", async (_, mode) => {
+    const env = {
+      ...bunEnv,
+      BUN_JSC_useJIT: undefined,
+      BUN_JSC_useDFGJIT: undefined,
+      BUN_JSC_useFTLJIT: undefined,
+      BUN_JSC_useConcurrentJIT: undefined,
+      BUN_JSC_thresholdForOptimizeAfterWarmUp: undefined,
+      BUN_JSC_thresholdForFTLOptimizeAfterWarmUp: undefined,
+      ...mode,
+    };
+    const setup = `
+      const assert = require("node:assert/strict");
+      const { Script, createContext } = require("node:vm");
+      const source = ${JSON.stringify(source)};
+      const filename = ${JSON.stringify(filename)};
+    `;
+    await using producer = Bun.spawn({
+      cmd: [
+        bunExe(),
+        "-e",
+        setup +
+          `
+        const produced = new Script(source, { filename, produceCachedData: true });
+        assert.equal(produced.cachedDataProduced, true);
+        assert.equal(produced.cachedDataRejected, undefined);
+        const fresh = new Script(source, { filename });
+        const before = fresh.createCachedData();
+        assert.equal(fresh.runInThisContext(), 42);
+        const after = fresh.createCachedData();
+        const data = [produced.cachedData, before, after];
+        for (const buffer of data) {
+          assert(Buffer.isBuffer(buffer));
+          assert(buffer.length > 0);
+        }
+        console.log(JSON.stringify(data.map(buffer => buffer.toString("base64"))));
+      `,
+      ],
+      env,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [data, producerError, producerExit] = await Promise.all([
+      producer.stdout.text(),
+      producer.stderr.text(),
+      producer.exited,
+    ]);
+    expect(producerError).toBe("");
+    expect(producerExit).toBe(0);
+    expect(JSON.parse(data)).toHaveLength(3);
+
+    await using consumer = Bun.spawn({
+      cmd: [
+        bunExe(),
+        "-e",
+        setup +
+          `
+        const data = ${JSON.stringify(JSON.parse(data))}.map(value => Buffer.from(value, "base64"));
+        for (const cachedData of data) {
+          const script = new Script(source, { filename, cachedData });
+          assert.equal(script.cachedDataRejected, false);
+          cachedData.fill(0);
+          globalThis.Bun?.gc(true);
+          assert.equal(script.runInThisContext(), 42);
+          assert.equal(script.runInContext(createContext({})), 42);
+          assert.equal(script.runInNewContext({}), 42);
+          assert(script.createCachedData().length > 0);
+        }
+        const valid = new Script(source, { filename }).createCachedData();
+        const invalid = [Buffer.alloc(0), Buffer.from("not bytecode"), valid.subarray(0, 8)];
+        for (const [index, cachedData] of invalid.entries()) {
+          const script = new Script(source + " // invalid " + index, { filename, cachedData });
+          assert.equal(script.cachedDataRejected, true);
+          assert.equal(script.runInThisContext(), 42);
+        }
+        const mismatched = new Script("6 * 7", { filename, cachedData: valid });
+        assert.equal(mismatched.cachedDataRejected, true);
+        assert.equal(mismatched.runInThisContext(), 42);
+        const emptyProduced = new Script("21 * 2", { filename, cachedData: Buffer.alloc(0), produceCachedData: true });
+        assert.equal(emptyProduced.cachedDataRejected, true);
+        assert.equal(emptyProduced.cachedDataProduced, true);
+        const regenerated = new Script("21 * 2", { filename, cachedData: emptyProduced.cachedData });
+        assert.equal(regenerated.cachedDataRejected, false);
+        assert.equal(regenerated.runInThisContext(), 42);
+        const legacy = new Script("40+2", {
+          filename: "cached-data-legacy.js",
+          cachedData: Buffer.from(${JSON.stringify(legacyData)}, "base64"),
+        });
+        assert.equal(legacy.cachedDataRejected, true);
+        assert.equal(legacy.runInThisContext(), 42);
+        console.log("round-trips: 3; rejected: 6; regenerated: 42");
+      `,
+      ],
+      env,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      consumer.stdout.text(),
+      consumer.stderr.text(),
+      consumer.exited,
+    ]);
+    expect({ stdout, stderr, exitCode }).toEqual({
+      stdout: "round-trips: 3; rejected: 6; regenerated: 42\n",
+      stderr: "",
+      exitCode: 0,
+    });
+  });
+});
+
 test("can't use bytecode from a different script", () => {
   const firstScript = new Script("1 + 1;");
   const cachedData = firstScript.createCachedData();

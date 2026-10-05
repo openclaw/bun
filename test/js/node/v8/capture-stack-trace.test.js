@@ -206,8 +206,8 @@ test.concurrent("CallSite columns preserve async continuation metadata", async (
   expect(stderr).toBe("");
   expect(JSON.parse(stdout)).toEqual([
     { position: [4, 7], textPosition: [4, 7], async: false, eval: false, native: false, file: true },
-    // JSC selects the awaited call; V8 selects `await`. Preserve the location while fixing its units.
-    { position: [8, 14], textPosition: [8, 14], async: true, eval: false, native: false, file: true },
+    // Async frames point at `await`, as in Node.
+    { position: [8, 8], textPosition: [8, 8], async: true, eval: false, native: false, file: true },
   ]);
   expect(exitCode).toBe(0);
 });
@@ -2091,7 +2091,7 @@ test.concurrent(
       "define stack": error => (Object.defineProperty(error, "stack", { value: "defined" }), error.stack),
       // A clone is made from the complete string: it must not get a second first line.
       "structuredClone": error => structuredClone(error).stack.split("\\n").filter(line => line.includes("boom")),
-      "Bun.inspect": error => Bun.inspect(error).split("\\n").filter(line => line.includes("boom")).map(line => line.trim()),
+      "Bun.inspect": error => Bun.inspect(error).split("\\n").map(line => line.trim()).filter(line => line === "TypeError: boom"),
       "JSON.stringify": error => JSON.stringify(error),
     };
     const rows = {};
@@ -2412,7 +2412,7 @@ test.concurrent.each([[{}], [{ BUN_JSC_useSourceProviderCache: "0" }]])(
     });
     const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
     expect(stderr).toBe("");
-    expect(stdout.trim()).toEndWith("[eval]:5:14)"); // 2:18 when the lexer resumed on the template literal's first line
+    expect(stdout.trim()).toEndWith("[eval]:5:10)"); // Line 2 when the lexer resumed on the template literal's first line
     expect(exitCode).toBe(0);
   },
 );
@@ -2456,3 +2456,31 @@ test.skipIf(totalmem() < 10 * 1024 ** 3)(
   },
   30_000,
 );
+
+test("syntax positions preserve built-in constructors, arrow frames, and property reads", async () => {
+  await using proc = Bun.spawn({
+    cmd: [bunExe(), import.meta.dir + "/stack-position-regressions-fixture.js"],
+    env: bunEnv,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect({ stdout, stderr, exitCode }).toEqual({ stdout: "", stderr: "", exitCode: 0 });
+});
+
+for (const fixture of [
+  "callsite-syntax-positions-fixture.js",
+  "callsite-async-position-fixture.mjs",
+  "callsite-typescript-positions-fixture.ts",
+]) {
+  test(`syntax-selected stack positions: ${fixture}`, async () => {
+    await using proc = Bun.spawn({
+      cmd: [bunExe(), import.meta.dir + "/" + fixture],
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect({ stdout, stderr, exitCode }).toEqual({ stdout: "", stderr: "", exitCode: 0 });
+  });
+}

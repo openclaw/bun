@@ -161,6 +161,8 @@ import Stuff from "./my-commonjs.cjs";
 const myStuff = require("./my-commonjs.cjs");
 ```
 
+When `require()` loads an ES module with a default export and no explicit `__esModule` export, it returns a namespace with an own, enumerable `__esModule: true` property. Its exports remain live. Importing the same module returns the original namespace without that added marker. Both namespace objects have a null prototype and reject property assignments.
+
 ### Top level await
 
 The only exception to this rule is top-level await. You can't `require()` a file that uses top-level await, since the `require()` function is inherently synchronous.

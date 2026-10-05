@@ -259,7 +259,9 @@ pub struct Call {
     pub args: ExprNodeList,
     pub optional_chain: Option<OptionalChain>,
     pub is_direct_eval: bool,
+    pub open_paren_loc: crate::Loc,
     pub close_paren_loc: crate::Loc,
+    pub preserve_parenthesized_target: bool,
 
     /// True if there is a comment containing "@__PURE__" or "#__PURE__" preceding
     /// this call expression. This is an annotation used for tree shaking, and
@@ -281,7 +283,9 @@ impl Default for Call {
             args: bun_alloc::AstAlloc::vec(),
             optional_chain: None,
             is_direct_eval: false,
+            open_paren_loc: crate::Loc::EMPTY,
             close_paren_loc: crate::Loc::EMPTY,
+            preserve_parenthesized_target: false,
             can_be_unwrapped_if_unused: CallUnwrap::Never,
             was_jsx_element: false,
         }
@@ -334,6 +338,7 @@ impl Default for Dot {
     }
 }
 pub struct Index {
+    pub open_bracket_loc: crate::Loc,
     pub index: ExprNodeIndex,
     pub target: ExprNodeIndex,
     pub optional_chain: Option<OptionalChain>,
@@ -2114,6 +2119,7 @@ pub struct TemplatePart {
 }
 
 pub struct Template {
+    pub head_loc: crate::Loc,
     pub tag: Option<ExprNodeIndex>,
     /// Arena-owned mutable slice. Stored as a
     /// `StoreSlice` so writers (`substitute_single_use_symbol_in_expr`, the
@@ -2335,6 +2341,7 @@ impl Template {
         // provenance for downstream mutators.
         Expr::init(
             Template {
+                head_loc: crate::Loc::EMPTY,
                 tag: None,
                 parts: crate::StoreSlice::from_bump(parts),
                 head: TemplateContents::Cooked(

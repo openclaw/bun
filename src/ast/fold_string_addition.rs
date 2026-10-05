@@ -93,6 +93,7 @@ pub fn fold_string_addition(
                         if right.head.is_utf8() {
                             return Some(Expr::init(
                                 E::Template {
+                                    head_loc: crate::Loc::EMPTY,
                                     tag: None,
                                     parts: right.parts,
                                     head: e::TemplateContents::Cooked(join_strings(

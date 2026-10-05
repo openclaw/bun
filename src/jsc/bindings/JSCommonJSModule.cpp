@@ -1188,7 +1188,8 @@ void populateESMExports(
 
     if (auto* exports = result.getObject()) {
         bool hasESModuleMarker = false;
-        if (!ignoreESModuleAnnotation) {
+        // A native namespace forwarded by CJS keeps its default binding inside that namespace.
+        if (!ignoreESModuleAnnotation && !dynamicDowncast<JSModuleNamespaceObject>(exports)) {
             PropertySlot slot(exports, PropertySlot::InternalMethodType::VMInquiry, &vm);
             auto has = exports->getPropertySlot(globalObject, esModuleMarker, slot);
             RETURN_IF_EXCEPTION(scope, );
@@ -1213,7 +1214,7 @@ void populateESMExports(
             if (canPerformFastEnumeration(structure)) {
                 exports->structure()->forEachProperty(vm, [&](const PropertyTableEntry& entry) -> bool {
                     auto key = entry.key();
-                    if (key->isSymbol() || key == esModuleMarker)
+                    if (key->isSymbol())
                         return true;
 
                     needsToAssignDefault = needsToAssignDefault && key != vm.propertyNames->defaultKeyword;
@@ -1230,7 +1231,7 @@ void populateESMExports(
                 RETURN_IF_EXCEPTION(scope, );
 
                 for (auto property : properties) {
-                    if (property.isEmpty() || property.isNull() || property == esModuleMarker || property.isPrivateName() || property.isSymbol()) [[unlikely]]
+                    if (property.isEmpty() || property.isNull() || property.isPrivateName() || property.isSymbol()) [[unlikely]]
                         continue;
 
                     // ignore constructor
@@ -1336,7 +1337,25 @@ void JSCommonJSModule::toSyntheticSource(JSC::JSGlobalObject* globalObject,
     auto result = this->exportsObject();
     RETURN_IF_EXCEPTION(scope, );
 
-    RELEASE_AND_RETURN(scope, populateESMExports(globalObject, result, exportNames, exportValues, this->ignoreESModuleAnnotation));
+    populateESMExports(globalObject, result, exportNames, exportValues, this->ignoreESModuleAnnotation);
+    RETURN_IF_EXCEPTION(scope, );
+
+    auto& vm = globalObject->vm();
+    const auto moduleExports = Identifier::fromString(vm, "module.exports"_s);
+    exportValues.append(result);
+    if (exportValues.hasOverflowed()) {
+        throwOutOfMemoryError(globalObject, scope);
+        return;
+    }
+    // Node's CJS namespace always exposes the original exports through this name.
+    for (size_t i = 0; i < exportNames.size(); ++i) {
+        if (exportNames[i] == moduleExports) {
+            exportValues[i] = exportValues.last();
+            exportValues.removeLast();
+            return;
+        }
+    }
+    exportNames.append(moduleExports);
 }
 
 void JSCommonJSModule::setExportsObject(JSC::JSValue exportsObject)
