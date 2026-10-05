@@ -84,6 +84,21 @@ test/js/node/process/process.test.js
 test/js/bun/sqlite/column-types.test.js
 ```
 
+## Windows release qualification
+
+The separate [`openclaw-release.yml`](workflows/openclaw-release.yml) keeps
+Windows x64 and ARM64 test-only builds, smoke tests and compatibility lanes in
+PRs and non-publishing dry runs. Publication defaults to the four Darwin/Linux
+targets. The plan job reads `OPENCLAW_RELEASE_WINDOWS_SIGNED` once; only the
+exact value `true` enables Windows publication and requires both architectures
+with verified Foundation Authenticode signatures. Missing signing configuration
+then fails the entire release; unsigned Windows artifacts are never published.
+
+Before enabling the repository variable, configure the Azure OIDC secrets in
+`release-signing` with federated credential subject
+`repo:openclaw/bun:environment:release-signing`. See
+[the release signing instructions](OPENCLAW_RELEASE.md#windows-signing-and-qualification).
+
 ## Caches and artifacts
 
 The lane caches the build system's download/prebuilt/ccache directory, Rust

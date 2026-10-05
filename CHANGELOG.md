@@ -208,3 +208,5 @@
 
 - Pin immutable [OpenClaw WebKit `f1e1ca1156`](https://github.com/openclaw/WebKit/releases/tag/autobuild-f1e1ca1156c8cb3b468bec0e1989fbfa08899661) with all ten archive checksums, including Windows ARM64, cached repeated stack coordinates, and the ARM64 allocation-accounting arithmetic fix.
 - Account for typed-array and ArrayBuffer payloads before GC, preserve allocation-origin charges across worker transfers, separate external storage from JS heap statistics, and answer worker heap-statistics requests during JavaScript loops and atomic waits. Builds on oven-sh/bun#34406 and oven-sh/WebKit#303; thanks @robobun.
+
+- Publish Darwin/Linux prereleases while Windows signing is unconfigured; require an explicit signed-Windows release switch before including either Windows architecture, while preserving test-only Windows CI.

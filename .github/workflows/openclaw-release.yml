@@ -22,7 +22,7 @@ on:
         type: boolean
         default: false
       targets:
-        description: "Comma-separated targets; empty = six release targets. Also: linux-x64-musl, linux-arm64-musl"
+        description: "Comma-separated targets; empty = enabled release targets (all six in dry runs). Also: linux-x64-musl, linux-arm64-musl"
         type: string
         default: ""
 
@@ -50,6 +50,7 @@ jobs:
       matrix: ${{ steps.plan.outputs.matrix }}
       darwin: ${{ steps.plan.outputs.darwin }}
       windows: ${{ steps.plan.outputs.windows }}
+      windows-signed: ${{ steps.plan.outputs.windows-signed }}
       windows-matrix: ${{ steps.plan.outputs.windows-matrix }}
       mtime: ${{ steps.plan.outputs.mtime }}
     steps:
@@ -78,10 +79,12 @@ jobs:
         id: plan
         env:
           TARGETS: ${{ inputs.targets }}
+          WINDOWS_SIGNED: ${{ vars.OPENCLAW_RELEASE_WINDOWS_SIGNED }}
         run: |
           args=(--source source --main origin/main)
           [ -n "$RELEASE_TAG" ] && args+=(--tag "$RELEASE_TAG")
           [ "$PUBLISH" = true ] && args+=(--publish)
+          [ "$WINDOWS_SIGNED" = true ] && args+=(--windows-signed)
           [ -n "$TARGETS" ] && args+=(--targets "$TARGETS")
           bun pipeline/scripts/openclaw-release/release.ts plan "${args[@]}"
 
@@ -477,6 +480,7 @@ jobs:
           TAG: ${{ needs.plan.outputs.tag }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           PUBLISH: ${{ needs.plan.outputs.publish }}
+          WINDOWS_SIGNED: ${{ needs.plan.outputs.windows-signed }}
         run: |
           revision=""
           if [ -f dist/bun-linux-x64.zip ]; then
@@ -485,6 +489,7 @@ jobs:
           fi
           args=()
           [ "$PUBLISH" = true ] && args+=(--publish)
+          [ "$WINDOWS_SIGNED" = true ] && args+=(--windows-signed)
           bun pipeline/scripts/openclaw-release/release.ts manifest --source source --commit HEAD \
             --dist dist --out release --tag "$TAG" --workflow-run "$RUN_URL" ${revision:+--revision "$revision"} "${args[@]}"
           cp dist/*.zip release/
