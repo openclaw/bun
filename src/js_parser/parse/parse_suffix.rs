@@ -90,6 +90,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
             let index = p.new_expr(E::PrivateIdentifier { ref_ }, name_loc);
             *left = p.new_expr(
                 E::Index {
+                    open_bracket_loc: bun_ast::Loc::EMPTY,
                     target,
                     index,
                     optional_chain: old_optional_chain,
@@ -147,6 +148,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
         match p.lexer.token {
             T::TOpenBracket => {
                 // "a?.[b]"
+                let open_bracket_loc = p.lexer.loc();
                 p.lexer.next()?;
 
                 // allow "in" inside the brackets;
@@ -162,6 +164,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                 let target = *left;
                 *left = p.new_expr(
                     E::Index {
+                        open_bracket_loc,
                         target,
                         index,
                         optional_chain: optional_start,
@@ -177,6 +180,8 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                     return Ok(Continuation::Done);
                 }
 
+                let open_paren_loc = p.lexer.loc();
+                let preserve_parenthesized_target = p.preserve_parenthesized_call_target(*left);
                 let list_loc = p.parse_call_args()?;
                 let loc = left.loc;
                 let target = *left;
@@ -184,7 +189,9 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                     E::Call {
                         target,
                         args: list_loc.list,
+                        open_paren_loc,
                         close_paren_loc: list_loc.loc,
+                        preserve_parenthesized_target,
                         optional_chain: optional_start,
                         ..Default::default()
                     },
@@ -209,6 +216,8 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                     return Ok(Continuation::Done);
                 }
 
+                let open_paren_loc = p.lexer.loc();
+                let preserve_parenthesized_target = p.preserve_parenthesized_call_target(*left);
                 let list_loc = p.parse_call_args()?;
                 let loc = left.loc;
                 let target = *left;
@@ -216,7 +225,9 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                     E::Call {
                         target,
                         args: list_loc.list,
+                        open_paren_loc,
                         close_paren_loc: list_loc.loc,
+                        preserve_parenthesized_target,
                         optional_chain: optional_start,
                         ..Default::default()
                     },
@@ -235,6 +246,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                     let index = p.new_expr(E::PrivateIdentifier { ref_ }, name_loc);
                     *left = p.new_expr(
                         E::Index {
+                            open_bracket_loc: bun_ast::Loc::EMPTY,
                             target,
                             index,
                             optional_chain: optional_start,
@@ -290,6 +302,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
             );
         }
         // p.markSyntaxFeature(compat.TemplateLiteral, p.lexer.Range());
+        let head_loc = p.lexer.loc();
         let head = E::Str::new(p.lexer.raw_template_contents());
         p.lexer.next()?;
 
@@ -297,6 +310,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
         let tag = *left;
         *left = p.new_expr(
             E::Template {
+                head_loc,
                 tag: Some(tag),
                 head: E::TemplateContents::Raw(head),
                 parts: E::Template::empty_parts(),
@@ -321,12 +335,14 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
             );
         }
         // p.markSyntaxFeature(compat.TemplateLiteral, p.lexer.Range());
+        let head_loc = p.lexer.loc();
         let head = E::Str::new(p.lexer.raw_template_contents());
         let (parts, _tail_loc) = p.parse_template_parts(true)?;
         let tag = *left;
         let loc = left.loc;
         *left = p.new_expr(
             E::Template {
+                head_loc,
                 tag: Some(tag),
                 head: E::TemplateContents::Raw(head),
                 parts,
@@ -355,6 +371,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
             return Ok(Continuation::Done);
         }
 
+        let open_bracket_loc = p.lexer.loc();
         p.lexer.next()?;
 
         // Allow "in" inside the brackets
@@ -371,6 +388,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
         let target = *left;
         *left = p.new_expr(
             E::Index {
+                open_bracket_loc,
                 target,
                 index,
                 optional_chain: old_optional_chain,
@@ -393,6 +411,8 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
             return Ok(Continuation::Done);
         }
 
+        let open_paren_loc = p.lexer.loc();
+        let preserve_parenthesized_target = p.preserve_parenthesized_call_target(*left);
         let list_loc = p.parse_call_args()?;
         let loc = left.loc;
         let target = *left;
@@ -400,7 +420,9 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
             E::Call {
                 target,
                 args: list_loc.list,
+                open_paren_loc,
                 close_paren_loc: list_loc.loc,
+                preserve_parenthesized_target,
                 optional_chain: old_optional_chain,
                 ..Default::default()
             },
@@ -498,6 +520,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
         p: &mut Self,
         optional_chain: &mut Option<OptionalChain>,
         old_optional_chain: Option<OptionalChain>,
+        left: &Expr,
     ) -> CResult {
         // Skip over TypeScript non-null assertions
         if p.lexer.has_newline_before {
@@ -511,7 +534,11 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
 
         let bang_lo = p.lexer.start as u32;
         let bang_hi = u32::try_from(p.lexer.end).expect("source offset");
+        let parenthesized = p.preserve_parenthesized_call_target(*left);
         p.lexer.next()?;
+        if parenthesized {
+            p.parenthesized_suffix_loc = p.lexer.loc();
+        }
         p.ts_strip_record_span(crate::ts_strip::EntryKind::Blank, bang_lo, bang_hi);
         *optional_chain = old_optional_chain;
 
@@ -893,9 +920,13 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
         // TypeScript allows type arguments to be specified with angle brackets
         // inside an expression. Unlike in other languages, this unfortunately
         // appears to require backtracking to parse.
+        let parenthesized = p.preserve_parenthesized_call_target(*left);
         if Self::IS_TYPESCRIPT_ENABLED {
             let type_args_lo = p.lexer.start as u32;
             if p.try_skip_type_script_type_arguments_with_backtracking() {
+                if parenthesized {
+                    p.parenthesized_suffix_loc = p.lexer.loc();
+                }
                 p.ts_strip_record_to_here(crate::ts_strip::EntryKind::Blank, type_args_lo);
                 *optional_chain = old_optional_chain;
                 return Ok(Continuation::Next);
@@ -987,9 +1018,13 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
         // TypeScript allows type arguments to be specified with angle brackets
         // inside an expression. Unlike in other languages, this unfortunately
         // appears to require backtracking to parse.
+        let parenthesized = p.preserve_parenthesized_call_target(*left);
         if Self::IS_TYPESCRIPT_ENABLED {
             let type_args_lo = p.lexer.start as u32;
             if p.try_skip_type_script_type_arguments_with_backtracking() {
+                if parenthesized {
+                    p.parenthesized_suffix_loc = p.lexer.loc();
+                }
                 p.ts_strip_record_to_here(crate::ts_strip::EntryKind::Blank, type_args_lo);
                 *optional_chain = old_optional_chain;
                 return Ok(Continuation::Next);
@@ -1576,7 +1611,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                 T::TSlash => Self::sfx_t_slash(p, level, left),
                 T::TSlashEquals => Self::sfx_t_slash_equals(p, level, left),
                 T::TExclamation => {
-                    Self::sfx_t_exclamation(p, &mut optional_chain, old_optional_chain)
+                    Self::sfx_t_exclamation(p, &mut optional_chain, old_optional_chain, left)
                 }
                 T::TBarBar => Self::sfx_t_bar_bar(p, level, left, flags),
                 T::TAmpersandAmpersand => Self::sfx_t_ampersand_ampersand(p, level, left, flags),

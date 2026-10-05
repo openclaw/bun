@@ -103,7 +103,7 @@ impl KnownGlobal {
         let constructor = lookup(original_name)?;
 
         match constructor {
-            // Error constructors can be called without 'new' with identical behavior
+            // Removing `new` changes stack positions and makes returned errors eligible for tail calls.
             KnownGlobal::Error
             | KnownGlobal::TypeError
             | KnownGlobal::SyntaxError
@@ -111,10 +111,7 @@ impl KnownGlobal {
             | KnownGlobal::ReferenceError
             | KnownGlobal::EvalError
             | KnownGlobal::URIError
-            | KnownGlobal::AggregateError => {
-                // Convert `new Error(...)` to `Error(...)` to save bytes
-                Some(Self::call_from_new(e, loc))
-            }
+            | KnownGlobal::AggregateError => None,
 
             KnownGlobal::Object => {
                 let n = e.args.len_u32();

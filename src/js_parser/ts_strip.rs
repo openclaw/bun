@@ -211,8 +211,7 @@ impl Strip<'_> {
         }
 
         // https://tc39.es/ecma262/#sec-asi-interesting-cases-in-statement-lists
-        // `[`, `(`, `/`, `+`, `-`, backtick. (A regex after a statement
-        // boundary is first lexed as `/`; both spellings land on TSlash.)
+        // Regex tokens are captured before rescanning, including the `/=` prefix.
         match next.token {
             T::TOpenParen
             | T::TOpenBracket
@@ -220,7 +219,8 @@ impl Strip<'_> {
             | T::TTemplateHead
             | T::TPlus
             | T::TMinus
-            | T::TSlash => {
+            | T::TSlash
+            | T::TSlashEquals => {
                 if prev.token == T::TSemicolon {
                     // The previous statement's own `;` may itself sit inside
                     // an erased span; re-materialize it instead of adding a

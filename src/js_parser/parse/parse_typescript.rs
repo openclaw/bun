@@ -136,6 +136,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                         let index = p.new_expr(E::PrivateIdentifier { ref_ }, name_loc);
                         expr = p.new_expr(
                             E::Index {
+                                open_bracket_loc: bun_ast::Loc::EMPTY,
                                 target: expr,
                                 index,
                                 optional_chain: None,

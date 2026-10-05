@@ -1781,7 +1781,7 @@ console.log("survived", require("./late.js"));`,
       expect(stderr).toMatchInlineSnapshot(`
         "1 | require("module").runMain = () => {
         2 |   throw new RangeError("from the override");
-                        ^
+                    ^
         RangeError: from the override
             at <anonymous> (file:NN:NN)
 
@@ -2023,6 +2023,12 @@ describe("stripTypeScriptTypes", () => {
     expect(stripTypeScriptTypes("let x = `a${1 as number}b`;")).toBe("let x = `a${1          }b`;");
   });
 
+  test("preserves parenthesized calls with TypeScript suffixes", () => {
+    expect(stripTypeScriptTypes("(f)!<number>(1);")).toBe("(f)         (1);");
+    expect(stripTypeScriptTypes("(f)<<T>() => T>(g);")).toBe("(f)            (g);");
+    expect(stripTypeScriptTypes("(f!)<Array<number>>(1);")).toBe("(f )               (1);");
+  });
+
   test("ASI protection", () => {
     // Removing an erased span must not fuse the next line onto the previous
     // statement; amaro writes a `;` into the blank.
@@ -2032,6 +2038,12 @@ describe("stripTypeScriptTypes", () => {
     expect(stripTypeScriptTypes("let x = 1\ntype A = string\n(f)()")).toBe("let x = 1\n;              \n(f)()");
     expect(stripTypeScriptTypes("let x = 1\ntype A = string\nlet y = 2")).toBe("let x = 1\n               \nlet y = 2");
     expect(stripTypeScriptTypes("type A=1;type B=2;let c=3;")).toBe("                  let c=3;");
+  });
+
+  test("preserves a regex statement beginning with /=", () => {
+    const output = stripTypeScriptTypes('let x = 1\ntype T = number\n/=/.test("=");');
+    expect(output).toBe('let x = 1\n;              \n/=/.test("=");');
+    expect(Function(`${output}\nreturn x;`)()).toBe(1);
   });
 
   test("generic arrows", () => {

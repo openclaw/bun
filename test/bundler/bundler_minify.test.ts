@@ -1229,7 +1229,7 @@ describe("bundler", () => {
     },
   });
 
-  itBundled("minify/ErrorConstructorOptimization", {
+  itBundled("minify/ErrorConstructorPositions", {
     files: {
       "/entry.js": /* js */ `
         // Test all Error constructors
@@ -1272,25 +1272,25 @@ describe("bundler", () => {
       `,
     },
     capture: [
-      "Error()",
-      'Error("message")',
-      'Error("message", { cause: "cause" })',
-      "TypeError()",
-      'TypeError("type error")',
-      "SyntaxError()",
-      'SyntaxError("syntax error")',
-      "RangeError()",
-      'RangeError("range error")',
-      "ReferenceError()",
-      'ReferenceError("ref error")',
-      "EvalError()",
-      'EvalError("eval error")',
-      "URIError()",
-      'URIError("uri error")',
-      'AggregateError([], "aggregate error")',
-      'AggregateError([Error("e1")], "multiple")',
-      "Error(msg)",
-      "TypeError(getErrorMessage())",
+      "new Error",
+      'new Error("message")',
+      'new Error("message", { cause: "cause" })',
+      "new TypeError",
+      'new TypeError("type error")',
+      "new SyntaxError",
+      'new SyntaxError("syntax error")',
+      "new RangeError",
+      'new RangeError("range error")',
+      "new ReferenceError",
+      'new ReferenceError("ref error")',
+      "new EvalError",
+      'new EvalError("eval error")',
+      "new URIError",
+      'new URIError("uri error")',
+      'new AggregateError([], "aggregate error")',
+      'new AggregateError([new Error("e1")], "multiple")',
+      "new Error(msg)",
+      "new TypeError(getErrorMessage())",
       "/* @__PURE__ */ new Date",
       "/* @__PURE__ */ new Map",
       "/* @__PURE__ */ new Set",

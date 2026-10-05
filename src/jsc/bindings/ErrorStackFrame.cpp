@@ -22,12 +22,13 @@ static bool isConstruct(JSC::CodeBlock* code, JSC::BytecodeIndex bc)
     }
 }
 
-ZigStackFramePosition getAdjustedPositionForBytecode(JSC::CodeBlock* code, JSC::BytecodeIndex bc)
+ZigStackFramePosition getAdjustedPositionForBytecode(JSC::CodeBlock* code, JSC::BytecodeIndex bc, bool isAsync)
 {
     auto expr = code->expressionInfoForBytecodeIndex(bc);
-    auto offset = expr.divot;
-    // Constructors point to `new`; other calls retain JSC's syntax location.
-    if (isConstruct(code, bc))
+    auto callSitePosition = code->callSitePositionForBytecodeIndex(bc, isAsync);
+    auto offset = callSitePosition.value_or(expr.divot);
+    // Older or implicit bytecode can lack a syntax-selected stack position.
+    if (!callSitePosition && isConstruct(code, bc))
         offset -= std::min(offset, expr.startOffset);
 
     auto lineColumn = code->source().provider()->documentLineColumnForOffset(offset);
@@ -38,16 +39,18 @@ ZigStackFramePosition getAdjustedPositionForBytecode(JSC::CodeBlock* code, JSC::
     };
 }
 
-ZigStackFramePosition getAdjustedLineColumnForBytecode(JSC::CodeBlock* code, JSC::BytecodeIndex bc)
+ZigStackFramePosition getAdjustedLineColumnForBytecode(JSC::CodeBlock* code, JSC::BytecodeIndex bc, bool isAsync)
 {
     if (isConstruct(code, bc)) {
-        auto position = getAdjustedPositionForBytecode(code, bc);
+        auto position = getAdjustedPositionForBytecode(code, bc, isAsync);
         position.byte_position = -1;
         return position;
     }
 
-    // Keep JSC's cached lookup for frames that do not need an expression-range adjustment.
-    auto lineColumn = code->lineColumnForBytecodeIndex(bc);
+    auto callSitePosition = code->callSitePositionForBytecodeIndex(bc, isAsync);
+    auto lineColumn = callSitePosition
+        ? code->source().provider()->documentLineColumnForOffset(*callSitePosition)
+        : code->lineColumnForBytecodeIndex(bc);
     return {
         .line_zero_based = OrdinalNumber::fromOneBasedInt(lineColumn.line).zeroBasedInt(),
         .column_zero_based = OrdinalNumber::fromOneBasedInt(lineColumn.column).zeroBasedInt(),
