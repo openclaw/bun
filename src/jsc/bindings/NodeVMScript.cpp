@@ -182,8 +182,12 @@ constructScript(JSGlobalObject* globalObject, CallFrame* callFrame, JSValue newT
 
         // Runs link their own block; decoding alone determines whether cachedData is accepted.
         script->cachedDataRejected(unlinkedBlock ? TriState::False : TriState::True);
-    } else if (script->options().produceCachedData)
-        script->cacheBytecode();
+    } else {
+        if (script->options().hasCachedData)
+            script->cachedDataRejected(TriState::True);
+        if (script->options().produceCachedData)
+            script->cacheBytecode();
+    }
 
     return JSValue::encode(script);
 }

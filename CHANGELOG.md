@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Reject explicitly empty `vm.Script` cached data like Node.js and cover cache round-trips and incompatible data in interpreter, baseline, DFG, FTL, and default modes. Extends the crash regression from [oven-sh/bun#41769](https://github.com/oven-sh/bun/pull/41769); thanks @robobun!
+
 - Validate `vm.Script` cached data without compiling an unused executable, avoiding crashes when JSC runs without a JIT. Adapts [oven-sh/bun#41769](https://github.com/oven-sh/bun/pull/41769); thanks @robobun!
 
 - Align WebKit and VM source-position assertions with Node's constructor locations and select these regressions for native stack-formatting changes in both fork CI lanes.
