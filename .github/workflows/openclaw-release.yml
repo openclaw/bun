@@ -33,7 +33,7 @@ env:
 jobs:
   plan:
     name: Plan
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 10
     outputs:
       commit: ${{ steps.plan.outputs.commit }}
@@ -91,7 +91,7 @@ jobs:
     name: Build ${{ matrix.target }}
     needs: plan
     # Every target is cross-compiled on upstream's build image (debian 13 arm64); see OPENCLAW_RELEASE.md for runner choices.
-    runs-on: ${{ vars.OPENCLAW_RELEASE_BUILD_RUNNER || 'ubuntu-24.04-arm' }}
+    runs-on: ${{ vars.OPENCLAW_RELEASE_BUILD_RUNNER || 'blacksmith-16vcpu-ubuntu-2404-arm' }}
     timeout-minutes: 340
     strategy:
       fail-fast: false
@@ -334,7 +334,7 @@ jobs:
     name: Manifest
     needs: [plan, build, smoke, windows-compatibility]
     if: ${{ !cancelled() && needs.smoke.result == 'success' && (needs.plan.outputs.windows != 'true' || needs.windows-compatibility.result == 'success') }}
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 15
     steps:
       - name: Checkout pipeline
