@@ -204,4 +204,8 @@
 
 - Keep query and fragment imports of compiled embedded modules on their canonical module record, including Windows and non-ASCII filenames.
 
+- Build Windows ARM64 alongside x64, require Foundation Authenticode signatures before Windows release packaging, and qualify both architectures with the same native compatibility selection. Unsigned CI artifacts are explicitly test-only.
+
+- Pin immutable [OpenClaw WebKit `f1e1ca1156`](https://github.com/openclaw/WebKit/releases/tag/autobuild-f1e1ca1156c8cb3b468bec0e1989fbfa08899661) with all ten archive checksums, including Windows ARM64, cached repeated stack coordinates, and the ARM64 allocation-accounting arithmetic fix.
+
 - Load CommonJS native addons through Windows namespaced paths so long installation paths work with addon activation contexts, while preserving module cache keys and embedded-addon extraction.

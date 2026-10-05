@@ -22,6 +22,7 @@ import { spawnSync, type SpawnSyncOptions } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   appendFileSync,
+  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -44,7 +45,8 @@ export type TargetName =
   | "linux-arm64"
   | "linux-x64-musl"
   | "linux-arm64-musl"
-  | "windows-x64";
+  | "windows-x64"
+  | "windows-arm64";
 
 export interface Target {
   name: TargetName;
@@ -82,8 +84,11 @@ export const targets: Record<TargetName, Target> = {
     runner: "ubuntu-24.04-arm",
     container: alpine,
   }),
-  "windows-x64": target("windows-x64", "windows", "x64", undefined, ["windows-sysroot"], false, {
+  "windows-x64": target("windows-x64", "windows", "x64", undefined, ["windows-sysroot"], true, {
     runner: "windows-2025",
+  }),
+  "windows-arm64": target("windows-arm64", "windows", "arm64", undefined, ["windows-sysroot"], true, {
+    runner: "windows-11-arm",
   }),
 };
 
@@ -107,7 +112,7 @@ export const releaseTargets: readonly TargetName[] = (Object.keys(targets) as Ta
 );
 
 /** The workflow's matrix entries. Darwin executables are smoke-tested from the signing job's artifact. */
-export function matrix(names: readonly TargetName[]) {
+export function matrix(names: readonly TargetName[], publish = false) {
   return names.map(name => {
     const t = targets[name];
     return {
@@ -115,7 +120,12 @@ export function matrix(names: readonly TargetName[]) {
       triplet: t.triplet,
       runner: t.smoke.runner,
       container: t.smoke.container ?? "",
-      artifact: `${t.os === "darwin" ? "signed" : "build"}-${name}`,
+      artifact:
+        t.os === "windows"
+          ? publish
+            ? "signed-windows"
+            : "test-only-windows"
+          : `${t.os === "darwin" ? "signed" : "build"}-${name}`,
     };
   });
 }
@@ -325,6 +335,17 @@ export function build(source: string, name: TargetName, out: string, mtime: numb
     join(buildDir, "bun-profile.linker-map"),
     join(buildDir, "features.json"),
   ].filter(existsSync);
+  if (t.os === "windows") {
+    // Windows release bytes are signed and verified on x64 before packaging or hashing.
+    for (const [directory, files] of [
+      [t.triplet, [stripped]],
+      [`${t.triplet}-profile`, [profile, ...debugInfo]],
+    ] as const) {
+      mkdirSync(join(out, directory), { recursive: true });
+      for (const file of files) cpSync(file, join(out, directory, basename(file)), { recursive: true });
+    }
+    return;
+  }
   zip(join(out, `${t.triplet}.zip`), t.triplet, [stripped], mtime);
   zip(join(out, `${t.triplet}-profile.zip`), `${t.triplet}-profile`, [profile, ...debugInfo], mtime);
   writeFileSync(
@@ -384,12 +405,15 @@ export function smoke(zipPath: string, name: TargetName, commit: string, webkitV
           // interpreter and still computes the right sum; numberOfDFGCompiles then reports 1000000, JSC's "no
           // JIT" answer. The sum of 7i for i < 1e5, mod 1000003, is 545003.
           `const { numberOfDFGCompiles } = require("bun:jsc");
+           const { Database } = require("bun:sqlite");
+           const db = new Database(":memory:");
+           const sqlite = db.query("SELECT 42 AS answer").get().answer; db.close();
            function f(n) { let s = 0; for (let i = 0; i < n; i++) s = (s + i * 7) % 1000003; return s; }
            let sum = 0;
            for (let round = 0; round < 50 && !(numberOfDFGCompiles(f) > 0); round++)
              for (let k = 0; k < 200; k++) sum = f(1e5);
            console.log(JSON.stringify({ revision: Bun.revision, version: Bun.version, webkit: process.versions.webkit,
-             platform: process.platform, arch: process.arch, sum: f(1e5), dfg: numberOfDFGCompiles(f) }))`,
+             platform: process.platform, arch: process.arch, sqlite, sum: f(1e5), dfg: numberOfDFGCompiles(f) }))`,
         ],
         {},
       ),
@@ -401,6 +425,7 @@ export function smoke(zipPath: string, name: TargetName, commit: string, webkitV
       arch: string;
       sum: number;
       dfg: number;
+      sqlite: number;
     };
     const problems: string[] = [];
     if (facts.revision !== commit) problems.push(`Bun.revision is ${facts.revision}, expected ${commit}`);
@@ -411,6 +436,7 @@ export function smoke(zipPath: string, name: TargetName, commit: string, webkitV
       problems.push(`runs as ${facts.platform}-${facts.arch}, expected ${platform}-${t.arch}`);
     }
     if (facts.sum !== 545003) problems.push(`the loop computed ${facts.sum}`);
+    if (facts.sqlite !== 42) problems.push(`SQLite probe returned ${facts.sqlite}`);
     if (!(facts.dfg > 0 && facts.dfg < 1000000))
       problems.push(`the DFG JIT did not compile (numberOfDFGCompiles: ${facts.dfg})`);
     if (problems.length) throw new Error(`${name} smoke test failed:\n  ${problems.join("\n  ")}`);
@@ -443,6 +469,46 @@ export interface ManifestInput {
   dist: string;
   /** TargetName → signing record (darwin only). Defaults to the linker's ad-hoc signature on darwin. */
   signing: Partial<Record<TargetName, Signing>>;
+  windowsSigning?: Partial<Record<TargetName, WindowsSigning>>;
+  publish?: boolean;
+}
+
+export const windowsSignerSubject = "CN=OpenClaw Foundation, O=OpenClaw Foundation, L=Mill Valley, S=California, C=US";
+
+export interface WindowsSigning {
+  authenticodeSigned: boolean;
+  signerSubject?: string;
+  executableSha256: string;
+  profileExecutableSha256: string;
+  archiveSha256: string;
+  profileArchiveSha256: string;
+}
+
+function windowsSigning(
+  input: ManifestInput,
+  name: TargetName,
+  archive: string,
+  executableSha256: string,
+  profile: string,
+) {
+  const record = input.windowsSigning?.[name];
+  if (input.publish && record?.authenticodeSigned !== true)
+    throw new Error(`${name}: release requires Authenticode signing`);
+  if (record?.authenticodeSigned === true) {
+    if (record.signerSubject !== windowsSignerSubject)
+      throw new Error(`${name}: unexpected Authenticode signer subject`);
+    const t = targets[name];
+    if (
+      record.executableSha256 !== executableSha256 ||
+      record.archiveSha256 !== sha256File(archive) ||
+      record.profileArchiveSha256 !== sha256File(profile) ||
+      record.profileExecutableSha256 !== extractedDigest(profile, `${t.triplet}-profile/bun-profile.exe`).sha256
+    ) {
+      throw new Error(`${name}: Authenticode receipt does not match packaged bytes`);
+    }
+    return { authenticodeSigned: true, signerSubject: record.signerSubject, testOnly: false };
+  }
+  return { authenticodeSigned: false, testOnly: true };
 }
 
 export function sha256File(path: string): string {
@@ -461,6 +527,8 @@ export function manifest(input: ManifestInput) {
     existsSync(join(dist, `${targets[name].triplet}.zip`)),
   );
   if (!names.length) throw new Error(`no release zips in ${dist}`);
+  if (input.publish && releaseTargets.some(name => !names.includes(name)))
+    throw new Error("published manifest must include every release target");
   const assets = names.map(name => {
     const t = targets[name];
     const archive = join(dist, `${t.triplet}.zip`);
@@ -476,7 +544,11 @@ export function manifest(input: ManifestInput) {
       url: `${download}/${basename(archive)}`,
       size: statSync(archive).size,
       sha256: sha256File(archive),
-      executable: { path: `${t.triplet}/${t.exe}`, ...executable },
+      executable: {
+        path: `${t.triplet}/${t.exe}`,
+        ...executable,
+        ...(t.os === "windows" ? windowsSigning(input, name, archive, executable.sha256, profile) : {}),
+      },
       ...(existsSync(profile)
         ? {
             debugSymbols: {
@@ -521,7 +593,7 @@ export function manifest(input: ManifestInput) {
 
 function minimumFor(t: Target): string {
   if (t.os === "darwin") return "macOS 13.0";
-  if (t.os === "windows") return "Windows 10 1809";
+  if (t.os === "windows") return t.arch === "arm64" ? "Windows 11 ARM64" : "Windows 10 1809";
   const cpu = t.arch === "x64" ? "x86-64 with SSE4.2 (Nehalem)" : "ARMv8.0-A";
   return t.abi === "musl" ? `musl libc with libstdc++ and libgcc, ${cpu}` : `glibc 2.17, ${cpu}`;
 }
@@ -549,7 +621,12 @@ export function checksums(files: readonly string[]): string {
 
 export function releaseNotes(m: ReturnType<typeof manifest>): string {
   const rows = m.assets.map(a => {
-    const signing = a.signing ? ` ${a.signing.kind}${a.signing.notarized ? ", notarized" : ""} |` : " — |";
+    const signing =
+      a.os === "windows"
+        ? ` ${a.executable.authenticodeSigned ? `Authenticode (${a.executable.signerSubject})` : "unsigned, test-only"} |`
+        : a.signing
+          ? ` ${a.signing.kind}${a.signing.notarized ? ", notarized" : ""} |`
+          : " — |";
     return `| \`${a.target}\` | \`${a.name}\` | ${a.size.toLocaleString("en-US")} | \`${a.sha256}\` |${signing}`;
   });
   const unsigned = m.assets.filter(a => a.signing && a.signing.kind !== "developer-id").map(a => `\`${a.target}\``);
@@ -560,7 +637,7 @@ export function releaseNotes(m: ReturnType<typeof manifest>): string {
       m.repository +
       "`.",
     "",
-    "| Target | Archive | Bytes | SHA-256 | macOS signature |",
+    "| Target | Archive | Bytes | SHA-256 | Signature |",
     "| --- | --- | ---: | --- | --- |",
     ...rows,
     "",
@@ -655,8 +732,19 @@ async function main(argv: string[]): Promise<void> {
       if (values.publish && releaseTargets.some(name => !built.includes(name))) {
         throw new Error(`a published release has every release target: ${releaseTargets.join(", ")}`);
       }
-      output("matrix", JSON.stringify(matrix(built)));
+      output("matrix", JSON.stringify(matrix(built, values.publish)));
       output("darwin", String(built.some(name => targets[name].os === "darwin")));
+      output("windows", String(built.some(name => targets[name].os === "windows")));
+      output(
+        "windows-matrix",
+        JSON.stringify(
+          matrix(
+            built.filter(name => targets[name].os === "windows"),
+            values.publish,
+          ),
+        ),
+      );
+      output("mtime", git(source, "log", "-1", "--format=%ct", facts.commit));
       output("commit", facts.commit);
       output("tag", tag ?? tagFor(facts));
       output("version", facts.version);
@@ -684,10 +772,11 @@ async function main(argv: string[]): Promise<void> {
       const out = resolve(values.out ?? dist);
       const facts = sourceFacts(source, values.commit ?? "HEAD");
       const signing: ManifestInput["signing"] = {};
+      const windowsSigning: NonNullable<ManifestInput["windowsSigning"]> = {};
       for (const file of readdirSync(dist).filter(f => f.endsWith(".signing.json"))) {
-        signing[file.slice(0, -".signing.json".length) as TargetName] = JSON.parse(
-          readFileSync(join(dist, file), "utf8"),
-        );
+        const name = file.slice(0, -".signing.json".length) as TargetName;
+        const records = targets[name]?.os === "windows" ? windowsSigning : signing;
+        records[name] = JSON.parse(readFileSync(join(dist, file), "utf8"));
       }
       const m = manifest({
         tag,
@@ -697,6 +786,8 @@ async function main(argv: string[]): Promise<void> {
         workflowRun: values["workflow-run"],
         dist,
         signing,
+        windowsSigning,
+        publish: values.publish,
       });
       mkdirSync(out, { recursive: true });
       writeFileSync(join(out, "manifest.json"), JSON.stringify(m, null, 2) + "\n");

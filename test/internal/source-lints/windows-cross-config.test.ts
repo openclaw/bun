@@ -14,7 +14,7 @@ import { describe, expect, test } from "bun:test";
 import { isWindows } from "harness";
 
 import { resolveConfig, type Config, type PartialConfig, type Toolchain } from "../../../scripts/build/config.ts";
-import { webkit } from "../../../scripts/build/deps/webkit.ts";
+import { webkit, WEBKIT_MANIFEST } from "../../../scripts/build/deps/webkit.ts";
 import { computeFlags } from "../../../scripts/build/flags.ts";
 import { rustTarget } from "../../../scripts/build/rust.ts";
 
@@ -140,9 +140,17 @@ describe.skipIf(isWindows)("Windows cross-compile LTO config (non-windows host)"
     expect(def.url).toContain("bun-webkit-windows-amd64-lto.tar.gz");
     expect(def.destDir).toEndWith(`webkit-sha256-${def.sha256}`);
 
-    // The fork publishes Windows x64 LTO; other Windows variants must fail closed.
+    // The fork publishes Windows x64 LTO; x64 without LTO must still fail closed.
     expect(webkit.source(resolveWindowsCross({ lto: false })).kind).toBe("unavailable");
-    expect(webkit.source(resolveWindowsCross({ arch: "aarch64" })).kind).toBe("unavailable");
+  });
+
+  test("ARM64 selects the non-LTO WebKit prebuilt with a digest-keyed cache dir", () => {
+    const arm64 = webkit.source(resolveWindowsCross({ arch: "aarch64", lto: true }));
+    if (arm64.kind !== "prebuilt") throw new Error(`expected prebuilt WebKit source, got ${arm64.kind}`);
+    const artifact = WEBKIT_MANIFEST.artifacts["bun-webkit-windows-arm64.tar.gz"]!;
+    expect(arm64.url).toBe(artifact.url);
+    expect(arm64.sha256).toBe(artifact.sha256);
+    expect(arm64.destDir).toEndWith(`webkit-sha256-${artifact.sha256}`);
   });
 
   test("rust side targets pc-windows-msvc triples", () => {
