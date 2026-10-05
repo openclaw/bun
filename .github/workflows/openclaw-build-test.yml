@@ -48,6 +48,8 @@ jobs:
           cp baseline/bun-42ab baseline/bun-641c baseline/bun-f1e1 baseline/metadata.json evidence/
           chmod +x evidence/bun-42ab evidence/bun-641c evidence/bun-f1e1
           python3 pipeline/scripts/w179/scripts/compare.py source evidence --measure-only --runner-env
+      - name: Verify proposed guard and retained-object controls
+        run: python3 pipeline/scripts/w179/scripts/guard.py source evidence
       - name: Upload measurements and binaries
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
