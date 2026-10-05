@@ -196,6 +196,8 @@ Module loading has four additional limits:
 
 CommonJS-to-ESM loads preserve already-fetched absolute module keys, including Windows forward-slash aliases and paths containing dot segments, through linking and export access.
 
+Windows namespaced paths retain their prefix through CommonJS resolution and loading. As in Node, a namespaced path and its ordinary spelling have distinct module cache entries; the namespace's `?` is not treated as a module query.
+
 CommonJS named exports include nonenumerable data properties even when an `__esModule` marker and accessors are present. Nonenumerable accessors remain excluded.
 
 Package imports and exports match the `module-sync` condition for both `import` and `require`. Conditions retain package.json key order. Bun and Node build targets include this condition; the browser target does not.

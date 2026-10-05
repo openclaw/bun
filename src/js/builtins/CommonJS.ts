@@ -70,7 +70,7 @@ export function overridableRequire(this: JSCommonJSModule, originalId: string, o
 
   // A resolved id may carry a `?query` suffix (part of the module cache key);
   // match the native-addon extension against the path portion only.
-  const queryIndex = id.indexOf("?");
+  const queryIndex = id.indexOf("?", process.platform === "win32" && id.startsWith("\\\\?\\") ? 4 : 0);
   if (queryIndex === -1 ? id.endsWith(".node") : id.endsWith(".node", queryIndex)) {
     return $internalRequire(id, this, requireMap);
   }
@@ -175,7 +175,7 @@ export function internalRequire(id: string, parent: JSCommonJSModule, requireMap
   }
   // `id` keys the module cache and may carry a `?query` suffix;
   // `process.dlopen` needs the on-disk path.
-  const queryIndex = id.indexOf("?");
+  const queryIndex = id.indexOf("?", process.platform === "win32" && id.startsWith("\\\\?\\") ? 4 : 0);
   const filename = queryIndex === -1 ? id : id.substring(0, queryIndex);
   $assert(filename.endsWith(".node"));
 
