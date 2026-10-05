@@ -4,6 +4,7 @@ import { memoryUsage as jscMemoryUsage } from "bun:jsc";
 import { describe, expect, it } from "bun:test";
 import { familySync } from "detect-libc";
 import { bunEnv, bunExe, isASAN, isDebug, isLinux, isMacOS, isWindows, tempDir, tmpdirSync } from "harness";
+import { fileURLToPath } from "node:url";
 import { basename, join, resolve } from "path";
 import { getHeapStatistics } from "v8";
 
@@ -3014,6 +3015,67 @@ it("process.memoryUsage.arrayBuffers", () => {
   const array = new ArrayBuffer(1024 * 1024 * 16);
   array.buffer;
   expect(process.memoryUsage().arrayBuffers).toBeGreaterThanOrEqual(initial + 16 * 1024 * 1024);
+});
+
+for (const kind of [
+  "typed",
+  "buffer",
+  "arraybuffer",
+  "fast",
+  "resizable",
+  "shared",
+  "growable",
+  "detach",
+  "transfer",
+  "owner-exit",
+  "wasm",
+  "wasm-shared",
+  "views",
+  "resize-transfer",
+  "blob",
+  "response",
+  "serialize",
+  "serialize-buffer",
+]) {
+  it(`ArrayBuffer memory ownership: ${kind}`, async () => {
+    await using child = Bun.spawn({
+      cmd: [
+        bunExe(),
+        "--expose-gc",
+        fileURLToPath(new URL("./arraybuffer-accounting.fixture.mjs", import.meta.url)),
+        kind,
+      ],
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([child.stdout.text(), child.stderr.text(), child.exited]);
+    expect(stderr).toBe("");
+    expect(stdout).toContain(`"kind":"${kind}"`);
+    expect(exitCode).toBe(0);
+  });
+}
+
+it("ArrayBuffer memory ownership: native file buffers", async () => {
+  using dir = tempDir("arraybuffer-file", { "data.bin": "" });
+  const path = join(String(dir), "data.bin");
+  await Bun.write(path, new Uint8Array(16 * 1024 * 1024));
+  await using child = Bun.spawn({
+    cmd: [
+      bunExe(),
+      "--expose-gc",
+      fileURLToPath(new URL("./arraybuffer-accounting.fixture.mjs", import.meta.url)),
+      "file",
+      path,
+    ],
+    env: bunEnv,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([child.stdout.text(), child.stderr.text(), child.exited]);
+  expect(stderr).toBe("");
+  expect(stdout).toContain('"kind":"file"');
+  expect(exitCode).toBe(0);
 });
 
 it("should handle user assigned `default` properties", async () => {

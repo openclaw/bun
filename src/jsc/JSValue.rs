@@ -592,6 +592,7 @@ impl JSValue {
                 } else {
                     Some(MarkedArrayBuffer_deallocator)
                 },
+                crate::array_buffer::ArrayBufferAllocationMode::RuntimeOwned,
             )
         })
     }
@@ -619,6 +620,7 @@ impl JSValue {
                 } else {
                     Some(MarkedArrayBuffer_deallocator)
                 },
+                crate::array_buffer::ArrayBufferAllocationMode::RuntimeOwned,
             )
         })
     }
@@ -646,6 +648,7 @@ impl JSValue {
                 len,
                 ctx,
                 Some(free),
+                crate::array_buffer::ArrayBufferAllocationMode::RuntimeOwned,
             )
         })
     }
@@ -2005,6 +2008,7 @@ unsafe extern "C" {
         len: usize,
         ctx: *mut c_void,
         deallocator: Option<unsafe extern "C" fn(*mut c_void, *mut c_void)>,
+        allocation: crate::array_buffer::ArrayBufferAllocationMode,
     ) -> JSValue;
     safe fn JSBuffer__bufferFromLength(global: &JSGlobalObject, len: i64) -> JSValue;
     safe fn JSC__JSValue__dateInstanceFromNumber(global: &JSGlobalObject, n: f64) -> JSValue;

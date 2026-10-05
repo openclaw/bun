@@ -1500,7 +1500,8 @@ extern "C" JSC::EncodedJSValue ArrayBuffer__fromSharedMemfd(int64_t fd, JSC::JSG
 
     auto buffer = ArrayBuffer::createFromBytes({ reinterpret_cast<const uint8_t*>(reinterpret_cast<char*>(ptr) + byteOffset), byteLength }, createSharedTask<void(void*)>([ptr, totalLength](void* p) {
         munmap(ptr, totalLength);
-    }));
+    }),
+        JSC::ArrayBufferAllocationMode::RuntimeOwned);
 
     if (type == JSC::Uint8ArrayType) {
         auto uint8array = JSC::JSUint8Array::create(globalObject, globalObject->m_typedArrayUint8.get(globalObject), WTF::move(buffer), 0, byteLength);
@@ -1582,7 +1583,7 @@ extern "C" JSC::EncodedJSValue Bun__createUint8ArrayForCopy(JSC::JSGlobalObject*
     RELEASE_AND_RETURN(scope, JSValue::encode(array));
 }
 
-extern "C" JSC::EncodedJSValue Bun__makeArrayBufferWithBytesNoCopy(JSC::JSGlobalObject* globalObject, const void* ptr, size_t len, JSTypedArrayBytesDeallocator deallocator, void* deallocatorContext)
+extern "C" JSC::EncodedJSValue Bun__makeArrayBufferWithBytesNoCopy(JSC::JSGlobalObject* globalObject, const void* ptr, size_t len, JSTypedArrayBytesDeallocator deallocator, void* deallocatorContext, JSC::ArrayBufferAllocationMode allocationMode)
 {
     auto& vm = JSC::getVM(globalObject);
     auto scope = DECLARE_THROW_SCOPE(vm);
@@ -1592,14 +1593,15 @@ extern "C" JSC::EncodedJSValue Bun__makeArrayBufferWithBytesNoCopy(JSC::JSGlobal
 
     auto buffer = ArrayBuffer::createFromBytes({ static_cast<const uint8_t*>(ptr), len }, createSharedTask<void(void*)>([=](void* p) {
         if (deallocator) deallocator(p, deallocatorContext);
-    }));
+    }),
+        allocationMode);
 
     JSArrayBuffer* jsBuffer = JSArrayBuffer::create(vm, globalObject->arrayBufferStructure(ArrayBufferSharingMode::Default), WTF::move(buffer));
     RETURN_IF_EXCEPTION(scope, {});
     return JSValue::encode(jsBuffer);
 }
 
-extern "C" JSC::EncodedJSValue Bun__makeTypedArrayWithBytesNoCopy(JSC::JSGlobalObject* globalObject, TypedArrayType ty, const void* ptr, size_t len, JSTypedArrayBytesDeallocator deallocator, void* deallocatorContext)
+extern "C" JSC::EncodedJSValue Bun__makeTypedArrayWithBytesNoCopy(JSC::JSGlobalObject* globalObject, TypedArrayType ty, const void* ptr, size_t len, JSTypedArrayBytesDeallocator deallocator, void* deallocatorContext, JSC::ArrayBufferAllocationMode allocationMode)
 {
     auto& vm = JSC::getVM(globalObject);
     auto scope = DECLARE_THROW_SCOPE(vm);
@@ -1609,7 +1611,8 @@ extern "C" JSC::EncodedJSValue Bun__makeTypedArrayWithBytesNoCopy(JSC::JSGlobalO
 
     auto buffer_ = ArrayBuffer::createFromBytes({ static_cast<const uint8_t*>(ptr), len }, createSharedTask<void(void*)>([=](void* p) {
         if (deallocator) deallocator(p, deallocatorContext);
-    }));
+    }),
+        allocationMode);
     RefPtr<ArrayBuffer>&& buffer = WTF::move(buffer_);
     if (!buffer) {
         throwOutOfMemoryError(globalObject, scope);
