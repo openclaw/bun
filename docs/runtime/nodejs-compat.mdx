@@ -228,6 +228,8 @@ Socket close notifications use internal scheduling and continue to run when user
 
 ### [`node:process`](https://nodejs.org/api/process.html)
 
+`process.memoryUsage().arrayBuffers` includes fixed backing storage and typed arrays before GC, including optimized allocations. Transferring a buffer moves its `external` payload charge to the receiving worker while its `arrayBuffers` charge stays with the allocating worker until storage is freed. Resizable buffers contribute their current payload to `external`; shared fixed backing storage contributes only to the allocator's `arrayBuffers`. Shared growable backing storage does not contribute to either field. Unshared WebAssembly memory contributes to `external` at allocation and growth, including before `.buffer` is accessed. External memory also includes native object overhead. Backing storage is excluded from `heapUsed` and `heapTotal`.
+
 `process.platform`, `arch`, `version`, `versions`, `pid`, and `release` expose Node-compatible data descriptors. `argv` and `execArgv` initialize lazily and support descriptor-based replacement. `ppid` and `title` retain their native behavior behind data descriptors. `exitCode` remains a non-configurable accessor.
 
 On POSIX, initializing `process.stdout` or `process.stderr` does not retain a duplicate pipe writer. Explicitly closing the underlying descriptor publishes EOF while the process remains alive. On Windows, the initialized pipe handle retains the writer until process exit, matching Node. On POSIX, socket and pipe stdio use nonblocking writes. `end()` and pipeline completion flush pending output and shut down the write side of socket stdio, so peers receive EOF before process exit. Actual pipes stay open until process exit or explicit descriptor closure. `destroy()` preserves fd 1/2; after POSIX socket or pipe finalization, later stream writes fail with `EPIPE`. On Windows, piped stdout/stderr reset their writable state after `end()` or pipeline completion and accept subsequent writes.
@@ -295,6 +297,8 @@ Valid `vm.Script` cached data is accepted when JSC runs without a JIT. Validatio
 ### [`node:worker_threads`](https://nodejs.org/api/worker_threads.html)
 
 `resourceLimits` reports effective heap, nursery, code-range, and stack settings. With the pinned OpenClaw WebKit, managed-heap exhaustion terminates only the affected worker with `ERR_WORKER_OUT_OF_MEMORY` and exit code 1. ArrayBuffer backing stores are excluded. `codeRangeSizeMb` is reporting-only because JSC shares its executable allocator. See [worker resource limits](/runtime/workers#node-worker-resource-limits) for defaults and limitations.
+
+`worker.getHeapStatistics()` takes an owning-thread snapshot while a worker is idle, executing JavaScript, or blocked in `Atomics.wait()`. The snapshot includes freshly allocated external storage. Inspection preserves the atomic wait and pending requests settle if the worker exits.
 
 File workers select `--require` and `--import` preloads from their environment independently of `execArgv`. Explicit `env` or `execArgv` options re-read the worker's `NODE_OPTIONS` and `BUN_OPTIONS` before applying the selected CLI arguments. `execArgv: []` removes CLI preloads while environment preloads still apply. Require preloads run before import preloads.
 

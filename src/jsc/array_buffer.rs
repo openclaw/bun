@@ -13,6 +13,14 @@ bun_core::declare_scope!(ArrayBuffer, visible);
 /// when a zero-copy ArrayBuffer/typed array backing store is collected.
 pub type JSTypedArrayBytesDeallocator = Option<unsafe extern "C" fn(*mut c_void, *mut c_void)>;
 
+/// Matches JSC::ArrayBufferAllocationMode. Foreign storage does not acquire an allocator-origin charge.
+#[repr(u8)]
+#[derive(Clone, Copy)]
+pub enum ArrayBufferAllocationMode {
+    External = 0,
+    RuntimeOwned = 1,
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // ArrayBuffer
 // ──────────────────────────────────────────────────────────────────────────
@@ -115,6 +123,7 @@ unsafe extern "C" {
         len: usize,
         dealloc: JSTypedArrayBytesDeallocator,
         ctx: *mut c_void,
+        allocation: ArrayBufferAllocationMode,
     ) -> JSValue;
     fn Bun__makeTypedArrayWithBytesNoCopy(
         global: &JSGlobalObject,
@@ -123,6 +132,7 @@ unsafe extern "C" {
         len: usize,
         dealloc: JSTypedArrayBytesDeallocator,
         ctx: *mut c_void,
+        allocation: ArrayBufferAllocationMode,
     ) -> JSValue;
     fn Bun__createTypedArrayForCopy(
         global: *const JSGlobalObject,
@@ -459,6 +469,7 @@ impl ArrayBuffer {
                     // The deallocator ignores its ctx (mi_free needs no ctx). Any non-null
                     // sentinel would do; pass the data ptr itself.
                     self.ptr.cast(),
+                    ArrayBufferAllocationMode::RuntimeOwned,
                 )
             };
         }
@@ -472,6 +483,7 @@ impl ArrayBuffer {
                 self.byte_len,
                 Some(MarkedArrayBuffer_deallocator),
                 self.ptr.cast(),
+                ArrayBufferAllocationMode::RuntimeOwned,
             )
         }
     }
@@ -504,6 +516,7 @@ impl ArrayBuffer {
                         self.byte_len,
                         None,
                         ptr::null_mut(),
+                        ArrayBufferAllocationMode::External,
                     )
                 };
             }
@@ -517,6 +530,7 @@ impl ArrayBuffer {
                     self.byte_len,
                     None,
                     ptr::null_mut(),
+                    ArrayBufferAllocationMode::External,
                 )
             };
         }
@@ -542,6 +556,7 @@ impl ArrayBuffer {
         ctx: &JSGlobalObject,
         deallocator: *mut c_void,
         callback: JSTypedArrayBytesDeallocator,
+        allocation: ArrayBufferAllocationMode,
     ) -> JsResult<JSValue> {
         if !self.value.is_empty() {
             return Ok(self.value);
@@ -557,6 +572,7 @@ impl ArrayBuffer {
                     self.byte_len,
                     callback,
                     deallocator,
+                    allocation,
                 )
             };
         }
@@ -570,6 +586,7 @@ impl ArrayBuffer {
                 self.byte_len,
                 callback,
                 deallocator,
+                allocation,
             )
         }
     }
@@ -1017,12 +1034,20 @@ pub(crate) unsafe fn make_array_buffer_with_bytes_no_copy(
     len: usize,
     deallocator: JSTypedArrayBytesDeallocator,
     deallocator_context: *mut c_void,
+    allocation: ArrayBufferAllocationMode,
 ) -> JsResult<JSValue> {
     crate::host_fn::from_js_host_call(global, || {
         // SAFETY: forwarded verbatim; the caller upholds this function's
         // contract (`ptr` valid for `len` bytes until `deallocator` runs).
         unsafe {
-            Bun__makeArrayBufferWithBytesNoCopy(global, ptr, len, deallocator, deallocator_context)
+            Bun__makeArrayBufferWithBytesNoCopy(
+                global,
+                ptr,
+                len,
+                deallocator,
+                deallocator_context,
+                allocation,
+            )
         }
     })
 }
@@ -1042,6 +1067,7 @@ pub unsafe fn make_typed_array_with_bytes_no_copy(
     len: usize,
     deallocator: JSTypedArrayBytesDeallocator,
     deallocator_context: *mut c_void,
+    allocation: ArrayBufferAllocationMode,
 ) -> JsResult<JSValue> {
     crate::host_fn::from_js_host_call(global, || {
         // SAFETY: forwarded verbatim; the caller upholds this function's
@@ -1054,6 +1080,7 @@ pub unsafe fn make_typed_array_with_bytes_no_copy(
                 len,
                 deallocator,
                 deallocator_context,
+                allocation,
             )
         }
     })
