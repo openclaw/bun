@@ -96,10 +96,14 @@ release target as a dry run; the release cadence and security-patch policy are i
 The sync through upstream Bun `9bd19c98eacc01530a4e7609bc427abffa87d77e`
 targets upstream WebKit `5718a6ec579b98362ea7276a426deedcc6281ef5`. The fork
 consumes immutable OpenClaw WebKit
-[`42ab38d705d4838748ccee77e7deb0e4e35515ee`](https://github.com/openclaw/WebKit/releases/tag/autobuild-42ab38d705d4838748ccee77e7deb0e4e35515ee)
+[`f1e1ca1156c8cb3b468bec0e1989fbfa08899661`](https://github.com/openclaw/WebKit/releases/tag/autobuild-f1e1ca1156c8cb3b468bec0e1989fbfa08899661)
 through the complete published manifest in
 `scripts/build/deps/webkit-artifacts.json`. Every archive is verified before
 extraction, with no upstream-artifact fallback.
+
+The ten-archive manifest includes the non-LTO Windows ARM64 build, cached
+repeated stack coordinates, and the ARM64 register-to-memory addition fix used
+by typed-array allocation accounting.
 
 This engine provides upstream's idle compiler-thread and `Atomics.wait` memory
 release. Its namespace facade API also requires the paired Bun integration from
