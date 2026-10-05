@@ -202,6 +202,8 @@
 - Preserve built-in error constructor syntax and returning arrow frames, and use JSC syntax-selected call and property-read stack positions. Retain runtime callee parentheses and computed access, and map call, bracket, and template delimiters back to their original source. Continues the source-position fixes from [oven-sh/bun#35179](https://github.com/oven-sh/bun/pull/35179), [oven-sh/bun#37396](https://github.com/oven-sh/bun/pull/37396), and [oven-sh/bun#41580](https://github.com/oven-sh/bun/pull/41580). Thanks @robobun!
 - Add position-preserving `module.stripTypeScriptTypes()` strip mode for tooling that analyzes TypeScript exports. Adapts [oven-sh/bun#35517](https://github.com/oven-sh/bun/pull/35517); thanks @cirospaciari!
 
+- Keep query and fragment imports of compiled embedded modules on their canonical module record, including Windows and non-ASCII filenames.
+
 - Build Windows ARM64 alongside x64, require Foundation Authenticode signatures before Windows release packaging, and qualify both architectures with the same native compatibility selection. Unsigned CI artifacts are explicitly test-only.
 
 - Pin immutable [OpenClaw WebKit `f1e1ca1156`](https://github.com/openclaw/WebKit/releases/tag/autobuild-f1e1ca1156c8cb3b468bec0e1989fbfa08899661) with all ten archive checksums, including Windows ARM64, cached repeated stack coordinates, and the ARM64 allocation-accounting arithmetic fix.
