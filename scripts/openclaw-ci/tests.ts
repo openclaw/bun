@@ -158,6 +158,22 @@ function summary(text: string) {
   console.log(text);
 }
 
+export function assertSelectedTestResults(
+  selected: readonly string[],
+  results: readonly { testPath: string; ok: boolean }[],
+  platform: string = process.platform,
+): void {
+  // The runner reports native paths; selections come from Git with forward slashes.
+  const passed = new Set(
+    results
+      .filter(result => result.ok)
+      .map(result => (platform === "win32" ? result.testPath.replaceAll("\\", "/") : result.testPath)),
+  );
+  for (const test of selected) {
+    if (!passed.has(test)) throw new Error(`Selected test did not pass (or was skipped by expectations): ${test}`);
+  }
+}
+
 if (import.meta.main) {
   const command = process.argv[2];
   const selectionPath = "build/openclaw-ci/selected.json";
@@ -198,11 +214,7 @@ if (import.meta.main) {
     if (result.error) throw result.error;
     if (result.status !== 0) process.exit(result.status ?? 1);
     const results: { testPath: string; ok: boolean }[] = JSON.parse(readFileSync(resultsPath, "utf8"));
-    for (const test of selected) {
-      if (!results.some(result => result.testPath === test && result.ok)) {
-        throw new Error(`Selected test did not pass (or was skipped by expectations): ${test}`);
-      }
-    }
+    assertSelectedTestResults(selected, results);
   } else if (command === "summary") {
     summary(`## Result\n\nBuild: **${process.env.BUILD_OUTCOME}**. Tests: **${process.env.TEST_OUTCOME}**.\n`);
     if (existsSync(resultsPath)) {
