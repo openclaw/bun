@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Keep Windows stdio EOF tests aligned with Node's retained pipe handles and allow an explicit host Node version for compatibility qualification.
+- Keep Windows stdio EOF tests aligned with Node's retained pipe handles, allow an explicit host Node version for compatibility qualification, and preserve the host identity in TLS session-reuse fixtures.
 
 - Validate `vm.Script` cached data without compiling an unused executable, avoiding crashes when JSC runs without a JIT. Adapts [oven-sh/bun#41769](https://github.com/oven-sh/bun/pull/41769); thanks @robobun!
 
