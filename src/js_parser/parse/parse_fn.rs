@@ -273,7 +273,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                                             crate::ts_strip::UnsupportedKind::ParameterProperty,
                                         ),
                                         arg.loc.start as u32,
-                                        p.lexer.end as u32,
+                                        u32::try_from(p.lexer.end).expect("source offset"),
                                     );
                                 }
                                 is_typescript_ctor_field = true;
@@ -297,7 +297,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                 // "function foo(a?) {}"
                 if p.lexer.token == T::TQuestion {
                     let q_lo = p.lexer.start as u32;
-                    let q_hi = p.lexer.end as u32;
+                    let q_hi = u32::try_from(p.lexer.end).expect("source offset");
                     p.lexer.next()?;
                     p.ts_strip_record_span(crate::ts_strip::EntryKind::Blank, q_lo, q_hi);
                 }

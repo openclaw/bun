@@ -1286,7 +1286,7 @@ impl<'a> Lexer<'a> {
         }
         self.captured_tokens.push(crate::ts_strip::CapturedToken {
             start,
-            end: self.end as u32,
+            end: u32::try_from(self.end).expect("source offset"),
             token: self.token,
             has_newline_before: self.has_newline_before,
         });

@@ -1340,7 +1340,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                     p.lexer.token == T::TExclamation && !p.lexer.has_newline_before;
                 if is_definite_assignment_assertion {
                     let bang_lo = p.lexer.start as u32;
-                    let bang_hi = p.lexer.end as u32;
+                    let bang_hi = u32::try_from(p.lexer.end).expect("source offset");
                     p.lexer.next()?;
                     p.ts_strip_record_span(crate::ts_strip::EntryKind::Blank, bang_lo, bang_hi);
                 }

@@ -421,7 +421,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
             return Ok(Continuation::Done);
         }
         let question_lo = p.lexer.start as u32;
-        let question_hi = p.lexer.end as u32;
+        let question_hi = u32::try_from(p.lexer.end).expect("source offset");
         p.lexer.next()?;
 
         // Stop now if we're parsing one of these:
@@ -510,7 +510,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
         }
 
         let bang_lo = p.lexer.start as u32;
-        let bang_hi = p.lexer.end as u32;
+        let bang_hi = u32::try_from(p.lexer.end).expect("source offset");
         p.lexer.next()?;
         p.ts_strip_record_span(crate::ts_strip::EntryKind::Blank, bang_lo, bang_hi);
         *optional_chain = old_optional_chain;

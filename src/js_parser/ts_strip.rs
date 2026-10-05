@@ -125,6 +125,18 @@ impl Recorder {
     pub fn record(&mut self, kind: EntryKind, lo: u32, hi: u32) {
         self.entries.push(Entry { kind, lo, hi });
     }
+
+    #[inline(never)]
+    fn forward_export(&mut self, export_lo: u32, stmt: &bun_ast::Stmt) {
+        if !matches!(stmt.data, bun_ast::StmtData::STypeScript(_)) {
+            return;
+        }
+        if let Some(last) = self.entries.last_mut() {
+            if matches!(last.kind, EntryKind::BlankStmt) && last.lo == stmt.loc.start as u32 {
+                last.lo = export_lo;
+            }
+        }
+    }
 }
 
 pub struct StripError {
@@ -594,14 +606,8 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
     /// at the inner keyword; extend it to cover `export` (swc blanks the whole span).
     #[inline]
     pub fn ts_strip_forward_export(&mut self, export_lo: u32, stmt: &bun_ast::Stmt) {
-        let Some(r) = &mut self.ts_strip else { return };
-        if !matches!(stmt.data, bun_ast::StmtData::STypeScript(_)) {
-            return;
-        }
-        if let Some(last) = r.entries.last_mut() {
-            if matches!(last.kind, EntryKind::BlankStmt) && last.lo == stmt.loc.start as u32 {
-                last.lo = export_lo;
-            }
+        if let Some(recorder) = &mut self.ts_strip {
+            recorder.forward_export(export_lo, stmt);
         }
     }
 }

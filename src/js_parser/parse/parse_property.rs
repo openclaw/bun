@@ -664,7 +664,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                         // "class X { foo?: number }"
                         // "class X { foo!: number }"
                         let q_lo = p.lexer.start as u32;
-                        let q_hi = p.lexer.end as u32;
+                        let q_hi = u32::try_from(p.lexer.end).expect("source offset");
                         p.lexer.next()?;
                         p.ts_strip_record_span(crate::ts_strip::EntryKind::Blank, q_lo, q_hi);
                     } else if p.lexer.token == T::TExclamation
@@ -675,7 +675,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                     {
                         // "class X { foo!: number }"
                         let bang_lo = p.lexer.start as u32;
-                        let bang_hi = p.lexer.end as u32;
+                        let bang_hi = u32::try_from(p.lexer.end).expect("source offset");
                         p.lexer.next()?;
                         p.ts_strip_record_span(crate::ts_strip::EntryKind::Blank, bang_lo, bang_hi);
                         has_definite_assignment_assertion_operator = true;

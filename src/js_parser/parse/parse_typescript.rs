@@ -220,14 +220,17 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
         // (in `declare` contexts too) before doing anything else.
         if p.ts_strip_active()
             && p.lexer.token == T::TIdentifier
-            && p.source.contents[loc.start as usize..].starts_with(b"module")
+            && usize::try_from(loc.start)
+                .ok()
+                .and_then(|offset| p.source.contents.get(offset..))
+                .is_some_and(|source| source.starts_with(b"module"))
         {
             p.ts_strip_record_span(
                 crate::ts_strip::EntryKind::Unsupported(
                     crate::ts_strip::UnsupportedKind::ModuleKeyword,
                 ),
                 loc.start as u32,
-                p.lexer.end as u32,
+                u32::try_from(p.lexer.end).expect("source offset"),
             );
         }
         p.lexer.next()?;
