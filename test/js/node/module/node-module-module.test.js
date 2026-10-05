@@ -980,7 +980,9 @@ console.log("survived", require("./late.js"));`,
             previous = current;
             deadline = Date.now() + 10_000;
           }
-          if (Date.now() >= deadline || proc.exitCode !== null) throw new Error("idle persistence stalled");
+          if (Date.now() >= deadline || proc.exitCode !== null) {
+            throw new Error(`idle persistence stalled at ${current}/${minimum} entries (exitCode: ${proc.exitCode})`);
+          }
           await Bun.sleep(10);
         }
       };

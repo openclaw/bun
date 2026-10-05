@@ -212,7 +212,7 @@ Package imports and exports match the `module-sync` condition for both `import` 
 
 `NODE_COMPILE_CACHE` and `module.enableCompileCache()` generate and atomically write cache entries during idle time. Normal exits wait for pending cache work. After a native SIGTERM, SIGINT, or SIGHUP, Bun limits automatic exit-time cache waiting to 250 ms, including when JavaScript handled the signal. Unfinished entries compile normally on the next run. Explicit `module.flushCompileCache()` calls always wait for persistence to finish. Standalone executables ignore `NODE_COMPILE_CACHE`.
 
-Deferred cache generation continues on idle event loops even after JavaScript timers are removed. Its native wakeups do not keep the process alive.
+Deferred cache generation continues on idle event loops even after JavaScript timers are removed. Its native wakeups do not keep the process alive. Windows cache publication avoids requesting executable access to cache data files, which can otherwise trigger synchronous antivirus scans.
 
 ### [`node:net`](https://nodejs.org/api/net.html)
 
@@ -227,6 +227,8 @@ Socket close notifications use internal scheduling and continue to run when user
 🟡 `monitorEventLoopDelay()`, `createHistogram()`, `timerify()` and `PerformanceObserver` (`mark`, `measure`, `function`, `net`, `http` and `http2` entries) are implemented. Bun never emits `gc`, `dns` or `resource` entries. `eventLoopUtilization()` always returns zeros, and `performance.nodeTiming` holds placeholder values. The Node-specific additions to the global `performance` object only appear once `node:perf_hooks` has been imported.
 
 ### [`node:process`](https://nodejs.org/api/process.html)
+
+`process.memoryUsage().arrayBuffers` includes fixed backing storage and typed arrays before GC, including optimized allocations. Transferring a buffer moves its `external` payload charge to the receiving worker while its `arrayBuffers` charge stays with the allocating worker until storage is freed. Resizable buffers contribute their current payload to `external`; shared fixed backing storage contributes only to the allocator's `arrayBuffers`. Shared growable backing storage does not contribute to either field. Unshared WebAssembly memory contributes to `external` at allocation and growth, including before `.buffer` is accessed. External memory also includes native object overhead. Backing storage is excluded from `heapUsed` and `heapTotal`.
 
 `process.platform`, `arch`, `version`, `versions`, `pid`, and `release` expose Node-compatible data descriptors. `argv` and `execArgv` initialize lazily and support descriptor-based replacement. `ppid` and `title` retain their native behavior behind data descriptors. `exitCode` remains a non-configurable accessor.
 
@@ -295,6 +297,8 @@ Valid `vm.Script` cached data is accepted when JSC runs without a JIT. Validatio
 ### [`node:worker_threads`](https://nodejs.org/api/worker_threads.html)
 
 `resourceLimits` reports effective heap, nursery, code-range, and stack settings. With the pinned OpenClaw WebKit, managed-heap exhaustion terminates only the affected worker with `ERR_WORKER_OUT_OF_MEMORY` and exit code 1. ArrayBuffer backing stores are excluded. `codeRangeSizeMb` is reporting-only because JSC shares its executable allocator. See [worker resource limits](/runtime/workers#node-worker-resource-limits) for defaults and limitations.
+
+`worker.getHeapStatistics()` takes an owning-thread snapshot while a worker is idle, executing JavaScript, or blocked in `Atomics.wait()`. The snapshot includes freshly allocated external storage. Inspection preserves the atomic wait and pending requests settle if the worker exits.
 
 File workers select `--require` and `--import` preloads from their environment independently of `execArgv`. Explicit `env` or `execArgv` options re-read the worker's `NODE_OPTIONS` and `BUN_OPTIONS` before applying the selected CLI arguments. `execArgv: []` removes CLI preloads while environment preloads still apply. Require preloads run before import preloads.
 

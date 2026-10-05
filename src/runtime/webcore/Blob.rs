@@ -2844,6 +2844,7 @@ impl BlobExt for Blob {
                         global,
                         store.into_raw().cast::<c_void>(),
                         Some(blob_store_array_buffer_deallocator),
+                        jsc::array_buffer::ArrayBufferAllocationMode::External,
                     )
                 }
             }
@@ -2873,6 +2874,7 @@ impl BlobExt for Blob {
                         global,
                         store.into_raw().cast::<c_void>(),
                         Some(blob_store_array_buffer_deallocator),
+                        jsc::array_buffer::ArrayBufferAllocationMode::RuntimeOwned,
                     )
                 }
             }

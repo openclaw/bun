@@ -131,6 +131,7 @@ public:
     // target's thread when the work whose completion this is was initiated, or Regular for work no
     // script there initiated.
     WEBCORE_EXPORT static bool postTaskTo(ScriptExecutionContextIdentifier identifier, BunLoopKind loopKind, Function<void(ScriptExecutionContext&)>&& task);
+    static bool postVMInspection(ScriptExecutionContextIdentifier, Function<void(JSC::VM&)>&&);
     WEBCORE_EXPORT static bool ensureOnContextThread(ScriptExecutionContextIdentifier, Function<void(ScriptExecutionContext&)>&& task);
 
     WEBCORE_EXPORT JSC::JSGlobalObject* globalObject();

@@ -35,6 +35,14 @@ that already built.
 Releases are prereleases and not "latest" while
 `vars.OPENCLAW_RELEASE_PRERELEASE` is unset or `true`.
 
+By default, publication includes only `darwin-arm64`, `darwin-x64`, `linux-x64`
+and `linux-arm64`. Windows becomes required only when the repository variable
+`OPENCLAW_RELEASE_WINDOWS_SIGNED` is exactly `true`. The plan job reads this
+switch once and passes it through to manifest validation. With it off, Windows
+is neither built for publication nor accepted in the published artifacts.
+PRs and non-publishing dry runs still default to all six targets, including
+both Windows architectures and their compatibility checks.
+
 Rebuilding a commit that already has a release (a toolchain or pipeline change,
 not a source change) gets a new tag with `--rebuild 2` (`…-r2`). Published
 assets are never replaced: packagers pin their checksums.
@@ -237,13 +245,13 @@ costs two more build jobs.
 
 ## Windows signing and qualification
 
-Windows x64 and ARM64 are release targets. Both cross-compile on the same Debian
+Windows x64 and ARM64 are conditional release targets. Both cross-compile on the same Debian
 ARM64 image using clang-cl, lld-link and xwin's MSVC/Windows SDK. Windows ARM64
 uses the existing upstream non-LTO lane. Native smoke tests verify source and
 engine identity, architecture, SQLite and DFG JIT startup. Both architectures run
 the same 29-file Windows compatibility selection and its dependency checks.
 
-Only a publishing run enters the `release-signing` environment and grants the
+Only a publishing run with Windows enabled enters the `release-signing` environment and grants the
 signing job `id-token: write`. `azure/login` uses the environment secrets
 `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and `AZURE_SUBSCRIPTION_ID` for OIDC.
 `azure/artifact-signing-action@v2` uses endpoint
@@ -258,6 +266,21 @@ Verification precedes packaging and hashing. Manifest assembly binds the signed
 receipt to both archives and executables. Missing Azure configuration, failed
 signing, an unexpected subject or changed bytes fail the release; there is no
 unsigned release fallback.
+
+To enable Windows publication, first configure the `release-signing`
+environment's three Azure secrets and the Foundation Artifact Signing account
+and certificate profile above. The Azure federated credential subject must be
+`repo:openclaw/bun:environment:release-signing`. Then set the repository variable
+`OPENCLAW_RELEASE_WINDOWS_SIGNED` to `true`. Both Windows targets become mandatory;
+incomplete Azure setup or a failed signature check blocks publication of the
+whole release. There is no automatic detection or fallback to unsigned Windows.
+Local `plan` and `manifest` commands use the corresponding `--windows-signed`
+flag alongside `--publish`.
+
+The manifest schema stays at version 1 in both modes. Consumers project the
+available targets into their pins; an absent Windows entry means no Windows
+runtime is available from that release. Windows admission still requires a
+matching signed entry and never substitutes a Darwin/Linux entry.
 
 PRs and non-publishing dispatches use a separate job without signing credentials
 or OIDC permission. Their Windows artifact is named `test-only-windows` and its

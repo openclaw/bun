@@ -85,10 +85,25 @@ test/js/bun/sqlite/column-types.test.js
 ```
 
 The `vm.Script` leak regression checks live `Script` cells after collection and
-collects between allocation batches. It measures RSS growth over the second half
-of the workload, after warming the code cache and allocator with the first half. It retains the 200 MiB release and 700 MiB ASAN limits; a deliberately
+collects between allocation batches. It measures RSS growth over all 10,000 scripts
+after a separate 5,000-script cache and allocator warmup. It retains the 200 MiB release and 700 MiB ASAN limits; a deliberately
 retained-script control must fail the live-cell assertion when qualifying changes
 to this guard.
+
+## Windows release qualification
+
+The separate [`openclaw-release.yml`](workflows/openclaw-release.yml) keeps
+Windows x64 and ARM64 test-only builds, smoke tests and compatibility lanes in
+PRs and non-publishing dry runs. Publication defaults to the four Darwin/Linux
+targets. The plan job reads `OPENCLAW_RELEASE_WINDOWS_SIGNED` once; only the
+exact value `true` enables Windows publication and requires both architectures
+with verified Foundation Authenticode signatures. Missing signing configuration
+then fails the entire release; unsigned Windows artifacts are never published.
+
+Before enabling the repository variable, configure the Azure OIDC secrets in
+`release-signing` with federated credential subject
+`repo:openclaw/bun:environment:release-signing`. See
+[the release signing instructions](OPENCLAW_RELEASE.md#windows-signing-and-qualification).
 
 ## Caches and artifacts
 
@@ -132,8 +147,20 @@ attempts. These are build-step times, excluding provisioning and artifact upload
 
 The first test attempt failed `compile cache wakes an idle loop for deferred
 modules` in `test/js/node/module/node-module-module.test.js` with `idle
-persistence stalled`; the unchanged rerun passed every selected file. Keep
-this intermittent failure visible: the lane has no automatic test retries or
-exclusion for it. Investigate idle persistence separately if it recurs; a
-green rerun does not establish the cause. Artifact names include the run
-attempt so a download cannot confuse an earlier failed report with a later one.
+persistence stalled`. [PR #53](https://github.com/openclaw/bun/pull/53) fixed
+that Linux idle-accounting bug: a poll following a consumed native wake could
+block without counting its wait as idle.
+
+Windows x64 [run 37340737589](https://github.com/openclaw/bun/actions/runs/37340737589)
+later hit the outer 30-second deadlines in both cache-exit and deferred-idle
+tests. The same failure reproduces with continuous cache-file progress under
+Microsoft Defender. The Windows rename helper requested `FILE_TRAVERSE`, which
+is `FILE_EXECUTE` for a regular file, forcing synchronous executable-file scans
+for each cache entry. The helper now uses its existing non-executable access
+rights directly. The test workloads, deadlines, idle-generation window, and
+signal-exit budget are unchanged.
+
+Keep later failures distinguishable from these causes; a green rerun does not
+establish a cause. The native lane has no automatic test retries or exclusion
+for this file. Artifact names include the run attempt so a download cannot
+confuse an earlier failed report with a later one.
