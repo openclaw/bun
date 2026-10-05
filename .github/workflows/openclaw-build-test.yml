@@ -1,10 +1,11 @@
-name: W179 Darwin RSS qualification
+name: W179 Darwin RSS runner-environment qualification
 
 on:
   workflow_dispatch:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: w179-darwin-rss-${{ github.ref }}
@@ -33,38 +34,20 @@ jobs:
       - uses: ./pipeline/.github/actions/setup-bun
         with:
           bun-version: "1.4.2"
-      - name: Read toolchain pins
-        id: pins
-        working-directory: source
-        run: |
-          # shellcheck disable=SC2016
-          bun -e 'import { pins } from "./scripts/build/ci-images/spec.ts"; console.log(`llvm=${pins.llvm.version.split(".")[0]}\nnode=${pins.nodejs.version}\nrust=${pins.rust.channel}`)' >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      - name: Download verified three-engine comparison binaries
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          node-version: ${{ steps.pins.outputs.node }}
-      - name: Install native build tools
-        timeout-minutes: 15
-        env:
-          LLVM_MAJOR: ${{ steps.pins.outputs.llvm }}
-          RUST_TOOLCHAIN: ${{ steps.pins.outputs.rust }}
+          github-token: ${{ github.token }}
+          run-id: 37352198372
+          repository: openclaw/bun
+          name: w179-darwin-rss-5c441bf481e2c3e68be13eb0bffa55ff76b73eca
+          path: baseline
+      - name: Stage artifacts and repeat with fork-runner settings
         run: |
-          test "$(uname -m)" = arm64
-          brew install cmake ninja nasm ccache go llvm
-          llvm_bin="$(brew --prefix llvm)/bin"
-          "$llvm_bin/clang" --version | grep -F "clang version ${LLVM_MAJOR}."
-          echo "$llvm_bin" >> "$GITHUB_PATH"
-          echo "CC=$llvm_bin/clang" >> "$GITHUB_ENV"
-          echo "CXX=$llvm_bin/clang++" >> "$GITHUB_ENV"
-          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
-          echo "RUSTUP_TOOLCHAIN=$RUST_TOOLCHAIN" >> "$GITHUB_ENV"
-          sw_vers
-          sysctl hw.memsize hw.ncpu
-          df -h /
-      - name: Install build dependencies
-        working-directory: source
-        run: bun install --frozen-lockfile
-      - name: Build and compare three immutable engines
-        run: python3 pipeline/scripts/w179/scripts/compare.py source evidence
+          mkdir evidence
+          cp baseline/bun-42ab baseline/bun-641c baseline/bun-f1e1 baseline/metadata.json evidence/
+          chmod +x evidence/bun-42ab evidence/bun-641c evidence/bun-f1e1
+          python3 pipeline/scripts/w179/scripts/compare.py source evidence --measure-only --runner-env
       - name: Upload measurements and binaries
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

@@ -16,6 +16,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("source", type=Path)
 parser.add_argument("output", type=Path)
 parser.add_argument("--measure-only", action="store_true")
+parser.add_argument("--runner-env", action="store_true")
 args = parser.parse_args()
 source = args.source.resolve()
 output = args.output.resolve()
@@ -73,6 +74,9 @@ try:
 finally:
     pin.write_bytes(original_pin)
 
+if args.runner_env:
+    env.update(BUN_FEATURE_FLAG_INTERNAL_FOR_TESTING="1", BUN_GARBAGE_COLLECTOR_LEVEL="1", BUN_JSC_randomIntegrityAuditRate="1.0", BUN_ENABLE_CRASH_REPORTING="0", BUN_DISABLE_SLOW_FILESYSTEM_WARNING="1")
+(output / "measurement-environment.json").write_text(json.dumps({"platform": platform.platform(), "machine": platform.machine(), "runner_env": args.runner_env, "runtime_environment": {key: env.get(key) for key in ["BUN_GARBAGE_COLLECTOR_LEVEL", "BUN_JSC_randomIntegrityAuditRate", "BUN_RUNTIME_TRANSPILER_CACHE_PATH"]}}, indent=2))
 observed = source / "test/js/node/vm/w179-observed.test.ts"
 assert not observed.exists()
 observed.write_text(original.replace("    // ASAN's quarantine", '    console.log("W179_RSS " + JSON.stringify({ initialUsage, finalUsage, megabytes }));\n    // ASAN\'s quarantine'))
