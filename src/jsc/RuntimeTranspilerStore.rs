@@ -23,7 +23,7 @@ use bun_ptr::BackRef;
 use bun_resolve_builtins::{Alias as HardcodedAlias, Cfg as HardcodedAliasCfg};
 use bun_resolver::fs as Fs;
 use bun_resolver::node_fallbacks;
-use bun_resolver::package_json::MacroMap as MacroRemap;
+use bun_resolver::package_json::{MacroMap as MacroRemap, PackageJSON};
 use bun_sys::{self, Dir, Fd, FdExt as _, File, OpenDirOptions};
 use bun_threading::Guarded;
 use bun_threading::unbounded_queue::{self, UnboundedQueue};
@@ -327,6 +327,7 @@ impl RuntimeTranspilerStore {
         referrer: String,
         loader: Loader,
         module_type: ModuleType,
+        package_json: Option<&PackageJSON>,
         module_loader: JSValue,
     ) -> *mut c_void {
         // The path text is heap-duplicated here and freed in `reset_for_pool` via
@@ -342,17 +343,16 @@ impl RuntimeTranspilerStore {
         };
         let promise: *mut JSInternalPromise = JSInternalPromise::create(global_object);
 
-        // NOTE: DirInfo should already be cached since module loading happens
-        // after module resolution, so this should be cheap
-        let mut resolved_source = ResolvedSource::default();
-        match module_type {
-            ModuleType::Cjs => {
-                resolved_source.tag = ResolvedSourceTag::PackageJsonTypeCommonjs;
-                resolved_source.is_commonjs_module = true;
-            }
-            ModuleType::Esm => resolved_source.tag = ResolvedSourceTag::PackageJsonTypeModule,
-            ModuleType::Unknown => {}
-        }
+        // The package tag selects CJS interop; parsing uses the file's own format hint.
+        let resolved_source = ResolvedSource {
+            tag: match package_json.map(|pkg| pkg.module_type) {
+                Some(ModuleType::Cjs) => ResolvedSourceTag::PackageJsonTypeCommonjs,
+                Some(ModuleType::Esm) => ResolvedSourceTag::PackageJsonTypeModule,
+                _ => ResolvedSourceTag::Javascript,
+            },
+            is_commonjs_module: module_type == ModuleType::Cjs,
+            ..ResolvedSource::default()
+        };
 
         // Build the job by value and `get_init` it into the hive — the `Box`
         // alloc, `JSInternalPromise::create`, and `StrongOptional::create`
@@ -371,6 +371,7 @@ impl RuntimeTranspilerStore {
                 ticket: None,
                 log: bun_ast::Log::init(),
                 loader,
+                module_type,
                 promise: StrongOptional::create(JSValue::from_cell(promise), global_object),
                 module_loader: if module_loader.is_empty() {
                     StrongOptional::empty()
@@ -422,6 +423,7 @@ pub struct TranspilerJob {
     pub(crate) non_threadsafe_input_specifier: bun_core::String,
     pub(crate) non_threadsafe_referrer: bun_core::String,
     pub(crate) loader: Loader,
+    pub(crate) module_type: ModuleType,
     pub(crate) promise: StrongOptional,
     /// The `JSModuleLoader` that is fetching, when it is not the global object's (a
     /// `Bun.ModuleGraph`'s): handed back with the result. Empty otherwise.
@@ -669,6 +671,7 @@ impl TranspilerJob {
         let path = self.path;
         let specifier = self.path.text;
         let loader = self.loader;
+        let module_type = self.module_type;
         let this_tag = self.resolved_source.tag;
 
         // RuntimeTranspilerCache has no per-allocator fields (Box<[u8]> + global mimalloc).
@@ -801,12 +804,6 @@ impl TranspilerJob {
         let is_main = vm_main.len() == path.text.len()
             && vm_main_hash == hash
             && strings::eql_long(vm_main, path.text, false);
-
-        let module_type: ModuleType = match this_tag {
-            ResolvedSourceTag::PackageJsonTypeCommonjs => ModuleType::Cjs,
-            ResolvedSourceTag::PackageJsonTypeModule => ModuleType::Esm,
-            _ => ModuleType::Unknown,
-        };
 
         let mut parse_options = ParseOptions {
             arena: &arena,

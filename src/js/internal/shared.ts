@@ -422,7 +422,43 @@ const kInternalAssertionSuffix =
 
 //
 
+let stripTypeScriptTypesNative: ((code: string) => any) | undefined;
+let emittedStripTypesWarning = false;
+
+function stripTypeScriptTypes(code, options = kEmptyObject) {
+  if (!emittedStripTypesWarning) {
+    emittedStripTypesWarning = true;
+    process.emitWarning(
+      "stripTypeScriptTypes is an experimental feature and might change at any time",
+      "ExperimentalWarning",
+    );
+  }
+  const { validateString, validateObject, validateOneOf, validateBoolean } = require("internal/validators");
+  validateString(code, "code");
+  validateObject(options, "options");
+  const { sourceMap = false, sourceUrl = "", mode = "strip" } = options;
+  validateOneOf(mode, "options.mode", ["strip"]);
+  validateBoolean(sourceMap, "options.sourceMap");
+  validateString(sourceUrl, "options.sourceUrl");
+  validateOneOf(sourceMap, "options.sourceMap", [false, undefined]);
+
+  stripTypeScriptTypesNative ??= $newRustFunction("node_module_binding.rs", "stripTypeScriptTypesNative", 1) as (
+    code: string,
+  ) => any;
+  const result = stripTypeScriptTypesNative(code);
+  if (typeof result !== "string") {
+    const err =
+      result.errorCode === "UnsupportedSyntax"
+        ? $ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX(result.message)
+        : $ERR_INVALID_TYPESCRIPT_SYNTAX(result.message);
+    err.stack = `${sourceUrl}:${result.startLine}\n${result.snippet}\n${err.stack}`;
+    throw err;
+  }
+  return sourceUrl ? `${result}\n\n//# sourceURL=${sourceUrl}` : result;
+}
+
 export default {
+  stripTypeScriptTypes,
   isStoppedModuleGraphRunning,
   kInternalAssertionSuffix,
   throwNotImplemented,

@@ -2,9 +2,13 @@
 
 ## Unreleased
 
+- Follow directory symlinks in Windows asynchronous recursive `fs.readdir` callback results and promise string results while preserving promise Dirent traversal boundaries.
+
 - Keep Windows stdio EOF tests aligned with Node's retained pipe handles, allow an explicit host Node version for compatibility qualification, and preserve the host identity in TLS session-reuse fixtures.
 
 - Validate `vm.Script` cached data without compiling an unused executable, avoiding crashes when JSC runs without a JIT. Adapts [oven-sh/bun#41769](https://github.com/oven-sh/bun/pull/41769); thanks @robobun!
+
+- Reject explicitly empty `vm.Script` cached data like Node.js and cover cache round-trips and incompatible data in interpreter, baseline, DFG, FTL, and default modes. Extends the crash regression from [oven-sh/bun#41769](https://github.com/oven-sh/bun/pull/41769); thanks @robobun!
 
 - Align WebKit and VM source-position assertions with Node's constructor locations and select these regressions for native stack-formatting changes in both fork CI lanes.
 
@@ -183,3 +187,17 @@
 - Fix Intl.Segments.containing() at both halves of surrogate pairs with the pinned OpenClaw WebKit; cover grapheme, word, and sentence boundaries in both lookup directions. Ports [oven-sh/WebKit#753](https://github.com/oven-sh/WebKit/pull/753). Thanks @robobun!
 
 - Reduce kernel CPU during cold module imports on macOS by serializing transpiler-cache writes while preserving parallel parsing and cache reads.
+
+- Keep ESM namespaces free of inherited `__esModule` markers and preserve the own marker and live exports for `require(esm)`, fixing Vite/tsx namespace interop. Adapts [oven-sh/bun#33894](https://github.com/oven-sh/bun/pull/33894) and [oven-sh/WebKit#279](https://github.com/oven-sh/WebKit/pull/279). Thanks @robobun!
+
+
+- Sync oven-sh/bun through `c7b06d94bac19817ba34b6677bb1099fb4f6d2be`, preserving fork fixes and incorporating TLS handshake shutdown, macOS split-DNS failover, file-body cloning, Buffer write validation, mimalloc 3.5.3 and idle-memory release.
+- Pin immutable [OpenClaw WebKit `42ab38d705`](https://github.com/openclaw/WebKit/releases/tag/autobuild-42ab38d705d4838748ccee77e7deb0e4e35515ee) by archive checksum, together with the required namespace facade integration from #106; retain fail-closed artifact selection.
+
+- Preserve package-scope CommonJS interop in async imports without replacing the file's parser format. Adapts [oven-sh/bun#40940](https://github.com/oven-sh/bun/pull/40940). Thanks @robobun!
+
+- Sync upstream nightly through `d4928764f23213ecf3cd61fa0b5b4a44369a5096`, configuring fetch TLS once per connection so pooled sockets can be reused during renegotiation without repeating session setup.
+- Sync upstream nightly through `9bd19c98eacc01530a4e7609bc427abffa87d77e`, preserving PostgreSQL query ordering through errors and limiting MySQL row-decoding failures to the affected query.
+- Support real byte-based `node:inspector` HeapProfiler allocation sampling with allocation-site trees, live profiles, and major/minor GC inclusion flags (requires the OpenClaw WebKit allocation sampler).
+- Preserve built-in error constructor syntax and returning arrow frames, and use JSC syntax-selected call and property-read stack positions. Retain runtime callee parentheses and computed access, and map call, bracket, and template delimiters back to their original source. Continues the source-position fixes from [oven-sh/bun#35179](https://github.com/oven-sh/bun/pull/35179), [oven-sh/bun#37396](https://github.com/oven-sh/bun/pull/37396), and [oven-sh/bun#41580](https://github.com/oven-sh/bun/pull/41580). Thanks @robobun!
+- Add position-preserving `module.stripTypeScriptTypes()` strip mode for tooling that analyzes TypeScript exports. Adapts [oven-sh/bun#35517](https://github.com/oven-sh/bun/pull/35517); thanks @cirospaciari!
