@@ -1411,6 +1411,7 @@ nativeTests.test_napi_get_prototype_proxy = () => {
 };
 
 nativeTests.test_get_value_string = () => {
+  const { writeSync } = require("node:fs");
   function to16Bit(string) {
     if (typeof Bun != "object") return string;
     const jsc = require("bun:jsc");
@@ -1443,9 +1444,10 @@ nativeTests.test_get_value_string = () => {
     // ["\ud801", "unpaired high surrogate"],
     // ["\udc02", "unpaired low surrogate"],
   ]) {
-    console.log(`test napi_get_value_string on ${string} (${description})`);
+    // Keep labels ordered with native printf even when stdout is backpressured.
+    writeSync(1, `test napi_get_value_string on ${string} (${description})\n`);
     for (const encoding of ["latin1", "utf8", "utf16"]) {
-      console.log(encoding);
+      writeSync(1, `${encoding}\n`);
       const fn = nativeTests[`test_get_value_string_${encoding}`];
       fn(string);
     }

@@ -85,6 +85,7 @@ public:
     void postMessageToWorkerGlobalScope(MessageWithMessagePorts&&);
     // Queued while Pending, posted while Running, refused (false) once Closing.
     bool postTaskToWorkerGlobalScope(Function<void(ScriptExecutionContext&)>&&);
+    bool postVMInspection(Function<void(JSC::VM&)>&&);
     void setKeepAlive(bool);
     // Whether the thread keeps the parent's loop alive; nullopt once the thread is released
     // (node: the handle is gone and hasRef() reads back undefined).
@@ -171,6 +172,7 @@ private:
     // (and run by workerGlobalScopeStarted) or posted directly, never lost.
     Lock m_pendingTasksLock;
     Deque<Function<void(ScriptExecutionContext&)>> m_pendingTasks WTF_GUARDED_BY_LOCK(m_pendingTasksLock);
+    bool m_workerVMReady WTF_GUARDED_BY_LOCK(m_pendingTasksLock) { false };
     HashMap<uint64_t, JSC::Strong<JSC::JSPromise>> m_pendingCrossVMRequests WTF_GUARDED_BY_LOCK(m_pendingTasksLock);
     std::atomic<uint64_t> m_nextRequestId { 1 };
 

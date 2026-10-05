@@ -6,7 +6,7 @@
  * `.github/workflows/openclaw-release.yml`.
  *
  *   bun scripts/openclaw-release/release.ts tag [--commit <rev>] [--rebuild <n>]
- *   bun scripts/openclaw-release/release.ts plan [--tag <tag>] [--publish]
+ *   bun scripts/openclaw-release/release.ts plan [--tag <tag>] [--publish] [--windows-signed]
  *   bun scripts/openclaw-release/release.ts provision --source <dir> --target <t>...
  *   bun scripts/openclaw-release/release.ts build --source <dir> --target <t> --out <dir>
  *   bun scripts/openclaw-release/release.ts smoke --zip <zip> --target <t> --commit <sha> --webkit <sha>
@@ -61,7 +61,7 @@ export interface Target {
   exe: string;
   /** Sections of the upstream build image's bootstrap.sh this target needs beyond the common toolchain. */
   sysroots: readonly string[];
-  /** Built by a tag push. The others are built only when a dispatch names them. */
+  /** Eligible for publication; Windows additionally requires the signing switch. */
   release: boolean;
   /** GitHub-hosted runner (and container) that runs the executable for the smoke test. */
   smoke: { runner: string; container?: string };
@@ -107,9 +107,26 @@ function target(
   return { name, os, arch, buildArch, abi, triplet, exe, sysroots, release, smoke };
 }
 
-export const releaseTargets: readonly TargetName[] = (Object.keys(targets) as TargetName[]).filter(
-  name => targets[name].release,
-);
+export function releaseTargets(windowsSigned = false): TargetName[] {
+  return (Object.keys(targets) as TargetName[]).filter(
+    name => targets[name].release && (targets[name].os !== "windows" || windowsSigned),
+  );
+}
+
+function validateReleaseTargets(names: readonly TargetName[], windowsSigned: boolean): void {
+  if (!windowsSigned && names.some(name => targets[name].os === "windows"))
+    throw new Error("Windows publication requires --windows-signed");
+  const required = releaseTargets(windowsSigned);
+  if (required.some(name => !names.includes(name)))
+    throw new Error(`a published release has every release target: ${required.join(", ")}`);
+}
+
+export function planTargets(list = "", publish = false, windowsSigned = false): TargetName[] {
+  // Dry runs retain both Windows architectures without needing signing credentials.
+  const built = list.trim() ? parseTargets(list) : releaseTargets(!publish || windowsSigned);
+  if (publish) validateReleaseTargets(built, windowsSigned);
+  return built;
+}
 
 /** The workflow's matrix entries. Darwin executables are smoke-tested from the signing job's artifact. */
 export function matrix(names: readonly TargetName[], publish = false) {
@@ -471,6 +488,7 @@ export interface ManifestInput {
   signing: Partial<Record<TargetName, Signing>>;
   windowsSigning?: Partial<Record<TargetName, WindowsSigning>>;
   publish?: boolean;
+  windowsSigned?: boolean;
 }
 
 export const windowsSignerSubject = "CN=OpenClaw Foundation, O=OpenClaw Foundation, L=Mill Valley, S=California, C=US";
@@ -527,8 +545,12 @@ export function manifest(input: ManifestInput) {
     existsSync(join(dist, `${targets[name].triplet}.zip`)),
   );
   if (!names.length) throw new Error(`no release zips in ${dist}`);
-  if (input.publish && releaseTargets.some(name => !names.includes(name)))
-    throw new Error("published manifest must include every release target");
+  if (input.publish) {
+    // The workflow uploads every zip, including profile archives without a primary archive.
+    if (!input.windowsSigned && readdirSync(dist).some(file => /^bun-windows-.*\.zip$/.test(file)))
+      throw new Error("Windows publication requires --windows-signed");
+    validateReleaseTargets(names, input.windowsSigned ?? false);
+  }
   const assets = names.map(name => {
     const t = targets[name];
     const archive = join(dist, `${t.triplet}.zip`);
@@ -688,6 +710,7 @@ async function main(argv: string[]): Promise<void> {
       rebuild: { type: "string" },
       tag: { type: "string" },
       publish: { type: "boolean", default: false },
+      "windows-signed": { type: "boolean", default: false },
       main: { type: "string", default: "origin/main" },
       target: { type: "string", multiple: true },
       targets: { type: "string" },
@@ -728,10 +751,7 @@ async function main(argv: string[]): Promise<void> {
           throw new Error(`${facts.commit} is not on ${values.main}; only commits of the fork's main are released`);
         }
       }
-      const built = values.targets?.trim() ? parseTargets(values.targets) : [...releaseTargets];
-      if (values.publish && releaseTargets.some(name => !built.includes(name))) {
-        throw new Error(`a published release has every release target: ${releaseTargets.join(", ")}`);
-      }
+      const built = planTargets(values.targets, values.publish, values["windows-signed"]);
       output("matrix", JSON.stringify(matrix(built, values.publish)));
       output("darwin", String(built.some(name => targets[name].os === "darwin")));
       output("windows", String(built.some(name => targets[name].os === "windows")));
@@ -750,6 +770,7 @@ async function main(argv: string[]): Promise<void> {
       output("version", facts.version);
       output("webkit", facts.webkitVersion);
       output("publish", String(values.publish));
+      output("windows-signed", String(values["windows-signed"]));
       return;
     }
     case "provision": {
@@ -788,6 +809,7 @@ async function main(argv: string[]): Promise<void> {
         signing,
         windowsSigning,
         publish: values.publish,
+        windowsSigned: values["windows-signed"],
       });
       mkdirSync(out, { recursive: true });
       writeFileSync(join(out, "manifest.json"), JSON.stringify(m, null, 2) + "\n");

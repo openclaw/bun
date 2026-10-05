@@ -23,6 +23,7 @@
 #include "root.h"
 
 #include <JavaScriptCore/InternalFunction.h>
+#include <JavaScriptCore/ArrayBuffer.h>
 #include <JavaScriptCore/JSGlobalObject.h>
 #include <JavaScriptCore/ThrowScope.h>
 #include <wtf/NeverDestroyed.h>
@@ -31,7 +32,7 @@
 #include "headers-handwritten.h"
 
 extern "C" JSC::EncodedJSValue JSBuffer__bufferFromLength(JSC::JSGlobalObject* lexicalGlobalObject, int64_t length);
-extern "C" JSC::EncodedJSValue JSBuffer__bufferFromPointerAndLengthAndDeinit(JSC::JSGlobalObject* lexicalGlobalObject, char* ptr, size_t length, void* ctx, JSTypedArrayBytesDeallocator bytesDeallocator);
+extern "C" JSC::EncodedJSValue JSBuffer__bufferFromPointerAndLengthAndDeinit(JSC::JSGlobalObject* lexicalGlobalObject, char* ptr, size_t length, void* ctx, JSTypedArrayBytesDeallocator bytesDeallocator, JSC::ArrayBufferAllocationMode);
 extern "C" JSC::EncodedJSValue Bun__encoding__toString(const uint8_t* input, size_t len, JSC::JSGlobalObject* globalObject, Encoding encoding);
 extern "C" JSC::EncodedJSValue Bun__encoding__toStringUTF8(const uint8_t* input, size_t len, JSC::JSGlobalObject* globalObject);
 extern "C" bool Bun__Buffer_fill(EncodedSlice*, void*, size_t, WebCore::BufferEncodingType);

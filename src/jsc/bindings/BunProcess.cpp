@@ -4198,26 +4198,14 @@ JSC_DEFINE_HOST_FUNCTION(Process_functionMemoryUsage, (JSC::JSGlobalObject * glo
     //    arrayBuffers: 9386
     // }
 
-    size_t heapUsed = WebCore::clientData(vm)->heapUsage();
-    size_t heapTotal = std::max(vm.heap.capacity(), heapUsed);
+    size_t heapUsed = vm.heap.jsHeapSizeForReporting();
+    size_t heapTotal = vm.heap.jsHeapCapacityForReporting();
     result->putDirectOffset(vm, 0, JSC::jsNumber(current_rss));
     result->putDirectOffset(vm, 1, JSC::jsNumber(heapTotal));
 
     result->putDirectOffset(vm, 2, JSC::jsNumber(heapUsed));
 
-    result->putDirectOffset(vm, 3, JSC::jsNumber(vm.heap.extraMemorySize() + vm.heap.externalMemorySize()));
-
-    // JSC won't count this number until vm.heap.addReference() is called.
-    // That will only happen in cases like:
-    // - new ArrayBuffer()
-    // - new Uint8Array(42).buffer
-    // - fs.readFile(path, "utf-8") (sometimes)
-    // - ...
-    //
-    // But it won't happen in cases like:
-    // - new Uint8Array(42)
-    // - Buffer.alloc(42)
-    // - new Uint8Array(42).slice()
+    result->putDirectOffset(vm, 3, JSC::jsNumber(vm.heap.externalMemorySizeForReporting()));
     result->putDirectOffset(vm, 4, JSC::jsNumber(vm.heap.arrayBufferSize()));
 
     RELEASE_AND_RETURN(throwScope, JSC::JSValue::encode(result));

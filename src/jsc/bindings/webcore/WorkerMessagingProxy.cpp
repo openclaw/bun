@@ -378,6 +378,16 @@ bool WorkerMessagingProxy::postTaskToWorkerGlobalScope(Function<void(ScriptExecu
     return ScriptExecutionContext::postTaskTo(m_workerContextIdentifier, BunLoopKind::Regular, WTF::move(task));
 }
 
+bool WorkerMessagingProxy::postVMInspection(Function<void(JSC::VM&)>&& inspection)
+{
+    {
+        Locker lock { m_pendingTasksLock };
+        if (m_state.load() >= State::Closing || !m_workerVMReady)
+            return false;
+    }
+    return ScriptExecutionContext::postVMInspection(m_workerContextIdentifier, WTF::move(inspection));
+}
+
 uint64_t WorkerMessagingProxy::registerCrossVMRequest(JSC::VM& vm, JSC::JSPromise* promise)
 {
     uint64_t id = m_nextRequestId.fetch_add(1);
@@ -526,6 +536,7 @@ void WorkerMessagingProxy::workerThreadStarted()
         Locker lock { m_pendingTasksLock };
         if (m_state.load() != State::Pending)
             return;
+        m_workerVMReady = true;
     }
     ScriptExecutionContext::postTaskTo(m_loaderContextIdentifier, m_loaderLoopKind, [protectedThis = Ref { *this }](ScriptExecutionContext&) {
         RefPtr workerObject = protectedThis->m_workerObject;
