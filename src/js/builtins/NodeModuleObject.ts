@@ -25,6 +25,11 @@ export function _initPaths() {
   M.globalPaths = paths;
 }
 
+$overriddenName = "stripTypeScriptTypes";
+export function stripTypeScriptTypes(code) {
+  return require("internal/shared").stripTypeScriptTypes(code, arguments[1]);
+}
+
 export function registerHooks(hooks) {
   return require("internal/modules/customization_hooks").registerHooks(hooks);
 }

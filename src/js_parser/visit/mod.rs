@@ -1350,6 +1350,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                                 }
                                 _ => self.new_expr(
                                     E::Index {
+                                        open_bracket_loc: bun_ast::Loc::EMPTY,
                                         target: this_target,
                                         index: key,
                                         optional_chain: None,

@@ -218,6 +218,180 @@ describe("node:inspector", () => {
   });
 
   describe("HeapProfiler", () => {
+    test("worker allocation sampling is independent of the main VM", async () => {
+      await using proc = Bun.spawn({
+        cmd: [bunExe(), import.meta.dir + "/inspector-sampling-worker.fixture.cjs"],
+        env: bunEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      expect({ stdout, stderr, exitCode }).toEqual({
+        stdout: "worker allocation sampling passed\n",
+        stderr: "",
+        exitCode: 0,
+      });
+    });
+
+    test("byte allocation sampling retains collected samples, tracks live samples, and matches Session lifecycle", async () => {
+      await using proc = Bun.spawn({
+        cmd: [
+          bunExe(),
+          "--input-type=module",
+          "-e",
+          `
+import assert from 'node:assert/strict';
+import { Session } from 'node:inspector/promises';
+import { Session as CallbackSession } from 'node:inspector';
+const session = new Session();
+session.connect();
+let retained;
+function allocateObjects(count) {
+  retained = Array.from({ length: count }, (_, index) => ({ index, x: index + 1, y: index + 2 }));
+}
+function allocateArrays(count) {
+  retained = Array.from({ length: count }, (_, index) => [index, index + 1, index + 2]);
+}
+function total(node, name) {
+  return (node.callFrame.functionName === name ? node.selfSize : 0) + node.children.reduce((sum, child) => sum + total(child, name), 0);
+}
+function validate(profile) {
+  const nodes = new Map();
+  let bytes = 0;
+  const walk = node => {
+    assert(!nodes.has(node.id));
+    nodes.set(node.id, node);
+    assert(node.selfSize >= 0);
+    assert.equal(typeof node.callFrame.functionName, 'string');
+    assert.equal(typeof node.callFrame.scriptId, 'string');
+    assert.equal(typeof node.callFrame.url, 'string');
+    assert(Number.isInteger(node.callFrame.lineNumber));
+    assert(Number.isInteger(node.callFrame.columnNumber));
+    bytes += node.selfSize;
+    node.children.forEach(walk);
+  };
+  walk(profile.head);
+  const ordinals = new Set();
+  let sampleBytes = 0;
+  for (const sample of profile.samples) {
+    assert(nodes.has(sample.nodeId));
+    assert(sample.size > 0);
+    assert(Number.isInteger(sample.ordinal) && sample.ordinal > 0);
+    assert(!ordinals.has(sample.ordinal));
+    ordinals.add(sample.ordinal);
+    sampleBytes += sample.size;
+  }
+  if (profile.samples.length) {
+    assert(bytes > 0 && sampleBytes > 0);
+    assert(Math.abs(bytes - sampleBytes) < bytes / 4);
+  }
+  return bytes;
+}
+try {
+  await assert.rejects(session.post('HeapProfiler.getSamplingProfile'), { code: 'ERR_INSPECTOR_COMMAND' });
+  for (let i = 0; i < 30; ++i) { allocateObjects(1000); allocateArrays(1000); }
+  retained = undefined;
+  await session.post('HeapProfiler.collectGarbage');
+  await session.post('HeapProfiler.startSampling', {
+    samplingInterval: 1024,
+    includeObjectsCollectedByMajorGC: true,
+    includeObjectsCollectedByMinorGC: true,
+  });
+  // A repeated start keeps existing samples and their ordinals.
+  allocateObjects(20000);
+  const first = (await session.post('HeapProfiler.getSamplingProfile')).profile;
+  assert(validate(first) > 100000);
+  await session.post('HeapProfiler.startSampling', { samplingInterval: 32768 });
+  allocateArrays(20000);
+  retained = undefined;
+  await session.post('HeapProfiler.collectGarbage');
+  const last = (await session.post('HeapProfiler.stopSampling')).profile;
+  assert(validate(last) >= validate(first));
+  const byOrdinal = new Map(last.samples.map(sample => [sample.ordinal, sample]));
+  for (const sample of first.samples) assert.deepEqual(byOrdinal.get(sample.ordinal), sample);
+  assert(total(last.head, 'allocateObjects') + total(last.head, '') > 0);
+  assert(last.samples.length > first.samples.length);
+  await assert.rejects(session.post('HeapProfiler.stopSampling'), { code: 'ERR_INSPECTOR_COMMAND' });
+  // Default flags discard dead allocations rather than strongly retaining them.
+  await session.post('HeapProfiler.startSampling', { samplingInterval: 512 });
+  allocateObjects(30000);
+  const before = validate((await session.post('HeapProfiler.getSamplingProfile')).profile);
+  retained = undefined;
+  const liveAfter = validate((await session.post('HeapProfiler.getSamplingProfile')).profile);
+  assert(liveAfter < before / 3, \`live profile did not collect: \${before} -> \${liveAfter}\`);
+  const after = validate((await session.post('HeapProfiler.stopSampling')).profile);
+  assert(before > 100000);
+  assert(after < before / 3, \`dead samples remain: \${before} -> \${after}\`);
+  await session.post('HeapProfiler.startSampling');
+  await session.post('HeapProfiler.disable');
+  await assert.rejects(session.post('HeapProfiler.getSamplingProfile'), { code: 'ERR_INSPECTOR_COMMAND' });
+  await session.post('HeapProfiler.startSampling');
+  session.disconnect();
+  session.connect();
+  await assert.rejects(session.post('HeapProfiler.getSamplingProfile'), { code: 'ERR_INSPECTOR_COMMAND' });
+} finally { session.disconnect(); }
+const callback = new CallbackSession();
+callback.connect();
+try {
+  for (const [target, name] of [[Math, 'floor'], [Number, 'isFinite']]) {
+    const original = target[name];
+    let completed = false;
+    let callbackError;
+    target[name] = () => { throw new Error('mutable numeric builtin called'); };
+    try {
+      callback.post('HeapProfiler.startSampling', { samplingInterval: 1024.75 }, error => {
+        callbackError = error;
+        completed = true;
+      });
+    } finally {
+      target[name] = original;
+    }
+    assert.equal(completed, true);
+    assert.equal(callbackError, null);
+    callback.post('HeapProfiler.stopSampling', error => assert.equal(error, null));
+  }
+  for (const [params, message] of [
+    [{ samplingInterval: 0 }, '-32000: Invalid sampling interval'],
+    [{ samplingInterval: -1 }, '-32000: Invalid sampling interval'],
+    [{ samplingInterval: '32' }, '-32602: Invalid parameters'],
+    [{ samplingInterval: null }, '-32602: Invalid parameters'],
+    [{ samplingInterval: NaN }, '-32602: Invalid parameters'],
+    [{ includeObjectsCollectedByMajorGC: 1 }, '-32602: Invalid parameters'],
+    [{ includeObjectsCollectedByMinorGC: null }, '-32602: Invalid parameters'],
+  ]) {
+    let called = false;
+    assert.equal(callback.post('HeapProfiler.startSampling', params, (error, result) => {
+      called = true;
+      assert.equal(error.code, 'ERR_INSPECTOR_COMMAND');
+      assert.equal(error.message, 'Inspector error ' + message);
+      assert.equal(result, undefined);
+    }), undefined);
+    assert(called, 'callback was not synchronous');
+  }
+  assert.equal(callback.post('HeapProfiler.startSampling'), undefined);
+  let completed = false;
+  callback.post('HeapProfiler.stopSampling', (error, { profile }) => {
+    assert.equal(error, null);
+    validate(profile);
+    completed = true;
+  });
+  assert(completed);
+} finally { callback.disconnect(); }
+console.log('allocation sampling contract passed');
+`,
+        ],
+        env: bunEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      expect({ stdout, stderr, exitCode }).toEqual({
+        stdout: "allocation sampling contract passed\n",
+        stderr: "",
+        exitCode: 0,
+      });
+    });
+
     test("enable and disable complete synchronously and return undefined", () => {
       const session = new inspector.Session();
       session.connect();
