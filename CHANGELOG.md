@@ -201,3 +201,5 @@
 - Support real byte-based `node:inspector` HeapProfiler allocation sampling with allocation-site trees, live profiles, and major/minor GC inclusion flags (requires the OpenClaw WebKit allocation sampler).
 - Preserve built-in error constructor syntax and returning arrow frames, and use JSC syntax-selected call and property-read stack positions. Retain runtime callee parentheses and computed access, and map call, bracket, and template delimiters back to their original source. Continues the source-position fixes from [oven-sh/bun#35179](https://github.com/oven-sh/bun/pull/35179), [oven-sh/bun#37396](https://github.com/oven-sh/bun/pull/37396), and [oven-sh/bun#41580](https://github.com/oven-sh/bun/pull/41580). Thanks @robobun!
 - Add position-preserving `module.stripTypeScriptTypes()` strip mode for tooling that analyzes TypeScript exports. Adapts [oven-sh/bun#35517](https://github.com/oven-sh/bun/pull/35517); thanks @cirospaciari!
+
+- Avoid requesting executable access when renaming files on Windows, preventing unnecessary synchronous antivirus scans during compile-cache publication.

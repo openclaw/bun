@@ -126,8 +126,20 @@ attempts. These are build-step times, excluding provisioning and artifact upload
 
 The first test attempt failed `compile cache wakes an idle loop for deferred
 modules` in `test/js/node/module/node-module-module.test.js` with `idle
-persistence stalled`; the unchanged rerun passed every selected file. Keep
-this intermittent failure visible: the lane has no automatic test retries or
-exclusion for it. Investigate idle persistence separately if it recurs; a
-green rerun does not establish the cause. Artifact names include the run
-attempt so a download cannot confuse an earlier failed report with a later one.
+persistence stalled`. [PR #53](https://github.com/openclaw/bun/pull/53) fixed
+that Linux idle-accounting bug: a poll following a consumed native wake could
+block without counting its wait as idle.
+
+Windows x64 [run 37340737589](https://github.com/openclaw/bun/actions/runs/37340737589)
+later hit the outer 30-second deadlines in both cache-exit and deferred-idle
+tests. The same failure reproduces with continuous cache-file progress under
+Microsoft Defender. The Windows rename helper requested `FILE_TRAVERSE`, which
+is `FILE_EXECUTE` for a regular file, forcing synchronous executable-file scans
+for each cache entry. The helper now uses its existing non-executable access
+rights directly. The test workloads, deadlines, idle-generation window, and
+signal-exit budget are unchanged.
+
+Keep later failures distinguishable from these causes; a green rerun does not
+establish a cause. The native lane has no automatic test retries or exclusion
+for this file. Artifact names include the run attempt so a download cannot
+confuse an earlier failed report with a later one.
