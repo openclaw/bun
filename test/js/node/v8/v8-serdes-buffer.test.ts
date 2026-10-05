@@ -6,6 +6,14 @@ import v8 from "node:v8";
 // serializer delegate behavior (DefaultSerializer host objects). Non-Buffer
 // payloads keep the bare JSC-serialized format for backward compatibility.
 describe("v8 serialize/deserialize Buffer identity", () => {
+  test.each([new Uint8Array([1, 2]), Buffer.from([1, 2])])("serialized output is transferable: %p", input => {
+    const serialized = v8.serialize(input);
+    expect(serialized.buffer).toBeInstanceOf(ArrayBuffer);
+    const transferred = structuredClone(serialized.buffer, { transfer: [serialized.buffer] });
+    expect(serialized.byteLength).toBe(0);
+    expect(Array.from(v8.deserialize(Buffer.from(transferred)))).toEqual([1, 2]);
+  });
+
   test("Buffer round-trips as Buffer", () => {
     const out = v8.deserialize(v8.serialize(Buffer.from("hi")));
     expect(Buffer.isBuffer(out)).toBe(true);

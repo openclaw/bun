@@ -4848,8 +4848,10 @@ Ref<SerializedScriptValue> SerializedScriptValue::createDoubleArrayFastPath(Vect
     return adoptRef(*new SerializedScriptValue(WTF::move(data), length, FastPath::DoubleArray));
 }
 
-Ref<JSC::ArrayBuffer> SerializedScriptValue::toArrayBuffer()
+Ref<JSC::ArrayBuffer> SerializedScriptValue::toArrayBuffer(JSC::ArrayBufferSharingMode sharingMode, std::span<const uint8_t> prefix)
 {
+    // Framing is applied before this serialization's backing storage is exposed.
+    m_data.insertSpan(0, prefix);
     if (this->m_data.size() == 0) {
         return ArrayBuffer::create(static_cast<size_t>(0), static_cast<unsigned>(1));
     }
@@ -4861,7 +4863,8 @@ Ref<JSC::ArrayBuffer> SerializedScriptValue::toArrayBuffer()
         }));
 
     // Note: using the SharedArrayBufferContents::create function directly didn't work.
-    arrayBuffer->makeShared();
+    if (sharingMode == JSC::ArrayBufferSharingMode::Shared)
+        arrayBuffer->makeShared();
 
     return arrayBuffer;
 }

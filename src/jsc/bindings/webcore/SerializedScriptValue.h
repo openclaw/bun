@@ -139,7 +139,7 @@ public:
 
     JSC::JSValue deserialize(JSC::JSGlobalObject&, JSC::JSGlobalObject*, const Vector<RefPtr<MessagePort>>&, const Vector<String>& blobURLs, const Vector<String>& blobFilePaths, SerializationErrorMode = SerializationErrorMode::Throwing, bool* didFail = nullptr);
 
-    WEBCORE_EXPORT Ref<JSC::ArrayBuffer> toArrayBuffer();
+    WEBCORE_EXPORT Ref<JSC::ArrayBuffer> toArrayBuffer(JSC::ArrayBufferSharingMode = JSC::ArrayBufferSharingMode::Shared, std::span<const uint8_t> prefix = {});
     static JSC::JSValue fromArrayBuffer(JSC::JSGlobalObject&, JSC::JSGlobalObject*, JSC::ArrayBuffer* arrayBuffer, size_t byteOffset = 0, size_t maxByteLength = 0, SerializationErrorMode = SerializationErrorMode::Throwing, bool* didFail = nullptr);
 
     static Ref<SerializedScriptValue> createFromWireBytes(Vector<uint8_t>&& data)

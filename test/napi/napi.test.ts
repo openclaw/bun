@@ -438,6 +438,24 @@ describe.concurrent.skipIf(!canBuildNodeAddons())("napi", () => {
   });
 
   describe("napi_create_external_arraybuffer", () => {
+    it("charges external payload without charging the ArrayBuffer allocator", async () => {
+      await using child = Bun.spawn({
+        cmd: [
+          bunExe(),
+          "--expose-gc",
+          join(import.meta.dir, "../js/node/process/arraybuffer-accounting.fixture.mjs"),
+          "native",
+        ],
+        env: bunEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([child.stdout.text(), child.stderr.text(), child.exited]);
+      expect(stderr).toBe("");
+      expect(stdout).toContain('"kind":"native"');
+      expect(exitCode).toBe(0);
+    });
+
     it("wraps caller data and does not fire finalize_cb while the ArrayBuffer is alive", async () => {
       const result = await checkSameOutput("test_external_arraybuffer_finalizer", []);
       expect(result).toContain("PASS: napi_create_external_arraybuffer wraps caller data without copying");
