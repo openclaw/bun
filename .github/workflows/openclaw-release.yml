@@ -1,46 +1,28 @@
-name: OpenClaw release
-
-# Pipeline, tag scheme, manifest, signing and the infrastructure choices behind
-# them: .github/OPENCLAW_RELEASE.md
+name: OpenClaw Windows release gate qualification
 
 on:
-  push:
-    tags:
-      - "openclaw-v*"
-  pull_request:
-    paths:
-      - .github/workflows/openclaw-release.yml
-      - scripts/openclaw-release/**
   workflow_dispatch:
     inputs:
-      tag:
-        description: "Release tag (openclaw-v…) to build; empty builds the dispatched ref as a dry run"
+      source_commit:
+        description: "Exact PR source commit to qualify without publishing"
+        required: true
         type: string
-        default: ""
-      publish:
-        description: "Publish the GitHub release (needs a tag of a commit on main)"
-        type: boolean
-        default: false
-      targets:
-        description: "Comma-separated targets; empty = enabled release targets (all six in dry runs). Also: linux-x64-musl, linux-arm64-musl"
-        type: string
-        default: ""
 
 permissions:
   contents: read
 
 concurrency:
-  group: openclaw-release-${{ github.event_name == 'pull_request' && github.head_ref || github.ref }}-${{ inputs.tag }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: openclaw-w181-windows-${{ inputs.source_commit }}
+  cancel-in-progress: false
 
 env:
-  RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
-  PUBLISH: ${{ github.event_name == 'push' || inputs.publish == true }}
+  RELEASE_TAG: ""
+  PUBLISH: "false"
 
 jobs:
   plan:
     name: Plan
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 10
     outputs:
       commit: ${{ steps.plan.outputs.commit }}
@@ -54,6 +36,10 @@ jobs:
       windows-matrix: ${{ steps.plan.outputs.windows-matrix }}
       mtime: ${{ steps.plan.outputs.mtime }}
     steps:
+      - name: Validate exact source commit
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: '[[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]'
       - name: Checkout pipeline
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -63,7 +49,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: source
-          ref: ${{ env.RELEASE_TAG && format('refs/tags/{0}', env.RELEASE_TAG) || github.sha }}
+          ref: ${{ inputs.source_commit }}
           # History for the ancestry check against main; blobs are fetched on demand.
           fetch-depth: 0
           filter: blob:none
@@ -78,7 +64,7 @@ jobs:
       - name: Plan
         id: plan
         env:
-          TARGETS: ${{ inputs.targets }}
+          TARGETS: windows-x64,windows-arm64
           WINDOWS_SIGNED: ${{ vars.OPENCLAW_RELEASE_WINDOWS_SIGNED }}
         run: |
           args=(--source source --main origin/main)
@@ -92,7 +78,7 @@ jobs:
     name: Build ${{ matrix.target }}
     needs: plan
     # Every target is cross-compiled on upstream's build image (debian 13 arm64); see OPENCLAW_RELEASE.md for runner choices.
-    runs-on: ${{ vars.OPENCLAW_RELEASE_BUILD_RUNNER || 'ubuntu-24.04-arm' }}
+    runs-on: ${{ vars.OPENCLAW_RELEASE_BUILD_RUNNER || 'blacksmith-16vcpu-ubuntu-2404-arm' }}
     timeout-minutes: 340
     strategy:
       fail-fast: false
@@ -268,7 +254,7 @@ jobs:
   sign-windows:
     name: Sign Windows releases
     needs: [plan, build]
-    if: github.event_name != 'pull_request' && (github.event_name == 'push' || inputs.publish == true) && needs.plan.outputs.windows == 'true' && needs.plan.outputs.publish == 'true'
+    if: github.event_name == 'push' && needs.plan.outputs.publish == 'true'
     # The signing dlib requires x64 even when the executable being signed is ARM64.
     runs-on: windows-2025
     timeout-minutes: 30
@@ -451,7 +437,7 @@ jobs:
     name: Manifest
     needs: [plan, build, sign-macos, smoke, windows-compatibility]
     if: ${{ !cancelled() && needs.smoke.result == 'success' && (needs.plan.outputs.windows != 'true' || needs.windows-compatibility.result == 'success') }}
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 15
     steps:
       - name: Checkout pipeline
@@ -507,8 +493,8 @@ jobs:
   publish:
     name: Publish
     needs: [plan, manifest]
-    if: ${{ !cancelled() && needs.manifest.result == 'success' && needs.plan.outputs.publish == 'true' }}
-    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' && needs.plan.outputs.publish == 'true'
+    runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 20
     permissions:
       contents: write
