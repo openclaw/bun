@@ -22,7 +22,7 @@ on:
         type: boolean
         default: false
       targets:
-        description: "Comma-separated targets; empty = the release targets. Also: linux-x64-musl, linux-arm64-musl, windows-x64"
+        description: "Comma-separated targets; empty = six release targets. Also: linux-x64-musl, linux-arm64-musl"
         type: string
         default: ""
 
@@ -49,6 +49,9 @@ jobs:
       publish: ${{ steps.plan.outputs.publish }}
       matrix: ${{ steps.plan.outputs.matrix }}
       darwin: ${{ steps.plan.outputs.darwin }}
+      windows: ${{ steps.plan.outputs.windows }}
+      windows-matrix: ${{ steps.plan.outputs.windows-matrix }}
+      mtime: ${{ steps.plan.outputs.mtime }}
     steps:
       - name: Checkout pipeline
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -159,7 +162,7 @@ jobs:
       - name: Upload
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: build-${{ matrix.target }}
+          name: ${{ startsWith(matrix.target, 'windows-') && format('test-only-input-{0}', matrix.target) || format('build-{0}', matrix.target) }}
           path: dist/
           if-no-files-found: error
           retention-days: 14
@@ -259,10 +262,95 @@ jobs:
           retention-days: 14
           compression-level: 0
 
+  sign-windows:
+    name: Sign Windows releases
+    needs: [plan, build]
+    if: github.event_name != 'pull_request' && (github.event_name == 'push' || inputs.publish == true) && needs.plan.outputs.windows == 'true' && needs.plan.outputs.publish == 'true'
+    # The signing dlib requires x64 even when the executable being signed is ARM64.
+    runs-on: windows-2025
+    timeout-minutes: 30
+    environment: release-signing
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/openclaw-release
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: test-only-input-windows-*
+          merge-multiple: true
+          path: dist
+      - name: Azure OIDC login
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Sign both Windows architectures and profile executables
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2
+        with:
+          endpoint: https://eus.codesigning.azure.net/
+          signing-account-name: openclaw
+          certificate-profile-name: openclaw
+          files-folder: dist
+          files-folder-filter: exe
+          files-folder-recurse: true
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+      - name: Verify Foundation signatures and package final bytes
+        shell: pwsh
+        env:
+          MTIME: ${{ needs.plan.outputs.mtime }}
+        run: ./scripts/openclaw-release/package-windows.ps1 -Dist dist -Mtime $env:MTIME -Mode SignedRelease
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: signed-windows
+          path: |
+            dist/*.zip
+            dist/*.signing.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  windows-test-only:
+    name: Package unsigned Windows test artifacts
+    needs: [plan, build]
+    if: needs.plan.outputs.windows == 'true' && needs.plan.outputs.publish != 'true'
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/openclaw-release
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: test-only-input-windows-*
+          merge-multiple: true
+          path: dist
+      - name: Package test-only bytes without signing credentials
+        shell: pwsh
+        env:
+          MTIME: ${{ needs.plan.outputs.mtime }}
+        run: ./scripts/openclaw-release/package-windows.ps1 -Dist dist -Mtime $env:MTIME -Mode UnsignedTest
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-only-windows
+          path: |
+            dist/*.zip
+            dist/*.signing.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
   smoke:
     name: Smoke ${{ matrix.target }}
-    needs: [plan, build, sign-macos]
-    if: ${{ !cancelled() && needs.build.result == 'success' && needs.sign-macos.result != 'failure' }}
+    needs: [plan, build, sign-macos, sign-windows, windows-test-only]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.sign-macos.result != 'failure' && (needs.plan.outputs.windows != 'true' || (needs.plan.outputs.publish == 'true' && needs.sign-windows.result == 'success') || (needs.plan.outputs.publish != 'true' && needs.windows-test-only.result == 'success')) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     strategy:
@@ -305,10 +393,61 @@ jobs:
             codesign -dv "$exe" 2>&1 | grep -E '^(Authority|TeamIdentifier|CodeDirectory)' || true
           fi
 
+  windows-compatibility:
+    name: Compatibility ${{ matrix.target }}
+    needs: [plan, build, sign-windows, windows-test-only]
+    if: ${{ !cancelled() && needs.plan.outputs.windows == 'true' && ((needs.plan.outputs.publish == 'true' && needs.sign-windows.result == 'success') || (needs.plan.outputs.publish != 'true' && needs.windows-test-only.result == 'success')) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.windows-matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: pipeline
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: source
+          ref: ${{ needs.plan.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "26.3.0"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist
+      - name: Run shared Windows compatibility selection
+        working-directory: source
+        shell: pwsh
+        env:
+          TRIPLET: ${{ matrix.triplet }}
+          EXPECTED_ARCH: ${{ matrix.target == 'windows-arm64' && 'arm64' || 'x64' }}
+        run: |
+          Expand-Archive -LiteralPath "../dist/$env:TRIPLET.zip" -DestinationPath ../runtime
+          $exe = (Resolve-Path "../runtime/$env:TRIPLET/bun.exe").Path
+          $arch = & $exe -p process.arch
+          if ($LASTEXITCODE -ne 0 -or $arch -cne $env:EXPECTED_ARCH) { throw 'Unexpected runtime architecture.' }
+          $env:PATH = "$(Split-Path $exe);$env:PATH"
+          & $exe ../pipeline/scripts/openclaw-ci/tests.ts select-windows
+          if ($LASTEXITCODE -ne 0) { throw 'Test selection failed.' }
+          & $exe ../pipeline/scripts/openclaw-ci/tests.ts test
+          if ($LASTEXITCODE -ne 0) { throw 'Windows compatibility tests failed.' }
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: compatibility-${{ matrix.target }}
+          path: source/build/openclaw-ci/*.json
+          if-no-files-found: error
+          retention-days: 14
+
   manifest:
     name: Manifest
-    needs: [plan, build, sign-macos, smoke]
-    if: ${{ !cancelled() && needs.smoke.result == 'success' }}
+    needs: [plan, build, sign-macos, smoke, windows-compatibility]
+    if: ${{ !cancelled() && needs.smoke.result == 'success' && (needs.plan.outputs.windows != 'true' || needs.windows-compatibility.result == 'success') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -330,21 +469,24 @@ jobs:
       - name: Download
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: "{build-linux-*,build-windows-*,signed-*}"
+          pattern: "{build-linux-*,signed-*,test-only-windows}"
           path: dist
           merge-multiple: true
       - name: Write manifest
         env:
           TAG: ${{ needs.plan.outputs.tag }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PUBLISH: ${{ needs.plan.outputs.publish }}
         run: |
           revision=""
           if [ -f dist/bun-linux-x64.zip ]; then
             unzip -q dist/bun-linux-x64.zip -d "$RUNNER_TEMP"
             revision="$("$RUNNER_TEMP/bun-linux-x64/bun" --revision)"
           fi
+          args=()
+          [ "$PUBLISH" = true ] && args+=(--publish)
           bun pipeline/scripts/openclaw-release/release.ts manifest --source source --commit HEAD \
-            --dist dist --out release --tag "$TAG" --workflow-run "$RUN_URL" ${revision:+--revision "$revision"}
+            --dist dist --out release --tag "$TAG" --workflow-run "$RUN_URL" ${revision:+--revision "$revision"} "${args[@]}"
           cp dist/*.zip release/
           cat release/manifest.json
           cat release/release-notes.md >> "$GITHUB_STEP_SUMMARY"

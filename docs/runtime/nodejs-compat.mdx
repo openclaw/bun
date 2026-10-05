@@ -181,6 +181,8 @@ Unreadable selected package metadata also throws `ERR_INVALID_PACKAGE_CONFIG`, r
 
 `Bun.resolve()`, `Bun.resolveSync()`, and `import.meta.resolveSync()` preserve external URL specifiers without reading filesystem package metadata. This includes protocol-relative `//` specifiers on Windows. Local file resolution still validates the applicable package scope.
 
+Modules embedded by `bun build --compile` share one module record across query and fragment spellings of their path or file URL. Files loaded from the filesystem keep separate ESM identities for distinct suffixes.
+
 Async imports of CommonJS files preserve package-scope interop. A `.cjs` file inside a `"type": "module"` package keeps `module.exports` as its default export and exposes its `__esModule` property, while the file still executes as CommonJS.
 
 `registerHooks()` supports synchronous resolve/load chaining, source transformation, and deregistration. `nextResolve` honors parent URLs and custom conditions, and hooks preserve query/fragment module identities. Dynamic-import attributes, including attributes returned by resolve hooks, reach the matching load hook.

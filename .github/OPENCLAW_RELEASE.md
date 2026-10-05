@@ -124,14 +124,18 @@ attestation](https://docs.github.com/en/actions/security-for-github-actions/usin
 A packager pins the zip's `sha256` for the download and `executable.sha256`
 for what it embeds or runs, as `openclaw`'s `setup-test-bun` action already
 does for the CI build. `libc` (`glibc`/`musl`) is present on Linux entries,
-`signing` on darwin ones.
+`signing` on darwin ones. Windows executable records carry
+`authenticodeSigned`, `signerSubject` (signed builds only), and `testOnly`. Both executable and archive
+hashes describe the final signed bytes; unsigned dry-run inputs are test-only.
 
-| Target         | Minimum                                  | Smoke-tested on    |
-| -------------- | ---------------------------------------- | ------------------ |
-| `darwin-arm64` | macOS 13.0                               | `macos-15`         |
-| `darwin-x64`   | macOS 13.0, x86-64 with SSE4.2           | `macos-15-intel`   |
-| `linux-x64`    | glibc 2.17, x86-64 with SSE4.2 (Nehalem) | `ubuntu-24.04`     |
-| `linux-arm64`  | glibc 2.17, ARMv8.0-A                    | `ubuntu-24.04-arm` |
+| Target          | Minimum                                  | Smoke-tested on    |
+| --------------- | ---------------------------------------- | ------------------ |
+| `darwin-arm64`  | macOS 13.0                               | `macos-15`         |
+| `darwin-x64`    | macOS 13.0, x86-64 with SSE4.2           | `macos-15-intel`   |
+| `linux-x64`     | glibc 2.17, x86-64 with SSE4.2 (Nehalem) | `ubuntu-24.04`     |
+| `linux-arm64`   | glibc 2.17, ARMv8.0-A                    | `ubuntu-24.04-arm` |
+| `windows-x64`   | Windows 10 1809                          | `windows-2025`     |
+| `windows-arm64` | Windows 11 ARM64                         | `windows-11-arm`   |
 
 The glibc floor is the symbol-version ceiling the build's binary check enforces
 (`scripts/build/binary-expectations.ts`); libstdc++ is linked statically. x64
@@ -159,7 +163,10 @@ one of those sections.
 
 The build is `scripts/build.ts --profile=release --ci=on` with the target's
 `--os/--arch/--abi`: ThinLTO across Bun, Rust and the `-lto` WebKit prebuilt,
-path remapping, and the binary checks as errors. It links without upstream's
+path remapping, and the binary checks as errors. Windows ARM64 uses upstream’s
+non-LTO release configuration and `bun-webkit-windows-arm64.tar.gz`; LLVM’s
+CodeView emitter cannot encode the ARM64 register tuples used by LTO
+([oven-sh/bun#31345](https://github.com/oven-sh/bun/issues/31345)). It links without upstream's
 symbol order file (Buildkite publishes that) and without PGO. The version
 string keeps upstream's canary suffix (`1.4.3-canary.1+<commit>`): these are
 not upstream releases.
@@ -228,34 +235,52 @@ the Docker image is Debian-based. The executable needs `libstdc++` and
 `libgcc` from the distribution, like upstream's. Adding it to every release
 costs two more build jobs.
 
-**windows-x64** also builds from the same image (xwin's MSVC CRT and Windows
-SDK, `lld-link`); a dispatch builds and smoke-tests it on `windows-2025`. A
-release target additionally needs Authenticode signing, which upstream does
-with DigiCert KeyLocker on a Windows agent: a certificate (a cloud-HSM-backed
-OV certificate, or Azure Trusted Signing) and a signing job on a Windows
-runner. Unsigned executables meet SmartScreen warnings and antivirus false
-positives. The Tauri app's Windows runtime install is still a stub.
+## Windows signing and qualification
+
+Windows x64 and ARM64 are release targets. Both cross-compile on the same Debian
+ARM64 image using clang-cl, lld-link and xwin's MSVC/Windows SDK. Windows ARM64
+uses the existing upstream non-LTO lane. Native smoke tests verify source and
+engine identity, architecture, SQLite and DFG JIT startup. Both architectures run
+the same 29-file Windows compatibility selection and its dependency checks.
+
+Only a publishing run enters the `release-signing` environment and grants the
+signing job `id-token: write`. `azure/login` uses the environment secrets
+`AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and `AZURE_SUBSCRIPTION_ID` for OIDC.
+`azure/artifact-signing-action@v2` uses endpoint
+`https://eus.codesigning.azure.net/`, signing account `openclaw` and certificate
+profile `openclaw`, with SHA-256 file and RFC3161 timestamp digests. The job runs
+on x64 because the signing library does not support an ARM64 host.
+
+Both stripped and profile executables must have a valid Authenticode signature,
+a timestamp certificate and the exact subject
+`CN=OpenClaw Foundation, O=OpenClaw Foundation, L=Mill Valley, S=California, C=US`.
+Verification precedes packaging and hashing. Manifest assembly binds the signed
+receipt to both archives and executables. Missing Azure configuration, failed
+signing, an unexpected subject or changed bytes fail the release; there is no
+unsigned release fallback.
+
+PRs and non-publishing dispatches use a separate job without signing credentials
+or OIDC permission. Their Windows artifact is named `test-only-windows` and its
+manifest records `authenticodeSigned: false` and `testOnly: true`. Production
+consumers must reject it. Signing proves the publisher; SmartScreen reputation is
+independent of that signature.
 
 ## WebKit
 
-Releases link the oven-sh/WebKit prebuilt that `WEBKIT_VERSION` pins, the same
-one upstream Bun ships. The pipeline builds no WebKit. A JavaScriptCore fix
-reaches a release in one of three ways:
+Releases link the OpenClaw WebKit archives committed in
+`scripts/build/deps/webkit-artifacts.json`. The full engine commit and each
+archive URL/SHA-256 move together. Missing variants fail closed; the build never
+falls back to an upstream archive with a different engine ABI.
 
-1. It lands in oven-sh/WebKit `main`: pin its `autobuild-<sha>` (upstream Bun
-   usually does within days, and an upstream sync brings the pin along).
-2. It is an open oven-sh/WebKit pull request from a branch of that repository:
-   its `autobuild-preview-pr-<n>-<sha>` prebuilt can be pinned. A preview is
-   built on the pull request's base, which can be weeks behind `main`.
-3. Neither: the fork needs its own WebKit prebuilts (see decisions below).
-
-The pinned WebKit `f20ce7744553c910bcf16a33faf976af208de091` contains the
-upstream replacement for oven-sh/WebKit#578, which is now closed. String
-indexing lowers its bounds check to a separate `CheckInBounds` node, so
-dead-code elimination preserves the check even when the access result is
-unused. The pin includes `JSTests/stress/string-index-dce-bounds-check.js`.
-This fixes the FTL CSS-tokenizer defect that previously required OpenClaw's
-custom WebKit build; this fork no longer needs that backport.
+The separate [OpenClaw WebKit pipeline](https://github.com/openclaw/WebKit)
+builds, qualifies and publishes immutable engine releases. The current
+[ten-archive release](https://github.com/openclaw/WebKit/releases/tag/autobuild-f1e1ca1156c8cb3b468bec0e1989fbfa08899661)
+includes the non-LTO `bun-webkit-windows-arm64.tar.gz` archive, cached repeated
+stack coordinates and corrected ARM64 allocation-accounting arithmetic.
+Qualify and publish each complete matrix before adding its checksums to Bun.
+A workflow artifact is test input, not a published release pin.
+Bun must rebuild against the exact matching headers and libraries whenever the
+engine pin changes.
 
 ## Upstream sync and security patches
 
@@ -266,21 +291,18 @@ qualify a sync PR's release build, dispatch this workflow on
 target as a dry run.
 
 - **Routine:** land one upstream sync a week, then tag `main` once the fork's
-  own CI is green. The weekly release brings upstream's WebKit bumps along
-  (57 between July and September 2026, several a week lately); the fork does
-  not bump WebKit on its own. OpenClaw moves its pins in its own pull requests,
-  against its own CI.
+  own CI is green. Coordinate WebKit changes with a separately qualified
+  OpenClaw WebKit publication and its matching Bun adapters. OpenClaw moves its
+  runtime pins in its own pull requests, against its own CI.
 - **Bun security fix upstream:** within one working day for high or critical
   issues. When the pending sync is otherwise ready, land it and release;
   otherwise cherry-pick the fix onto `main` in a pull request titled after the
   upstream one (`fix(security): backport oven-sh/bun#<n>`), then release. The
   next sync merges the upstream commit without conflict.
-- **JavaScriptCore security fix:** once upstream Bun pins a WebKit containing
-  it, sync or cherry-pick that pin bump (with the bindings changes it came
-  with). If only oven-sh/WebKit has it, pin its `autobuild-<sha>` in a fork
-  pull request and qualify with a dry run: pins are not ABI-stable, so a bump
-  that needs bindings changes waits for upstream's. A fix only in WebKit
-  proper, not in oven-sh/WebKit, needs route 3 above.
+- **JavaScriptCore security fix:** carry the fix into OpenClaw WebKit, qualify
+  and publish an immutable engine release, then update Bun's complete checksum
+  manifest with any required binding changes. Engine pins are not ABI-stable;
+  a matching rebuild and native qualification are required.
 - **Vendored dependencies** (BoringSSL, c-ares, libuv, zlib, SQLite, …): the
   `update-*` workflows only run in `oven-sh/bun`; the fork gets those updates
   through syncs, or by cherry-picking the upstream update commit.
@@ -301,11 +323,9 @@ target as a dry run.
    (c) stay as linked: the Mac app re-signs, and the Tauri app's own downloads
    carry no quarantine attribute, but anything downloaded by a browser is
    refused by Gatekeeper. Recommended: (a).
-2. **Whether the fork builds its own WebKit.** Continue using oven-sh/WebKit
-   prebuilts: the pinned engine contains the upstream replacement for #578.
-   A future fix unavailable in an upstream prebuilt would require separate
-   WebKit build lanes and an explicit prebuilt repository setting in
-   `webkit.ts` before a fork-specific engine could be released.
+2. **WebKit publication.** Engine releases are owned by the separate OpenClaw
+   WebKit pipeline. Bun consumes only its committed checksum manifest; adding a
+   platform requires a qualified, published matching engine archive first.
 3. **Build runner.** Recommended: keep GitHub's free runners. Change
    `vars.OPENCLAW_RELEASE_BUILD_RUNNER` only if release latency matters.
 4. **Release visibility.** Releases are prereleases and never "latest" until
@@ -313,8 +333,8 @@ target as a dry run.
 5. **Tag protection.** A ruleset on `openclaw-v*` tags (creation by
    maintainers, no updates or deletions) keeps a published release's tag from
    moving. The publish job refuses a moved tag, but only while it runs.
-6. **musl and Windows.** musl is left out of releases until a consumer needs
-   it; windows-x64 waits for an Authenticode certificate.
+6. **musl.** musl is left out of releases until a consumer needs it. Windows
+   releases require the Foundation Authenticode identity described above.
 7. **Cadence.** Weekly releases after the upstream sync; security fixes within
    a working day (above).
 8. **A cached builder image.** Provisioning downloads from a dozen hosts on
