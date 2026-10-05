@@ -1,4 +1,4 @@
-name: W179 Darwin RSS runner-environment qualification
+name: W179 full-workload VM memory guard qualification
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ jobs:
   darwin-arm64:
     if: github.repository == 'openclaw/bun'
     runs-on: macos-15
-    timeout-minutes: 180
+    timeout-minutes: 30
     env:
       BUN_BUILD_CACHE_DIR: ${{ github.workspace }}/.cache/openclaw-build
       PUPPETEER_SKIP_DOWNLOAD: "1"
@@ -42,12 +42,11 @@ jobs:
           repository: openclaw/bun
           name: w179-darwin-rss-5c441bf481e2c3e68be13eb0bffa55ff76b73eca
           path: baseline
-      - name: Stage artifacts and repeat with fork-runner settings
+      - name: Stage frozen comparison artifacts
         run: |
           mkdir evidence
           cp baseline/bun-42ab baseline/bun-641c baseline/bun-f1e1 baseline/metadata.json evidence/
           chmod +x evidence/bun-42ab evidence/bun-641c evidence/bun-f1e1
-          python3 pipeline/scripts/w179/scripts/compare.py source evidence --measure-only --runner-env
       - name: Verify proposed guard and retained-object controls
         run: python3 pipeline/scripts/w179/scripts/guard.py source evidence
       - name: Upload measurements and binaries

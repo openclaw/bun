@@ -15,10 +15,12 @@ describe("vm.Script", () => {
     // The measured source payload exceeds the RSS bound if native sources are retained.
     const source = `/*\n${Buffer.alloc(32_768, " * aaaaa\n").toString("utf8")}\n*/ Buffer.alloc(10, 'hello').toString();`;
 
+    const retained = globalThis.__w179Retained = [];
     let result;
     function go(i) {
       const script = new vm.Script(source + "//" + i);
       result = script.runInThisContext();
+      retained.push(Buffer.alloc(25 * 1024, 1));
     }
 
     for (let i = 0; i < warmupIterations + iterations; ++i) {
@@ -32,8 +34,10 @@ describe("vm.Script", () => {
     Bun.gc(true);
 
     const finalUsage = rss();
-    const finalCount = heapStats().objectTypeCounts.Script ?? 0;
+    const finalStats = heapStats();
+    const finalCount = finalStats.objectTypeCounts.Script ?? 0;
     const megabytes = Math.round(((finalUsage - initialUsage) / 1024 / 1024) * 100) / 100;
+    console.log("W179_SAMPLE " + JSON.stringify({ retainedCount: retained.length, initialCount, finalCount, megabytes, created: finalStats.w179ProvidersCreated, destroyed: finalStats.w179ProvidersDestroyed }));
     expect(finalCount).toBeLessThanOrEqual(initialCount + 10);
     // ASAN's quarantine retains freed allocations (default 256 MB).
     expect(megabytes).toBeLessThan(isASAN ? 700 : 200);

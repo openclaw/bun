@@ -32,8 +32,10 @@ describe("vm.Script", () => {
     Bun.gc(true);
 
     const finalUsage = rss();
-    const finalCount = heapStats().objectTypeCounts.Script ?? 0;
+    const finalStats = heapStats();
+    const finalCount = finalStats.objectTypeCounts.Script ?? 0;
     const megabytes = Math.round(((finalUsage - initialUsage) / 1024 / 1024) * 100) / 100;
+    console.log("W179_SAMPLE " + JSON.stringify({ initialCount, finalCount, megabytes, created: finalStats.w179ProvidersCreated, destroyed: finalStats.w179ProvidersDestroyed }));
     expect(finalCount).toBeLessThanOrEqual(initialCount + 10);
     // ASAN's quarantine retains freed allocations (default 256 MB).
     expect(megabytes).toBeLessThan(isASAN ? 700 : 200);
