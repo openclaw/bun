@@ -21,7 +21,7 @@ Module namespaces have a null prototype. `require(esm)` adds an own enumerable `
 
 `Error.prepareStackTrace` supports deletion, descriptor restoration, and accessor replacement. Nested stack formatting and throwing formatters leave later captures usable.
 
-`CallSite.getLineNumber()` and `getColumnNumber()` return one-based positions, or `null` when a frame has no source position. Stack strings include column 1 and use the same constructor positions as CallSites, pointing to the `new` keyword, including across line breaks and in `node:vm` scripts. Some expression positions still differ from Node.js because JavaScriptCore and Bun's transpiler select different syntax locations.
+`CallSite.getLineNumber()` and `getColumnNumber()` return one-based positions, or `null` when a frame has no source position. Stack strings include column 1 and use the same constructor positions as CallSites, pointing to the `new` keyword, including across line breaks and in `node:vm` scripts. The matching OpenClaw engine supplies syntax-selected positions for calls, constructors, property reads, and async continuations. Built-in error constructors retain `new`, including in returning arrows. Runtime transpilation retains callee parentheses and computed access and maps opening call, bracket, and template delimiters to the original source. File-name and eval-origin formatting still follow Bun's existing conventions.
 
 `Intl.Segments.containing()` respects surrogate-pair boundaries for grapheme, word, and sentence segmentation with the pinned OpenClaw WebKit.
 

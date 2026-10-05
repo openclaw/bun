@@ -54,8 +54,8 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
             p.allow_in = true;
 
             let mut value = p.parse_expr(Level::Lowest)?;
-            p.mark_expr_as_parenthesized(&mut value);
             p.lexer.expect(T::TCloseParen)?;
+            p.mark_expr_as_parenthesized(&mut value);
 
             p.allow_in = old_allow_in;
             return Ok(value);
@@ -295,6 +295,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
 
         Ok(p.new_expr(
             E::Template {
+                head_loc: loc,
                 tag: None,
                 head: E::TemplateContents::Cooked(head),
                 parts,

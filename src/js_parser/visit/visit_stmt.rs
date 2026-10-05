@@ -2332,6 +2332,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                 Expr::assign(
                     p.new_expr(
                         E::Index {
+                            open_bracket_loc: bun_ast::Loc::EMPTY,
                             target: Expr::init_identifier(data.arg, value.loc),
                             index: name_as_e_string.unwrap(),
                             optional_chain: None,
@@ -2353,6 +2354,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                 value_exprs.push(Expr::assign(
                     p.new_expr(
                         E::Index {
+                            open_bracket_loc: bun_ast::Loc::EMPTY,
                             target: Expr::init_identifier(data.arg, value.loc),
                             index: assign_target,
                             optional_chain: None,
