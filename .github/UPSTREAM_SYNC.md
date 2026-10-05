@@ -90,3 +90,20 @@ A landed sync reaches OpenClaw through a fork release. Dispatching the release
 workflow on `automation/sync-upstream` without a tag builds and smoke-tests every
 release target as a dry run; the release cadence and security-patch policy are in
 [OPENCLAW_RELEASE.md](OPENCLAW_RELEASE.md#upstream-sync-and-security-patches).
+
+## October 2026 engine and namespace update
+
+The sync through upstream Bun `9bd19c98eacc01530a4e7609bc427abffa87d77e`
+targets upstream WebKit `5718a6ec579b98362ea7276a426deedcc6281ef5`. The fork
+consumes immutable OpenClaw WebKit
+[`42ab38d705d4838748ccee77e7deb0e4e35515ee`](https://github.com/openclaw/WebKit/releases/tag/autobuild-42ab38d705d4838748ccee77e7deb0e4e35515ee)
+through the complete published manifest in
+`scripts/build/deps/webkit-artifacts.json`. Every archive is verified before
+extraction, with no upstream-artifact fallback.
+
+This engine provides upstream's idle compiler-thread and `Atomics.wait` memory
+release. Its namespace facade API also requires the paired Bun integration from
+[#106](https://github.com/openclaw/bun/pull/106): import namespaces remain
+unmarked, while `require(esm)` gets an own marker and live exports. The manifest
+and source counterpart land together. Roll back the matched Bun source and
+engine pin together; changing only the manifest is not a compatible rollback.

@@ -15,11 +15,15 @@ Stdin and eval scripts report malformed ancestor package metadata only when an i
 
 The OpenClaw fork reports missing runtime imports without downloading npm packages. This default covers scripts, workers, and child processes running the fork. You can opt in with `--install=auto|fallback|force` or an explicit bunfig `install.auto` setting. Package-manager commands (`bun install`, `bun add`, `bun x`, and `bunx`) are unchanged. See [Auto-install](/runtime/auto-install).
 
+Module namespaces have a null prototype. `require(esm)` adds an own enumerable `__esModule` marker only for modules with a default export and no explicit marker, without modifying the imported namespace. CommonJS namespaces preserve explicit markers and expose the original exports as `module.exports`.
+
 ## Built-in Node.js modules
 
 `Error.prepareStackTrace` supports deletion, descriptor restoration, and accessor replacement. Nested stack formatting and throwing formatters leave later captures usable.
 
-`CallSite.getLineNumber()` and `getColumnNumber()` return one-based positions, or `null` when a frame has no source position. Stack strings include column 1 and use the same constructor positions as CallSites, pointing to the `new` keyword, including across line breaks and in `node:vm` scripts. Some expression positions still differ from Node.js because JavaScriptCore and Bun's transpiler select different syntax locations.
+`CallSite.getLineNumber()` and `getColumnNumber()` return one-based positions, or `null` when a frame has no source position. Stack strings include column 1 and use the same constructor positions as CallSites, pointing to the `new` keyword, including across line breaks and in `node:vm` scripts. The matching OpenClaw engine supplies syntax-selected positions for calls, constructors, property reads, and async continuations. Built-in error constructors retain `new`, including in returning arrows. Runtime transpilation retains callee parentheses and computed access and maps opening call, bracket, and template delimiters to the original source. File-name and eval-origin formatting still follow Bun's existing conventions.
+
+`Intl.Segments.containing()` respects surrogate-pair boundaries for grapheme, word, and sentence segmentation with the pinned OpenClaw WebKit.
 
 ### [`node:assert`](https://nodejs.org/api/assert.html)
 
@@ -53,7 +57,7 @@ The OpenClaw fork reports missing runtime imports without downloading npm packag
 
 On macOS, `fs.watch(file)` registers a kqueue watch before returning, including unlink and writes through an open descriptor. Pending file events coalesce until JavaScript delivery, with libuv's event precedence. Directory watches use FSEvents. A new watch on a replaced file observes the new inode.
 
-Recursive `fs.promises.readdir` with `withFileTypes: true` lists directory symlinks without descending into their targets. Callback and synchronous overloads retain the Node symlink-following behavior.
+Recursive `fs.promises.readdir` with `withFileTypes: true` lists directory symlinks without descending into their targets. Callback and synchronous Dirent overloads, and all recursive string overloads, follow directory symlinks on Windows and POSIX.
 
 The `read`, `readv`, `write`, and `writev` callbacks receive the error, zero bytes, and the original buffer or buffers when an I/O operation fails.
 
@@ -127,6 +131,8 @@ Upgrade requests emit `upgrade` while an earlier response on the connection is s
 
 ### [`node:async_hooks`](https://nodejs.org/api/async_hooks.html)
 
+With the pinned OpenClaw WebKit, module resolution, loading, and evaluation preserve the importing `AsyncLocalStorage` context, including top-level await. Concurrent imports of a shared module retain the first importer’s evaluation context while each caller resumes in its own context.
+
 `WORKER` resources emit `destroy` after native exit, including workers that are terminated or throw an error.
 
 🟡 `createHook()` emits `init` for `TickObject`, `WORKER`, `Timeout`, and `Immediate`, and `destroy` for workers and timers. The `before`, `after`, `promiseResolve`, and other resource events are not implemented. `executionAsyncId()` and `triggerAsyncId()` return `0`. Node.js [strongly discourages](https://nodejs.org/docs/latest/api/async_hooks.html#async-hooks) these APIs in favor of `AsyncLocalStorage`.
@@ -161,6 +167,8 @@ Child construction publishes the `child_process` diagnostics channel with the ex
 
 Filesystem-entry cache snapshots are synchronized across worker threads during symlink fills, file-descriptor updates, and re-stats. Cached module paths remain complete when workers resolve symlinked files while filesystem routes reload.
 
+Cold module imports on macOS avoid concurrent transpiler-cache write contention. Cache reuse, parallel parsing, and module resolution are unchanged.
+
 Runtime package resolution follows Node 24.21's `package.json` validation. Failures in the metadata reader, non-string `name` or `type` fields, and invalid exports condition objects throw `ERR_INVALID_PACKAGE_CONFIG` with the package path and Node's resolution context. Unselected metadata and explicit `.mjs`/`.cjs` formats remain deferred, and values Node ignores are not rejected.
 
 Scalar string targets in package `imports` may name a recognized Bun built-in such as `bun:test` or `bun:sqlite`. Inside fallback arrays, including nested arrays and conditional targets within an array, `bun:` URLs remain invalid package targets under Node 24.21 rules, so the next alternative is tried. For example, `["bun:sqlite", "./fallback.cjs"]` selects `./fallback.cjs`. A valid relative target that names a missing file still produces a missing-module error; arrays do not retry after filesystem resolution fails. The Bun-specific scalar exception does not allow unknown `bun:` names, other URL schemes (including `node:`), or built-in targets in `exports`; those keep Node's `ERR_INVALID_PACKAGE_TARGET` validation.
@@ -172,6 +180,8 @@ Unreadable selected package metadata also throws `ERR_INVALID_PACKAGE_CONFIG`, r
 `import.meta.resolve()` validates the package scope of existing `.js`, `.ts`, and extensionless files. Missing-file URLs and `require.resolve()` defer that scope validation. Loading an already-resolved CommonJS file through the ESM loader preserves the original resolution mode.
 
 Modules embedded by `bun build --compile` share one module record across query and fragment spellings of their path or file URL. Files loaded from the filesystem keep separate ESM identities for distinct suffixes.
+
+Async imports of CommonJS files preserve package-scope interop. A `.cjs` file inside a `"type": "module"` package keeps `module.exports` as its default export and exposes its `__esModule` property, while the file still executes as CommonJS.
 
 `registerHooks()` supports synchronous resolve/load chaining, source transformation, and deregistration. `nextResolve` honors parent URLs and custom conditions, and hooks preserve query/fragment module identities. Dynamic-import attributes, including attributes returned by resolve hooks, reach the matching load hook.
 
@@ -196,7 +206,9 @@ CommonJS named exports include nonenumerable data properties even when an `__esM
 
 Package imports and exports match the `module-sync` condition for both `import` and `require`. Conditions retain package.json key order. Bun and Node build targets include this condition; the browser target does not.
 
-🟡 Missing `Module#load()`, `findPackageJSON`, `stripTypeScriptTypes`, `getSourceMapsSupport`/`setSourceMapsSupport`. Overriding `require.cache`, `require.extensions` and `module._resolveFilename` is supported. `syncBuiltinESMExports`, `module._load`, `module._pathCache` and `module.register` are no-ops (we recommend [`Bun.plugin`](/runtime/plugins) instead). `findSourceMap` always returns `undefined`.
+🟡 Missing `Module#load()`, `findPackageJSON`, `getSourceMapsSupport`/`setSourceMapsSupport`. Overriding `require.cache`, `require.extensions` and `module._resolveFilename` is supported. `syncBuiltinESMExports`, `module._load`, `module._pathCache` and `module.register` are no-ops (we recommend [`Bun.plugin`](/runtime/plugins) instead). `findSourceMap` always returns `undefined`.
+
+`module.stripTypeScriptTypes()` supports `mode: "strip"`. Type syntax is replaced with whitespace while preserving source positions and runtime imports and exports. `sourceUrl` is supported. TypeScript syntax that requires transformation throws `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX`. The Node 24 `transform` mode and source maps are not supported.
 
 `NODE_COMPILE_CACHE` and `module.enableCompileCache()` generate and atomically write cache entries during idle time. Normal exits wait for pending cache work. After a native SIGTERM, SIGINT, or SIGHUP, Bun limits automatic exit-time cache waiting to 250 ms, including when JavaScript handled the signal. Unfinished entries compile normally on the next run. Explicit `module.flushCompileCache()` calls always wait for persistence to finish. Standalone executables ignore `NODE_COMPILE_CACHE`.
 
@@ -262,7 +274,7 @@ Contextified globals, `DONT_CONTEXTIFY` globals, and the main realm allow a Prox
 
 🟢 Fully implemented, including `vm.Script`, `vm.createContext`, `vm.runInContext`, `vm.runInNewContext`, `vm.runInThisContext`, `vm.compileFunction`, `vm.isContext`, the ES module classes `vm.Module`, `vm.SourceTextModule` and `vm.SyntheticModule` (exported without `--experimental-vm-modules`), and `importModuleDynamically` support. The `timeout`, `breakOnSigint`, `cachedData`, `microtaskMode` and `codeGeneration` options are supported. An `importModuleDynamically` callback that returns a promise for a `vm.Module` resolves `import()` to the module object rather than its namespace. `vm.measureMemory()` reports whole-heap figures for every context.
 
-The OpenClaw fork caches repeated `vm.Script` and `vm.compileFunction` compilations, including the `runInThisContext`, `runInContext`, and `runInNewContext` helpers. Each evaluation still creates fresh values and uses the target context's global object. Source text, filenames, offsets, compilation options, and dynamic import callback identity distinguish entries. Explicit `cachedData` uses the existing validation path.
+The OpenClaw fork caches repeated `vm.Script` and `vm.compileFunction` compilations, including the `runInThisContext`, `runInContext`, and `runInNewContext` helpers. Each evaluation still creates fresh values and uses the target context's global object. Source text, filenames, offsets, compilation options, and dynamic import callback identity distinguish entries. Explicit `cachedData` uses the existing validation path. Valid `vm.Script` cached data also works when the JIT is unavailable. Empty, invalid, or incompatible-version data sets `cachedDataRejected` to `true`, and the script falls back to compiling the source.
 
 On Linux x64 with glibc, long sources with the same string encoding use an exact byte comparison for cache lookup. Short sources and mixed string encodings keep the engine's comparison path. Every source byte remains part of cache validation.
 
@@ -274,11 +286,15 @@ Admission tracking adds a small cost to smaller graphs. In a Linux replay of cap
 
 The same replay took Node 24 **39.7 ms at 2,500 modules and 63.4 ms at 4,000**. Bun's bounded cache remained 32.7% and 34.3% slower, respectively. These workload-specific measurements do not promise Node parity. Further engine work could provide a retained-size and growth contract for complete unlinked-code graphs, or explicit ownership for decoded code that borrows storage from evictable bytecode payloads. Either approach would need separate lifetime and performance validation. This cache changes neither WebKit nor application dependencies.
 
+Valid `vm.Script` cached data is accepted when JSC runs without a JIT. Validation decodes the payload; each execution links its own program through the normal runtime path.
+
 ### [`node:wasi`](https://nodejs.org/api/wasi.html)
 
 🟡 Partially implemented. `WASI` supports `args`, `env`, `preopens`, `wasiImport` and `start()`, and `bun ./program.wasm` runs a WASI command directly. Missing `getImportObject()` (use `wasiImport`), `initialize()` and the `sock_accept` import. Bun ignores the `version`, `returnOnExit`, `stdin`, `stdout` and `stderr` options, so `proc_exit` exits the Bun process.
 
 ### [`node:worker_threads`](https://nodejs.org/api/worker_threads.html)
+
+`resourceLimits` reports effective heap, nursery, code-range, and stack settings. With the pinned OpenClaw WebKit, managed-heap exhaustion terminates only the affected worker with `ERR_WORKER_OUT_OF_MEMORY` and exit code 1. ArrayBuffer backing stores are excluded. `codeRangeSizeMb` is reporting-only because JSC shares its executable allocator. See [worker resource limits](/runtime/workers#node-worker-resource-limits) for defaults and limitations.
 
 File workers select `--require` and `--import` preloads from their environment independently of `execArgv`. Explicit `env` or `execArgv` options re-read the worker's `NODE_OPTIONS` and `BUN_OPTIONS` before applying the selected CLI arguments. `execArgv: []` removes CLI preloads while environment preloads still apply. Require preloads run before import preloads.
 
@@ -294,11 +310,11 @@ Creating a `SHARE_ENV` worker preserves the parent's `process.env` identity. Cac
 Repeated `delete` and `Reflect.deleteProperty()` calls remove shared entries even after JIT warmup.
 Writes also reach the shared environment when value coercion creates the first worker, including on Windows. Newly assigned Windows environment variables, including native-backed variables such as `TZ`, are enumerable and survive environment copies and child-process inheritance.
 
-🟡 `Worker` ignores the `resourceLimits` and `trackUnmanagedFds` options. Some `execArgv` flags take effect in the worker, for example `--no-addons`, `--stack-trace-limit` and `--tls-min-v1.3`. Others, for example `--conditions` and `--no-deprecation`, only set `process.execArgv`. `worker.performance.eventLoopUtilization()` is a stub. Missing `moveMessagePortToContext` and `locks`.
+🟡 `Worker` ignores the `trackUnmanagedFds` option. Some `execArgv` flags take effect in the worker, for example `--no-addons`, `--stack-trace-limit` and `--tls-min-v1.3`. Others, for example `--conditions` and `--no-deprecation`, only set `process.execArgv`. `worker.performance.eventLoopUtilization()` is a stub. Missing `moveMessagePortToContext` and `locks`.
 
 ### [`node:inspector`](https://nodejs.org/api/inspector.html)
 
-🟡 Partially implemented. `Session` supports the `Profiler` domain (including precise coverage), `Runtime.enable` and `NodeTracing`, from both `node:inspector` and `node:inspector/promises`. `HeapProfiler.enable`, `HeapProfiler.disable`, and `HeapProfiler.collectGarbage` work in main-thread and worker sessions; collection runs after the current JavaScript job and completes before its callback. Heap allocation sampling and garbage collection through a worker's `connectToMainThread()` session are not implemented. After `open()`, `Session` also forwards `Debugger` configuration commands such as `Debugger.enable` and `Debugger.setBreakpointByUrl` to the inspector server. Their results, such as `breakpointId`, are not returned. Other `Session` commands such as `Runtime.evaluate` are not implemented. `open()`, `url()`, `close()` and `waitForDebugger()` are implemented. `open()` serves the `Debugger` and `Runtime` domains and throws in workers. Missing `Network`.
+🟡 Partially implemented. `Session` supports the `Profiler` domain (including precise coverage), `Runtime.enable` and `NodeTracing`, from both `node:inspector` and `node:inspector/promises`. `HeapProfiler.enable`, `HeapProfiler.disable`, and `HeapProfiler.collectGarbage` work in main-thread and worker sessions; collection runs after the current JavaScript job and completes before its callback. `HeapProfiler.startSampling`, `getSamplingProfile`, and `stopSampling` provide byte-based allocation-site profiles, including separate major/minor GC inclusion flags, through local main-thread and worker sessions. Sampling and garbage collection through a worker's `connectToMainThread()` session are not implemented. After `open()`, `Session` also forwards `Debugger` configuration commands such as `Debugger.enable` and `Debugger.setBreakpointByUrl` to the inspector server. Their results, such as `breakpointId`, are not returned. Other `Session` commands such as `Runtime.evaluate` are not implemented. `open()`, `url()`, `close()` and `waitForDebugger()` are implemented. `open()` serves the `Debugger` and `Runtime` domains and throws in workers. Missing `Network`.
 
 ### [`node:repl`](https://nodejs.org/api/repl.html)
 

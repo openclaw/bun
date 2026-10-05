@@ -171,6 +171,7 @@ pub struct LexerSnapshot<'a> {
     // Vec buffer lengths — restore() truncates back to these.
     pub(crate) all_comments_len: usize,
     pub(crate) comments_to_preserve_before_len: usize,
+    pub(crate) captured_tokens_len: usize,
 }
 
 /// `'a` is the lifetime of the source contents (arena/source-owned slices like
@@ -243,6 +244,9 @@ pub struct Lexer<'a> {
     /// `@name`, an intrinsic in the source of one of JavaScriptCore's builtins, is a name like any other.
     pub(crate) jsc_builtin_syntax: bool,
     pub(crate) all_comments: Vec<Range>,
+    // Token capture is only enabled for the position-preserving type stripper.
+    pub(crate) track_tokens: bool,
+    pub(crate) captured_tokens: Vec<crate::ts_strip::CapturedToken>,
 }
 
 impl<'a> LexerLog<'a> for Lexer<'a> {
@@ -357,6 +361,7 @@ impl<'a> Lexer<'a> {
             track_react_suppressions: self.track_react_suppressions,
             all_comments_len: self.all_comments.len(),
             comments_to_preserve_before_len: self.comments_to_preserve_before.len(),
+            captured_tokens_len: self.captured_tokens.len(),
         }
     }
 
@@ -403,6 +408,8 @@ impl<'a> Lexer<'a> {
         self.all_comments.truncate(original.all_comments_len);
         self.comments_to_preserve_before
             .truncate(original.comments_to_preserve_before_len);
+        debug_assert!(self.captured_tokens.len() >= original.captured_tokens_len);
+        self.captured_tokens.truncate(original.captured_tokens_len);
     }
 
     /// Look ahead at the next n codepoints without advancing the iterator.
@@ -1256,7 +1263,36 @@ impl<'a> Lexer<'a> {
     /// (`latin1_identifier_continue_length`, `parse_numeric_literal_or_dot`,
     /// `parse_string_literal::<QUOTE>`) stay `#[inline]`/`#[inline(always)]` so
     /// they merge *into* this body.
+    /// Thin dispatch wrapper so token capture (strip mode) has a single site;
+    /// `#[inline(always)]` keeps the partial-inlining behavior above intact.
+    #[inline(always)]
     pub fn next(&mut self) -> Result<(), Error> {
+        let result = self.next_inner();
+        if self.track_tokens {
+            if result.is_ok() {
+                self.capture_token();
+            }
+        }
+        result
+    }
+
+    /// Append the current token to `captured_tokens`. Rescans and token splits
+    /// re-enter with a start inside the previous token; pop stale entries first.
+    #[cold]
+    pub(crate) fn capture_token(&mut self) {
+        let start = self.start as u32;
+        while matches!(self.captured_tokens.last(), Some(t) if t.start >= start) {
+            self.captured_tokens.pop();
+        }
+        self.captured_tokens.push(crate::ts_strip::CapturedToken {
+            start,
+            end: u32::try_from(self.end).expect("source offset"),
+            token: self.token,
+            has_newline_before: self.has_newline_before,
+        });
+    }
+
+    fn next_inner(&mut self) -> Result<(), Error> {
         self.has_newline_before = self.end == 0;
         self.has_pure_comment_before = false;
         self.prev_token_was_await_keyword = false;
@@ -2282,6 +2318,8 @@ impl<'a> Lexer<'a> {
             track_react_suppressions: false,
             jsc_builtin_syntax: false,
             all_comments: Vec::new(),
+            track_tokens: false,
+            captured_tokens: Vec::new(),
         }
     }
 

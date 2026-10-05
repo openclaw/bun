@@ -327,3 +327,13 @@ if (Bun.isMainThread) {
   console.log("I'm in a worker");
 }
 ```
+
+## Node worker resource limits
+
+`node:worker_threads` accepts `resourceLimits` and exposes the effective values through `worker.resourceLimits` and the worker's `resourceLimits` export. The parent property becomes an empty object when the worker exits.
+
+`maxOldGenerationSizeMb` limits the managed heap after a full garbage collection. ArrayBuffer backing storage is excluded. A worker over the limit emits `ERR_WORKER_OUT_OF_MEMORY` and exits with code 1. `maxYoungGenerationSizeMb` sizes the nursery without independently limiting the retained heap. `stackSizeMb` controls JavaScript stack checks; the native stack retains initialization and exception-handling headroom.
+
+`codeRangeSizeMb` is reported for compatibility. JSC shares its executable allocator across workers, so this option does not reserve executable memory per worker.
+
+The OpenClaw fork uses fixed defaults of 4096 MiB for the managed heap, 192 MiB for the nursery, and 4 MiB for the JavaScript stack. These defaults do not adapt to host memory or V8 command-line heap flags. Very small limits can stop a worker during startup. This experimental support requires the pinned OpenClaw WebKit and applies only to `node:worker_threads`, not the global Web Worker constructor. It does not add idle garbage collection.

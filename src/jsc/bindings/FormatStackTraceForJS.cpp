@@ -321,7 +321,7 @@ WTF::String formatStackTrace(
         if (!frame.hasLineAndColumnInfo()) continue;
 
         if (frame.codeBlock() && frame.hasBytecodeIndex()) {
-            auto position = Bun::getAdjustedLineColumnForBytecode(frame.codeBlock(), frame.bytecodeIndex());
+            auto position = Bun::getAdjustedLineColumnForBytecode(frame.codeBlock(), frame.bytecodeIndex(), frame.isAsyncFrame());
             originalLineColumns[i] = { static_cast<unsigned>(position.line().oneBasedInt()), static_cast<unsigned>(position.column().oneBasedInt()) };
             if (auto overrideLine = frame.codeBlock()->ownerExecutable()->overrideLineNumber(vm))
                 originalLineColumns[i].line = *overrideLine;
