@@ -3,13 +3,21 @@ import { bunExe, tempDir } from "harness";
 import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync, renameSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { broader, isTest, selectTests, smoke } from "../../../scripts/openclaw-ci/tests.ts";
+import { broader, isTest, selectTests, smoke, windowsSmoke } from "../../../scripts/openclaw-ci/tests.ts";
 
 const tracked = execFileSync("git", ["ls-files", "-z", "test"], { encoding: "utf8" }).split("\0").filter(Boolean);
 
 test("PR and nightly smoke lists exist and nightly includes every PR smoke file", () => {
   expect(selectTests([], tracked, false)).toEqual([...smoke].sort());
   expect(selectTests([], tracked, true)).toEqual([...smoke, ...broader].sort());
+});
+
+test("both Windows architectures use the complete Windows compatibility selection", () => {
+  expect(selectTests([], tracked, false, "windows")).toEqual([...windowsSmoke].sort());
+  expect(selectTests([], tracked, true, "windows")).toEqual([...windowsSmoke].sort());
+  expect(windowsSmoke).toHaveLength(29);
+  for (const file of [...smoke, ...broader]) expect(windowsSmoke).toContain(file);
+  expect(windowsSmoke).toContain("test/js/bun/resolve/import-meta.test.js");
 });
 
 test("macOS selection includes file, directory, recursive, process and child-process coverage", () => {

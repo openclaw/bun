@@ -124,14 +124,18 @@ attestation](https://docs.github.com/en/actions/security-for-github-actions/usin
 A packager pins the zip's `sha256` for the download and `executable.sha256`
 for what it embeds or runs, as `openclaw`'s `setup-test-bun` action already
 does for the CI build. `libc` (`glibc`/`musl`) is present on Linux entries,
-`signing` on darwin ones.
+`signing` on darwin ones. Windows executable records carry
+`authenticodeSigned`, `signerSubject` (signed builds only), and `testOnly`. Both executable and archive
+hashes describe the final signed bytes; unsigned dry-run inputs are test-only.
 
-| Target         | Minimum                                  | Smoke-tested on    |
-| -------------- | ---------------------------------------- | ------------------ |
-| `darwin-arm64` | macOS 13.0                               | `macos-15`         |
-| `darwin-x64`   | macOS 13.0, x86-64 with SSE4.2           | `macos-15-intel`   |
-| `linux-x64`    | glibc 2.17, x86-64 with SSE4.2 (Nehalem) | `ubuntu-24.04`     |
-| `linux-arm64`  | glibc 2.17, ARMv8.0-A                    | `ubuntu-24.04-arm` |
+| Target          | Minimum                                  | Smoke-tested on    |
+| --------------- | ---------------------------------------- | ------------------ |
+| `darwin-arm64`  | macOS 13.0                               | `macos-15`         |
+| `darwin-x64`    | macOS 13.0, x86-64 with SSE4.2           | `macos-15-intel`   |
+| `linux-x64`     | glibc 2.17, x86-64 with SSE4.2 (Nehalem) | `ubuntu-24.04`     |
+| `linux-arm64`   | glibc 2.17, ARMv8.0-A                    | `ubuntu-24.04-arm` |
+| `windows-x64`   | Windows 10 1809                          | `windows-2025`     |
+| `windows-arm64` | Windows 11 ARM64                         | `windows-11-arm`   |
 
 The glibc floor is the symbol-version ceiling the build's binary check enforces
 (`scripts/build/binary-expectations.ts`); libstdc++ is linked statically. x64
@@ -159,7 +163,10 @@ one of those sections.
 
 The build is `scripts/build.ts --profile=release --ci=on` with the target's
 `--os/--arch/--abi`: ThinLTO across Bun, Rust and the `-lto` WebKit prebuilt,
-path remapping, and the binary checks as errors. It links without upstream's
+path remapping, and the binary checks as errors. Windows ARM64 uses upstream’s
+non-LTO release configuration and `bun-webkit-windows-arm64.tar.gz`; LLVM’s
+CodeView emitter cannot encode the ARM64 register tuples used by LTO
+([oven-sh/bun#31345](https://github.com/oven-sh/bun/issues/31345)). It links without upstream's
 symbol order file (Buildkite publishes that) and without PGO. The version
 string keeps upstream's canary suffix (`1.4.3-canary.1+<commit>`): these are
 not upstream releases.
@@ -228,13 +235,35 @@ the Docker image is Debian-based. The executable needs `libstdc++` and
 `libgcc` from the distribution, like upstream's. Adding it to every release
 costs two more build jobs.
 
-**windows-x64** also builds from the same image (xwin's MSVC CRT and Windows
-SDK, `lld-link`); a dispatch builds and smoke-tests it on `windows-2025`. A
-release target additionally needs Authenticode signing, which upstream does
-with DigiCert KeyLocker on a Windows agent: a certificate (a cloud-HSM-backed
-OV certificate, or Azure Trusted Signing) and a signing job on a Windows
-runner. Unsigned executables meet SmartScreen warnings and antivirus false
-positives. The Tauri app's Windows runtime install is still a stub.
+## Windows signing and qualification
+
+Windows x64 and ARM64 are release targets. Both cross-compile on the same Debian
+ARM64 image using clang-cl, lld-link and xwin's MSVC/Windows SDK. Windows ARM64
+uses the existing upstream non-LTO lane. Native smoke tests verify source and
+engine identity, architecture, SQLite and DFG JIT startup. Both architectures run
+the same 29-file Windows compatibility selection and its dependency checks.
+
+Only a publishing run enters the `release-signing` environment and grants the
+signing job `id-token: write`. `azure/login` uses the environment secrets
+`AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and `AZURE_SUBSCRIPTION_ID` for OIDC.
+`azure/artifact-signing-action@v2` uses endpoint
+`https://eus.codesigning.azure.net/`, signing account `openclaw` and certificate
+profile `openclaw`, with SHA-256 file and RFC3161 timestamp digests. The job runs
+on x64 because the signing library does not support an ARM64 host.
+
+Both stripped and profile executables must have a valid Authenticode signature,
+a timestamp certificate and the exact subject
+`CN=OpenClaw Foundation, O=OpenClaw Foundation, L=Mill Valley, S=California, C=US`.
+Verification precedes packaging and hashing. Manifest assembly binds the signed
+receipt to both archives and executables. Missing Azure configuration, failed
+signing, an unexpected subject or changed bytes fail the release; there is no
+unsigned release fallback.
+
+PRs and non-publishing dispatches use a separate job without signing credentials
+or OIDC permission. Their Windows artifact is named `test-only-windows` and its
+manifest records `authenticodeSigned: false` and `testOnly: true`. Production
+consumers must reject it. Signing proves the publisher; SmartScreen reputation is
+independent of that signature.
 
 ## WebKit
 
@@ -313,8 +342,8 @@ target as a dry run.
 5. **Tag protection.** A ruleset on `openclaw-v*` tags (creation by
    maintainers, no updates or deletions) keeps a published release's tag from
    moving. The publish job refuses a moved tag, but only while it runs.
-6. **musl and Windows.** musl is left out of releases until a consumer needs
-   it; windows-x64 waits for an Authenticode certificate.
+6. **musl.** musl is left out of releases until a consumer needs it. Windows
+   releases require the Foundation Authenticode identity described above.
 7. **Cadence.** Weekly releases after the upstream sync; security fixes within
    a working day (above).
 8. **A cached builder image.** Provisioning downloads from a dozen hosts on

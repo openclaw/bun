@@ -45,6 +45,16 @@ export const darwinSmoke = [
   "test/js/node/child_process/child-process-stdio.test.js",
 ];
 
+// The same Windows compatibility selection runs on x64 and ARM64.
+export const windowsSmoke = [
+  ...smoke,
+  ...broader,
+  "test/js/bun/plugin/plugin-resolved-key.test.ts",
+  "test/js/bun/plugin/plugins.test.ts",
+  "test/js/bun/resolve/import-meta-resolve.test.mjs",
+  "test/js/bun/resolve/import-meta.test.js",
+];
+
 const webkitSensitive = [
   "test/js/node/async_hooks/AsyncLocalStorage.test.ts",
   "test/js/node/worker_threads/worker_threads.test.ts",
@@ -91,9 +101,13 @@ export function isTest(path: string): boolean {
 }
 
 export function selectTests(changed: string[], tracked: string[], nightly: boolean, platform = "linux"): string[] {
-  if (platform !== "linux" && platform !== "darwin") throw new Error(`Unsupported CI platform: ${platform}`);
+  if (platform !== "linux" && platform !== "darwin" && platform !== "windows")
+    throw new Error(`Unsupported CI platform: ${platform}`);
   const available = new Set(tracked);
-  const selected = new Set([...(platform === "darwin" ? darwinSmoke : smoke), ...(nightly ? broader : [])]);
+  const selected = new Set([
+    ...(platform === "windows" ? windowsSmoke : platform === "darwin" ? darwinSmoke : smoke),
+    ...(nightly ? broader : []),
+  ]);
   const tests = tracked.filter(isTest);
   for (const path of changed) {
     if (path === "scripts/build/deps/webkit.ts" || path === "scripts/build/deps/webkit-artifacts.json") {
@@ -148,7 +162,12 @@ if (import.meta.main) {
   const command = process.argv[2];
   const selectionPath = "build/openclaw-ci/selected.json";
   const resultsPath = "build/openclaw-ci/results.json";
-  if (command === "select") {
+  if (command === "select-windows") {
+    const selected = selectTests([], git("ls-files", "-z", "test"), false, "windows");
+    mkdirSync(dirname(selectionPath), { recursive: true });
+    writeFileSync(selectionPath, JSON.stringify(selected, null, 2) + "\n");
+    summary(`Windows compatibility selection: ${selected.length} files\n`);
+  } else if (command === "select") {
     const base = process.env.PR_BASE_SHA;
     const head = process.env.PR_HEAD_SHA;
     if (process.env.GITHUB_EVENT_NAME === "pull_request" && (!base || !head)) throw new Error("Missing PR commits");
@@ -199,6 +218,6 @@ if (import.meta.main) {
       if (process.env.TEST_OUTCOME === "success") throw new Error(message);
     }
   } else {
-    throw new Error("Usage: tests.ts select|test|summary");
+    throw new Error("Usage: tests.ts select|select-windows|test|summary");
   }
 }
