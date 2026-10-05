@@ -3483,7 +3483,7 @@ static String fileURLSuffix(const URL& url)
 static String resolvedModuleKey(const String& resolved, const String& suffix)
 {
     // Keep literal '#' paths keyed like require() and moduleKeyFromFileURL; only '?' splits a module key.
-    if (isAbsolutePath(resolved) && resolved.find('?') != WTF::notFound)
+    if (isAbsolutePath(resolved) && moduleKeyPathLength(resolved) < resolved.length())
         return makeString(URL::fileURLWithFileSystemPath(resolved).string(), suffix);
     // Node's default ESM realpath finalization aliases #x and ?#x.
     // https://github.com/nodejs/node/blob/v26.8.2/lib/internal/modules/esm/resolve.js

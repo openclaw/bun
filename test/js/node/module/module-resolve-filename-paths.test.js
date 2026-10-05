@@ -223,6 +223,9 @@ test("Module._resolveFilename throws ERR_INVALID_ARG_TYPE if options.paths is no
     expect(loaded.dirname).toBe(dirname(namespaced));
     expect(loaded.resolvedChild).toBe(toNamespacedPath(join(dir, "child.cjs")));
     expect(loaded.child).toEqual({ value: 42 });
+    const fromNamespace = Module.createRequire(namespaced);
+    expect(fromNamespace.resolve("./child.cjs")).toBe(loaded.resolvedChild);
+    expect(fromNamespace("./child.cjs")).toBe(loaded.child);
   } finally {
     cleanup();
   }
