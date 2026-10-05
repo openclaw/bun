@@ -1,28 +1,14 @@
-name: OpenClaw release
-
-# Pipeline, tag scheme, manifest, signing and the infrastructure choices behind
-# them: .github/OPENCLAW_RELEASE.md
+name: OpenClaw transferred PR Windows qualification
 
 on:
-  push:
-    tags:
-      - "openclaw-v*"
-  pull_request:
-    paths:
-      - .github/workflows/openclaw-release.yml
-      - scripts/openclaw-release/**
   workflow_dispatch:
     inputs:
-      tag:
-        description: "Release tag (openclaw-v…) to build; empty builds the dispatched ref as a dry run"
+      source_commit:
+        description: "Exact PR runtime source SHA"
+        required: true
         type: string
-        default: ""
-      publish:
-        description: "Publish the GitHub release (needs a tag of a commit on main)"
-        type: boolean
-        default: false
-      targets:
-        description: "Comma-separated targets; empty = six release targets. Also: linux-x64-musl, linux-arm64-musl"
+      test_commit:
+        description: "Optional reviewed PR123 test-only source SHA; empty uses runtime source tests"
         type: string
         default: ""
 
@@ -30,12 +16,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: openclaw-release-${{ github.event_name == 'pull_request' && github.head_ref || github.ref }}-${{ inputs.tag }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: w173-transferred-windows-${{ inputs.source_commit }}
+  cancel-in-progress: false
 
 env:
-  RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
-  PUBLISH: ${{ github.event_name == 'push' || inputs.publish == true }}
+  RELEASE_TAG: ""
+  PUBLISH: "false"
 
 jobs:
   plan:
@@ -53,6 +39,13 @@ jobs:
       windows-matrix: ${{ steps.plan.outputs.windows-matrix }}
       mtime: ${{ steps.plan.outputs.mtime }}
     steps:
+      - name: Validate exact source inputs
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          TEST_COMMIT: ${{ inputs.test_commit }}
+        run: |
+          [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          [[ -z "$TEST_COMMIT" || "$TEST_COMMIT" =~ ^[0-9a-f]{40}$ ]]
       - name: Checkout pipeline
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -62,7 +55,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: source
-          ref: ${{ env.RELEASE_TAG && format('refs/tags/{0}', env.RELEASE_TAG) || github.sha }}
+          ref: ${{ inputs.source_commit }}
           # History for the ancestry check against main; blobs are fetched on demand.
           fetch-depth: 0
           filter: blob:none
@@ -77,7 +70,7 @@ jobs:
       - name: Plan
         id: plan
         env:
-          TARGETS: ${{ inputs.targets }}
+          TARGETS: windows-x64
         run: |
           args=(--source source --main origin/main)
           [ -n "$RELEASE_TAG" ] && args+=(--tag "$RELEASE_TAG")
@@ -168,154 +161,6 @@ jobs:
           retention-days: 14
           compression-level: 0
 
-  sign-macos:
-    name: Sign macOS
-    needs: [plan, build]
-    if: needs.plan.outputs.darwin == 'true'
-    runs-on: macos-15
-    timeout-minutes: 90
-    # A publish runs in this environment, which can hold the signing secrets and require an approval.
-    environment: ${{ needs.plan.outputs.publish == 'true' && 'openclaw-release' || '' }}
-    steps:
-      - name: Checkout pipeline
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          path: pipeline
-          persist-credentials: false
-      - name: Checkout source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          path: source
-          ref: ${{ needs.plan.outputs.commit }}
-          sparse-checkout: /entitlements.plist
-          sparse-checkout-cone-mode: false
-          persist-credentials: false
-      - name: Download
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          pattern: build-darwin-*
-          path: dist
-          merge-multiple: true
-      - name: Sign and notarize
-        env:
-          # The OpenClaw release fleet's names (openclaw/release-workflows). Pull requests never see them.
-          P12_BASE64: ${{ github.event_name != 'pull_request' && secrets.MACOS_SIGNING_P12 || '' }}
-          P12_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.MACOS_SIGNING_P12_PASSWORD || '' }}
-          NOTARY_KEY_P8: ${{ github.event_name != 'pull_request' && secrets.ASC_PRIVATE_KEY_P8 || '' }}
-          NOTARYTOOL_KEY_ID: ${{ github.event_name != 'pull_request' && secrets.ASC_KEY_ID || '' }}
-          NOTARYTOOL_ISSUER: ${{ github.event_name != 'pull_request' && secrets.ASC_ISSUER_ID || '' }}
-          PUBLISH: ${{ needs.plan.outputs.publish }}
-          REQUIRE_SIGNING: ${{ vars.OPENCLAW_RELEASE_REQUIRE_SIGNING }}
-        run: |
-          targets=()
-          for zip in dist/bun-darwin-*.zip; do
-            case "$zip" in
-              */bun-darwin-aarch64.zip) targets+=(darwin-arm64) ;;
-              */bun-darwin-x64.zip) targets+=(darwin-x64) ;;
-            esac
-          done
-          if [ -z "$P12_BASE64" ]; then
-            if [ "$PUBLISH" = true ] && [ "$REQUIRE_SIGNING" = true ]; then
-              echo "::error::OPENCLAW_RELEASE_REQUIRE_SIGNING is set but no MACOS_SIGNING_P12 secret is available"
-              exit 1
-            fi
-            echo "::notice::No Developer ID configured: darwin executables keep the linker's ad-hoc signature."
-            exit 0
-          fi
-          keychain="$RUNNER_TEMP/signing.keychain-db"
-          keychain_password="$(uuidgen)"
-          security create-keychain -p "$keychain_password" "$keychain"
-          security set-keychain-settings -lut 3600 "$keychain"
-          security unlock-keychain -p "$keychain_password" "$keychain"
-          printf '%s' "$P12_BASE64" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
-          security import "$RUNNER_TEMP/developer-id.p12" -k "$keychain" -P "$P12_PASSWORD" -T /usr/bin/codesign
-          rm "$RUNNER_TEMP/developer-id.p12"
-          security set-key-partition-list -S apple-tool:,apple: -k "$keychain_password" "$keychain" > /dev/null
-          keychains=("$keychain")
-          while read -r existing; do keychains+=("$(echo "$existing" | tr -d '"')"); done < <(security list-keychains -d user)
-          security list-keychains -d user -s "${keychains[@]}"
-          export NOTARYTOOL_KEY="$RUNNER_TEMP/notary.p8"
-          printf '%s' "$NOTARY_KEY_P8" > "$NOTARYTOOL_KEY"
-          SIGN_KEYCHAIN="$keychain" pipeline/scripts/openclaw-release/sign-macos.sh --dist dist --entitlements source/entitlements.plist "${targets[@]}"
-          rm -f "$NOTARYTOOL_KEY"
-          security delete-keychain "$keychain"
-      - name: Upload darwin-arm64
-        if: hashFiles('dist/bun-darwin-aarch64.zip') != ''
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: signed-darwin-arm64
-          path: |
-            dist/bun-darwin-aarch64*.zip
-            dist/darwin-arm64.*.json
-          if-no-files-found: error
-          retention-days: 14
-          compression-level: 0
-      - name: Upload darwin-x64
-        if: hashFiles('dist/bun-darwin-x64.zip') != ''
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: signed-darwin-x64
-          path: |
-            dist/bun-darwin-x64*.zip
-            dist/darwin-x64.*.json
-          if-no-files-found: error
-          retention-days: 14
-          compression-level: 0
-
-  sign-windows:
-    name: Sign Windows releases
-    needs: [plan, build]
-    if: github.event_name != 'pull_request' && (github.event_name == 'push' || inputs.publish == true) && needs.plan.outputs.windows == 'true' && needs.plan.outputs.publish == 'true'
-    # The signing dlib requires x64 even when the executable being signed is ARM64.
-    runs-on: windows-2025
-    timeout-minutes: 30
-    environment: release-signing
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          sparse-checkout: scripts/openclaw-release
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          pattern: test-only-input-windows-*
-          merge-multiple: true
-          path: dist
-      - name: Azure OIDC login
-        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      - name: Sign both Windows architectures and profile executables
-        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2
-        with:
-          endpoint: https://eus.codesigning.azure.net/
-          signing-account-name: openclaw
-          certificate-profile-name: openclaw
-          files-folder: dist
-          files-folder-filter: exe
-          files-folder-recurse: true
-          file-digest: SHA256
-          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-          timestamp-digest: SHA256
-      - name: Verify Foundation signatures and package final bytes
-        shell: pwsh
-        env:
-          MTIME: ${{ needs.plan.outputs.mtime }}
-        run: ./scripts/openclaw-release/package-windows.ps1 -Dist dist -Mtime $env:MTIME -Mode SignedRelease
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: signed-windows
-          path: |
-            dist/*.zip
-            dist/*.signing.json
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 14
-
   windows-test-only:
     name: Package unsigned Windows test artifacts
     needs: [plan, build]
@@ -349,8 +194,8 @@ jobs:
 
   smoke:
     name: Smoke ${{ matrix.target }}
-    needs: [plan, build, sign-macos, sign-windows, windows-test-only]
-    if: ${{ !cancelled() && needs.build.result == 'success' && needs.sign-macos.result != 'failure' && (needs.plan.outputs.windows != 'true' || (needs.plan.outputs.publish == 'true' && needs.sign-windows.result == 'success') || (needs.plan.outputs.publish != 'true' && needs.windows-test-only.result == 'success')) }}
+    needs: [plan, build, windows-test-only]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.windows-test-only.result == 'success' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     strategy:
@@ -395,8 +240,8 @@ jobs:
 
   windows-compatibility:
     name: Compatibility ${{ matrix.target }}
-    needs: [plan, build, sign-windows, windows-test-only]
-    if: ${{ !cancelled() && needs.plan.outputs.windows == 'true' && ((needs.plan.outputs.publish == 'true' && needs.sign-windows.result == 'success') || (needs.plan.outputs.publish != 'true' && needs.windows-test-only.result == 'success')) }}
+    needs: [plan, build, windows-test-only]
+    if: ${{ !cancelled() && needs.windows-test-only.result == 'success' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 40
     strategy:
@@ -420,6 +265,37 @@ jobs:
         with:
           name: ${{ matrix.artifact }}
           path: dist
+      - name: Checkout optional reviewed test source
+        if: inputs.test_commit != ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: test-source
+          ref: ${{ inputs.test_commit }}
+          persist-credentials: false
+          sparse-checkout: |
+            test/js/node/process/process.test.js
+            test/js/node/tls/node-tls-client-wrap-fixture.mjs
+            test/js/node/tls/node-tls-connect.test.ts
+          sparse-checkout-cone-mode: false
+      - name: Record exact runtime and test source provenance
+        working-directory: source
+        shell: pwsh
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          TEST_COMMIT: ${{ inputs.test_commit }}
+        run: |
+          $source = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $source -cne $env:SOURCE_COMMIT) { throw 'Runtime source mismatch.' }
+          $files = @('test/js/node/process/process.test.js', 'test/js/node/tls/node-tls-client-wrap-fixture.mjs', 'test/js/node/tls/node-tls-connect.test.ts')
+          if ($env:TEST_COMMIT) {
+            $testSource = git -C ../test-source rev-parse HEAD
+            if ($LASTEXITCODE -ne 0 -or $testSource -cne $env:TEST_COMMIT) { throw 'Test source mismatch.' }
+            foreach ($file in $files) { Copy-Item -LiteralPath "../test-source/$file" -Destination $file }
+          }
+          New-Item -ItemType Directory -Force build/openclaw-ci | Out-Null
+          $hashes = @{}
+          foreach ($file in $files) { $hashes[$file] = (Get-FileHash -Algorithm SHA256 $file).Hash.ToLowerInvariant() }
+          @{ runtimeCommit = $source; testCommit = $env:TEST_COMMIT; testFiles = $hashes } | ConvertTo-Json -Depth 8 | Set-Content build/openclaw-ci/source-provenance.json
       - name: Run shared Windows compatibility selection
         working-directory: source
         shell: pwsh
@@ -429,13 +305,20 @@ jobs:
         run: |
           Expand-Archive -LiteralPath "../dist/$env:TRIPLET.zip" -DestinationPath ../runtime
           $exe = (Resolve-Path "../runtime/$env:TRIPLET/bun.exe").Path
+          $revision = & $exe -p Bun.revision
+          if ($LASTEXITCODE -ne 0 -or $revision -cne '${{ needs.plan.outputs.commit }}') { throw 'Built runtime revision mismatch.' }
           $arch = & $exe -p process.arch
           if ($LASTEXITCODE -ne 0 -or $arch -cne $env:EXPECTED_ARCH) { throw 'Unexpected runtime architecture.' }
           $env:PATH = "$(Split-Path $exe);$env:PATH"
           & $exe ../pipeline/scripts/openclaw-ci/tests.ts select-windows
           if ($LASTEXITCODE -ne 0) { throw 'Test selection failed.' }
           & $exe ../pipeline/scripts/openclaw-ci/tests.ts test
-          if ($LASTEXITCODE -ne 0) { throw 'Windows compatibility tests failed.' }
+          $testExit = $LASTEXITCODE
+          $receipt = Get-Content build/openclaw-ci/source-provenance.json -Raw | ConvertFrom-Json
+          foreach ($item in $receipt.testFiles.psobject.Properties) {
+            if ((Get-FileHash -Algorithm SHA256 $item.Name).Hash.ToLowerInvariant() -cne $item.Value) { throw 'Test source changed during qualification.' }
+          }
+          if ($testExit -ne 0) { throw 'Windows compatibility tests failed.' }
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
@@ -446,7 +329,7 @@ jobs:
 
   manifest:
     name: Manifest
-    needs: [plan, build, sign-macos, smoke, windows-compatibility]
+    needs: [plan, build, smoke, windows-compatibility]
     if: ${{ !cancelled() && needs.smoke.result == 'success' && (needs.plan.outputs.windows != 'true' || needs.windows-compatibility.result == 'success') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -498,44 +381,3 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
-
-  publish:
-    name: Publish
-    needs: [plan, manifest]
-    if: ${{ !cancelled() && needs.manifest.result == 'success' && needs.plan.outputs.publish == 'true' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    permissions:
-      contents: write
-      id-token: write
-      attestations: write
-    steps:
-      - name: Download
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: release
-          path: release
-      - name: Attest build provenance
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
-        with:
-          subject-path: |
-            release/*.zip
-            release/manifest.json
-      - name: Create release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.plan.outputs.tag }}
-          PRERELEASE: ${{ vars.OPENCLAW_RELEASE_PRERELEASE || 'true' }}
-          COMMIT: ${{ needs.plan.outputs.commit }}
-        run: |
-          # The tag may have moved since the plan job read it; the release must name the commit that was built.
-          tagged="$(git ls-remote "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "refs/tags/$TAG" "refs/tags/$TAG^{}" | sort -k2 | tail -1 | cut -f1)"
-          if [ "$tagged" != "$COMMIT" ]; then
-            echo "::error::$TAG points at ${tagged:-nothing}, but $COMMIT was built"
-            exit 1
-          fi
-          cd release
-          sha256sum --check SHA256SUMS
-          flags=(--repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --notes-file release-notes.md --latest=false)
-          [ "$PRERELEASE" = true ] && flags+=(--prerelease)
-          gh release create "$TAG" "${flags[@]}" ./*.zip manifest.json SHA256SUMS
