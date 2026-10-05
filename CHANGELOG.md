@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Follow directory symlinks in Windows asynchronous recursive `fs.readdir` callback results and promise string results while preserving promise Dirent traversal boundaries.
+
 - Validate `vm.Script` cached data without compiling an unused executable, avoiding crashes when JSC runs without a JIT. Adapts [oven-sh/bun#41769](https://github.com/oven-sh/bun/pull/41769); thanks @robobun!
 
 - Align WebKit and VM source-position assertions with Node's constructor locations and select these regressions for native stack-formatting changes in both fork CI lanes.
