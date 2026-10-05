@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Follow directory symlinks in Windows asynchronous recursive `fs.readdir` callback results and promise string results while preserving promise Dirent traversal boundaries.
+
+- Keep Windows stdio EOF tests aligned with Node's retained pipe handles, allow an explicit host Node version for compatibility qualification, and preserve the host identity in TLS session-reuse fixtures.
+
 - Validate `vm.Script` cached data without compiling an unused executable, avoiding crashes when JSC runs without a JIT. Adapts [oven-sh/bun#41769](https://github.com/oven-sh/bun/pull/41769); thanks @robobun!
 
 - Reject explicitly empty `vm.Script` cached data like Node.js and cover cache round-trips and incompatible data in interpreter, baseline, DFG, FTL, and default modes. Extends the crash regression from [oven-sh/bun#41769](https://github.com/oven-sh/bun/pull/41769); thanks @robobun!
@@ -194,6 +198,9 @@
 
 - Sync upstream nightly through `d4928764f23213ecf3cd61fa0b5b4a44369a5096`, configuring fetch TLS once per connection so pooled sockets can be reused during renegotiation without repeating session setup.
 - Sync upstream nightly through `9bd19c98eacc01530a4e7609bc427abffa87d77e`, preserving PostgreSQL query ordering through errors and limiting MySQL row-decoding failures to the affected query.
+- Support real byte-based `node:inspector` HeapProfiler allocation sampling with allocation-site trees, live profiles, and major/minor GC inclusion flags (requires the OpenClaw WebKit allocation sampler).
+- Preserve built-in error constructor syntax and returning arrow frames, and use JSC syntax-selected call and property-read stack positions. Retain runtime callee parentheses and computed access, and map call, bracket, and template delimiters back to their original source. Continues the source-position fixes from [oven-sh/bun#35179](https://github.com/oven-sh/bun/pull/35179), [oven-sh/bun#37396](https://github.com/oven-sh/bun/pull/37396), and [oven-sh/bun#41580](https://github.com/oven-sh/bun/pull/41580). Thanks @robobun!
+- Add position-preserving `module.stripTypeScriptTypes()` strip mode for tooling that analyzes TypeScript exports. Adapts [oven-sh/bun#35517](https://github.com/oven-sh/bun/pull/35517); thanks @cirospaciari!
 
 - Build Windows ARM64 alongside x64, require Foundation Authenticode signatures before Windows release packaging, and qualify both architectures with the same native compatibility selection. Unsigned CI artifacts are explicitly test-only.
 

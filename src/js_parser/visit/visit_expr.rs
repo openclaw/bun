@@ -855,8 +855,8 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
         let is_template_tag = matches!(p.template_tag, Data::EIndex(tag) if core::ptr::eq(&raw const *e_, &raw const *tag));
         let is_delete_target = matches!(p.delete_target, Data::EIndex(dt) if core::ptr::eq(&raw const *e_, &raw const *dt));
 
-        // "a['b']" => "a.b"
-        if p.options.features.minify_syntax {
+        // Runtime stack positions distinguish computed access from dot access.
+        if p.options.features.minify_syntax && !p.options.features.dont_bundle_twice {
             if let Some(mut s) = e_.index.data.e_string() {
                 if !s.is_utf16 && s.is_identifier(p.arena) {
                     let dot = p.new_expr(
@@ -985,7 +985,10 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
 
                         // "a['b' + '']" => "a.b"
                         // "enum A { B = 'b' }; a[A.B]" => "a.b"
-                        if p.options.features.minify_syntax && s.is_identifier(p.arena) {
+                        if p.options.features.minify_syntax
+                            && !p.options.features.dont_bundle_twice
+                            && s.is_identifier(p.arena)
+                        {
                             let dot = p.new_expr(
                                 E::Dot {
                                     name: s.data,

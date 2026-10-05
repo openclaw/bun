@@ -12,15 +12,48 @@
 #include <JavaScriptCore/ControlFlowProfiler.h>
 #include <JavaScriptCore/FunctionHasExecutedCache.h>
 #include <JavaScriptCore/HeapIterationScope.h>
+#include <JavaScriptCore/HeapProfiler.h>
 #include <JavaScriptCore/MarkedSpaceInlines.h>
 #include <JavaScriptCore/ScriptExecutable.h>
 #include <JavaScriptCore/SourceProvider.h>
 #include <JavaScriptCore/SubspaceInlines.h>
 #include <wtf/JSONValues.h>
+#include <cmath>
 
 using namespace JSC;
 
 extern "C" size_t Bun__gc(void* vm, bool sync);
+
+JSC_DECLARE_HOST_FUNCTION(jsFunction_startAllocationSampling);
+JSC_DEFINE_HOST_FUNCTION(jsFunction_startAllocationSampling, (JSGlobalObject * globalObject, CallFrame* callFrame))
+{
+    globalObject->vm().ensureHeapProfiler().startAllocationSampling(
+        std::floor(callFrame->argument(0).asNumber()), callFrame->argument(1).asBoolean(), callFrame->argument(2).asBoolean());
+    return JSValue::encode(jsUndefined());
+}
+
+JSC_DECLARE_HOST_FUNCTION(jsFunction_stopAllocationSampling);
+JSC_DEFINE_HOST_FUNCTION(jsFunction_stopAllocationSampling, (JSGlobalObject * globalObject, CallFrame*))
+{
+    if (auto* profiler = globalObject->vm().heapProfiler())
+        profiler->stopAllocationSampling();
+    return JSValue::encode(jsUndefined());
+}
+
+JSC_DECLARE_HOST_FUNCTION(jsFunction_getAllocationSamplingProfile);
+JSC_DEFINE_HOST_FUNCTION(jsFunction_getAllocationSamplingProfile, (JSGlobalObject * globalObject, CallFrame*))
+{
+    auto& vm = globalObject->vm();
+    auto* profiler = vm.heapProfiler();
+    if (!profiler || !profiler->isSamplingAllocations())
+        return JSValue::encode(jsNull());
+    // Node's inspector sets V8's kSamplingForceGC before retrieving a profile.
+    Bun__gc(Bun::vm(globalObject), true);
+    profiler = vm.heapProfiler();
+    if (!profiler || !profiler->isSamplingAllocations())
+        return JSValue::encode(jsNull());
+    return JSValue::encode(jsString(vm, profiler->allocationSamplingProfile()));
+}
 
 JSC_DECLARE_HOST_FUNCTION(jsFunction_collectInspectorGarbage);
 JSC_DEFINE_HOST_FUNCTION(jsFunction_collectInspectorGarbage, (JSGlobalObject * globalObject, CallFrame*))

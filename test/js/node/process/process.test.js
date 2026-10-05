@@ -1054,7 +1054,7 @@ describe.concurrent(() => {
     });
 
     let [out, exited] = await Promise.all([new Response(subprocess.stdout).text(), subprocess.exited]);
-    expect(out.trim()).toEqual("v26.3.0");
+    expect(out.trim()).toEqual(bunEnv.BUN_TEST_NODE_VERSION ?? "v26.3.0");
     expect(exited).toBe(0);
   });
 
@@ -3668,7 +3668,7 @@ it("process.report retains full startup argv independently of mutable process ar
   expect(exitCode).toBe(0);
 });
 
-it("initialized process stdout and stderr release EOF when their fd closes", async () => {
+it("initialized process stdout and stderr preserve platform EOF behavior when their fd closes", async () => {
   await using child = Bun.spawn({
     cmd: [
       bunExe(),
@@ -3706,7 +3706,8 @@ it("initialized process stdout and stderr release EOF when their fd closes", asy
       }))));
 
       for(const result of results) {
-        assert.equal(result.beforeExit,true,JSON.stringify(result));
+        // Windows retains the initialized pipe handle until exit, matching Node.
+        assert.equal(result.beforeExit,process.platform!=='win32',JSON.stringify(result));
         assert.equal(result.alive,true);
         assert.equal(result.output,result.write?'x':'');
       }

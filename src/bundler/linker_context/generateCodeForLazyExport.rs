@@ -344,6 +344,7 @@ pub(crate) fn generate_code_for_lazy_export(
                         bun_ast::StoreSlice::new_mut(arena.alloc_slice_fill_iter(template_parts));
                     value = Expr::init(
                         E::Template {
+                            head_loc: bun_ast::Loc::EMPTY,
                             tag: None,
                             parts: parts_slice,
                             head: E::TemplateContents::Cooked(E::String::init(b"")),

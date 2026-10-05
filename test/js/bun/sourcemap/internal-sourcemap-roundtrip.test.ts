@@ -486,7 +486,7 @@ describe.concurrent("sourcemap of a source with a truncated trailing UTF-8 seque
     const map = await Bun.file(path.join(String(dir), "out", "in.js.map")).json();
     expect(map).toMatchObject({
       sources: ["../in.js"],
-      mappings: ";AAAA,QAAQ,IAAI,CAAC;",
+      mappings: ";AAAA,QAAQ,GAAG,CAAC,CAAC;",
     });
   });
 });

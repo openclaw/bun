@@ -189,6 +189,8 @@ bun bd test foo.test.ts
 bun bd ./foo.ts
 ```
 
+The process test suite expects Node.js `v26.3.0` on `PATH`. To qualify another host Node.js version, set `BUN_TEST_NODE_VERSION` to its exact `node --version` output, including the `v` prefix. The assertion still checks the full version string. The TLS session fixture records constructor controls for `v26.3.0` and `v24.21.0`, including the latter's bound-session envelope. Other versions require verifying that constructor behavior before extending the control.
+
 A full debug build can take a few minutes when Rust or C++ has changed; cargo's incremental compilation makes subsequent Rust-only rebuilds much faster. If your development workflow is "change one line, save, rebuild", you will still spend too much time waiting for the link step. Instead:
 
 - Batch up your changes
