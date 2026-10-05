@@ -196,3 +196,5 @@
 - Sync upstream nightly through `9bd19c98eacc01530a4e7609bc427abffa87d77e`, preserving PostgreSQL query ordering through errors and limiting MySQL row-decoding failures to the affected query.
 
 - Build Windows ARM64 alongside x64, require Foundation Authenticode signatures before Windows release packaging, and qualify both architectures with the same native compatibility selection. Unsigned CI artifacts are explicitly test-only.
+
+- Pin immutable [OpenClaw WebKit `f1e1ca1156`](https://github.com/openclaw/WebKit/releases/tag/autobuild-f1e1ca1156c8cb3b468bec0e1989fbfa08899661) with all ten archive checksums, including Windows ARM64, cached repeated stack coordinates, and the ARM64 allocation-accounting arithmetic fix.

@@ -273,10 +273,12 @@ archive URL/SHA-256 move together. Missing variants fail closed; the build never
 falls back to an upstream archive with a different engine ABI.
 
 The separate [OpenClaw WebKit pipeline](https://github.com/openclaw/WebKit)
-builds, qualifies and publishes immutable engine releases. Windows ARM64 needs
-its non-LTO `bun-webkit-windows-arm64.tar.gz` archive in addition to the existing
-nine variants. Qualify and publish that complete matrix before adding its
-checksums to Bun. A workflow artifact is test input, not a published release pin.
+builds, qualifies and publishes immutable engine releases. The current
+[ten-archive release](https://github.com/openclaw/WebKit/releases/tag/autobuild-f1e1ca1156c8cb3b468bec0e1989fbfa08899661)
+includes the non-LTO `bun-webkit-windows-arm64.tar.gz` archive, cached repeated
+stack coordinates and corrected ARM64 allocation-accounting arithmetic.
+Qualify and publish each complete matrix before adding its checksums to Bun.
+A workflow artifact is test input, not a published release pin.
 Bun must rebuild against the exact matching headers and libraries whenever the
 engine pin changes.
 
