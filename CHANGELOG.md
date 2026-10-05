@@ -204,4 +204,8 @@
 
 - Keep query and fragment imports of compiled embedded modules on their canonical module record, including Windows and non-ASCII filenames.
 
+- Build Windows ARM64 alongside x64, require Foundation Authenticode signatures before Windows release packaging, and qualify both architectures with the same native compatibility selection. Unsigned CI artifacts are explicitly test-only.
+
+- Pin immutable [OpenClaw WebKit `f1e1ca1156`](https://github.com/openclaw/WebKit/releases/tag/autobuild-f1e1ca1156c8cb3b468bec0e1989fbfa08899661) with all ten archive checksums, including Windows ARM64, cached repeated stack coordinates, and the ARM64 allocation-accounting arithmetic fix.
+
 - Check live `vm.Script` counts and post-warmup RSS growth in the leak regression, preserving the 200 MiB release and 700 MiB ASAN RSS limits. Adapts [oven-sh/bun#42474](https://github.com/oven-sh/bun/pull/42474); thanks @robobun!

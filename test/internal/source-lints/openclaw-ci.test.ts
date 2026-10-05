@@ -3,13 +3,47 @@ import { bunExe, tempDir } from "harness";
 import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync, renameSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { broader, isTest, selectTests, smoke } from "../../../scripts/openclaw-ci/tests.ts";
+import {
+  assertSelectedTestResults,
+  broader,
+  isTest,
+  selectTests,
+  smoke,
+  windowsSmoke,
+} from "../../../scripts/openclaw-ci/tests.ts";
 
 const tracked = execFileSync("git", ["ls-files", "-z", "test"], { encoding: "utf8" }).split("\0").filter(Boolean);
 
 test("PR and nightly smoke lists exist and nightly includes every PR smoke file", () => {
   expect(selectTests([], tracked, false)).toEqual([...smoke].sort());
   expect(selectTests([], tracked, true)).toEqual([...smoke, ...broader].sort());
+});
+
+test("both Windows architectures use the complete Windows compatibility selection", () => {
+  expect(selectTests([], tracked, false, "windows")).toEqual([...windowsSmoke].sort());
+  expect(selectTests([], tracked, true, "windows")).toEqual([...windowsSmoke].sort());
+  expect(windowsSmoke).toHaveLength(29);
+  for (const file of [...smoke, ...broader]) expect(windowsSmoke).toContain(file);
+  expect(windowsSmoke).toContain("test/js/bun/resolve/import-meta.test.js");
+});
+
+test("native Windows result paths prove coverage without admitting failed or missing tests", () => {
+  const selected = ["test/js/node/fs/fs.test.ts", "test/js/node/process/process.test.js"];
+  const results = selected.map(testPath => ({ testPath: testPath.replaceAll("/", "\\"), ok: true }));
+  expect(() => assertSelectedTestResults(selected, results, "win32")).not.toThrow();
+  expect(() => assertSelectedTestResults(selected, results.slice(1), "win32")).toThrow(selected[0]);
+  expect(() => assertSelectedTestResults(selected, [{ ...results[0]!, ok: false }, results[1]!], "win32")).toThrow(
+    selected[0],
+  );
+  // Backslashes remain literal filename characters on POSIX.
+  expect(() => assertSelectedTestResults(selected, results, "linux")).toThrow(selected[0]);
+  expect(() =>
+    assertSelectedTestResults(
+      selected,
+      selected.map(testPath => ({ testPath, ok: true })),
+      "linux",
+    ),
+  ).not.toThrow();
 });
 
 test("macOS selection includes file, directory, recursive, process and child-process coverage", () => {
