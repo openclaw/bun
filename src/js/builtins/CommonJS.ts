@@ -180,7 +180,13 @@ export function internalRequire(id: string, parent: JSCommonJSModule, requireMap
   $assert(filename.endsWith(".node"));
 
   const module = $createCommonJSModule(id, {}, true, requireMap === $requireMap ? parent : undefined);
-  process.dlopen(module, filename);
+  // Windows needs the namespaced disk path for addon activation contexts.
+  // Embedded keys must reach dlopen unchanged so it can extract the addon.
+  const nativePath =
+    process.platform === "win32" && !filename.startsWith("B:/~BUN/")
+      ? require("node:path").toNamespacedPath(filename)
+      : filename;
+  process.dlopen(module, nativePath);
   $requireMap.$set(id, module);
   if (requireMap !== $requireMap) requireMap.$set(id, module);
   return module.exports;
