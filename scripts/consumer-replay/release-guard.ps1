@@ -20,3 +20,4 @@ if ($code -eq 0 -or $output -notmatch 'Unsigned Windows runtime proof is restric
 }
 @{ passed = $true; exitCode = $code; profile = 'release'; unsignedRejected = $true } |
     ConvertTo-Json | Set-Content proof/release-guard.json
+exit 0
