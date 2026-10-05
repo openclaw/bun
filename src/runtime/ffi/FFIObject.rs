@@ -44,6 +44,7 @@ fn create_buffer_with_ctx(
             len: usize,
             ctx: *mut c_void,
             deallocator: jsc::JSTypedArrayBytesDeallocator,
+            allocation: jsc::array_buffer::ArrayBufferAllocationMode,
         ) -> JSValue;
     }
     // SAFETY: `global` is live; `slice` stays valid for the Buffer's lifetime.
@@ -55,6 +56,7 @@ fn create_buffer_with_ctx(
             slice.len(),
             ctx,
             callback,
+            jsc::array_buffer::ArrayBufferAllocationMode::External,
         )
     })
 }
@@ -652,6 +654,7 @@ fn to_array_buffer(
             global_this,
             ctx.unwrap_or(core::ptr::null_mut()),
             callback,
+            jsc::array_buffer::ArrayBufferAllocationMode::External,
         )
     }
 }

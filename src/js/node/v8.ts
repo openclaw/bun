@@ -10,6 +10,8 @@ const {
   stopGCProfiler,
   discardGCProfiler,
   getHeapUsage,
+  serialize: serializeNative,
+  bufferEnvelopeMagic: kBufferEnvelopeMagic,
   queryObjects: queryHeapObjects,
 } = $cpp("NodeV8.cpp", "Bun::createNodeV8Binding");
 
@@ -41,7 +43,6 @@ const FunctionPrototypeCall = Function.prototype.call;
 const uncurryThis = func => FunctionPrototypeCall.bind(func);
 const ObjectGetOwnPropertyDescriptor = Object.getOwnPropertyDescriptor;
 const Uint8ArrayCtor = Uint8Array;
-const BufferAllocUnsafe = Buffer.allocUnsafe;
 const TypedArrayProto = Object.getPrototypeOf(Uint8ArrayCtor.prototype);
 const TypedArrayPrototypeGetBuffer = uncurryThis(ObjectGetOwnPropertyDescriptor(TypedArrayProto, "buffer")!.get);
 const TypedArrayPrototypeGetByteOffset = uncurryThis(
@@ -50,7 +51,6 @@ const TypedArrayPrototypeGetByteOffset = uncurryThis(
 const TypedArrayPrototypeGetByteLength = uncurryThis(
   ObjectGetOwnPropertyDescriptor(TypedArrayProto, "byteLength")!.get,
 );
-const TypedArrayPrototypeSet = uncurryThis(TypedArrayProto.set);
 const DataViewPrototypeGetBuffer = uncurryThis(ObjectGetOwnPropertyDescriptor(DataView.prototype, "buffer")!.get);
 const DataViewPrototypeGetByteOffset = uncurryThis(
   ObjectGetOwnPropertyDescriptor(DataView.prototype, "byteOffset")!.get,
@@ -299,7 +299,6 @@ function getCppHeapStatistics(type = "detailed") {
 // Buffer-bearing payloads are framed as MAGIC + version + SSV([value, buffers]) so deserialize
 // can restore Buffer prototypes (see internal/serialization_buffers). Leading 0xFF cannot collide
 // with bare SSV output; Buffer-free payloads stay bare SSV so older readers keep working.
-const kBufferEnvelopeMagic = [0xff, 0x42, 0x55, 0x4e, 0x01]; // 0xFF "BUN" v1
 
 function hasBufferEnvelopeMagic(view) {
   // In-bounds integer-indexed reads on a typed array never consult the
@@ -347,14 +346,7 @@ function stopCoverage() {
 }
 function serialize(arg1) {
   const tagged = require("internal/serialization_buffers").tagBuffers(arg1);
-  if (tagged === null) {
-    return jsc.serialize(arg1, { binaryType: "nodebuffer" });
-  }
-  const payload = jsc.serialize(tagged, { binaryType: "nodebuffer" });
-  const framed = BufferAllocUnsafe(kBufferEnvelopeMagic.length + TypedArrayPrototypeGetByteLength(payload));
-  for (let i = 0; i < kBufferEnvelopeMagic.length; i++) framed[i] = kBufferEnvelopeMagic[i];
-  TypedArrayPrototypeSet(framed, payload, kBufferEnvelopeMagic.length);
-  return framed;
+  return serializeNative(tagged === null ? arg1 : tagged, tagged !== null);
 }
 
 function getDefaultHeapSnapshotPath() {

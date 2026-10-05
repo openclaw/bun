@@ -5,11 +5,14 @@
 #include "ErrorCode.h"
 #include "BunClientData.h"
 #include "NodeV8.h"
+#include "MessagePort.h"
+#include "SerializedScriptValue.h"
 #include "ZigGlobalObject.h"
 
 #include <JavaScriptCore/HeapInlines.h>
 #include <JavaScriptCore/HeapIterationScope.h>
 #include <JavaScriptCore/JSArray.h>
+#include <JavaScriptCore/JSGenericTypedArrayViewInlines.h>
 #include <JavaScriptCore/JSCJSValue.h>
 #include <JavaScriptCore/JSObject.h>
 #include <JavaScriptCore/JSObjectInlines.h>
@@ -17,21 +20,44 @@
 #include <JavaScriptCore/MarkedSpaceInlines.h>
 #include <JavaScriptCore/ObjectConstructor.h>
 #include <wtf/StdLibExtras.h>
+#include <array>
 
 namespace Bun {
 
 using namespace JSC;
 
+static constexpr std::array<uint8_t, 5> bufferEnvelopeMagic { 0xff, 0x42, 0x55, 0x4e, 0x01 };
+
+JSC_DEFINE_HOST_FUNCTION(functionSerializeForNode, (JSGlobalObject * globalObject, CallFrame* callFrame))
+{
+    auto& vm = globalObject->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    auto* domGlobal = uncheckedDowncast<WebCore::JSDOMGlobalObject>(globalObject);
+    Vector<Strong<JSObject>> transfers;
+    Vector<RefPtr<WebCore::MessagePort>> ports;
+    auto result = WebCore::SerializedScriptValue::create(*domGlobal, callFrame->argument(0), WTF::move(transfers), ports, WebCore::SerializationForStorage::Yes);
+    EXCEPTION_ASSERT(result.hasException() == !!scope.exception());
+    if (result.hasException()) {
+        WebCore::propagateException(*domGlobal, scope, result.releaseException());
+        RELEASE_AND_RETURN(scope, {});
+    }
+    auto serialized = result.releaseReturnValue();
+    auto prefix = callFrame->argument(1).asBoolean() ? std::span<const uint8_t>(bufferEnvelopeMagic) : std::span<const uint8_t>();
+    auto buffer = serialized->toArrayBuffer(ArrayBufferSharingMode::Default, prefix);
+    size_t length = buffer->byteLength();
+    RELEASE_AND_RETURN(scope, JSValue::encode(JSUint8Array::create(globalObject, domGlobal->JSBufferSubclassStructure(), WTF::move(buffer), 0, length)));
+}
+
 JSC_DEFINE_HOST_FUNCTION(functionGetHeapUsage, (JSGlobalObject * globalObject, CallFrame*))
 {
     auto& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
-    size_t used = WebCore::clientData(vm)->heapUsage();
-    size_t capacity = std::max(vm.heap.capacity(), used);
+    size_t used = vm.heap.jsHeapSizeForReporting();
+    size_t capacity = vm.heap.jsHeapCapacityForReporting();
     JSObject* result = constructEmptyObject(globalObject);
     result->putDirect(vm, Identifier::fromString(vm, "heapSize"_s), jsNumber(used));
     result->putDirect(vm, Identifier::fromString(vm, "heapCapacity"_s), jsNumber(capacity));
-    result->putDirect(vm, Identifier::fromString(vm, "extraMemorySize"_s), jsNumber(vm.heap.extraMemorySize() + vm.heap.externalMemorySize()));
+    result->putDirect(vm, Identifier::fromString(vm, "extraMemorySize"_s), jsNumber(vm.heap.externalMemorySizeForReporting()));
     result->putDirect(vm, Identifier::fromString(vm, "globalObjectCount"_s), jsNumber(vm.heap.globalObjectCount()));
     RELEASE_AND_RETURN(scope, JSValue::encode(result));
 }
@@ -156,7 +182,16 @@ JSC_DEFINE_HOST_FUNCTION(functionStopGCProfiler, (JSGlobalObject * globalObject,
 JSC::JSObject* createNodeV8Binding(JSC::JSGlobalObject* globalObject)
 {
     auto& vm = JSC::getVM(globalObject);
+    auto scope = DECLARE_THROW_SCOPE(vm);
     JSC::JSObject* object = JSC::constructEmptyObject(vm, globalObject->nullPrototypeObjectStructure());
+    auto* magic = constructEmptyArray(globalObject, nullptr, bufferEnvelopeMagic.size());
+    RETURN_IF_EXCEPTION(scope, nullptr);
+    for (unsigned i = 0; i < bufferEnvelopeMagic.size(); ++i) {
+        magic->putDirectIndex(globalObject, i, jsNumber(bufferEnvelopeMagic[i]));
+        RETURN_IF_EXCEPTION(scope, nullptr);
+    }
+    object->putDirect(vm, Identifier::fromString(vm, "bufferEnvelopeMagic"_s), magic);
+    object->putDirectNativeFunction(vm, globalObject, Identifier::fromString(vm, "serialize"_s), 2, functionSerializeForNode, ImplementationVisibility::Public, NoIntrinsic, 0);
     object->putDirectNativeFunction(vm, globalObject, JSC::Identifier::fromString(vm, "queryObjects"_s), 1, functionQueryObjects, ImplementationVisibility::Public, JSC::NoIntrinsic, 0);
     object->putDirectNativeFunction(vm, globalObject, JSC::Identifier::fromString(vm, "getHeapUsage"_s), 0, functionGetHeapUsage, ImplementationVisibility::Public, JSC::NoIntrinsic, 0);
     object->putDirectNativeFunction(vm, globalObject, JSC::Identifier::fromString(vm, "isStringOneByteRepresentation"_s), 1, functionIsStringOneByteRepresentation, ImplementationVisibility::Public, JSC::NoIntrinsic, 0);

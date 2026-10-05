@@ -1095,11 +1095,10 @@ static inline JSC::EncodedJSValue jsWorkerPrototypeFunction_getHeapStatisticsBod
     uint64_t reqId = worker.contextProxy().registerCrossVMRequest(vm, promise);
     auto parentId = globalObject->scriptExecutionContext()->identifier();
     auto parentLoopKind = globalObject->scriptExecutionContext()->currentLoopKind();
-    bool accepted = worker.contextProxy().postTaskToWorkerGlobalScope([reqId, parentId, parentLoopKind, protectedProxy = Ref { worker.contextProxy() }](ScriptExecutionContext& workerCtx) mutable {
-        auto& wvm = workerCtx.vm();
-        double heapSize = static_cast<double>(WebCore::clientData(wvm)->heapUsage());
-        double capacity = std::max(static_cast<double>(wvm.heap.capacity()), heapSize);
-        double extra = static_cast<double>(wvm.heap.extraMemorySize() + wvm.heap.externalMemorySize());
+    bool accepted = worker.contextProxy().postVMInspection([reqId, parentId, parentLoopKind, protectedProxy = Ref { worker.contextProxy() }](JSC::VM& wvm) mutable {
+        double heapSize = static_cast<double>(wvm.heap.jsHeapSizeForReporting());
+        double capacity = static_cast<double>(wvm.heap.jsHeapCapacityForReporting());
+        double extra = static_cast<double>(wvm.heap.externalMemorySizeForReporting());
         ScriptExecutionContext::postTaskTo(parentId, parentLoopKind, [reqId, protectedProxy = WTF::move(protectedProxy), heapSize, capacity, extra](ScriptExecutionContext& parentCtx) {
             resolveCrossVMRequest(protectedProxy.get(), reqId, parentCtx, [&](VM& pvm, JSGlobalObject* go) -> JSValue {
                 JSObject* o = constructEmptyObject(go);

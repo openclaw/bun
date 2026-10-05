@@ -1799,7 +1799,12 @@ impl PipelineTask {
                         // it exactly once at GC and ignores the null ctx.
                         let v = unsafe {
                             ArrayBuffer::from_bytes(mut_slice, jsc::JSType::Uint8Array)
-                                .to_js_with_context(global, core::ptr::null_mut(), Some(out.free))
+                                .to_js_with_context(
+                                    global,
+                                    core::ptr::null_mut(),
+                                    Some(out.free),
+                                    jsc::array_buffer::ArrayBufferAllocationMode::RuntimeOwned,
+                                )
                         };
                         match v {
                             Ok(v) => promise.resolve(global, v)?,
