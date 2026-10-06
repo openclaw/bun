@@ -181,6 +181,8 @@ Unreadable selected package metadata also throws `ERR_INVALID_PACKAGE_CONFIG`, r
 
 Detached `import.meta.resolve` functions retain their originating module's resolution base, including on Windows. Calling a resolver with a different receiver leaves that base unchanged. You can still pass an explicit parent as the second argument.
 
+`Bun.resolve()`, `Bun.resolveSync()`, and `import.meta.resolveSync()` preserve external URL specifiers without reading filesystem package metadata. This includes protocol-relative `//` specifiers on Windows. Local file resolution still validates the applicable package scope.
+
 Modules embedded by `bun build --compile` share one module record across query and fragment spellings of their path or file URL. Files loaded from the filesystem keep separate ESM identities for distinct suffixes.
 
 Async imports of CommonJS files preserve package-scope interop. A `.cjs` file inside a `"type": "module"` package keeps `module.exports` as its default export and exposes its `__esModule` property, while the file still executes as CommonJS.

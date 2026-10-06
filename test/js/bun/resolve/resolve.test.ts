@@ -1327,6 +1327,25 @@ describe("resolving external URL specifiers with non-ASCII characters", () => {
     expect(import.meta.resolveSync(specifier)).toBe(specifier);
   });
 
+  it.each(["//example/´?q", "//example/日本語.js", "//example/entry.mjs"])(
+    "external specifiers bypass filesystem package validation: %s",
+    async specifier => {
+      expect(await Bun.resolve(specifier, import.meta.dir)).toBe(specifier);
+      expect(import.meta.resolveSync(specifier)).toBe(specifier);
+    },
+  );
+
+  it("resolving an external URL does not disable local package validation", () => {
+    using dir = tempDir("external-resolve-package-scope", {
+      "package.json": "{ invalid",
+      "entry.js": "export const value = 1;",
+    });
+    expect(Bun.resolveSync("//example/entry.js", import.meta.dir)).toBe("//example/entry.js");
+    expect(() => Bun.resolveSync(join(String(dir), "entry.js"), import.meta.dir)).toThrow(
+      expect.objectContaining({ code: "ERR_INVALID_PACKAGE_CONFIG" }),
+    );
+  });
+
   it("require with non-ASCII http specifier does not crash", async () => {
     await using proc = Bun.spawn({
       cmd: [

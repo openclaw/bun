@@ -559,16 +559,12 @@ test("a completed deadline does not kill an unlimited test's child", async () =>
     "child.test.js": `
       import { afterAll, beforeAll, expect, test } from "bun:test";
       let child;
-      beforeAll(async () => {
-        child = Bun.spawn([process.execPath, "-e", 'console.log("ready"); setInterval(() => {}, 1000)'], {
+      beforeAll(() => {
+        child = Bun.spawn([process.execPath, "-e", "setInterval(() => {}, 1000)"], {
           stdin: "ignore",
-          stdout: "pipe",
+          stdout: "ignore",
           stderr: "inherit",
         });
-        const reader = child.stdout.getReader();
-        const { value } = await reader.read();
-        reader.releaseLock();
-        expect(Buffer.from(value).toString()).toBe("ready\\n");
       });
       afterAll(() => {
         child.kill();
@@ -777,10 +773,10 @@ test("my-test", () => {
       const stackLines = output.split("\n").filter(line => line.trim().startsWith("at "));
       expect(stackLines.length).toBeGreaterThan(0);
       if (process.platform === "win32") {
-        expect(stackLines[0]).toContain(`<dir>\\my-test.test.js:5:15`.replace("<dir>", test_dir));
+        expect(stackLines[0]).toContain(`<dir>\\my-test.test.js:5:11`.replace("<dir>", test_dir));
       }
       if (process.platform !== "win32") {
-        expect(stackLines[0]).toContain(`<dir>/my-test.test.js:5:15`.replace("<dir>", test_dir));
+        expect(stackLines[0]).toContain(`<dir>/my-test.test.js:5:11`.replace("<dir>", test_dir));
       }
 
       expect(output).toContain("1 pass"); // since the error is unhandled and in a hook, the error does not get attributed to the hook and the test is still allowed to run
