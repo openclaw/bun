@@ -49,6 +49,11 @@ never truncated to fit the budget. A large upstream sync may need separate
 full-suite qualification. Results, failures and per-file times appear in the
 summary; diagnostics are retained for seven days even on failure.
 
+When the net suite is selected, the lane also runs that file directly once and
+records its runtime identity, exit status and output in `net-direct.json`.
+Both the shared selection and this independent execution must pass, so a
+grouped runner's internal recovery cannot be the sole net-suite proof.
+
 ### Every PR and nightly
 
 ```text

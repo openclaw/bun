@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
@@ -211,10 +211,39 @@ if (import.meta.main) {
       ],
       { stdio: "inherit" },
     );
+    const netTest = "test/js/node/net/node-net.test.ts";
+    let direct: SpawnSyncReturns<string> | undefined;
+    if (selected.includes(netTest)) {
+      console.log("Running the selected net suite directly once, outside the grouped runner");
+      direct = spawnSync(process.execPath, ["test", netTest], { encoding: "utf8" });
+      writeFileSync(
+        "build/openclaw-ci/net-direct.json",
+        JSON.stringify(
+          {
+            testPath: netTest,
+            revision: Bun.revision,
+            webkit: process.versions.webkit,
+            platform: process.platform,
+            arch: process.arch,
+            exitCode: direct.status,
+            signalCode: direct.signal,
+            error: direct.error?.message,
+            stdout: direct.stdout,
+            stderr: direct.stderr,
+          },
+          null,
+          2,
+        ) + "\n",
+      );
+      if (direct.stdout) process.stdout.write(direct.stdout);
+      if (direct.stderr) process.stderr.write(direct.stderr);
+    }
     if (result.error) throw result.error;
     if (result.status !== 0) process.exit(result.status ?? 1);
     const results: { testPath: string; ok: boolean }[] = JSON.parse(readFileSync(resultsPath, "utf8"));
     assertSelectedTestResults(selected, results);
+    if (direct?.error) throw direct.error;
+    if (direct && direct.status !== 0) process.exit(direct.status ?? 1);
   } else if (command === "summary") {
     summary(`## Result\n\nBuild: **${process.env.BUILD_OUTCOME}**. Tests: **${process.env.TEST_OUTCOME}**.\n`);
     if (existsSync(resultsPath)) {
