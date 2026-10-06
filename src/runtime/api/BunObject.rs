@@ -1789,6 +1789,7 @@ fn mmap_file(global_this: &JSGlobalObject, callframe: &CallFrame) -> JsResult<JS
                 view_len,
                 Some(munmap_dealloc),
                 map_len as *mut c_void,
+                jsc::array_buffer::ArrayBufferAllocationMode::RuntimeOwned,
             )
         }
     }
@@ -2327,6 +2328,7 @@ pub(crate) mod JSZlib {
                 } else {
                     Some(global_deallocator)
                 },
+                jsc::array_buffer::ArrayBufferAllocationMode::RuntimeOwned,
             )
         }
     }
@@ -2536,6 +2538,7 @@ pub(crate) mod JSZlib {
                         global_this,
                         ptr.cast::<c_void>(),
                         Some(global_deallocator),
+                        jsc::array_buffer::ArrayBufferAllocationMode::RuntimeOwned,
                     )
                 }
             }
@@ -2671,6 +2674,7 @@ pub(crate) mod JSZlib {
                         global_this,
                         ptr.cast::<c_void>(),
                         Some(global_deallocator),
+                        jsc::array_buffer::ArrayBufferAllocationMode::RuntimeOwned,
                     )
                 }
             }

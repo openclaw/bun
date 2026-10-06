@@ -3,6 +3,8 @@
 #include "utils.h"
 
 #include <array>
+#include <cmath>
+#include <limits>
 #include <utility>
 
 namespace napitests {

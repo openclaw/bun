@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from "bun";
 import { beforeAll, describe, expect, it } from "bun:test";
-import { existsSync, readdirSync, readFileSync, statSync } from "fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "fs";
 import {
   bunEnv,
   bunExe,
@@ -70,6 +70,43 @@ beforeAll(async () => {
 }, 300_000);
 
 describe.concurrent.skipIf(!canBuildNodeAddons())("napi", () => {
+  it("module URLs identify native addons loaded from long paths", async () => {
+    await using dir = tempDir("native-addon-url", {
+      "load.cjs": `
+        const assert = require("node:assert/strict");
+        const { toNamespacedPath } = require("node:path");
+        const { fileURLToPath } = require("node:url");
+        const filename = process.argv[2];
+        let addon;
+        if (process.argv[3] === "require") {
+          addon = require(filename);
+        } else {
+          const module = { exports: {}, filename };
+          process.dlopen(module, toNamespacedPath(filename));
+          addon = module.exports;
+        }
+        assert.equal(fileURLToPath(addon.test_napi_module_filename()), filename);
+        console.log("ok");
+      `,
+    });
+    const addonDir = join(dir, Buffer.alloc(100, "x").toString(), Buffer.alloc(100, "y").toString(), "native # % é");
+    mkdirSync(addonDir, { recursive: true });
+    const addonPath = join(addonDir, "addon.node");
+    copyFileSync(join(__dirname, "napi-app/build/Debug/napitests.node"), addonPath);
+    for (const executable of [bunExe(), await nodeExeMatchingAbi()]) {
+      for (const mode of ["require", "direct"]) {
+        await using proc = spawn({
+          cmd: [executable, join(dir, "load.cjs"), addonPath, mode],
+          env: bunEnv,
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+        expect({ stdout, stderr, exitCode }).toEqual({ stdout: "ok\n", stderr: "", exitCode: 0 });
+      }
+    }
+  });
+
   describe.each(["esm", "cjs"])("bundle .node files to %s via", format => {
     describe.each(["node", "bun"])("target %s", target => {
       it("Bun.build", async () => {
@@ -438,6 +475,24 @@ describe.concurrent.skipIf(!canBuildNodeAddons())("napi", () => {
   });
 
   describe("napi_create_external_arraybuffer", () => {
+    it("charges external payload without charging the ArrayBuffer allocator", async () => {
+      await using child = Bun.spawn({
+        cmd: [
+          bunExe(),
+          "--expose-gc",
+          join(import.meta.dir, "../js/node/process/arraybuffer-accounting.fixture.mjs"),
+          "native",
+        ],
+        env: bunEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([child.stdout.text(), child.stderr.text(), child.exited]);
+      expect(stderr).toBe("");
+      expect(stdout).toContain('"kind":"native"');
+      expect(exitCode).toBe(0);
+    });
+
     it("wraps caller data and does not fire finalize_cb while the ArrayBuffer is alive", async () => {
       const result = await checkSameOutput("test_external_arraybuffer_finalizer", []);
       expect(result).toContain("PASS: napi_create_external_arraybuffer wraps caller data without copying");

@@ -303,6 +303,24 @@ bool ScriptExecutionContext::postTaskTo(ScriptExecutionContextIdentifier identif
     return true;
 }
 
+bool ScriptExecutionContext::postVMInspection(ScriptExecutionContextIdentifier identifier, Function<void(JSC::VM&)>&& inspection)
+{
+    const BunVmHandleRef* retained = nullptr;
+    {
+        Locker locker { allScriptExecutionContextsMapLock };
+        auto* context = allScriptExecutionContextsMap().get(identifier);
+        if (!context || context->isTerminating())
+            return false;
+        context->m_vm->traps().requestVMInspection(WTF::move(inspection));
+        retained = Bun__VmHandle__retainRef(context->m_vmHandle);
+    }
+    Bun__VmHandle__postAndRelease(retained, new EventLoopTask([](ScriptExecutionContext& context) {
+        context.vm().traps().runVMInspections();
+    }),
+        BunLoopKind::Regular);
+    return true;
+}
+
 void ScriptExecutionContext::didCreateDestructionObserver(ContextDestructionObserver& observer)
 {
 #if ASSERT_ENABLED
@@ -444,10 +462,8 @@ void ScriptExecutionContext::removeFromContextsMap()
 
 void ScriptExecutionContext::markTerminating()
 {
-    // An early-out for postTaskTo(): from here posts to this context are pointless. Not
-    // a fence — a poster that looked us up just before this still posts, and the VM
-    // handle deals with it (queued and released unrun by the teardown, or refused and
-    // deleted once the handle is closed).
+    // Fence VM-inspection registration before the owning thread starts tearing down JSC.
+    Locker locker { allScriptExecutionContextsMapLock };
     m_isTerminating.store(true, std::memory_order_release);
 }
 

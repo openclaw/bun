@@ -4,7 +4,7 @@ import { once } from "node:events";
 import fs from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { Readable } from "node:stream";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import wt, {
   BroadcastChannel,
   getEnvironmentData,
@@ -2336,6 +2336,7 @@ test("getHeapStatistics reports allocated capacity separately from used heap", a
     const stats = await worker.getHeapStatistics();
     expect(stats.used_heap_size).toBeGreaterThan(0);
     expect(stats.total_heap_size).toBeGreaterThan(stats.used_heap_size);
+    expect(stats.external_memory).toBeGreaterThan(0);
   } finally {
     await worker.terminate();
   }
@@ -2354,6 +2355,26 @@ test("getHeapStatistics settles when terminated mid-request", async () => {
     ),
   ).resolves.toMatch(/^(ok|ERR_WORKER_NOT_RUNNING)$/);
 });
+
+for (const kind of ["busy", "wait", "shutdown", "startup"]) {
+  test(`getHeapStatistics settles requests during worker ${kind}`, async () => {
+    await using child = Bun.spawn({
+      cmd: [
+        bunExe(),
+        "--expose-gc",
+        fileURLToPath(new URL("../process/arraybuffer-accounting.fixture.mjs", import.meta.url)),
+        kind,
+      ],
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([child.stdout.text(), child.stderr.text(), child.exited]);
+    expect(stderr).toBe("");
+    expect(stdout).toContain(`"kind":"${kind}"`);
+    expect(exitCode).toBe(0);
+  });
+}
 
 test("*Internal introspection methods are DontEnum on Worker.prototype", () => {
   const enumerable: string[] = [];

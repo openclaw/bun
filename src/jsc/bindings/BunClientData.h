@@ -76,7 +76,6 @@ class DOMWrapperWorld;
 #include "NodeVMOptionNames.h"
 #include "NodeVMSourceOriginCache.h"
 #include "NodeVMCompilationCache.h"
-#include <JavaScriptCore/HeapObserver.h>
 namespace Zig {
 class GlobalObject;
 }
@@ -84,47 +83,6 @@ class GlobalObject;
 namespace Bun {
 class StrongRootBlock;
 
-// Add allocations since the last collection to its survivor size. Heap::size()
-// counts mark bits and misses newly allocated cells and array backing storage.
-class HeapUsage final : public JSC::HeapObserver {
-    WTF_MAKE_NONCOPYABLE(HeapUsage);
-
-public:
-    explicit HeapUsage(JSC::Heap& heap)
-        : m_heap(heap)
-    {
-        m_heap.addObserver(this);
-    }
-
-    ~HeapUsage() final
-    {
-        m_heap.removeObserver(this);
-    }
-
-    size_t get() const
-    {
-        return m_sizeAfterLastCollection + (m_heap.totalBytesAllocated() - m_allocatedAtLastCollection);
-    }
-
-private:
-    void willGarbageCollect() final {}
-
-    // Heap::didFinishCollection() notifies observers after updateAllocationLimits()
-    // stored this collection's size, in the end phase of the collection, while
-    // the mutator is stopped. The mutator reads m_sizeAfterLastCollection once
-    // it resumes, the same way it reads JSC's own counters.
-    void didGarbageCollect(JSC::CollectionScope scope) final
-    {
-        m_sizeAfterLastCollection = scope == JSC::CollectionScope::Full
-            ? m_heap.sizeAfterLastFullCollection()
-            : m_heap.sizeAfterLastEdenCollection();
-        m_allocatedAtLastCollection = m_heap.totalBytesAllocated();
-    }
-
-    JSC::Heap& m_heap;
-    size_t m_sizeAfterLastCollection { 0 };
-    uint64_t m_allocatedAtLastCollection { 0 };
-};
 }
 
 namespace JSC {
@@ -249,9 +207,6 @@ public:
     Bun::NodeVMOptionNames& nodeVMOptionNames() { return m_nodeVMOptionNames; }
     Bun::NodeVMSourceOriginCache& nodeVMSourceOriginCache() { return m_nodeVMSourceOriginCache; }
 
-    // Survivor size plus allocations since the last collection; mutator thread only.
-    size_t heapUsage() const { return m_heapUsage.get(); }
-
     // The VM's default (first) Zig::GlobalObject: what defaultGlobalObject(JSC::VM&) returns on threads whose thread-local
     // default is not this VM's, e.g. the collector thread running a collection's end phase. gcProtect'ed for the VM's life.
     JSC::JSGlobalObject* defaultGlobalObject { nullptr };
@@ -351,8 +306,6 @@ public:
     Bun::NodeVMCompilationCache nodeVMCompilationCache;
 
 private:
-    Bun::HeapUsage m_heapUsage;
-
     SentinelLinkedList<JSVMClientDataClient, BasicRawSentinelNode<JSVMClientDataClient>> m_clients;
     bool m_isWorkerVM { false };
     bool m_isNodeWorkerVM { false };
