@@ -179,6 +179,10 @@ Unreadable selected package metadata also throws `ERR_INVALID_PACKAGE_CONFIG`, r
 
 `import.meta.resolve()` validates the package scope of existing `.js`, `.ts`, and extensionless files. Missing-file URLs and `require.resolve()` defer that scope validation. Loading an already-resolved CommonJS file through the ESM loader preserves the original resolution mode.
 
+Detached `import.meta.resolve` functions retain their originating module's resolution base, including on Windows. Calling a resolver with a different receiver leaves that base unchanged. You can still pass an explicit parent as the second argument.
+
+`Bun.resolve()`, `Bun.resolveSync()`, and `import.meta.resolveSync()` preserve external URL specifiers without reading filesystem package metadata. This includes protocol-relative `//` specifiers on Windows. Local file resolution still validates the applicable package scope.
+
 Modules embedded by `bun build --compile` share one module record across query and fragment spellings of their path or file URL. Files loaded from the filesystem keep separate ESM identities for distinct suffixes.
 
 Async imports of CommonJS files preserve package-scope interop. A `.cjs` file inside a `"type": "module"` package keeps `module.exports` as its default export and exposes its `__esModule` property, while the file still executes as CommonJS.
@@ -214,7 +218,7 @@ Package imports and exports match the `module-sync` condition for both `import` 
 
 `NODE_COMPILE_CACHE` and `module.enableCompileCache()` generate and atomically write cache entries during idle time. Normal exits wait for pending cache work. After a native SIGTERM, SIGINT, or SIGHUP, Bun limits automatic exit-time cache waiting to 250 ms, including when JavaScript handled the signal. Unfinished entries compile normally on the next run. Explicit `module.flushCompileCache()` calls always wait for persistence to finish. Standalone executables ignore `NODE_COMPILE_CACHE`.
 
-Deferred cache generation continues on idle event loops even after JavaScript timers are removed. Its native wakeups do not keep the process alive.
+Deferred cache generation continues on idle event loops even after JavaScript timers are removed. Its native wakeups do not keep the process alive. Windows cache publication avoids requesting executable access to cache data files, which can otherwise trigger synchronous antivirus scans.
 
 ### [`node:net`](https://nodejs.org/api/net.html)
 

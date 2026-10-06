@@ -4125,6 +4125,7 @@ pub struct ResolveFunctionResult {
     // which outlives every `ResolveFunctionResult`.
     pub path: &'static [u8],
     pub(crate) query_string: &'static [u8],
+    is_external: bool,
 }
 
 /// Per-thread `BufferPrinter` used when printing transpiled module source.
@@ -5432,6 +5433,7 @@ impl VirtualMachine {
         // outlives `ResolveFunctionResult` (see the struct's lifetime-erasure
         // note).
         ret.path = unsafe { bun_ptr::detach_lifetime(result_path.text) };
+        ret.is_external = result.flags.is_external();
 
         Ok(())
     }
@@ -5825,6 +5827,7 @@ impl VirtualMachine {
         if resolve_result.is_ok()
             && mode.is_esm()
             && mode != ResolveMode::ResolvedEsm
+            && !result.is_external
             && jsc_vm.transpiler.resolver.node_module_error.is_none()
             && bun_paths::is_absolute(result.path)
             // Inline entries do not infer their module kind from a package scope.
