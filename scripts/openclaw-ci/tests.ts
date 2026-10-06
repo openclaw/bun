@@ -111,7 +111,7 @@ export function selectTests(changed: string[], tracked: string[], nightly: boole
   const tests = tracked.filter(isTest);
   for (const path of changed) {
     if (path === "scripts/build/deps/webkit.ts" || path === "scripts/build/deps/webkit-artifacts.json") {
-      webkitSensitive.forEach(test => selected.add(test));
+      [...smoke, ...broader, ...webkitSensitive].forEach(test => selected.add(test));
     } else if (isTest(path)) {
       if (available.has(path)) selected.add(path);
     } else if (path.startsWith("test/")) {

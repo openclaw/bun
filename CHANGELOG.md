@@ -226,3 +226,5 @@
 - Detect deferred compile-cache test stalls by persistence progress, with bounded startup and shutdown, so slow Windows runners can complete the unchanged workload.
 
 - Preserve an unlimited test's child processes when a completed test's stale deadline fires.
+
+- Update the ten checksum-pinned OpenClaw WebKit archives for prompt worker heap-cap termination and the JSC shell mimalloc exit TLS fix; retain managed-heap limits and external-buffer exclusions, with near-limit survival coverage and the complete fork selection in native engine-pin CI. Thanks @dylan-conway for the allocator race diagnosis.

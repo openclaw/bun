@@ -31,6 +31,9 @@ build and tests use GitHub's merge commit:
   workers/process/environment to worker_threads and process; module/resolver/
   transpiler/compile-cache to module; SQLite to sqlite. These matches add the
   applicable files from the fixed and broader lists below.
+- For changes to `scripts/build/deps/webkit.ts` or `webkit-artifacts.json`, run
+  the fixed smoke, broader, and engine-sensitive suites on both native lanes.
+  Darwin also retains its platform-specific tests.
 - All other source changes still run the fixed smoke set. This is bounded
   compatibility coverage, not a complete dependency graph or the full upstream
   test suite. Extend the mapping when a new fork fix needs a different boundary.

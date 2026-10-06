@@ -1,58 +1,58 @@
 {
   "schema_version": 1,
-  "version": "f1e1ca1156c8cb3b468bec0e1989fbfa08899661",
+  "version": "0a6b8011c24090cf9f88c536060925280db9e56b",
   "repository": "openclaw/WebKit",
-  "tag": "autobuild-f1e1ca1156c8cb3b468bec0e1989fbfa08899661",
+  "tag": "autobuild-0a6b8011c24090cf9f88c536060925280db9e56b",
   "artifacts": {
     "bun-webkit-linux-amd64.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-f1e1ca1156c8cb3b468bec0e1989fbfa08899661/bun-webkit-linux-amd64.tar.gz",
-      "sha256": "393532ee1de14958ca3016aa75252fc05f24ebc1e9fc952421a962c833810a08",
-      "size": 471813263
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-0a6b8011c24090cf9f88c536060925280db9e56b/bun-webkit-linux-amd64.tar.gz",
+      "sha256": "603880a971754a0115ff674c06f4fe7e8278068bf0c5c39c929188e4ffb05542",
+      "size": 472520866
     },
     "bun-webkit-macos-arm64.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-f1e1ca1156c8cb3b468bec0e1989fbfa08899661/bun-webkit-macos-arm64.tar.gz",
-      "sha256": "d9345a6a6116feb33a3e25bdf87f7325f344e1b70a1956b12ebbb39b11839e9f",
-      "size": 210441814
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-0a6b8011c24090cf9f88c536060925280db9e56b/bun-webkit-macos-arm64.tar.gz",
+      "sha256": "eef9a138608f943c22b8f1b01c2dcd91aaa896a5e539a0ac07547d56edcf277c",
+      "size": 210606767
     },
     "bun-webkit-linux-amd64-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-f1e1ca1156c8cb3b468bec0e1989fbfa08899661/bun-webkit-linux-amd64-lto.tar.gz",
-      "sha256": "bdc5ae411548f4fc7045787105127e44ff499216b62a16161128484318f01dd8",
-      "size": 262894861
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-0a6b8011c24090cf9f88c536060925280db9e56b/bun-webkit-linux-amd64-lto.tar.gz",
+      "sha256": "f30c377264791278fbac344a33af1548cd681bb560818a8cdf3bab3f167d4950",
+      "size": 263149209
     },
     "bun-webkit-linux-arm64-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-f1e1ca1156c8cb3b468bec0e1989fbfa08899661/bun-webkit-linux-arm64-lto.tar.gz",
-      "sha256": "ac80d3619592e3689f90f6999e91d4b74628fe73bbfd53e45be0a5187514b933",
-      "size": 257005812
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-0a6b8011c24090cf9f88c536060925280db9e56b/bun-webkit-linux-arm64-lto.tar.gz",
+      "sha256": "b01d4c12dcdb41e4bac06e3f30a0c7b2e2488cbb3d69d5436880870cc3261e3e",
+      "size": 257269751
     },
     "bun-webkit-macos-arm64-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-f1e1ca1156c8cb3b468bec0e1989fbfa08899661/bun-webkit-macos-arm64-lto.tar.gz",
-      "sha256": "585d65c91c487167f0d963f6297a2b1ba4c0ff3a902d5a8e54345b00ee718004",
-      "size": 155373126
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-0a6b8011c24090cf9f88c536060925280db9e56b/bun-webkit-macos-arm64-lto.tar.gz",
+      "sha256": "9422a195851988b3859093b36972244981e66d4dffe8306d3208943f9f6412a7",
+      "size": 155470787
     },
     "bun-webkit-macos-amd64-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-f1e1ca1156c8cb3b468bec0e1989fbfa08899661/bun-webkit-macos-amd64-lto.tar.gz",
-      "sha256": "fd94e8868c6771faa131b8d718aff8281b07d13c95ccbfce6f180df8bbd3a6d5",
-      "size": 159733683
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-0a6b8011c24090cf9f88c536060925280db9e56b/bun-webkit-macos-amd64-lto.tar.gz",
+      "sha256": "0ccb7e564f89e199447b958286aec3a1d0c6d8b48edbfdafec27b47064a25692",
+      "size": 159835329
     },
     "bun-webkit-linux-amd64-musl-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-f1e1ca1156c8cb3b468bec0e1989fbfa08899661/bun-webkit-linux-amd64-musl-lto.tar.gz",
-      "sha256": "6bb81b6854e6683e75beb84b949c6e3fdb097253ca70ae8bd674c02a17a81386",
-      "size": 221675770
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-0a6b8011c24090cf9f88c536060925280db9e56b/bun-webkit-linux-amd64-musl-lto.tar.gz",
+      "sha256": "c28cf7a7543a2aac86d4e91a87c4f1c28661eb827ea5a9d3ec8fb4f883f37fe2",
+      "size": 221908177
     },
     "bun-webkit-linux-arm64-musl-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-f1e1ca1156c8cb3b468bec0e1989fbfa08899661/bun-webkit-linux-arm64-musl-lto.tar.gz",
-      "sha256": "e31df77bd1b147d8d22bcd7502e0ae78165dda1180e465cccfc00f02f2f3f4b4",
-      "size": 223553290
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-0a6b8011c24090cf9f88c536060925280db9e56b/bun-webkit-linux-arm64-musl-lto.tar.gz",
+      "sha256": "f69663b4fda86df7046b1fadbcbe49aa06e8532821b343dbd046a0a5e8ab3e24",
+      "size": 223767726
     },
     "bun-webkit-windows-amd64-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-f1e1ca1156c8cb3b468bec0e1989fbfa08899661/bun-webkit-windows-amd64-lto.tar.gz",
-      "sha256": "8481faabd1d67dc17f82684bc5e59417a38c6ea06c734a75157d8511c034d3c7",
-      "size": 665612707
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-0a6b8011c24090cf9f88c536060925280db9e56b/bun-webkit-windows-amd64-lto.tar.gz",
+      "sha256": "ced3713cd23573dd8386732184af83e8c1325b8269dc1ff30fa1fec6113f6b54",
+      "size": 665601649
     },
     "bun-webkit-windows-arm64.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-f1e1ca1156c8cb3b468bec0e1989fbfa08899661/bun-webkit-windows-arm64.tar.gz",
-      "sha256": "9883a17e6a4a61e9df737ca9c772a1c03b5a157f8f6aca4a5c8e040be893afda",
-      "size": 367114876
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-0a6b8011c24090cf9f88c536060925280db9e56b/bun-webkit-windows-arm64.tar.gz",
+      "sha256": "68d7bb49f3bf005a5358e042cd427d110d472ddd802fcc24a0f3ea52cfda9c13",
+      "size": 367101945
     }
   },
   "variants": {
@@ -112,7 +112,7 @@
   },
   "qualification": {
     "passed": true,
-    "source": "f1e1ca1156c8cb3b468bec0e1989fbfa08899661",
+    "source": "0a6b8011c24090cf9f88c536060925280db9e56b",
     "bun_commit": "b83b544ef744b6ab0dc1feadb59652261d64291d",
     "selected_files": 44,
     "result_files": 46,
@@ -130,7 +130,7 @@
       "tests": {
         "memory-release": 3,
         "proxy": 4,
-        "resource-limits": 14,
+        "resource-limits": 15,
         "namespace": 41,
         "inspector": 78,
         "als-suites": 223,
@@ -142,11 +142,11 @@
         "arraybuffer-serializer": 60,
         "inspection-idle": 1
       },
-      "adapter_sha256": "b75719df52813287a61ede5e8069368ac1739fbc08da56c9d1d1a755c4463265"
+      "adapter_sha256": "86a3cc16b47904cdcacb7fc463cfc423105fc6e389c0f72765bc8c2528fc5fb1"
     },
     "engine": {
       "passed": true,
-      "source": "f1e1ca1156c8cb3b468bec0e1989fbfa08899661",
+      "source": "0a6b8011c24090cf9f88c536060925280db9e56b",
       "stress_counts": {
         "jsc-stress": 1778,
         "jsc-modules": 1639
@@ -167,7 +167,7 @@
     },
     "compatibility": {
       "passed": true,
-      "source": "f1e1ca1156c8cb3b468bec0e1989fbfa08899661",
+      "source": "0a6b8011c24090cf9f88c536060925280db9e56b",
       "base_commit": "d2d2a26ef973cdd97b37953f5dba58052acad74f",
       "prepared_tree": "d9ec052fccc81afbf43a5344e52bc980f439d587",
       "paired_tree": "aee7cd52d7efcb9835b434a24fa47de06cc664f6",
@@ -175,25 +175,25 @@
       "only_manifest_changed_after_pairing": true,
       "memory_tests": 3,
       "startup": true,
-      "manifest_patch_sha256": "d343893f082240b1eaf7dc81f767741bedef5d1cec0c0faf3ac099c39557ab2d"
+      "manifest_patch_sha256": "11eca44d0542f3e10025142e15432e8d5d7e72d3877aac3ced52700de1c0b77c"
     },
     "windows_arm64": {
+      "dfg": true,
+      "architecture": "arm64",
+      "source": "0a6b8011c24090cf9f88c536060925280db9e56b",
+      "ffi": true,
+      "sha256": "68d7bb49f3bf005a5358e042cd427d110d472ddd802fcc24a0f3ea52cfda9c13",
+      "startup": true,
+      "arraybuffer_accounting": true,
       "arraybuffer_modes": 5,
       "lane": "bun-webkit-windows-arm64",
-      "dfg": true,
-      "arraybuffer_accounting": true,
-      "architecture": "arm64",
-      "source": "f1e1ca1156c8cb3b468bec0e1989fbfa08899661",
-      "sha256": "9883a17e6a4a61e9df737ca9c772a1c03b5a157f8f6aca4a5c8e040be893afda",
-      "passed": true,
-      "startup": true,
-      "ffi": true
+      "passed": true
     }
   },
   "lanes": [
     {
       "schema_version": 1,
-      "source": "f1e1ca1156c8cb3b468bec0e1989fbfa08899661",
+      "source": "0a6b8011c24090cf9f88c536060925280db9e56b",
       "base": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "lane": {
         "label": "bun-webkit-linux-amd64",
@@ -378,6 +378,21 @@
           "commit": "f1e1ca1156c8cb3b468bec0e1989fbfa08899661",
           "subject": "fix(jsc): correct ARM64 memory addition and qualify native tiers (#13)",
           "patch_sha256": "61d94fa0e059f00dcd96e840a77ed8a178198f7db62a5739c3d60029d56e9dc9"
+        },
+        {
+          "commit": "a3f506457fe770e16d1438eb8ce7f1993716e28a",
+          "subject": "fix(mimalloc): preserve TLS key ownership during process exit (#16)",
+          "patch_sha256": "1f918af1c43abb00ee64d02943a76e2a1566fa7f3286d1272f8ea23aa0c66e7b"
+        },
+        {
+          "commit": "f88d5f33b80a2f30d86ac40737449110f334b0a5",
+          "subject": "fix(jsc): deliver capped-worker termination after GC (#18)",
+          "patch_sha256": "e3bea84efbc8a41d932d5069ded2d46da9e1cc0591090b8ccfb2fb8dda79d727"
+        },
+        {
+          "commit": "0a6b8011c24090cf9f88c536060925280db9e56b",
+          "subject": "docs: prepare worker termination and allocator exit release (#20)",
+          "patch_sha256": "24b1b686208dd814afbdf263dbcdcf6e8593a91ebc6503f1fa61c1caf1f76df9"
         }
       ],
       "recipe_sha256": {
@@ -402,7 +417,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:c7f718d7f4426619dcaf244ff3457cc616ef7320e68dd6ed2e6fcd5cf306a634",
+      "toolchain_image_id": "sha256:159c3d53ce9f5db550f0b16a36df577dea8988016c4011cd5f459d844a8c87ad",
       "commands": {
         "base": [
           "docker",
@@ -483,25 +498,25 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910043923+069ef0e7cb36-1~exp1~20260910043934.72)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 4.4.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.10.0",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.2.1\n  GitCommit:        dea7da592f5d1d2b7755e3a161be07f43fad8f75\n runc:\n  Version:          1.3.4\n  GitCommit:        v1.3.4-0-gd6d73eb8\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "37317069743",
+      "workflow_run": "37423674313",
       "run_attempt": "1",
-      "elapsed_seconds": 609.7423703670502,
+      "elapsed_seconds": 536.5262408256531,
       "files": {
         "bun-webkit-linux-amd64.tar.gz": {
-          "sha256": "393532ee1de14958ca3016aa75252fc05f24ebc1e9fc952421a962c833810a08",
-          "size": 471813263
+          "sha256": "603880a971754a0115ff674c06f4fe7e8278068bf0c5c39c929188e4ffb05542",
+          "size": 472520866
         }
       },
       "provenance_files": {
+        "artifact-build.json": "f888be2c55a588191b82afeb4ec21f10d75a691079b3337c0980dbce1760a69b",
         "tool-versions.txt": "1f732938c107d159895e80daffe13bc457ce53c90ec3af6123ca41de962a231f",
-        "toolchain-build.json": "1b93449a6730e767e55b7887adb615e8b2cb4ec590b6adeef289632572c4ec1b",
-        "toolchain-image.json": "b2c43139030f827a090a2867494d2826d124f83054ed078b213b64520817b86a",
-        "artifact-build.json": "091b485b600f6da24a1e959d1a851e33750a93f9aa239d97222ebca461634358"
+        "toolchain-build.json": "6a8d23b82f60ca0918df85f390a0215bd005fafb7bc611445eceae6d298e7e24",
+        "toolchain-image.json": "95015dfbab9694e346aebab6d4b603f26292de8148ea364383b0b23a4fb37b11"
       }
     },
     {
       "schema_version": 1,
-      "source": "f1e1ca1156c8cb3b468bec0e1989fbfa08899661",
+      "source": "0a6b8011c24090cf9f88c536060925280db9e56b",
       "base": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "lane": {
         "label": "bun-webkit-macos-arm64",
@@ -685,6 +700,21 @@
           "commit": "f1e1ca1156c8cb3b468bec0e1989fbfa08899661",
           "subject": "fix(jsc): correct ARM64 memory addition and qualify native tiers (#13)",
           "patch_sha256": "61d94fa0e059f00dcd96e840a77ed8a178198f7db62a5739c3d60029d56e9dc9"
+        },
+        {
+          "commit": "a3f506457fe770e16d1438eb8ce7f1993716e28a",
+          "subject": "fix(mimalloc): preserve TLS key ownership during process exit (#16)",
+          "patch_sha256": "1f918af1c43abb00ee64d02943a76e2a1566fa7f3286d1272f8ea23aa0c66e7b"
+        },
+        {
+          "commit": "f88d5f33b80a2f30d86ac40737449110f334b0a5",
+          "subject": "fix(jsc): deliver capped-worker termination after GC (#18)",
+          "patch_sha256": "e3bea84efbc8a41d932d5069ded2d46da9e1cc0591090b8ccfb2fb8dda79d727"
+        },
+        {
+          "commit": "0a6b8011c24090cf9f88c536060925280db9e56b",
+          "subject": "docs: prepare worker termination and allocator exit release (#20)",
+          "patch_sha256": "24b1b686208dd814afbdf263dbcdcf6e8593a91ebc6503f1fa61c1caf1f76df9"
         }
       ],
       "recipe_sha256": {
@@ -709,7 +739,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:a1d68c831a0a45a5f8c63e7cc42ad1988f3f8d6925128118b587d08df8129cda",
+      "toolchain_image_id": "sha256:1a0076b3e44fbddf32a273be70f19cde041cb253b6fe1e85a3eb77de14bf9d98",
       "commands": {
         "base": [
           "docker",
@@ -790,25 +820,25 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910044232+069ef0e7cb36-1~exp1~20260910044242.70)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.11.1",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.2.1\n  GitCommit:        dea7da592f5d1d2b7755e3a161be07f43fad8f75\n runc:\n  Version:          1.3.4\n  GitCommit:        v1.3.4-0-gd6d73eb8\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "37317069743",
+      "workflow_run": "37423674313",
       "run_attempt": "1",
-      "elapsed_seconds": 332.6816554069519,
+      "elapsed_seconds": 288.46471118927,
       "files": {
         "bun-webkit-macos-arm64.tar.gz": {
-          "sha256": "d9345a6a6116feb33a3e25bdf87f7325f344e1b70a1956b12ebbb39b11839e9f",
-          "size": 210441814
+          "sha256": "eef9a138608f943c22b8f1b01c2dcd91aaa896a5e539a0ac07547d56edcf277c",
+          "size": 210606767
         }
       },
       "provenance_files": {
-        "toolchain-build.json": "e00bf91ef1cba9eb2d1520cbb7af942bef643d57a9328fe514c1a47899b49352",
-        "toolchain-image.json": "fc50f3a14be0e326d31cfbc0393b75e0b958c391bf1eff13d092f7a4cedcbcf3",
-        "artifact-build.json": "698c84037e00cf3cedd82880f1c6a07f98784a0da8e4fe00cc89e42801bc56aa",
-        "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8"
+        "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8",
+        "toolchain-image.json": "27922a5fa4e65ec76bfdaa6618b91ada0be37057fafb675ce2e172a8e4d21df4",
+        "artifact-build.json": "0e47e600976d1ba4ab62f758ddc9f432b9bba61c91eb2f9eebf7b4cb81428880",
+        "toolchain-build.json": "17acb43b21ab7cd9af9cfb1216d983f0015d4514a5b8508530290200e2a39a5b"
       }
     },
     {
       "schema_version": 1,
-      "source": "f1e1ca1156c8cb3b468bec0e1989fbfa08899661",
+      "source": "0a6b8011c24090cf9f88c536060925280db9e56b",
       "base": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "lane": {
         "label": "bun-webkit-linux-amd64-lto",
@@ -993,6 +1023,21 @@
           "commit": "f1e1ca1156c8cb3b468bec0e1989fbfa08899661",
           "subject": "fix(jsc): correct ARM64 memory addition and qualify native tiers (#13)",
           "patch_sha256": "61d94fa0e059f00dcd96e840a77ed8a178198f7db62a5739c3d60029d56e9dc9"
+        },
+        {
+          "commit": "a3f506457fe770e16d1438eb8ce7f1993716e28a",
+          "subject": "fix(mimalloc): preserve TLS key ownership during process exit (#16)",
+          "patch_sha256": "1f918af1c43abb00ee64d02943a76e2a1566fa7f3286d1272f8ea23aa0c66e7b"
+        },
+        {
+          "commit": "f88d5f33b80a2f30d86ac40737449110f334b0a5",
+          "subject": "fix(jsc): deliver capped-worker termination after GC (#18)",
+          "patch_sha256": "e3bea84efbc8a41d932d5069ded2d46da9e1cc0591090b8ccfb2fb8dda79d727"
+        },
+        {
+          "commit": "0a6b8011c24090cf9f88c536060925280db9e56b",
+          "subject": "docs: prepare worker termination and allocator exit release (#20)",
+          "patch_sha256": "24b1b686208dd814afbdf263dbcdcf6e8593a91ebc6503f1fa61c1caf1f76df9"
         }
       ],
       "recipe_sha256": {
@@ -1017,7 +1062,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:c7c783b1034aca8f65df808def95aa1f36ad57cea02dc2f7356e24856ce84a7d",
+      "toolchain_image_id": "sha256:5bd124f5eb6653bdd1ee8e33408e8e5e211870b548254295b3e2e2b4ede17331",
       "commands": {
         "base": [
           "docker",
@@ -1098,25 +1143,25 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910043923+069ef0e7cb36-1~exp1~20260910043934.72)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 4.4.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.10.0",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.2.1\n  GitCommit:        dea7da592f5d1d2b7755e3a161be07f43fad8f75\n runc:\n  Version:          1.3.4\n  GitCommit:        v1.3.4-0-gd6d73eb8\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "37317069743",
+      "workflow_run": "37423674313",
       "run_attempt": "1",
-      "elapsed_seconds": 819.3644161224365,
+      "elapsed_seconds": 609.7691733837128,
       "files": {
         "bun-webkit-linux-amd64-lto.tar.gz": {
-          "sha256": "bdc5ae411548f4fc7045787105127e44ff499216b62a16161128484318f01dd8",
-          "size": 262894861
+          "sha256": "f30c377264791278fbac344a33af1548cd681bb560818a8cdf3bab3f167d4950",
+          "size": 263149209
         }
       },
       "provenance_files": {
-        "toolchain-build.json": "6c78e64657ba8c03dd1d6296556da46069b9ee65d6a5e6023e0d4fee9fc01bc1",
-        "toolchain-image.json": "6b7024e4e55308490f30631e26103af5f04b931ffb78de23de666cb1478c9320",
-        "artifact-build.json": "de90d0c22c6bdb9846b0e6544ba059deb082b063f06333048d9a9a243a1379ae",
-        "tool-versions.txt": "1f732938c107d159895e80daffe13bc457ce53c90ec3af6123ca41de962a231f"
+        "toolchain-build.json": "15205525a3c4bfad3f0d028e9d174613e2fde041d1e6f92ffdaa0b9ac924cd49",
+        "tool-versions.txt": "1f732938c107d159895e80daffe13bc457ce53c90ec3af6123ca41de962a231f",
+        "toolchain-image.json": "44ec48fa9f27e17f7b6ed0c6bbfe94f803a049c752fcdf70a9c0d292e31d4f09",
+        "artifact-build.json": "c7e0e53b84201241561f86e935ac5b63563829f7b9fbbc6b70dafdce1c6ad0ee"
       }
     },
     {
       "schema_version": 1,
-      "source": "f1e1ca1156c8cb3b468bec0e1989fbfa08899661",
+      "source": "0a6b8011c24090cf9f88c536060925280db9e56b",
       "base": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "lane": {
         "label": "bun-webkit-linux-arm64-lto",
@@ -1301,6 +1346,21 @@
           "commit": "f1e1ca1156c8cb3b468bec0e1989fbfa08899661",
           "subject": "fix(jsc): correct ARM64 memory addition and qualify native tiers (#13)",
           "patch_sha256": "61d94fa0e059f00dcd96e840a77ed8a178198f7db62a5739c3d60029d56e9dc9"
+        },
+        {
+          "commit": "a3f506457fe770e16d1438eb8ce7f1993716e28a",
+          "subject": "fix(mimalloc): preserve TLS key ownership during process exit (#16)",
+          "patch_sha256": "1f918af1c43abb00ee64d02943a76e2a1566fa7f3286d1272f8ea23aa0c66e7b"
+        },
+        {
+          "commit": "f88d5f33b80a2f30d86ac40737449110f334b0a5",
+          "subject": "fix(jsc): deliver capped-worker termination after GC (#18)",
+          "patch_sha256": "e3bea84efbc8a41d932d5069ded2d46da9e1cc0591090b8ccfb2fb8dda79d727"
+        },
+        {
+          "commit": "0a6b8011c24090cf9f88c536060925280db9e56b",
+          "subject": "docs: prepare worker termination and allocator exit release (#20)",
+          "patch_sha256": "24b1b686208dd814afbdf263dbcdcf6e8593a91ebc6503f1fa61c1caf1f76df9"
         }
       ],
       "recipe_sha256": {
@@ -1325,7 +1385,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:9370d36927301a627de5f43285785facc6fb82f7a99ddf58ae60bca0bd37db34",
+      "toolchain_image_id": "sha256:6abf2a1d71cb65536deb9ca885edbb484426b707ce36b1b2bc06326de8fa67d0",
       "commands": {
         "base": [
           "docker",
@@ -1406,25 +1466,25 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910043923+069ef0e7cb36-1~exp1~20260910043934.72)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 4.4.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.10.0",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.2.1\n  GitCommit:        dea7da592f5d1d2b7755e3a161be07f43fad8f75\n runc:\n  Version:          1.3.4\n  GitCommit:        v1.3.4-0-gd6d73eb8\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "37317069743",
+      "workflow_run": "37423674313",
       "run_attempt": "1",
-      "elapsed_seconds": 751.6207590103149,
+      "elapsed_seconds": 569.3530375957489,
       "files": {
         "bun-webkit-linux-arm64-lto.tar.gz": {
-          "sha256": "ac80d3619592e3689f90f6999e91d4b74628fe73bbfd53e45be0a5187514b933",
-          "size": 257005812
+          "sha256": "b01d4c12dcdb41e4bac06e3f30a0c7b2e2488cbb3d69d5436880870cc3261e3e",
+          "size": 257269751
         }
       },
       "provenance_files": {
+        "toolchain-image.json": "64ec50a1e9f7be37c581a62c9028a86b116a22ed997346b7970b5b4b5c74b713",
+        "artifact-build.json": "275ff7f54296c67f66422ff62f01e425a7ddc1397476fc8a216ae0a63cb10bc7",
         "tool-versions.txt": "1f732938c107d159895e80daffe13bc457ce53c90ec3af6123ca41de962a231f",
-        "toolchain-image.json": "ab882dc2782742b24c579b60ccc1eb4686ae00a174936f64eb830e8bdf2a95a8",
-        "toolchain-build.json": "9b07b16fb81e4e31d0b8b428e820e7b522e4e571a7f1ff3293e8565882db1d95",
-        "artifact-build.json": "465672ffa5f53f3e0b8ff196423e72088945b6e880a911c9123f4ba3aed55007"
+        "toolchain-build.json": "90efc2425055c7328288d0df700f32158639da1da98f8e4db44068cb0fd31359"
       }
     },
     {
       "schema_version": 1,
-      "source": "f1e1ca1156c8cb3b468bec0e1989fbfa08899661",
+      "source": "0a6b8011c24090cf9f88c536060925280db9e56b",
       "base": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "lane": {
         "label": "bun-webkit-macos-arm64-lto",
@@ -1608,6 +1668,21 @@
           "commit": "f1e1ca1156c8cb3b468bec0e1989fbfa08899661",
           "subject": "fix(jsc): correct ARM64 memory addition and qualify native tiers (#13)",
           "patch_sha256": "61d94fa0e059f00dcd96e840a77ed8a178198f7db62a5739c3d60029d56e9dc9"
+        },
+        {
+          "commit": "a3f506457fe770e16d1438eb8ce7f1993716e28a",
+          "subject": "fix(mimalloc): preserve TLS key ownership during process exit (#16)",
+          "patch_sha256": "1f918af1c43abb00ee64d02943a76e2a1566fa7f3286d1272f8ea23aa0c66e7b"
+        },
+        {
+          "commit": "f88d5f33b80a2f30d86ac40737449110f334b0a5",
+          "subject": "fix(jsc): deliver capped-worker termination after GC (#18)",
+          "patch_sha256": "e3bea84efbc8a41d932d5069ded2d46da9e1cc0591090b8ccfb2fb8dda79d727"
+        },
+        {
+          "commit": "0a6b8011c24090cf9f88c536060925280db9e56b",
+          "subject": "docs: prepare worker termination and allocator exit release (#20)",
+          "patch_sha256": "24b1b686208dd814afbdf263dbcdcf6e8593a91ebc6503f1fa61c1caf1f76df9"
         }
       ],
       "recipe_sha256": {
@@ -1632,7 +1707,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:76dfad76eca9475f8361eec2e4150205d9d012d3a21059f1500355c2c3e61e35",
+      "toolchain_image_id": "sha256:48336a8249886777257e08253ab9ad308e48adf8b3da645662493b3be87b8ad1",
       "commands": {
         "base": [
           "docker",
@@ -1713,25 +1788,25 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910044232+069ef0e7cb36-1~exp1~20260910044242.70)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.11.1",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.2.1\n  GitCommit:        dea7da592f5d1d2b7755e3a161be07f43fad8f75\n runc:\n  Version:          1.3.4\n  GitCommit:        v1.3.4-0-gd6d73eb8\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "37317069743",
+      "workflow_run": "37423674313",
       "run_attempt": "1",
-      "elapsed_seconds": 408.99868988990784,
+      "elapsed_seconds": 295.805490732193,
       "files": {
         "bun-webkit-macos-arm64-lto.tar.gz": {
-          "sha256": "585d65c91c487167f0d963f6297a2b1ba4c0ff3a902d5a8e54345b00ee718004",
-          "size": 155373126
+          "sha256": "9422a195851988b3859093b36972244981e66d4dffe8306d3208943f9f6412a7",
+          "size": 155470787
         }
       },
       "provenance_files": {
-        "toolchain-build.json": "bb99c3d1a3fa3127cb7d3de55367b0f4a3e3877aa87d330bd61354c1b78eabc7",
+        "artifact-build.json": "122125dbc514d47b148ede5fef609a667d4ef0658f1a31e11a33a28f0f2b01f6",
+        "toolchain-image.json": "8df3286f3f5a7ae6e7b3a2a41367591ac18aad8b94f274f87f110fb4479e2d08",
         "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8",
-        "toolchain-image.json": "ea0b5fc6a90763eaadaabaa399d60825df661353a5198bf5b1ab2251b312d659",
-        "artifact-build.json": "5aa068d4e4676959d7364fada83af9598e095a4de28de9f4c98a1ab0b9b62f3c"
+        "toolchain-build.json": "5c7f3587c120e94550f09b26aa2f372cc133b692f9ae2112c4ec2cf82903c21b"
       }
     },
     {
       "schema_version": 1,
-      "source": "f1e1ca1156c8cb3b468bec0e1989fbfa08899661",
+      "source": "0a6b8011c24090cf9f88c536060925280db9e56b",
       "base": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "lane": {
         "label": "bun-webkit-macos-amd64-lto",
@@ -1915,6 +1990,21 @@
           "commit": "f1e1ca1156c8cb3b468bec0e1989fbfa08899661",
           "subject": "fix(jsc): correct ARM64 memory addition and qualify native tiers (#13)",
           "patch_sha256": "61d94fa0e059f00dcd96e840a77ed8a178198f7db62a5739c3d60029d56e9dc9"
+        },
+        {
+          "commit": "a3f506457fe770e16d1438eb8ce7f1993716e28a",
+          "subject": "fix(mimalloc): preserve TLS key ownership during process exit (#16)",
+          "patch_sha256": "1f918af1c43abb00ee64d02943a76e2a1566fa7f3286d1272f8ea23aa0c66e7b"
+        },
+        {
+          "commit": "f88d5f33b80a2f30d86ac40737449110f334b0a5",
+          "subject": "fix(jsc): deliver capped-worker termination after GC (#18)",
+          "patch_sha256": "e3bea84efbc8a41d932d5069ded2d46da9e1cc0591090b8ccfb2fb8dda79d727"
+        },
+        {
+          "commit": "0a6b8011c24090cf9f88c536060925280db9e56b",
+          "subject": "docs: prepare worker termination and allocator exit release (#20)",
+          "patch_sha256": "24b1b686208dd814afbdf263dbcdcf6e8593a91ebc6503f1fa61c1caf1f76df9"
         }
       ],
       "recipe_sha256": {
@@ -1939,7 +2029,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:5c6caa4b711ebd6737ad1fdea97c1cf93aeadaac872a809ef8cd623f099c2bfe",
+      "toolchain_image_id": "sha256:ec37fea5aa6af0424ac8f6d4ccca60399dbd129f36b31e4226b60427c0956c6d",
       "commands": {
         "base": [
           "docker",
@@ -2020,25 +2110,25 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910044232+069ef0e7cb36-1~exp1~20260910044242.70)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.11.1",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.2.1\n  GitCommit:        dea7da592f5d1d2b7755e3a161be07f43fad8f75\n runc:\n  Version:          1.3.4\n  GitCommit:        v1.3.4-0-gd6d73eb8\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "37317069743",
+      "workflow_run": "37423674313",
       "run_attempt": "1",
-      "elapsed_seconds": 431.33096528053284,
+      "elapsed_seconds": 338.97521352767944,
       "files": {
         "bun-webkit-macos-amd64-lto.tar.gz": {
-          "sha256": "fd94e8868c6771faa131b8d718aff8281b07d13c95ccbfce6f180df8bbd3a6d5",
-          "size": 159733683
+          "sha256": "0ccb7e564f89e199447b958286aec3a1d0c6d8b48edbfdafec27b47064a25692",
+          "size": 159835329
         }
       },
       "provenance_files": {
-        "toolchain-build.json": "c8e4675cbc5c61bf7da80ee2d34a626ac84324cbc1e673d116a0555bf72cbb0a",
-        "artifact-build.json": "56769241357fd42575d03c4423a33d795d98362484d2732ba3fec325a073d155",
+        "artifact-build.json": "d24a9a2a272714fd2b9598f413b5e2c3a7279b323a067b277f119d93cb266e13",
+        "toolchain-image.json": "6e10c7427ed959283c74b34d0edd3f6087fe94bcaae9fc348f4123ca71c3ad3b",
         "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8",
-        "toolchain-image.json": "ffd8a8fcb7267d622a478b4547ce38a0066430ffdbf3db886872d028a4993435"
+        "toolchain-build.json": "1e1742d0cf3775d7dd5938d36f421b3cfbd9282014eebf90c4b435c4c3533615"
       }
     },
     {
       "schema_version": 1,
-      "source": "f1e1ca1156c8cb3b468bec0e1989fbfa08899661",
+      "source": "0a6b8011c24090cf9f88c536060925280db9e56b",
       "base": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "lane": {
         "label": "bun-webkit-linux-amd64-musl-lto",
@@ -2220,6 +2310,21 @@
           "commit": "f1e1ca1156c8cb3b468bec0e1989fbfa08899661",
           "subject": "fix(jsc): correct ARM64 memory addition and qualify native tiers (#13)",
           "patch_sha256": "61d94fa0e059f00dcd96e840a77ed8a178198f7db62a5739c3d60029d56e9dc9"
+        },
+        {
+          "commit": "a3f506457fe770e16d1438eb8ce7f1993716e28a",
+          "subject": "fix(mimalloc): preserve TLS key ownership during process exit (#16)",
+          "patch_sha256": "1f918af1c43abb00ee64d02943a76e2a1566fa7f3286d1272f8ea23aa0c66e7b"
+        },
+        {
+          "commit": "f88d5f33b80a2f30d86ac40737449110f334b0a5",
+          "subject": "fix(jsc): deliver capped-worker termination after GC (#18)",
+          "patch_sha256": "e3bea84efbc8a41d932d5069ded2d46da9e1cc0591090b8ccfb2fb8dda79d727"
+        },
+        {
+          "commit": "0a6b8011c24090cf9f88c536060925280db9e56b",
+          "subject": "docs: prepare worker termination and allocator exit release (#20)",
+          "patch_sha256": "24b1b686208dd814afbdf263dbcdcf6e8593a91ebc6503f1fa61c1caf1f76df9"
         }
       ],
       "recipe_sha256": {
@@ -2244,7 +2349,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:2e6be4857bc530acc57ecef56eeec2a4835c72c1a394747bf37bf6e79b06772d",
+      "toolchain_image_id": "sha256:eee8d53843cf41b4088789d77644ec00b8e808aa93e781fb60146816bd1e5fe4",
       "commands": {
         "base": [
           "docker",
@@ -2317,25 +2422,25 @@
       "tool_versions": "Alpine clang version 23.1.2\nTarget: x86_64-alpine-linux-musl\nThread model: posix\nInstalledDir: /usr/lib/llvm23/bin\nConfiguration file: /etc/clang23/x86_64-alpine-linux-musl.cfg\ncmake version 4.1.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.9",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.2.1\n  GitCommit:        dea7da592f5d1d2b7755e3a161be07f43fad8f75\n runc:\n  Version:          1.3.4\n  GitCommit:        v1.3.4-0-gd6d73eb8\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "37317069743",
+      "workflow_run": "37423674313",
       "run_attempt": "1",
-      "elapsed_seconds": 1054.9010455608368,
+      "elapsed_seconds": 745.3104264736176,
       "files": {
         "bun-webkit-linux-amd64-musl-lto.tar.gz": {
-          "sha256": "6bb81b6854e6683e75beb84b949c6e3fdb097253ca70ae8bd674c02a17a81386",
-          "size": 221675770
+          "sha256": "c28cf7a7543a2aac86d4e91a87c4f1c28661eb827ea5a9d3ec8fb4f883f37fe2",
+          "size": 221908177
         }
       },
       "provenance_files": {
-        "toolchain-image.json": "3845747a2a5f0f0587fd151dcd8ff10da7d409ae993f9d090e05661eff6e04a0",
+        "toolchain-image.json": "a4fd9585479fdfa83754493f8619b4d69d3dd75aafcb583b9949907109fd80c1",
+        "artifact-build.json": "be84189b0a49140d65686a41d0b79c2c9a1fb1f08d4739e41682667b14c78e43",
         "tool-versions.txt": "4792d68346e97d6f8bcf05124f904e68c9f56299be740663f00da9e1ddc96e9f",
-        "artifact-build.json": "133bfccee876923fdf37727a18daea8ee63e80a09960d38b842e8acd4304c1a6",
-        "toolchain-build.json": "0e25f47e824e99043c869cd733ed0f5ea6cec2ba96b9b61e7522550fee9296de"
+        "toolchain-build.json": "722a119e7041073023d3bf31cadd7a8c257e1e7203e6c8454565aad9a6aad516"
       }
     },
     {
       "schema_version": 1,
-      "source": "f1e1ca1156c8cb3b468bec0e1989fbfa08899661",
+      "source": "0a6b8011c24090cf9f88c536060925280db9e56b",
       "base": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "lane": {
         "label": "bun-webkit-linux-arm64-musl-lto",
@@ -2517,6 +2622,21 @@
           "commit": "f1e1ca1156c8cb3b468bec0e1989fbfa08899661",
           "subject": "fix(jsc): correct ARM64 memory addition and qualify native tiers (#13)",
           "patch_sha256": "61d94fa0e059f00dcd96e840a77ed8a178198f7db62a5739c3d60029d56e9dc9"
+        },
+        {
+          "commit": "a3f506457fe770e16d1438eb8ce7f1993716e28a",
+          "subject": "fix(mimalloc): preserve TLS key ownership during process exit (#16)",
+          "patch_sha256": "1f918af1c43abb00ee64d02943a76e2a1566fa7f3286d1272f8ea23aa0c66e7b"
+        },
+        {
+          "commit": "f88d5f33b80a2f30d86ac40737449110f334b0a5",
+          "subject": "fix(jsc): deliver capped-worker termination after GC (#18)",
+          "patch_sha256": "e3bea84efbc8a41d932d5069ded2d46da9e1cc0591090b8ccfb2fb8dda79d727"
+        },
+        {
+          "commit": "0a6b8011c24090cf9f88c536060925280db9e56b",
+          "subject": "docs: prepare worker termination and allocator exit release (#20)",
+          "patch_sha256": "24b1b686208dd814afbdf263dbcdcf6e8593a91ebc6503f1fa61c1caf1f76df9"
         }
       ],
       "recipe_sha256": {
@@ -2541,7 +2661,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:045a3e910aa6a1ecdce327aefe22f0162d378cb044c2836772a3d0f8d4d4db2e",
+      "toolchain_image_id": "sha256:de7c461a28f1fedf7302a602830116d56e49bdb1d12d1c4ebf5ae3c95a89cc28",
       "commands": {
         "base": [
           "docker",
@@ -2614,25 +2734,25 @@
       "tool_versions": "Alpine clang version 23.1.2\nTarget: x86_64-alpine-linux-musl\nThread model: posix\nInstalledDir: /usr/lib/llvm23/bin\nConfiguration file: /etc/clang23/x86_64-alpine-linux-musl.cfg\ncmake version 4.1.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.9",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.2.1\n  GitCommit:        dea7da592f5d1d2b7755e3a161be07f43fad8f75\n runc:\n  Version:          1.3.4\n  GitCommit:        v1.3.4-0-gd6d73eb8\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "37317069743",
+      "workflow_run": "37423674313",
       "run_attempt": "1",
-      "elapsed_seconds": 868.9853370189667,
+      "elapsed_seconds": 770.6975564956665,
       "files": {
         "bun-webkit-linux-arm64-musl-lto.tar.gz": {
-          "sha256": "e31df77bd1b147d8d22bcd7502e0ae78165dda1180e465cccfc00f02f2f3f4b4",
-          "size": 223553290
+          "sha256": "f69663b4fda86df7046b1fadbcbe49aa06e8532821b343dbd046a0a5e8ab3e24",
+          "size": 223767726
         }
       },
       "provenance_files": {
-        "toolchain-image.json": "05d27ce6d37c90baff3465fee2151267d0bc707fa155d9d7fe4b6d0ca5be5f09",
-        "artifact-build.json": "5bd10e18a1ce60856ab551b33786593af8a9bc83ecaa94fb2f75579b9dd93872",
+        "toolchain-image.json": "0be6d7532352b7549f328a20e71f9f0ff88d6b459f6389b096e1cbeedbf790b5",
+        "artifact-build.json": "a7aaa7e9b191c1992e7f9576beaaeb86136de08b558db6df65eb927494b741d1",
         "tool-versions.txt": "4792d68346e97d6f8bcf05124f904e68c9f56299be740663f00da9e1ddc96e9f",
-        "toolchain-build.json": "efaeaf348fd9c9c689edf0e7ca652a5849960614ff8e9a52cec669f266fc944f"
+        "toolchain-build.json": "90e6926eafe5210acababb77cf37e0549334694b9deeff05211bcb42de5ad90c"
       }
     },
     {
       "schema_version": 1,
-      "source": "f1e1ca1156c8cb3b468bec0e1989fbfa08899661",
+      "source": "0a6b8011c24090cf9f88c536060925280db9e56b",
       "base": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "lane": {
         "label": "bun-webkit-windows-amd64-lto",
@@ -2817,6 +2937,21 @@
           "commit": "f1e1ca1156c8cb3b468bec0e1989fbfa08899661",
           "subject": "fix(jsc): correct ARM64 memory addition and qualify native tiers (#13)",
           "patch_sha256": "61d94fa0e059f00dcd96e840a77ed8a178198f7db62a5739c3d60029d56e9dc9"
+        },
+        {
+          "commit": "a3f506457fe770e16d1438eb8ce7f1993716e28a",
+          "subject": "fix(mimalloc): preserve TLS key ownership during process exit (#16)",
+          "patch_sha256": "1f918af1c43abb00ee64d02943a76e2a1566fa7f3286d1272f8ea23aa0c66e7b"
+        },
+        {
+          "commit": "f88d5f33b80a2f30d86ac40737449110f334b0a5",
+          "subject": "fix(jsc): deliver capped-worker termination after GC (#18)",
+          "patch_sha256": "e3bea84efbc8a41d932d5069ded2d46da9e1cc0591090b8ccfb2fb8dda79d727"
+        },
+        {
+          "commit": "0a6b8011c24090cf9f88c536060925280db9e56b",
+          "subject": "docs: prepare worker termination and allocator exit release (#20)",
+          "patch_sha256": "24b1b686208dd814afbdf263dbcdcf6e8593a91ebc6503f1fa61c1caf1f76df9"
         }
       ],
       "recipe_sha256": {
@@ -2841,7 +2976,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:01ac4db049f8a5525e614ec0b7ddbbeaa8d78cc8037eb94650f4dc9474a1c605",
+      "toolchain_image_id": "sha256:0f893544a8567c73a54a7a67594a83ab9752ca23cf0af9455d5a93e1b81b3b3b",
       "commands": {
         "base": [
           "docker",
@@ -2926,25 +3061,25 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910044232+069ef0e7cb36-1~exp1~20260910044242.70)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.11.1",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.2.1\n  GitCommit:        dea7da592f5d1d2b7755e3a161be07f43fad8f75\n runc:\n  Version:          1.3.4\n  GitCommit:        v1.3.4-0-gd6d73eb8\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "37317069743",
+      "workflow_run": "37423674313",
       "run_attempt": "1",
-      "elapsed_seconds": 1806.358342409134,
+      "elapsed_seconds": 758.8601109981537,
       "files": {
         "bun-webkit-windows-amd64-lto.tar.gz": {
-          "sha256": "8481faabd1d67dc17f82684bc5e59417a38c6ea06c734a75157d8511c034d3c7",
-          "size": 665612707
+          "sha256": "ced3713cd23573dd8386732184af83e8c1325b8269dc1ff30fa1fec6113f6b54",
+          "size": 665601649
         }
       },
       "provenance_files": {
+        "artifact-build.json": "c82bdbe2a96a71cdafbb88c9b0024937220076a21ce748204c17481e0efa0ebe",
+        "toolchain-build.json": "3e1415d8d4817ad49604648a40026b6213b24e59e49c5806504d4692e298b46b",
         "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8",
-        "toolchain-build.json": "49affb69ae57d5ae786e2b01569b22b5823ca14754a45398083a1ecaa16b90bc",
-        "toolchain-image.json": "263d5a543b1d7cefcdccd8090074032eab5af4834027bde0f0b94eb9cbf5fc35",
-        "artifact-build.json": "35101618f08040328c1e60a95385c29c44b82f715e3e56344dc3fcc3862f0327"
+        "toolchain-image.json": "603b2bb1ecd6f07ce2a347077ddaa8553500647dc5f9abcf89533db8e5ac7644"
       }
     },
     {
       "schema_version": 1,
-      "source": "f1e1ca1156c8cb3b468bec0e1989fbfa08899661",
+      "source": "0a6b8011c24090cf9f88c536060925280db9e56b",
       "base": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "lane": {
         "label": "bun-webkit-windows-arm64",
@@ -3129,6 +3264,21 @@
           "commit": "f1e1ca1156c8cb3b468bec0e1989fbfa08899661",
           "subject": "fix(jsc): correct ARM64 memory addition and qualify native tiers (#13)",
           "patch_sha256": "61d94fa0e059f00dcd96e840a77ed8a178198f7db62a5739c3d60029d56e9dc9"
+        },
+        {
+          "commit": "a3f506457fe770e16d1438eb8ce7f1993716e28a",
+          "subject": "fix(mimalloc): preserve TLS key ownership during process exit (#16)",
+          "patch_sha256": "1f918af1c43abb00ee64d02943a76e2a1566fa7f3286d1272f8ea23aa0c66e7b"
+        },
+        {
+          "commit": "f88d5f33b80a2f30d86ac40737449110f334b0a5",
+          "subject": "fix(jsc): deliver capped-worker termination after GC (#18)",
+          "patch_sha256": "e3bea84efbc8a41d932d5069ded2d46da9e1cc0591090b8ccfb2fb8dda79d727"
+        },
+        {
+          "commit": "0a6b8011c24090cf9f88c536060925280db9e56b",
+          "subject": "docs: prepare worker termination and allocator exit release (#20)",
+          "patch_sha256": "24b1b686208dd814afbdf263dbcdcf6e8593a91ebc6503f1fa61c1caf1f76df9"
         }
       ],
       "recipe_sha256": {
@@ -3153,7 +3303,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:6d19ef8da1705666c50e348eb07b44018d3c646547431cbb4fe3db30fe96e4b6",
+      "toolchain_image_id": "sha256:95e670c5946be2ceb72c6699d635f000d8941f2473081eda3124610c19318488",
       "commands": {
         "base": [
           "docker",
@@ -3238,31 +3388,31 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910044232+069ef0e7cb36-1~exp1~20260910044242.70)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.11.1",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.2.1\n  GitCommit:        dea7da592f5d1d2b7755e3a161be07f43fad8f75\n runc:\n  Version:          1.3.4\n  GitCommit:        v1.3.4-0-gd6d73eb8\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "37317069743",
+      "workflow_run": "37423674313",
       "run_attempt": "1",
-      "elapsed_seconds": 862.9645998477936,
+      "elapsed_seconds": 677.0592963695526,
       "files": {
         "bun-webkit-windows-arm64.tar.gz": {
-          "sha256": "9883a17e6a4a61e9df737ca9c772a1c03b5a157f8f6aca4a5c8e040be893afda",
-          "size": 367114876
+          "sha256": "68d7bb49f3bf005a5358e042cd427d110d472ddd802fcc24a0f3ea52cfda9c13",
+          "size": 367101945
         }
       },
       "provenance_files": {
+        "artifact-build.json": "79e06a8a15a3aa2aedd15f24a4dd121d7cd14434e76e635a4a15f059403cb6a4",
+        "toolchain-build.json": "c6bbd4e35ac1ec4b567a2eec9b5a5ad516f96781423f82e93abdf4bb0b969899",
         "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8",
-        "toolchain-build.json": "ddc8df319539799314260e06ffb2d788a5e2a2b11a4fca3bb3896dcf7b7ef6c3",
-        "toolchain-image.json": "8f546fdf207b72f52b8e44a1f2ba2d2e30e4d4da4927257ca8c4bbd379294968",
-        "artifact-build.json": "173d4a202834aa5d9c08c46f297c46e5397c5d271d818fa9e64c18ae528ca45f"
+        "toolchain-image.json": "803a2282afba1a716d214865b4e8808a36b3c0a716f37028711addc6d4eeb10c"
       }
     }
   ],
   "supporting_files": {
     "LICENSE-SOURCES.txt": {
-      "sha256": "501a99ee9a404c0e604c7407997cfaab429c2058aa4be2867a74c00ed96597e2",
+      "sha256": "680609a57bbdfc65894184bceb0cff7d91da3d42ffcef22d8b9a8ca1321f6a89",
       "size": 26102
     },
     "provenance.tar.gz": {
-      "sha256": "12b7cd6d7282b2cd01da5685c0102755ae71d00b1dd156aad440150a4814c38d",
-      "size": 915782
+      "sha256": "43f20e118c6b2c6f190cb28f686344691b6bd48138b005b62d37bb5fb1266aad",
+      "size": 924461
     }
   }
 }
