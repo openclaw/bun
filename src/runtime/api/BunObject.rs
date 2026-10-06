@@ -1143,11 +1143,14 @@ fn resolve_with_args<const IS_FILE_PATH: bool>(
     // CommonJS cache keys must distinguish a literal '?' in the resolved path
     // from the query suffix, including when a relative import reaches that path.
     // Bun.resolve's directory-based public APIs still return filesystem paths.
-    let encoded_module_key = bun_paths::is_absolute(result_value.to_utf8().slice())
-        && (as_url
-            || (IS_FILE_PATH
-                && !mode.is_esm()
-                && result_value.index_of_ascii_char(b'?').is_some()));
+    let encoded_module_key = {
+        let path = result_value.to_utf8();
+        bun_paths::is_absolute(&path)
+            && (as_url
+                || (IS_FILE_PATH
+                    && !mode.is_esm()
+                    && jsc::resolver_jsc::module_key_without_query(&path).len() < path.len()))
+    };
     let result_value = if encoded_module_key {
         bun_url::file_url_from_string(&result_value)
     } else {

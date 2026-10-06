@@ -378,6 +378,24 @@ extern "C" HMODULE Bun__LoadLibraryBunString(BunString*);
 /// Returns a pointer that needs to be freed with `delete[]`.
 static char* toFileURI(std::string_view path)
 {
+#if OS(WINDOWS)
+    std::string_view prefix = "file:///";
+    // Win32 loader namespaces are not part of the addon's file URL.
+    if (path.starts_with("\\\\?\\UNC\\")) {
+        path.remove_prefix(8);
+        prefix = "file://";
+    } else {
+        if (path.starts_with("\\\\?\\"))
+            path.remove_prefix(4);
+        if (path.starts_with("\\\\")) {
+            path.remove_prefix(2);
+            prefix = "file://";
+        }
+    }
+#else
+    constexpr std::string_view prefix = "file://";
+#endif
+
     auto needs_escape = [](char ch) {
         return !(('a' <= ch && ch <= 'z') || ('A' <= ch && ch <= 'Z') || ('0' <= ch && ch <= '9')
             || ch == '_' || ch == '-' || ch == '.' || ch == '!' || ch == '~' || ch == '*' || ch == '\'' || ch == '(' || ch == ')' || ch == '/' || ch == ':');
@@ -402,16 +420,10 @@ static char* toFileURI(std::string_view path)
         }
     }
 
-#if OS(WINDOWS)
-#define FILE_URI_START "file:///"
-#else
-#define FILE_URI_START "file://"
-#endif
-
-    const size_t string_size = sizeof(FILE_URI_START) + path.size() + 2 * escape_count; // null byte is included in the sizeof expression
+    const size_t string_size = prefix.size() + path.size() + 2 * escape_count + 1;
     char* characters = new char[string_size];
-    strncpy(characters, FILE_URI_START, sizeof(FILE_URI_START));
-    size_t i = sizeof(FILE_URI_START) - 1;
+    memcpy(characters, prefix.data(), prefix.size());
+    size_t i = prefix.size();
     for (char ch : path) {
 #if OS(WINDOWS)
         if (ch == '\\') {

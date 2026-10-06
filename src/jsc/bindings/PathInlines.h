@@ -69,7 +69,7 @@ ALWAYS_INLINE unsigned moduleKeyPathLength(const WTF::String& key)
 // Filesystem filenames must not acquire module-query semantics after decoding a URL.
 ALWAYS_INLINE WTF::String moduleReferrerFromFilename(const WTF::String& filename, bool isModuleKey)
 {
-    if (!isModuleKey && filename.find('?') != WTF::notFound)
+    if (!isModuleKey && moduleKeyPathLength(filename) < filename.length())
         return WTF::URL::fileURLWithFileSystemPath(filename).string();
     return filename;
 }

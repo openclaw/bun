@@ -11,8 +11,10 @@ export function main() {
 }
 
 // This function is bound when constructing instances of CommonJSModule
+// Keep its implementation name distinct from static builtin require() imports.
 $visibility = "Private";
-export function require(this: JSCommonJSModule, _: string) {
+$overriddenName = "require";
+export function requireFunction(this: JSCommonJSModule, _: string) {
   // Do not use $tailCallForwardArguments here, it causes https://github.com/oven-sh/bun/issues/9225
   return $overridableRequire.$apply(this, arguments);
 }
@@ -70,7 +72,18 @@ export function overridableRequire(this: JSCommonJSModule, originalId: string, o
 
   // A resolved id may carry a `?query` suffix (part of the module cache key);
   // match the native-addon extension against the path portion only.
-  const queryIndex = id.indexOf("?");
+  // Match the device-prefix separators accepted by moduleKeyPathLength.
+  const queryIndex = id.indexOf(
+    "?",
+    process.platform === "win32" &&
+      id.length >= 4 &&
+      id[2] === "?" &&
+      (id[0] === "\\" || id[0] === "/") &&
+      (id[1] === "\\" || id[1] === "/") &&
+      (id[3] === "\\" || id[3] === "/")
+      ? 4
+      : 0,
+  );
   if (queryIndex === -1 ? id.endsWith(".node") : id.endsWith(".node", queryIndex)) {
     return $internalRequire(id, this, requireMap);
   }
@@ -160,12 +173,28 @@ export function internalRequire(id: string, parent: JSCommonJSModule, requireMap
   }
   // `id` keys the module cache and may carry a `?query` suffix;
   // `process.dlopen` needs the on-disk path.
-  const queryIndex = id.indexOf("?");
+  const queryIndex = id.indexOf(
+    "?",
+    process.platform === "win32" &&
+      id.length >= 4 &&
+      id[2] === "?" &&
+      (id[0] === "\\" || id[0] === "/") &&
+      (id[1] === "\\" || id[1] === "/") &&
+      (id[3] === "\\" || id[3] === "/")
+      ? 4
+      : 0,
+  );
   const filename = queryIndex === -1 ? id : id.substring(0, queryIndex);
   $assert(filename.endsWith(".node"));
 
   const module = $createCommonJSModule(id, {}, true, requireMap === $requireMap ? parent : undefined);
-  process.dlopen(module, filename);
+  // Windows needs the namespaced disk path for addon activation contexts.
+  // Embedded keys must reach dlopen unchanged so it can extract the addon.
+  const nativePath =
+    process.platform === "win32" && !filename.startsWith("B:/~BUN/")
+      ? require("node:path").toNamespacedPath(filename)
+      : filename;
+  process.dlopen(module, nativePath);
   $requireMap.$set(id, module);
   if (requireMap !== $requireMap) requireMap.$set(id, module);
   return module.exports;

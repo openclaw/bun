@@ -3935,12 +3935,10 @@ unsafe fn normalize_specifier_for_loader<'a>(
     }
     let specifier = slice;
     let mut query: &[u8] = b"";
-    if !preserve_path_delimiters
-        && let Some(i) = bun_core::strings::index_of_char_usize(slice, b'?')
-    {
-        let i = i as usize;
-        query = &slice[i..];
-        slice = &slice[..i];
+    if !preserve_path_delimiters {
+        let path = bun_jsc::resolver_jsc::module_key_without_query(slice);
+        query = &slice[path.len()..];
+        slice = path;
     }
     (slice, specifier, query)
 }

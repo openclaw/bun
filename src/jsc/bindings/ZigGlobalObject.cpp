@@ -2534,7 +2534,7 @@ void GlobalObject::finishCreation(VM& vm)
                  JSFunction::create(
                      init.vm,
                      init.owner,
-                     commonJSRequireCodeGenerator(init.vm),
+                     commonJSRequireFunctionCodeGenerator(init.vm),
                      init.owner->globalScope(),
                      JSFunction::createStructure(init.vm, init.owner, RequireFunctionPrototype::create(init.owner))));
          } },
@@ -3467,7 +3467,7 @@ static String resolvedModuleKey(const String& resolved, const String& suffix)
             return resolved;
     }
     // Keep literal '#' paths keyed like require() and moduleKeyFromFileURL; only '?' splits a module key.
-    if (isAbsolutePath(resolved) && resolved.find('?') != WTF::notFound)
+    if (isAbsolutePath(resolved) && moduleKeyPathLength(resolved) < resolved.length())
         return makeString(URL::fileURLWithFileSystemPath(resolved).string(), suffix);
     // Node's default ESM realpath finalization aliases #x and ?#x.
     // https://github.com/nodejs/node/blob/v26.8.2/lib/internal/modules/esm/resolve.js

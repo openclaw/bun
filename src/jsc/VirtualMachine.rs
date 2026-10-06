@@ -4154,7 +4154,8 @@ pub(crate) enum HashSign {
 
 /// Start of a specifier's `?query` or, for relative ESM only, `#fragment` suffix.
 fn index_of_specifier_suffix(specifier: &[u8], hash_sign: HashSign) -> Option<usize> {
-    let query = bun_core::strings::index_of_char_usize(specifier, b'?');
+    let path_len = crate::resolver_jsc::module_key_without_query(specifier).len();
+    let query = (path_len < specifier.len()).then_some(path_len);
     if hash_sign == HashSign::FileName
         || !(specifier.starts_with(b"./") || specifier.starts_with(b"../"))
     {
@@ -8113,10 +8114,7 @@ fn run_on_resolve(
     let importer = if is_file_url {
         &importer[..]
     } else {
-        match bun_core::strings::index_of_char_usize(&importer, b'?') {
-            Some(query) => &importer[..query],
-            None => &importer[..],
-        }
+        crate::resolver_jsc::module_key_without_query(&importer)
     };
     let Some(on_resolve_plugin) = global.run_on_resolve_plugins(
         &bun_core::String::from_bytes(if namespace == b"file" { b"" } else { namespace }),
