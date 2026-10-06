@@ -165,7 +165,7 @@ describe("net.Socket read", () => {
                 },
               })
             : Bun.listen({
-                hostname: "localhost",
+                hostname: "127.0.0.1",
                 port: 0,
                 socket: {
                   open(socket) {
@@ -1234,22 +1234,17 @@ it.skipIf(isWindows)(
         Bun.gc(true);
       }
 
-      // Count live mimalloc pages across all size bins. Each leaked
-      // TCPSocket struct is ~300-400 bytes; 8k of them fill ~25 pages
-      // (release) / ~160 pages (debug+ASAN). Unlike RSS this is the
-      // allocator's own bookkeeping, so it's independent of OS page
-      // reclamation.
-      function pageCount() {
-        return heapStats().mimalloc.page_bins.reduce((a, b) => a + b.current, 0);
+      // Count live allocations, not occupied pages: JSC shares mimalloc,
+      // and page growth/recycling does not measure the native socket leak.
+      function allocationCount() {
+        return heapStats().mimalloc.malloc_bins.reduce((a, b) => a + b.current, 0);
       }
 
-      // Warm up with the SAME workload as the measured run: on builds where
-      // JSC shares mimalloc, its heap keeps growing until the first full-size
-      // batch, so equal batches make the delta isolate the per-run leak.
+      // Use equal batches to bound setup and JSC warmup allocations.
       await run(8000);
-      const before = pageCount();
+      const before = allocationCount();
       await run(8000);
-      const after = pageCount();
+      const after = allocationCount();
       console.log(JSON.stringify({ before, after, delta: after - before }));
     `;
     await using proc = Bun.spawn({
@@ -1261,10 +1256,9 @@ it.skipIf(isWindows)(
     const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
     expect(stderr).toBe("");
     const { before, after, delta } = JSON.parse(stdout.trim().split("\n").pop()!);
-    // Without the balancing deref: +25 pages (release) / +163 (debug+ASAN).
-    // With it the socket delta is 0, but since #34009 JSC shares mimalloc and
-    // adds up to +14 of heap noise on aarch64/darwin release (build 75589).
-    expect(delta, `mimalloc page count: ${before} -> ${after}`).toBeLessThan(20);
+    // A missing deref retains at least 8,000 native allocations; leave room
+    // for bounded JSC setup allocations while still detecting that leak.
+    expect(delta, `mimalloc live allocation count: ${before} -> ${after}`).toBeLessThan(4000);
     expect(exitCode).toBe(0);
   },
   60_000,

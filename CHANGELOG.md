@@ -228,3 +228,9 @@
 - Preserve an unlimited test's child processes when a completed test's stale deadline fires.
 
 - Update the ten checksum-pinned OpenClaw WebKit archives for prompt worker heap-cap termination and the JSC shell mimalloc exit TLS fix; retain managed-heap limits and external-buffer exclusions, with near-limit survival coverage and the complete fork selection in native engine-pin CI. Thanks @dylan-conway for the allocator race diagnosis.
+
+- Keep the macOS blackhole test listener pending with SYN cookies enabled by binding it to `lo0`. Ports [oven-sh/bun#44413](https://github.com/oven-sh/bun/pull/44413); thanks @robobun!
+
+- Measure live allocations in the synchronous socket-connect leak regression so shared allocator page occupancy does not masquerade as a native socket leak; preserve the original workload and leak detection.
+
+- Bind socket-read test listeners to IPv4 loopback so `localhost` address-family differences do not cause connection-refused failures in containers.
