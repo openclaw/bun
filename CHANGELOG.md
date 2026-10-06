@@ -218,3 +218,5 @@
 - Keep detached `import.meta.resolve` functions bound to their originating module on every platform, including Windows, with Node-compatible writable resolver properties.
 
 - Detect deferred compile-cache test stalls by persistence progress, with bounded startup and shutdown, so slow Windows runners can complete the unchanged workload.
+
+- Preserve an unlimited test's child processes when a completed test's stale deadline fires.

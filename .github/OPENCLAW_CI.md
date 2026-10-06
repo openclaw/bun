@@ -168,6 +168,12 @@ exact binary's CPU budget reproduced the timeout while entries kept increasing.
 An independent driver completed all 2,002 entries in 64.7 seconds; suspending the
 child instead triggered the existing ten-second no-progress guard.
 
+Using a progress-only deadline also exposed a test-runner bug: a stale file
+timer treated the unlimited entry's zero timestamp as expired and killed its
+child. The process-reaping check now excludes the no-deadline sentinel, matching
+the entry's timeout check. A separate regression covers the completed-deadline
+and live-child sequence.
+
 The test now bounds module loading, pipe flushes, and child exit individually
 and keeps the ten-second persistence stall guard. It has no aggregate duration
 limit: slow, steadily increasing entry counts satisfy the idle-progress
