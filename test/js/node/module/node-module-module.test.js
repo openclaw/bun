@@ -935,7 +935,7 @@ console.log("survived", require("./late.js"));`,
       `,
       });
       const cacheDir = path.join(String(dir), "cc");
-      await using proc = Bun.spawn({
+      const proc = Bun.spawn({
         cmd: [bunExe(), "main.cjs"],
         cwd: String(dir),
         env: {
@@ -949,57 +949,83 @@ console.log("survived", require("./late.js"));`,
         stdout: "pipe",
         stderr: "pipe",
       });
-      const ready = Promise.withResolvers();
-      const stdoutPromise = (async () => {
-        let text = "";
-        for await (const chunk of proc.stdout) {
-          text += Buffer.from(chunk).toString();
-          if (text.startsWith("ready\n")) ready.resolve();
-        }
-        return text;
-      })();
-      const stderrPromise = proc.stderr.text();
-      await Promise.race([
-        ready.promise,
-        proc.exited.then(() => {
-          throw new Error("exited before ready");
-        }),
-      ]);
-      const files = () =>
-        [...new Bun.Glob("**/*").scanSync({ cwd: cacheDir, onlyFiles: true })].filter(f =>
-          /^[0-9a-f]{16}$/.test(path.basename(f)),
-        ).length;
-      const waitForFiles = async minimum => {
-        let deadline = Date.now() + 10_000;
-        let previous = 0;
-        while (true) {
-          const current = files();
-          if (current >= minimum) return;
-          // Detect stranded work without timing out slow, low-priority compilation.
-          if (current > previous) {
-            previous = current;
-            deadline = Date.now() + 10_000;
-          }
-          if (Date.now() >= deadline || proc.exitCode !== null) {
-            throw new Error(`idle persistence stalled at ${current}/${minimum} entries (exitCode: ${proc.exitCode})`);
-          }
-          await Bun.sleep(10);
+      const waitForPhase = async (promise, phase) => {
+        let timer;
+        try {
+          return await Promise.race([
+            promise,
+            new Promise((_, reject) => {
+              timer = setTimeout(() => {
+                reject(new Error(`compile cache ${phase} stalled (exitCode: ${proc.exitCode})`));
+              }, 10_000);
+            }),
+          ]);
+        } finally {
+          clearTimeout(timer);
         }
       };
-      await waitForFiles(1);
-      expect(files()).toBeLessThan(count + 1);
-      proc.stdin.write("late\n");
-      await proc.stdin.flush();
-      // The child now has no JS timers. The new module must wake/resume deferred persistence.
-      await waitForFiles(count + 2);
-      proc.stdin.write("stop\n");
-      await proc.stdin.flush();
-      const [stdout, stderr, exitCode] = await Promise.all([stdoutPromise, stderrPromise, proc.exited]);
-      expect(stdout.trim()).toBe("ready\nlate\ncomplete");
-      expect(stderr).toBe("");
-      expect(exitCode).toBe(0);
+      try {
+        const ready = Promise.withResolvers();
+        const stdoutPromise = (async () => {
+          let text = "";
+          for await (const chunk of proc.stdout) {
+            text += Buffer.from(chunk).toString();
+            if (text.startsWith("ready\n")) ready.resolve();
+          }
+          return text;
+        })();
+        const stderrPromise = proc.stderr.text();
+        await waitForPhase(
+          Promise.race([
+            ready.promise,
+            proc.exited.then(() => {
+              throw new Error("exited before ready");
+            }),
+          ]),
+          "module loading",
+        );
+        const files = () =>
+          [...new Bun.Glob("**/*").scanSync({ cwd: cacheDir, onlyFiles: true })].filter(f =>
+            /^[0-9a-f]{16}$/.test(path.basename(f)),
+          ).length;
+        const waitForFiles = async minimum => {
+          let deadline = Date.now() + 10_000;
+          let previous = 0;
+          while (true) {
+            const current = files();
+            if (current >= minimum) return;
+            // Detect stranded work without timing out slow, low-priority compilation.
+            if (current > previous) {
+              previous = current;
+              deadline = Date.now() + 10_000;
+            }
+            if (Date.now() >= deadline || proc.exitCode !== null) {
+              throw new Error(`idle persistence stalled at ${current}/${minimum} entries (exitCode: ${proc.exitCode})`);
+            }
+            await Bun.sleep(10);
+          }
+        };
+        await waitForFiles(1);
+        expect(files()).toBeLessThan(count + 1);
+        proc.stdin.write("late\n");
+        await waitForPhase(proc.stdin.flush(), "late-module request");
+        // The child now has no JS timers. The new module must wake/resume deferred persistence.
+        await waitForFiles(count + 2);
+        proc.stdin.write("stop\n");
+        await waitForPhase(proc.stdin.flush(), "stop request");
+        const [stdout, stderr, exitCode] = await waitForPhase(
+          Promise.all([stdoutPromise, stderrPromise, proc.exited]),
+          "child exit",
+        );
+        expect(stdout.trim()).toBe("ready\nlate\ncomplete");
+        expect(stderr).toBe("");
+        expect(exitCode).toBe(0);
+      } finally {
+        await waitForPhase(proc[Symbol.asyncDispose](), "child cleanup");
+      }
     },
-    30_000,
+    // Each awaited phase is bounded above; steady persistence is independent of runner speed.
+    0,
   );
 
   const compileCacheEnv = { ...bunEnv };

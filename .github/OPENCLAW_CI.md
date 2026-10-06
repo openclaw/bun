@@ -157,8 +157,22 @@ tests. The same failure reproduces with continuous cache-file progress under
 Microsoft Defender. The Windows rename helper requested `FILE_TRAVERSE`, which
 is `FILE_EXECUTE` for a regular file, forcing synchronous executable-file scans
 for each cache entry. The helper now uses its existing non-executable access
-rights directly. The test workloads, deadlines, idle-generation window, and
-signal-exit budget are unchanged.
+rights directly in [PR #130](https://github.com/openclaw/bun/pull/130), without
+changing the test workloads, deadlines, idle-generation window, or signal-exit budget.
+
+The deferred-idle test hit its outer 30-second deadline again in Windows x64
+[run 37386790583](https://github.com/openclaw/bun/actions/runs/37386790583), with
+#130 present. That run retained no progress timeline, so its runner-level cause
+is unknown. On a separate Windows x64 host with Defender enabled, limiting the
+exact binary's CPU budget reproduced the timeout while entries kept increasing.
+An independent driver completed all 2,002 entries in 64.7 seconds; suspending the
+child instead triggered the existing ten-second no-progress guard.
+
+The test now bounds module loading, pipe flushes, and child exit individually
+and keeps the ten-second persistence stall guard. It has no aggregate duration
+limit: slow, steadily increasing entry counts satisfy the idle-progress
+contract. The 2,000-module workload, late-module handshake, expected 2,002 files,
+idle-generation window, and signal-exit budget are unchanged.
 
 Keep later failures distinguishable from these causes; a green rerun does not
 establish a cause. The native lane has no automatic test retries or exclusion
