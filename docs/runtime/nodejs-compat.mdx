@@ -310,6 +310,8 @@ Valid `vm.Script` cached data is accepted when JSC runs without a JIT. Validatio
 
 Immediate engine GC timers wake idle workers when scheduled. These native wakeups do not keep a worker alive.
 
+Budgeted workers can use young-generation collections within their managed heap budgets; full collections still confirm heap-limit exhaustion. Synchronous GC wakes a passive collector even while another heap occupies the shared helpers.
+
 File workers select `--require` and `--import` preloads from their environment independently of `execArgv`. Explicit `env` or `execArgv` options re-read the worker's `NODE_OPTIONS` and `BUN_OPTIONS` before applying the selected CLI arguments. `execArgv: []` removes CLI preloads while environment preloads still apply. Require preloads run before import preloads.
 
 `MessagePort.emit()` and `parentPort.emit()` preserve the emitted value for Node listeners. Web listeners receive `MessageEvent` objects for `message` and `messageerror`, and `CustomEvent` objects for other events.
