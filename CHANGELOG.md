@@ -238,3 +238,5 @@
 - Wake idle event loops when the engine schedules immediate garbage-collection work, including requests from collector threads, without extending worker lifetime.
 
 - Update the ten checksum-pinned [OpenClaw WebKit archives](https://github.com/openclaw/WebKit/releases/tag/autobuild-cb8d6f202b5a396caa204ee1bb75d78175aa841a) for passive-collector wakeups and budgeted-worker collection cadence, preserving full-GC heap-limit confirmation and the immediate-timer companion.
+
+- Avoid eager full bytecode generation on live `node:vm` cache hits while retaining post-GC promotion for payloads missing function bodies, preserving the cache budget and public cached-data generation.

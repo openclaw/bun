@@ -3180,6 +3180,104 @@ test.concurrent("repeated vm source executes after GC without another parse", as
   expect(exitCode).toBe(0);
 });
 
+test.concurrent("private vm reuse does not eagerly parse unused function bodies", async () => {
+  await using proc = Bun.spawn({
+    cmd: [
+      bunExe(),
+      "-e",
+      `
+      const assert = require("node:assert/strict");
+      const vm = require("node:vm");
+      const source = "(function(){ function cold(){ return 99; } return { hot(){ return 42; }, cold }; })";
+      const hot = () => vm.runInThisContext(source)().hot();
+      assert.equal(hot(), 42);
+      console.error("CACHE_PROOF_BEGIN");
+      assert.equal(hot(), 42);
+      console.error("CACHE_PROOF_END");
+      setImmediate(() => {
+        Bun.gc(true);
+        assert.equal(hot(), 42);
+        assert.equal(vm.runInThisContext(source)().cold(), 99);
+        console.log("ok");
+      });
+    `,
+    ],
+    env: {
+      ...bunEnv,
+      BUN_JSC_reportParseTimes: "1",
+      BUN_JSC_useCodeCache: "false",
+      BUN_VM_COMPILE_CACHE_SIZE: "268435456",
+      BUN_VM_COMPILE_CACHE_THRESHOLD: "0",
+    },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect(stdout).toBe("ok\n");
+  expect(stderr.split("CACHE_PROOF_BEGIN\n")).toHaveLength(2);
+  expect(stderr.split("CACHE_PROOF_BEGIN\n")[0]).toContain("Parsed #");
+  const measured = stderr.split("CACHE_PROOF_BEGIN\n")[1].split("CACHE_PROOF_END");
+  expect(measured).toHaveLength(2);
+  expect(measured[0]).toBe("");
+  expect(exitCode).toBe(0);
+});
+
+test.concurrent.each([
+  ["collected root", false, false],
+  ["held root", true, false],
+  ["late nested function", false, true],
+])("private vm bytecode survives GC before reuse (%s)", async (_name, keepRoot, lateNested) => {
+  await using proc = Bun.spawn({
+    cmd: [
+      bunExe(),
+      "-e",
+      `
+      const assert = require("node:assert/strict");
+      const vm = require("node:vm");
+      const lateNested = ${lateNested};
+      const source = lateNested
+        ? "(function(){ return function cold(){ return 99; }; })"
+        : "(function(){ function cold(){ return 99; } return 42; })";
+      globalThis.originalScript = ${keepRoot} ? new vm.Script(source) : null;
+      const run = () => vm.runInThisContext(source)();
+      if (lateNested) {
+        assert.equal(99, 99);
+        run();
+        run();
+      } else {
+        assert.equal(globalThis.originalScript ? globalThis.originalScript.runInThisContext()() : run(), 42);
+      }
+      for (let i = 0; i < 3; i++) {
+        await new Promise(setImmediate);
+        Bun.gc(true);
+        if (i === 2) console.error("CACHE_PROOF_BEGIN");
+        assert.equal(lateNested ? run()() : run(), lateNested ? 99 : 42);
+        if (i === 2) console.error("CACHE_PROOF_END");
+        globalThis.originalScript = null;
+      }
+      console.log("ok");
+    `,
+    ],
+    env: {
+      ...bunEnv,
+      BUN_JSC_reportParseTimes: "1",
+      BUN_JSC_useCodeCache: "false",
+      BUN_VM_COMPILE_CACHE_SIZE: "268435456",
+      BUN_VM_COMPILE_CACHE_THRESHOLD: "0",
+    },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect(stdout).toBe("ok\n");
+  expect(stderr.split("CACHE_PROOF_BEGIN\n")).toHaveLength(2);
+  expect(stderr.split("CACHE_PROOF_BEGIN\n")[0]).toContain("Parsed #");
+  const measured = stderr.split("CACHE_PROOF_BEGIN\n")[1].split("CACHE_PROOF_END");
+  expect(measured).toHaveLength(2);
+  expect(measured[0]).toBe("");
+  expect(exitCode).toBe(0);
+});
+
 test.concurrent("vm compilation admission counts distinct sources before retaining bytecode", async () => {
   await using proc = Bun.spawn({
     cmd: [
