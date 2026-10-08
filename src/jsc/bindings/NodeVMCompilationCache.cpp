@@ -213,7 +213,9 @@ void NodeVMCompilationCache::insert(JSGlobalObject* globalObject, const SourceCo
         entry->importer = Weak<JSCell>(importer.asCell());
     // Drop the encoder's update/leaf maps; cached payloads never own growing decoded graphs.
     entry->bytecode = NodeVM::createOwnedCachedBytecode(bytes->span());
-    entry->decoded = Weak<UnlinkedProgramCodeBlock>(block);
+    // Newly generated bodies can be cleared by GC while their decoded parent survives.
+    if (promotion != Promotion::Full)
+        entry->decoded = Weak<UnlinkedProgramCodeBlock>(block);
     entry->bytes = charge;
     m_lru.append(entry.get());
     m_entries.add(hash, WTF::move(entry));

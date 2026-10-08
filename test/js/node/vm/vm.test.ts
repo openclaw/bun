@@ -3240,7 +3240,8 @@ test.concurrent("private vm promotion compiles only missing function bodies", as
         Bun.gc(true);
         const before = stats();
         console.error("PROMOTION_BEGIN");
-        assert.equal(run().value, 42);
+        globalThis.promotedScript = new vm.Script(source);
+        assert.equal(globalThis.promotedScript.runInThisContext()().value, 42);
         console.error("PROMOTION_END");
         assert.equal(stats().decodes, before.decodes + 1);
         setImmediate(() => {
