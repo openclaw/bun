@@ -3222,6 +3222,61 @@ test.concurrent("private vm reuse does not eagerly parse unused function bodies"
   expect(exitCode).toBe(0);
 });
 
+test.concurrent("private vm promotion compiles only missing function bodies", async () => {
+  await using proc = Bun.spawn({
+    cmd: [
+      bunExe(),
+      "--expose-internals",
+      "-e",
+      `
+      const assert = require("node:assert/strict");
+      const vm = require("node:vm");
+      const {nodeVMCompilationCacheStats: stats} = require("bun:internal-for-testing");
+      const source = "(function root(){ function cold(){ return 99; } return {value: 42, cold}; })";
+      const run = () => vm.runInThisContext(source)();
+      assert.equal(run().value, 42);
+      assert.equal(run().value, 42);
+      setImmediate(() => {
+        Bun.gc(true);
+        const before = stats();
+        console.error("PROMOTION_BEGIN");
+        assert.equal(run().value, 42);
+        console.error("PROMOTION_END");
+        assert.equal(stats().decodes, before.decodes + 1);
+        setImmediate(() => {
+          Bun.gc(true);
+          console.error("LATE_BEGIN");
+          assert.equal(run().cold(), 99);
+          console.error("LATE_END");
+          console.log("ok");
+        });
+      });
+      `,
+    ],
+    env: {
+      ...bunEnv,
+      BUN_JSC_reportParseTimes: "1",
+      BUN_JSC_useCodeCache: "false",
+      BUN_VM_COMPILE_CACHE_SIZE: "268435456",
+      BUN_VM_COMPILE_CACHE_THRESHOLD: "0",
+    },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect(stdout).toBe("ok\n");
+  expect(stderr.split("PROMOTION_BEGIN\n")).toHaveLength(2);
+  const promotion = stderr.split("PROMOTION_BEGIN\n")[1].split("PROMOTION_END");
+  expect(promotion).toHaveLength(2);
+  expect(promotion[0].trim().split("\n")).toHaveLength(1);
+  expect(promotion[0]).toStartWith("Parsed #");
+  expect(stderr.split("LATE_BEGIN\n")).toHaveLength(2);
+  const late = stderr.split("LATE_BEGIN\n")[1].split("LATE_END");
+  expect(late).toHaveLength(2);
+  expect(late[0]).toBe("");
+  expect(exitCode).toBe(0);
+});
+
 test.concurrent.each([
   ["collected root", false, false],
   ["held root", true, false],
