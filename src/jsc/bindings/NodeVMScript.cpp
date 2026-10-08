@@ -214,9 +214,10 @@ JSC::UnlinkedProgramCodeBlock* NodeVMScript::unlinkedCodeBlockFor(JSGlobalObject
     NodeVMCompilationCache::Identity identity { m_options.lineOffset.zeroBasedInt(), m_options.columnOffset.zeroBasedInt(), NodeVMCompilationCache::Kind::Script, m_options.filenameProvided, m_options.produceCachedData, codeGenerationMode, globalObject->globalScopeExtension() ? JSC::TaintedByWithScopeLexicallyScopedFeature : JSC::NoLexicallyScopedFeatures };
     auto& cache = WebCore::clientData(vm)->nodeVMCompilationCache;
     JSC::UnlinkedProgramCodeBlock* block;
-    if (cache.isActive())
-        block = cache.getOrCompile(globalObject, JSC::ProgramExecutable::create(globalObject, m_source), m_source, identity, m_options.hasCachedData, error);
-    else {
+    if (cache.isActive()) {
+        JSC::ProgramExecutable* executable = nullptr;
+        block = cache.getOrCompile(globalObject, executable, m_source, identity, m_options.hasCachedData, error);
+    } else {
         block = vm.codeCache()->getUnlinkedProgramCodeBlock(vm, JSC::ProgramExecutable::create(globalObject, m_source), m_source, codeGenerationMode, error);
         if (block)
             cache.observeCompilation(globalObject, m_source, identity, m_options.hasCachedData, block);

@@ -210,7 +210,7 @@ JSC::JSFunction* constructAnonymousFunction(JSC::JSGlobalObject* globalObject, c
     SourceCode sourceCode(JSC::StringSourceProvider::create(program, sourceOrigin, WTF::move(options.filename), sourceTaintOrigin, wrappedPosition, SourceProviderSourceType::Program));
 
     NodeVMCompilationCache::Identity cacheIdentity { options.lineOffset.zeroBasedInt(), options.columnOffset.zeroBasedInt(), NodeVMCompilationCache::Kind::Function, options.filenameProvided, options.produceCachedData, {}, lexicallyScopedFeatures };
-    ProgramExecutable* programExecutable = ProgramExecutable::create(globalObject, sourceCode);
+    ProgramExecutable* programExecutable = nullptr;
 
     UnlinkedProgramCodeBlock* unlinkedProgramCodeBlock = nullptr;
     RefPtr<CachedBytecode> cachedBytecode;
@@ -235,6 +235,7 @@ JSC::JSFunction* constructAnonymousFunction(JSC::JSGlobalObject* globalObject, c
         if (cache.isActive())
             unlinkedProgramCodeBlock = cache.getOrCompile(globalObject, programExecutable, sourceCode, cacheIdentity, options.hasCachedData, error);
         else {
+            programExecutable = ProgramExecutable::create(globalObject, sourceCode);
             unlinkedProgramCodeBlock = vm.codeCache()->getUnlinkedProgramCodeBlock(vm, programExecutable, sourceCode, {}, error);
             if (unlinkedProgramCodeBlock)
                 cache.observeCompilation(globalObject, sourceCode, cacheIdentity, options.hasCachedData, unlinkedProgramCodeBlock);
@@ -248,6 +249,8 @@ JSC::JSFunction* constructAnonymousFunction(JSC::JSGlobalObject* globalObject, c
     ProgramCodeBlock* programCodeBlock = nullptr;
     {
         DeferGC deferGC(vm);
+        if (!programExecutable)
+            programExecutable = ProgramExecutable::create(globalObject, sourceCode);
         programCodeBlock = ProgramCodeBlock::create(vm, programExecutable, unlinkedProgramCodeBlock, scope);
         RETURN_IF_EXCEPTION(throwScope, nullptr);
     }

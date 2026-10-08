@@ -870,6 +870,12 @@ export const sourceHasLineStarts: (fn: Function) => boolean = $newCppFunction(
   1,
 );
 
+export const sourcesShareBackingStore: (first: Function, second: Function) => boolean | undefined = $newCppFunction(
+  "ZigSourceProvider.cpp",
+  "jsSourcesShareBackingStore",
+  2,
+);
+
 // The bytecode `bun build --compile --bytecode` embeds for a builtin module, plus the external string table it embeds
 // beside it: internal module number `index` (null past the last), or `source` written in builtin syntax (@-intrinsics,
 // a function expression) compiled under `name`.
