@@ -1238,8 +1238,17 @@ class ChildProcess extends EventEmitter {
   #flushStdio() {
     const stdio = this.stdio;
     if (stdio === undefined) return;
-    for (const stream of stdio) {
-      if (stream?.readable) stream.resume();
+    for (let i = 0; i < stdio.length; i++) {
+      const stream = stdio[i];
+      if (stream?.readable) {
+        stream.resume();
+        if (i > 2 && process.platform !== "win32") {
+          const handle = this.#extraStdioHandles[i];
+          if (handle && stream._handle === handle) {
+            $rust("node_net_binding.rs", "drainSubprocessSocket")(handle);
+          }
+        }
+      }
     }
   }
 
@@ -1364,14 +1373,23 @@ class ChildProcess extends EventEmitter {
       default:
         switch (io) {
           case "pipe":
-          case "socket-fd":
+          case "socket-fd": {
             if (!NetModule) NetModule = require("node:net");
             // #spawn mapped "pipe" at i>=3 to "socket-fd", so the parent-end
             // fd in handle.stdio[i] is UnownedFd: we own it and
             // net.connect({fd}) -> usockets will close it on socket close.
             const fd = handle && handle.stdio[i];
             if (fd == null) return null;
-            return NetModule.connect({ fd });
+            const socket = NetModule.connect({ fd });
+            const nativeHandle = socket._handle;
+            this.#extraStdioHandles[i] = nativeHandle;
+            this.#closesNeeded++;
+            socket.once("close", () => {
+              this.#extraStdioHandles[i] = undefined;
+              this.#maybeClose();
+            });
+            return socket;
+          }
         }
         return null;
     }
@@ -1382,6 +1400,7 @@ class ChildProcess extends EventEmitter {
   #stderr;
   #stdioObject;
   #stdioOptions;
+  #extraStdioHandles = [];
 
   #createStdioObject() {
     const opts = this.#stdioOptions;

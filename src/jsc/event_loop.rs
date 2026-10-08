@@ -47,6 +47,8 @@ pub type Queue =
 
 pub struct EventLoop {
     pub tasks: Queue,
+    #[cfg(any(target_os = "linux", target_os = "android", target_os = "macos"))]
+    process_completions: Option<std::rc::Rc<bun_spawn::completion::CompletionQueue>>,
     /// Set when teardown releases the queue: from then on `enqueue_task`
     /// releases instead of parking (nothing will tick this loop again).
     closed_for_tasks: bool,
@@ -116,6 +118,8 @@ impl Default for EventLoop {
     fn default() -> Self {
         Self {
             tasks: Queue::init(),
+            #[cfg(any(target_os = "linux", target_os = "android", target_os = "macos"))]
+            process_completions: None,
             closed_for_tasks: false,
             immediate_tasks: Vec::new(),
             next_immediate_tasks: Vec::new(),
@@ -772,10 +776,27 @@ impl EventLoop {
     pub fn tick(&mut self) {
         jsc::mark_binding();
         crate::top_scope!(scope, self.global_ref());
+        #[cfg(any(target_os = "linux", target_os = "android", target_os = "macos"))]
+        let ready = if self.entered_event_loop_count == 0
+            && self
+                .uws_loop
+                .is_none_or(|loop_| unsafe { (*loop_.as_ptr()).internal_loop_data.tick_depth == 0 })
+        {
+            self.process_completions
+                .as_ref()
+                .map(|queue| queue.capture())
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
         self.entered_event_loop_count += 1;
         // `Err(Stopped)`: a fold or checkpoint met the VM's termination; the turn is over.
         let _ = self.tick_turn(&mut scope);
         self.entered_event_loop_count -= 1;
+        #[cfg(any(target_os = "linux", target_os = "android", target_os = "macos"))]
+        for process in ready {
+            unsafe { bun_spawn::Process::publish_captured_completion(process.as_ptr()) };
+        }
     }
 
     fn tick_turn(&mut self, scope: &mut crate::TopExceptionScope) -> Result<(), Stopped> {
@@ -947,6 +968,10 @@ impl EventLoop {
     }
 
     pub fn deinit(&mut self) {
+        #[cfg(any(target_os = "linux", target_os = "android", target_os = "macos"))]
+        {
+            self.process_completions = None;
+        }
         // Everything queued was released by `release_queued_tasks` (which
         // also made later enqueues release on arrival) and refused posts never
         // reach `concurrent_tasks`; nothing can be left to leak with the VM box.
@@ -1224,6 +1249,28 @@ impl EventLoop {
         // outlives the EventLoop.
         unsafe { self.global.unwrap_unchecked().as_ref() }
     }
+}
+
+#[cfg(any(target_os = "linux", target_os = "android", target_os = "macos"))]
+#[unsafe(no_mangle)]
+unsafe fn __bun_watch_process_completion(
+    process: *mut bun_spawn::Process,
+    event_loop: EventLoopHandle,
+) -> bun_sys::Result<()> {
+    let (tag, pointer) = event_loop.into_tag_ptr();
+    if tag != 1 {
+        return Ok(());
+    }
+    let event_loop = pointer.cast::<EventLoop>();
+    // spawnSync's private loop cannot run an asynchronous retirement observer.
+    if unsafe { (*event_loop).isolated_poster.is_some() } {
+        return Ok(());
+    }
+    let slot = unsafe { &mut (*event_loop).process_completions };
+    if slot.is_none() {
+        *slot = Some(bun_spawn::completion::CompletionQueue::new()?);
+    }
+    unsafe { slot.as_ref().unwrap().add(process) }
 }
 
 impl EventLoop {

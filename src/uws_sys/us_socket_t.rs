@@ -74,6 +74,17 @@ pub struct UsIoVec {
 }
 
 impl us_socket_t {
+    /// Read an owned pipe without dispatching the loop's other ready handles.
+    ///
+    /// # Safety
+    /// `socket` is a live socket on this thread; its owner remains live across callbacks.
+    pub unsafe fn drain_readable(socket: *mut Self) {
+        unsafe extern "C" {
+            fn us_socket_drain_readable(socket: *mut us_socket_t);
+        }
+        unsafe { us_socket_drain_readable(socket) };
+    }
+
     pub(crate) fn pause(&mut self) {
         bun_core::scoped_log!(uws, "us_socket_pause({:p})", self);
         c::us_socket_pause(self);

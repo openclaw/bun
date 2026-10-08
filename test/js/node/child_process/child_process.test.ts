@@ -34,6 +34,27 @@ import path from "path";
 const debug = process.env.DEBUG ? console.log : () => {};
 
 const originalProcessEnv = process.env;
+
+it.skipIf(!isPosix)("publishes exited children and ready pipe EOF after a blocked I/O callback", async () => {
+  const nativeNode = nodeExe();
+  expect(nativeNode).not.toBeNull();
+  using dir = tempDir("subprocess-retirement", {});
+  await using child = Bun.spawn({
+    cmd: [bunExe(), path.join(import.meta.dir, "fixtures", "retirement-io.cjs")],
+    env: { ...bunEnv, PROBE_NODE: nativeNode!, TMPDIR: String(dir) },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, code] = await Promise.all([child.stdout.text(), child.stderr.text(), child.exited]);
+  expect(stderr).toBe("");
+  expect(JSON.parse(stdout)).toMatchObject({
+    passed: true,
+    errors: [],
+    observerSnapshot: { exit: true, fd3End: true, stdoutEnd: true, stderrEnd: true },
+  });
+  expect(code).toBe(0);
+});
+
 beforeEach(() => {
   process.env = { ...bunEnv };
   // Github actions might filter these out

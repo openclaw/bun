@@ -44,6 +44,18 @@ int us_socket_remote_port(struct us_socket_t *s) {
     }
 }
 
+/* An exited subprocess may still have unread pipe bytes. A descendant can
+ * retain the peer: only recv()==0 is EOF, never would-block. */
+void us_socket_drain_readable(struct us_socket_t *s) {
+    if (us_socket_is_closed(s) || s->ssl || s->flags.is_paused || s->read_eof) {
+        return;
+    }
+    struct us_loop_t *loop = s->group->loop;
+    loop->data.tick_depth++;
+    us_internal_dispatch_ready_poll(&s->p, 0, 0, LIBUS_SOCKET_READABLE | LIBUS_SOCKET_OWNER_READ);
+    loop->data.tick_depth--;
+}
+
 void us_socket_shutdown_read(struct us_socket_t *s) {
     /* This syscall is idempotent so no extra check is needed */
     bsd_shutdown_socket_read(us_poll_fd((struct us_poll_t *) s));
