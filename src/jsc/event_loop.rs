@@ -602,9 +602,15 @@ impl EventLoop {
                 // A nested wait must not overwrite the native dispatcher's ready batch.
                 // SAFETY: only the owning thread reads or changes the native tick depth.
                 if unsafe { (*loop_).internal_loop_data.tick_depth } == 0 {
+                    // Remove tick's task-drain scope during the poll, so separate I/O
+                    // callbacks get their normal checkpoints. Keep any enclosing JS scope.
+                    // SAFETY: tick() entered this scope before calling tick_turn().
+                    unsafe { (*this).entered_event_loop_count -= 1 };
                     // SAFETY: no native tick is active; the zero timeout cannot park.
                     unsafe { (*loop_).tick_without_idle() };
                     let this = core::hint::black_box(this);
+                    // SAFETY: restore tick's scope after the reentrant poll returns.
+                    unsafe { (*this).entered_event_loop_count += 1 };
                     // SAFETY: the VM owns `this` and remains live after the poll.
                     unsafe { (*(*this).vm()).on_after_event_loop() };
                     // A poll inside `tick()` is nested, so callbacks defer their checkpoint.
