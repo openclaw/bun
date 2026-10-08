@@ -802,6 +802,14 @@ void us_internal_dispatch_ready_poll(struct us_poll_t *p, int error, int eof, in
                                    : us_dispatch_data(s, loop->data.recv_buf + LIBUS_RECV_BUFFER_PADDING, length);
                         /* After socket adoption, track the new socket; the old one becomes invalid */
                         s = us_internal_socket_follow_adopted(s);
+                        /* A descendant can keep the pipe writable after its
+                         * direct parent exits; bound this owner-only drain. */
+                        if (events & LIBUS_SOCKET_OWNER_READ) {
+                            if (s && !us_socket_is_closed(s) && !s->flags.is_paused && ++repeat_recv_count < 64) {
+                                continue;
+                            }
+                            break;
+                        }
                         // loop->num_ready_polls isn't accessible on Windows.
                         #ifndef WIN32
                         // rare case: we're reading a lot of data, there's more to be read, and either:

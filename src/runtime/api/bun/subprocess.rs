@@ -1087,6 +1087,46 @@ impl Subprocess<'_> {
             }
         }
 
+        // Accessing stdout/stderr transfers the reader to the cached stream.
+        // The original Readable is then Closed, but this is still our pipe.
+        if !this_jsvalue.is_empty() {
+            for value in [
+                js::stdout_get_cached(this_jsvalue),
+                js::stderr_get_cached(this_jsvalue),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                if let Some(stream) = crate::webcore::ReadableStream::from_js_direct(value) {
+                    if let crate::webcore::readable_stream::Source::File(file) = stream.ptr {
+                        // SAFETY: the cached stream roots its source. BufferedReader's
+                        // read pins that source while callbacks can re-enter it.
+                        let reader = unsafe { (*file).reader.get() };
+                        // SAFETY: the rooted source owns this reader; read pins it across callbacks.
+                        unsafe {
+                            if !(*reader).is_done() {
+                                (*reader).unpause();
+                                bun_io::BufferedReader::read(reader);
+                            }
+                        }
+                    }
+                }
+                value.ensure_still_alive();
+            }
+        }
+
+        #[cfg(unix)]
+        if let Some(ipc) = self.ipc_data.get().clone() {
+            let socket = match *ipc.socket.get() {
+                IPC::SocketUnion::Open(socket) => socket.socket.get(),
+                _ => None,
+            };
+            if let Some(socket) = socket {
+                // SAFETY: the cloned IPC owner retains the socket across its final callbacks.
+                unsafe { bun_uws::us_socket_t::drain_readable(socket) };
+            }
+        }
+
         // When Bun itself killed the child (timeout/maxBuffer/AbortSignal) stop
         // waiting on pipe EOF after the drain above: a grandchild may still
         // hold the write end and the caller already opted into a bounded wait.

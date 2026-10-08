@@ -27,3 +27,6 @@ bun_ptr.workspace = true
 bun_spawn_sys.workspace = true
 bun_sys.workspace = true
 bun_threading.workspace = true
+
+[target.'cfg(any(target_os = "linux", target_os = "android", target_os = "macos"))'.dependencies]
+bun_collections.workspace = true

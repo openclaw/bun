@@ -13,6 +13,39 @@ use crate::socket::{Listener, NativeCallbacks, NewSocket, SocketFlags, TCPSocket
 
 static AUTO_SELECT_FAMILY_DEFAULT: AtomicBool = AtomicBool::new(true);
 
+pub(crate) fn drain_subprocess_socket(global: &JSGlobalObject) -> JSValue {
+    #[bun_jsc::host_fn]
+    fn drain(_global: &JSGlobalObject, frame: &CallFrame) -> JsResult<JSValue> {
+        #[cfg(unix)]
+        {
+            let [value] = frame.arguments_as_array::<1>();
+            if let Some(socket) = value.as_::<TCPSocket>() {
+                // SAFETY: the argument is a live wrapper; copy its handle before
+                // entering callbacks, which may detach or replace it.
+                let (flags, handle) = unsafe { ((*socket).flags.get(), (*socket).socket.get()) };
+                if !flags.contains(SocketFlags::BYPASS_TLS) {
+                    if let Some(raw) = handle.socket.get() {
+                        // SAFETY: the JS argument keeps the wrapper live; uSockets
+                        // retains a closed native socket across nested callbacks.
+                        unsafe { uws::us_socket_t::drain_readable(raw) };
+                        value.ensure_still_alive();
+                    }
+                }
+            }
+        }
+        #[cfg(windows)]
+        let _ = frame;
+        Ok(JSValue::UNDEFINED)
+    }
+    JSFunction::create(
+        global,
+        "drainSubprocessSocket",
+        __jsc_host_drain,
+        1,
+        Default::default(),
+    )
+}
+
 // This is only used to provide the getDefaultAutoSelectFamilyAttemptTimeout and
 // setDefaultAutoSelectFamilyAttemptTimeout functions, not currently read by any other code. It's
 // `threadlocal` because Node.js expects each Worker to have its own copy of this, and currently

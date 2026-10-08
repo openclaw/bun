@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Publish ready POSIX subprocess exits and drain their owned pipes before stalled-host retirement observers, without changing the global event-loop phase order; wait for extra stdio pipes before emitting child `close`.
+
 - Release retained heap-snapshot metadata when a local inspector Session disables `HeapProfiler` or disconnects, including sessions that never enabled the domain.
 
 - Follow directory symlinks in Windows asynchronous recursive `fs.readdir` callback results and promise string results while preserving promise Dirent traversal boundaries.

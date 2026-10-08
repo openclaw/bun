@@ -24,6 +24,9 @@ pub mod ctrl_c;
 #[path = "process.rs"]
 pub mod process;
 
+#[cfg(any(target_os = "linux", target_os = "android", target_os = "macos"))]
+pub mod completion;
+
 /// Generic `StaticPipeWriter<P>`.
 #[path = "static_pipe_writer.rs"]
 pub mod static_pipe_writer;
