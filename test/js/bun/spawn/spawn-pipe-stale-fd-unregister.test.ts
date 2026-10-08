@@ -35,7 +35,8 @@ function pipeFds() {
     if (!Number.isInteger(fd)) continue;
     try {
       const st = fstatSync(fd);
-      if (st.isFIFO() || st.isSocket()) out.set(fd, st.ino);
+      // stdout is a socketpair; Darwin kqueue descriptors also report FIFO.
+      if (st.isSocket()) out.set(fd, st.ino);
     } catch {
       // closed between readdir and fstat (e.g. readdir's own dir fd)
     }
