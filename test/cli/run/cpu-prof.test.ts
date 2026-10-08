@@ -3,11 +3,23 @@ import { readdirSync, readFileSync } from "fs";
 import { bunEnv, bunExe, isWindows, tempDir } from "harness";
 import { join } from "path";
 
-// Every workload below is time-bounded for 100ms. On Windows JSC's
+// Metadata-only workloads below run for 100ms. On Windows JSC's
 // SamplingProfiler effectively ticks at the ~15.6ms default timer quantum, and
 // the entry module evaluates via an async fetch/link/evaluate chain — so
 // shorter windows (the previous 32/50ms) can elapse before a single sample is
 // taken, leaving "No samples collected." in --cpu-prof-md output.
+// Sample-dependent fixtures also need actual CPU time: descheduling can consume the wall-clock window.
+const profilingWorkTimer = `
+  function profilingWorkRemaining() {
+    const wallStart = performance.now();
+    const cpuStart = process.cpuUsage();
+    return () => {
+      const cpu = process.cpuUsage(cpuStart);
+      return performance.now() - wallStart < 100 || cpu.user + cpu.system < 100_000;
+    };
+  }
+`;
+
 describe.concurrent("--cpu-prof", () => {
   test("generates CPU profile with default name", async () => {
     using dir = tempDir("cpu-prof", {
@@ -291,11 +303,12 @@ describe.concurrent("--cpu-prof", () => {
   test.each(["top-level", "block"])("profile captures function names in %s scope", async scope => {
     using dir = tempDir("cpu-prof-functions", {
       "test.js": `
+        ${profilingWorkTimer}
         ${scope === "block" ? "{" : ""}
         function myFunction() {
           let sum = 0;
-          const end = performance.now() + 100;
-          while (performance.now() < end) {
+          const workRemaining = profilingWorkRemaining();
+          while (workRemaining()) {
             for (let i = 0; i < 1000; i++) sum += i;
           }
           return sum;
@@ -333,6 +346,7 @@ describe.concurrent("--cpu-prof", () => {
   test("--cpu-prof-md generates markdown format profile", async () => {
     using dir = tempDir("cpu-prof-md", {
       "test.js": `
+        ${profilingWorkTimer}
         // CPU-intensive task for text profile
         function fibonacci(n) {
           if (n <= 1) return n;
@@ -340,8 +354,8 @@ describe.concurrent("--cpu-prof", () => {
         }
 
         function main() {
-          const now = performance.now();
-          while (now + 100 > performance.now()) {
+          const workRemaining = profilingWorkRemaining();
+          while (workRemaining()) {
             Bun.inspect(fibonacci(20));
           }
         }
@@ -389,9 +403,10 @@ describe.concurrent("--cpu-prof", () => {
   test("--cpu-prof-md with custom name", async () => {
     using dir = tempDir("cpu-prof-md-name", {
       "test.js": `
+        ${profilingWorkTimer}
         function loop() {
-          const end = Date.now() + 100;
-          while (Date.now() < end) {}
+          const workRemaining = profilingWorkRemaining();
+          while (workRemaining()) {}
         }
         loop();
       `,
@@ -422,6 +437,7 @@ describe.concurrent("--cpu-prof", () => {
   test("--cpu-prof-md shows function details with relationships", async () => {
     using dir = tempDir("cpu-prof-md-details", {
       "test.js": `
+        ${profilingWorkTimer}
         function workA() {
           let sum = 0;
           for (let i = 0; i < 500000; i++) sum += i;
@@ -433,8 +449,8 @@ describe.concurrent("--cpu-prof", () => {
           return sum;
         }
         function main() {
-          const now = performance.now();
-          while (now + 100 > performance.now()) {
+          const workRemaining = profilingWorkRemaining();
+          while (workRemaining()) {
             workA();
             workB();
           }
@@ -474,9 +490,10 @@ describe.concurrent("--cpu-prof", () => {
   test("--cpu-prof-md works standalone without --cpu-prof", async () => {
     using dir = tempDir("cpu-prof-md-standalone", {
       "test.js": `
+        ${profilingWorkTimer}
         function loop() {
-          const end = Date.now() + 100;
-          while (Date.now() < end) {}
+          const workRemaining = profilingWorkRemaining();
+          while (workRemaining()) {}
         }
         loop();
       `,
@@ -508,9 +525,10 @@ describe.concurrent("--cpu-prof", () => {
   test("--cpu-prof and --cpu-prof-md together creates both files", async () => {
     using dir = tempDir("cpu-prof-both-formats", {
       "test.js": `
+        ${profilingWorkTimer}
         function loop() {
-          const end = Date.now() + 100;
-          while (Date.now() < end) {}
+          const workRemaining = profilingWorkRemaining();
+          while (workRemaining()) {}
         }
         loop();
       `,
