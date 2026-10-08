@@ -750,10 +750,7 @@ unsafe extern "C" {
 }
 
 pub(crate) fn is_max_old_space_size_flag(argument: &[u8]) -> bool {
-    let name = argument
-        .split(|byte| *byte == b'=')
-        .next()
-        .unwrap_or_default();
+    let name = strings::split_once_char(argument, b'=').map_or(argument, |(name, _)| name);
     let expected = b"--max-old-space-size";
     name.len() == expected.len()
         && name
@@ -779,8 +776,10 @@ fn apply_heap_limit_option(names: clap::Names, value: Option<&[u8]>) {
     let mut megabytes = 0usize;
     // Match V8's strtoll/errno handling, including platform-specific empty-input behavior.
     // https://github.com/nodejs/node/blob/v24.21.0/deps/v8/src/flags/flags.cc#L589-L608
+    // SAFETY: the NUL-terminated input and writable out-pointer live through
+    // the call, and the parser retains neither pointer.
     let result =
-        unsafe { Bun__Node__parseMaxOldSpaceSize(terminated.as_ptr().cast(), &mut megabytes) };
+        unsafe { Bun__Node__parseMaxOldSpaceSize(terminated.as_ptr().cast(), &raw mut megabytes) };
     if result & 1 != 0 {
         bun_core::print_errorln!(
             "Error: Value for flag --max-old-space-size={} of type size_t is out of bounds [0-{}]",

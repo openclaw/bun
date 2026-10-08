@@ -275,8 +275,11 @@ describe("Node heap limit", () => {
   };
 
   async function runHeap(flags: string[], mode: string, options: Record<string, unknown> = {}, nodeOptions = "") {
+    const argv = [bunExe(), "--expose-gc", ...flags, fixture, mode, JSON.stringify(options)];
+    // Intentional OOM aborts must not fill CI disks with core dumps; descendants inherit the limit.
+    const cmd = process.platform === "win32" ? argv : ["/bin/sh", "-c", 'ulimit -c 0 && exec "$@"', "--", ...argv];
     await using proc = Bun.spawn({
-      cmd: [bunExe(), "--expose-gc", ...flags, fixture, mode, JSON.stringify(options)],
+      cmd,
       env: {
         ...bunEnv,
         NODE_OPTIONS: nodeOptions,
