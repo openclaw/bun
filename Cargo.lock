@@ -1451,6 +1451,7 @@ version = "0.0.0"
 dependencies = [
  "bun_alloc",
  "bun_analytics",
+ "bun_collections",
  "bun_core",
  "bun_crash_handler",
  "bun_dispatch",

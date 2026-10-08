@@ -511,9 +511,9 @@ impl Process {
                             .is_some_and(|handler| handler.kind == ProcessExitKind::Subprocess)
                         {
                             // SAFETY: the primary watch just retained self and its owning loop.
-                            if let Err(error) =
-                                unsafe { __bun_watch_process_completion(self, self.event_loop) }
-                            {
+                            let completion =
+                                unsafe { __bun_watch_process_completion(self, self.event_loop) };
+                            if let Err(error) = completion {
                                 // The primary watch is already registered. A
                                 // secondary snapshot must not make a valid spawn
                                 // fail when descriptor/watch resources are full.

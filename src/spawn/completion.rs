@@ -1,9 +1,9 @@
 //! A process-only readiness snapshot. No socket or file callbacks run here.
 
 use std::cell::{Cell, RefCell};
-use std::collections::HashSet;
 use std::rc::Rc;
 
+use bun_collections::HashMap;
 use bun_ptr::RefPtr;
 use bun_sys::{Fd, FdExt as _};
 
@@ -11,16 +11,16 @@ use crate::Process;
 
 pub struct CompletionQueue {
     fd: Cell<Option<Fd>>,
-    watched: RefCell<HashSet<*mut Process>>,
-    retry: RefCell<HashSet<*mut Process>>,
+    watched: RefCell<HashMap<*mut Process, ()>>,
+    retry: RefCell<HashMap<*mut Process, ()>>,
 }
 
 impl CompletionQueue {
     pub fn new() -> bun_sys::Result<Rc<Self>> {
         Ok(Rc::new(Self {
             fd: Cell::new(Some(open_descriptor()?)),
-            watched: RefCell::new(HashSet::new()),
-            retry: RefCell::new(HashSet::new()),
+            watched: RefCell::new(HashMap::new()),
+            retry: RefCell::new(HashMap::new()),
         }))
     }
 
@@ -50,7 +50,7 @@ impl CompletionQueue {
             retry_interrupted(|| unsafe {
                 libc::kevent64(
                     self.fd.get().unwrap().native(),
-                    &change,
+                    &raw const change,
                     1,
                     std::ptr::null_mut(),
                     0,
@@ -73,7 +73,7 @@ impl CompletionQueue {
                     self.fd.get().unwrap().native(),
                     libc::EPOLL_CTL_ADD,
                     (*process).pidfd,
-                    &mut event,
+                    &raw mut event,
                 )
             })
         };
@@ -81,8 +81,8 @@ impl CompletionQueue {
             let error = last_error();
             #[cfg(target_os = "macos")]
             if error.get_errno() == bun_sys::E::ESRCH {
-                self.retry.borrow_mut().insert(process);
-                self.watched.borrow_mut().insert(process);
+                self.retry.borrow_mut().insert(process, ());
+                self.watched.borrow_mut().insert(process, ());
                 // SAFETY: caller contract; Rc keeps this shared backref stable.
                 unsafe { (*process).completion_queue = self };
                 return Ok(());
@@ -94,7 +94,7 @@ impl CompletionQueue {
             }
             return Err(error);
         }
-        self.watched.borrow_mut().insert(process);
+        self.watched.borrow_mut().insert(process, ());
         // SAFETY: caller contract; removed before process or queue destruction.
         unsafe { (*process).completion_queue = self };
         Ok(())
@@ -103,7 +103,7 @@ impl CompletionQueue {
     /// # Safety
     /// `process` is live and its registration, if any, belongs to this queue.
     pub unsafe fn remove(&self, process: *mut Process) {
-        if !self.watched.borrow_mut().remove(&process) {
+        if self.watched.borrow_mut().remove(&process).is_none() {
             return;
         }
         // SAFETY: caller keeps process live during deregistration.
@@ -126,7 +126,7 @@ impl CompletionQueue {
             retry_interrupted(|| unsafe {
                 libc::kevent64(
                     self.fd.get().unwrap().native(),
-                    &change,
+                    &raw const change,
                     1,
                     std::ptr::null_mut(),
                     0,
@@ -154,7 +154,7 @@ impl CompletionQueue {
 
     pub(crate) fn retry_reap(&self, process: *mut Process) {
         debug_assert!(self.watched.borrow().contains(&process));
-        self.retry.borrow_mut().insert(process);
+        self.retry.borrow_mut().insert(process, ());
     }
 
     pub fn capture(&self) -> Vec<RefPtr<Process>> {
@@ -163,20 +163,30 @@ impl CompletionQueue {
             return Vec::new();
         }
         let mut ready = Vec::new();
-        for process in self.retry.borrow_mut().drain() {
-            // SAFETY: retry contains only registered owners; no callbacks run
-            // during capture, and each owner still holds its primary watch ref.
-            unsafe {
-                (*process).ref_();
-                ready.push(RefPtr::from_raw(process));
+        {
+            let mut retry = self.retry.borrow_mut();
+            for &process in retry.keys() {
+                // SAFETY: retry contains only registered owners; no callbacks run
+                // during capture, and each owner still holds its primary watch ref.
+                unsafe {
+                    (*process).ref_();
+                    ready.push(RefPtr::from_raw(process));
+                }
             }
+            retry.clear();
         }
         #[cfg(target_os = "macos")]
-        // SAFETY: kevent64_s is POD, including zeroed unused output slots.
-        let mut events: [libc::kevent64_s; 64] = unsafe { std::mem::zeroed() };
+        let mut events = [libc::kevent64_s {
+            ident: 0,
+            filter: 0,
+            flags: 0,
+            fflags: 0,
+            data: 0,
+            udata: 0,
+            ext: [0; 2],
+        }; 64];
         #[cfg(any(target_os = "linux", target_os = "android"))]
-        // SAFETY: epoll_event is POD.
-        let mut events: [libc::epoll_event; 64] = unsafe { std::mem::zeroed() };
+        let mut events = [libc::epoll_event { events: 0, u64: 0 }; 64];
         // One-shot notifications cannot repeat within this capture. Collect the
         // whole ready set, bounded by registrations, without scanning live PIDs.
         while ready.len() < registered {
@@ -195,7 +205,7 @@ impl CompletionQueue {
                     events.as_mut_ptr(),
                     capacity,
                     0,
-                    &timeout,
+                    &raw const timeout,
                 )
             };
             #[cfg(any(target_os = "linux", target_os = "android"))]
@@ -236,7 +246,7 @@ impl CompletionQueue {
 
 impl Drop for CompletionQueue {
     fn drop(&mut self) {
-        for &process in self.watched.get_mut().iter() {
+        for &process in self.watched.get_mut().keys() {
             // SAFETY: every registered owner holds its primary watch ref;
             // destruction runs no callbacks and invalidates every backref.
             unsafe { (*process).completion_queue = std::ptr::null() };
