@@ -1,5 +1,5 @@
 const assert = require("node:assert/strict");
-const { fork, spawn } = require("node:child_process");
+const { fork, spawn, spawnSync } = require("node:child_process");
 const { isMainThread, Worker, parentPort, workerData } = require("node:worker_threads");
 const gcApi = process.versions.bun ? "Bun.gc(true)" : "global.gc()";
 const collect = process.versions.bun ? globalThis.Bun.gc : global.gc;
@@ -89,7 +89,22 @@ async function runChild(options) {
   const [mode, input] = process.argv.slice(2);
   const options = JSON.parse(input || "{}");
   if (mode === "worker") console.log(JSON.stringify(await runWorker(options)));
-  else if (mode === "gc-api")
+  else if (mode === "core-policy") {
+    const policy = {
+      limits: process.report.getReport().userLimits?.core_file_size_blocks ?? null,
+      filter:
+        process.platform === "linux"
+          ? require("node:fs").readFileSync("/proc/self/coredump_filter", "utf8").trim()
+          : null,
+    };
+    if (options.child) {
+      const child = spawnSync(process.execPath, ["--expose-gc", __filename, "core-policy"], { encoding: "utf8" });
+      assert.equal(child.stderr, "");
+      assert.equal(child.status, 0);
+      policy.child = JSON.parse(child.stdout);
+    }
+    console.log(JSON.stringify(policy));
+  } else if (mode === "gc-api")
     console.log(JSON.stringify({ gcApi, worker: await runWorker({ kind: "gc-api", resource: 128 }) }));
   else if (mode === "child") console.log(await runChild(options));
   else if (mode === "argv") console.log(JSON.stringify(process.execArgv));

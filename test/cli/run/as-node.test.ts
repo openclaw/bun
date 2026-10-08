@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "path";
-import { bunEnv, bunExe, fakeNodeRun, tempDir } from "../../harness";
+import { bunEnv, bunExe, fakeNodeRun, noCoreCmd, tempDir } from "../../harness";
 
 async function runNodeAlias(args: string[], stdin = "", files: Record<string, string> = {}) {
   using temp = tempDir("fake-node-stdio", files);
@@ -276,10 +276,8 @@ describe("Node heap limit", () => {
 
   async function runHeap(flags: string[], mode: string, options: Record<string, unknown> = {}, nodeOptions = "") {
     const argv = [bunExe(), "--expose-gc", ...flags, fixture, mode, JSON.stringify(options)];
-    // Intentional OOM aborts must not fill CI disks with core dumps; descendants inherit the limit.
-    const cmd = process.platform === "win32" ? argv : ["/bin/sh", "-c", 'ulimit -c 0 && exec "$@"', "--", ...argv];
     await using proc = Bun.spawn({
-      cmd,
+      cmd: noCoreCmd(argv),
       env: {
         ...bunEnv,
         NODE_OPTIONS: nodeOptions,
@@ -300,6 +298,17 @@ describe("Node heap limit", () => {
       gcApi: "Bun.gc(true)",
       worker: { events: ["exit"], messages: ["Bun.gc(true)"], code: 0 },
     });
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
+  test("fatal-child core policy survives exec and descendant spawning", async () => {
+    const result = await runHeap([], "core-policy", { child: true });
+    const expected = {
+      limits: process.platform === "win32" ? null : { soft: 0, hard: 0 },
+      filter: process.platform === "linux" ? "00000000" : null,
+    };
+    expect(JSON.parse(result.stdout)).toEqual({ ...expected, child: expected });
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
   });
