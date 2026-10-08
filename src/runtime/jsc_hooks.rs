@@ -1011,6 +1011,12 @@ unsafe fn auto_tick(vm: *mut VirtualMachine) {
     // siblings would alias. Dereference per-field via the raw `vm` ptr.
     // SAFETY: per fn contract — `vm` is the live per-thread VM.
     let el: *mut bun_jsc::event_loop::EventLoop = unsafe { &*vm }.event_loop;
+    // Nested waits in poll/check/timer callbacks must not replay these phases next turn.
+    #[cfg(unix)]
+    let _task_phase = scopeguard::guard(el, |el| {
+        // SAFETY: the event loop remains live until this hook returns.
+        unsafe { (*el).take_ran_tasks() };
+    });
     // SAFETY: `el` is the live per-thread event loop (field of `*vm`).
     let loop_ = unsafe { (*el).usockets_loop() };
 
@@ -1198,6 +1204,12 @@ unsafe fn auto_tick_active(vm: *mut VirtualMachine) {
     // Note: reshaped for borrowck — see `auto_tick` above.
     // SAFETY: per fn contract — `vm` is the live per-thread VM.
     let el: *mut bun_jsc::event_loop::EventLoop = unsafe { &*vm }.event_loop;
+    // Same phase boundary as auto_tick, including its early no-runtime-state return.
+    #[cfg(unix)]
+    let _task_phase = scopeguard::guard(el, |el| {
+        // SAFETY: the event loop remains live until this hook returns.
+        unsafe { (*el).take_ran_tasks() };
+    });
     // SAFETY: `el` is the live per-thread event loop (field of `*vm`).
     let loop_ = unsafe { (*el).usockets_loop() };
 

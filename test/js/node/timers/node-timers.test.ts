@@ -1,6 +1,7 @@
 import jsc from "bun:jsc";
 import { describe, expect, it, mock, test } from "bun:test";
 import { bunEnv, bunExe, bunRun, isWindows, tempDir } from "harness";
+import { once } from "node:events";
 import { existsSync, stat, writeFileSync } from "node:fs";
 import net, { type AddressInfo } from "node:net";
 import path from "node:path";
@@ -647,6 +648,84 @@ test("a nested task wait drains nextTicks and promises before its immediate", ()
   expect(promise).resolves.toBeUndefined();
   expect(order).toEqual(["task", "nextTick", "promise", "immediate"]);
 });
+
+// Nested waits must not carry a completed callback phase into the next turn.
+test.skipIf(isWindows).each(["poll", "check", "timer"])(
+  "a task drained in %s cannot replay check before ready I/O on the next turn",
+  async phase => {
+    const shared = new Int32Array(new SharedArrayBuffer(4));
+    const worker = new Worker(
+      `
+    const {parentPort, workerData} = require('node:worker_threads');
+    const shared = new Int32Array(workerData);
+    parentPort.on('message', () => {
+      parentPort.postMessage('task');
+      Atomics.store(shared, 0, 1);
+      Atomics.notify(shared, 0);
+    });
+    parentPort.postMessage('ready');
+  `,
+      { eval: true, workerData: shared.buffer },
+    );
+    let peer: net.Socket | undefined;
+    const server = net.createServer(socket => {
+      peer = socket;
+    });
+    let client: net.Socket | undefined;
+    const order: string[] = [];
+    const done = Promise.withResolvers<void>();
+    worker.on("error", done.reject);
+    server.on("error", done.reject);
+    try {
+      await once(worker, "message");
+      server.listen(0, "127.0.0.1");
+      await once(server, "listening");
+      client = net.connect((server.address() as AddressInfo).port, "127.0.0.1");
+      client.on("error", done.reject);
+      await once(client, "connect");
+      while (!peer) await new Promise(resolve => setImmediate(resolve));
+      client.once("data", () => {
+        const run = () => {
+          try {
+            const task = new Promise(resolve => worker.once("message", resolve));
+            worker.postMessage("go");
+            const deadline = performance.now() + 4000;
+            while (!Atomics.load(shared, 0)) {
+              if (performance.now() > deadline) throw new Error("worker completion was not posted");
+              Atomics.wait(shared, 0, 0, 1);
+            }
+            expect(task).resolves.toBe("task");
+            client!.once("data", data => order.push("data:" + data));
+            setTimeout(() => {
+              order.push("timer");
+              peer!.write("ready");
+              Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+              setImmediate(() => {
+                order.push("immediate");
+                done.resolve();
+              });
+            }, 1);
+            Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);
+          } catch (error) {
+            done.reject(error);
+          }
+        };
+        if (phase === "poll") run();
+        else if (phase === "check") setImmediate(run);
+        else setTimeout(run, 1);
+      });
+      peer.write("trigger");
+      await done.promise;
+      console.log(JSON.stringify(order));
+      expect(order).toEqual(["timer", "data:ready", "immediate"]);
+    } finally {
+      client?.destroy();
+      peer?.destroy();
+      server.close();
+      await worker.terminate();
+    }
+  },
+);
 
 // Windows uses libuv rather than the POSIX ready-event batch.
 test.skipIf(isWindows)("queued completion in a nested matcher preserves the outer ready pipe batch", async () => {
