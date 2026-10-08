@@ -1,7 +1,7 @@
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statfsSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 
 export const smoke = [
   "test/js/node/child_process/child-process-exec.test.ts",
@@ -172,6 +172,8 @@ function reportDiskUsage(stage: "before" | "after") {
     ["cargo", `${homedir()}/.cargo`],
     ["rustup", `${homedir()}/.rustup`],
     ["runnerTemp", process.env.RUNNER_TEMP],
+    ["crashReports", process.platform === "linux" ? "/var/crash" : undefined],
+    ["systemCores", process.platform === "linux" ? "/var/lib/systemd/coredump" : undefined],
   ];
   for (const [name, path] of paths) {
     if (!path || !existsSync(path)) continue;
@@ -183,10 +185,29 @@ function reportDiskUsage(stage: "before" | "after") {
     const kibibytes = Number.parseInt(usage.stdout, 10);
     directories[name] = usage.status === 0 && Number.isFinite(kibibytes) ? kibibytes * 1024 : null;
   }
+  let coreDump: { piped: boolean; handler: string; limits: string | null } | undefined;
+  if (process.platform === "linux") {
+    try {
+      const pattern = readFileSync("/proc/sys/kernel/core_pattern", "utf8").trim();
+      const piped = pattern.startsWith("|");
+      coreDump = {
+        piped,
+        handler: basename(piped ? pattern.slice(1).split(/\s+/)[0]! : pattern),
+        limits:
+          readFileSync("/proc/self/limits", "utf8")
+            .split("\n")
+            .find(line => line.startsWith("Max core file size"))
+            ?.replace(/\s+/g, " ") ?? null,
+      };
+    } catch (error) {
+      console.warn("Could not inspect Linux core-dump settings", error);
+    }
+  }
   const snapshot = {
     stage,
     availableBytes: filesystem.bavail * filesystem.bsize,
     availableInodes: filesystem.ffree,
+    coreDump,
     directories,
   };
   // Runner ENOSPC can lose the log blob; annotations preserve the last completed disk snapshot.
