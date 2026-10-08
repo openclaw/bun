@@ -1,5 +1,5 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
-import { bunEnv, bunExe, isASAN, normalizeBunSnapshot, tempDir, tls } from "harness";
+import { bunEnv, bunExe, isASAN, isWindows, noCoreCmd, normalizeBunSnapshot, tempDir, tls } from "harness";
 import fs from "node:fs";
 import net from "node:net";
 import { join } from "node:path";
@@ -70,6 +70,120 @@ describe.concurrent("bun test --isolate", () => {
     const { stderr, exitCode } = await runTests(String(dir), ["--isolate"]);
     expect(normalizeBunSnapshot(stderr, dir)).toContain("2 pass");
     expect(normalizeBunSnapshot(stderr, dir)).toContain("0 fail");
+    expect(exitCode).toBe(0);
+  });
+
+  test.each(["--isolate", "--parallel=2"])("%s releases each file's stdio polls and preserves output", async mode => {
+    const names = ["a", "b", "c", "d"].map(c => `${c}-stdio.test.ts`);
+    using dir = tempDir(
+      "isolate-stdio",
+      Object.fromEntries(
+        names.map(name => [
+          name,
+          `import { test } from "bun:test";
+           import { writeSync } from "node:fs";
+           test("stdio", () => {
+             process.stdout.write("OUT:${name}\\n");
+             process.stderr.write("ERR:${name}\\n");
+             writeSync(1, "FD1:${name}\\n");
+             writeSync(2, "FD2:${name}\\n");
+           });`,
+        ]),
+      ),
+    );
+    // Keep all four files on one parallel worker to exercise its global swaps.
+    const { stdout, stderr, exitCode } = await runTests(
+      String(dir),
+      [mode],
+      names.map(name => `./${name}`),
+      { ...bunEnv, BUN_TEST_PARALLEL_SCALE_MS: "60000" },
+    );
+    // The parallel coordinator combines worker stdout and stderr in its report.
+    const output = (stdout + "\n" + stderr).split("\n").filter(line => /^(?:OUT|ERR|FD[12]):/.test(line));
+    expect(output.sort()).toEqual(
+      names.flatMap(name => [`OUT:${name}`, `ERR:${name}`, `FD1:${name}`, `FD2:${name}`]).sort(),
+    );
+    expect(normalizeBunSnapshot(stderr, dir)).toContain("4 pass");
+    expect(exitCode).toBe(0);
+  });
+
+  test("--isolate drains backpressured stdio before the next file creates its sink", async () => {
+    const bytes = 8 * 1024 * 1024;
+    using dir = tempDir("isolate-stdio-backpressure", {
+      "a-fill.test.ts": `import {test} from "bun:test";
+        test("fill stdout", () => { process.stdout.write("x".repeat(${bytes})); });`,
+      "b-write.test.ts": `import {test} from "bun:test";
+        test("next stdout", () => { process.stdout.write("END\\n"); });`,
+    });
+    await using proc = Bun.spawn({
+      cmd: [bunExe(), "test", "--isolate", "./a-fill.test.ts", "./b-write.test.ts"],
+      cwd: String(dir),
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+      timeout: 5000,
+    });
+    const firstResult = Promise.withResolvers<void>();
+    void proc.exited.then(() => firstResult.resolve());
+    const readStderr = async () => {
+      let output = "";
+      const decoder = new TextDecoder();
+      try {
+        for await (const chunk of proc.stderr) {
+          output += decoder.decode(chunk, { stream: true });
+          if (output.includes("(pass) fill stdout")) firstResult.resolve();
+        }
+        return output + decoder.decode();
+      } finally {
+        firstResult.resolve();
+      }
+    };
+    // Keep stdout full until the first test has finished; the file swap must drain its tail.
+    const readStdout = async () => {
+      await firstResult.promise;
+      return proc.stdout.text();
+    };
+    const [stdout, stderr, exitCode] = await Promise.all([readStdout(), readStderr(), proc.exited]);
+    const output = stdout.replace(/^bun test[^\n]*\n/, "");
+    expect(output.length).toBe(bytes + 4);
+    expect(output.endsWith("END\n")).toBeTrue();
+    expect(output.replaceAll("x", "")).toBe("END\n");
+    expect(normalizeBunSnapshot(stderr, dir)).toContain("2 pass");
+    expect(exitCode).toBe(0);
+  });
+
+  // Windows stdio uses synchronous borrowed handles, rather than POSIX polls.
+  test.skipIf(isWindows).each([1, 2] as const)("VM teardown closes backpressured stdio fd %i", async fd => {
+    const bytes = 8 * 1024 * 1024;
+    using dir = tempDir("isolate-stdio-teardown", {
+      "exit.test.ts": `import { test } from "bun:test";
+        import { fileSinkInternals } from "bun:internal-for-testing";
+        test("exit with pending stdio", () => {
+          const sink = fileSinkInternals.stdioSink(${fd});
+          sink.write(Buffer.alloc(${bytes}, "x"));
+          fileSinkInternals.expectStdioTeardown(sink);
+          process.exit(0);
+        });`,
+    });
+    await using proc = Bun.spawn({
+      cmd: noCoreCmd([bunExe(), "test", "--isolate", "./exit.test.ts"]),
+      cwd: String(dir),
+      env: { ...bunEnv, BUN_DESTRUCT_VM_ON_EXIT: "1", BUN_FEATURE_FLAG_INTERNAL_FOR_TESTING: "1" },
+      stdout: "pipe",
+      stderr: "pipe",
+      timeout: 5000,
+    });
+    const data = fd === 1 ? proc.stdout : proc.stderr;
+    const report = fd === 1 ? proc.stderr : proc.stdout;
+    // Deliberately leave the data pipe full through teardown: no reader can rescue end().
+    const [output, exitCode] = await Promise.all([report.text(), proc.exited]);
+    const partial = await data.text();
+    expect(output, `exit=${exitCode}, signal=${proc.signalCode}\n${partial.slice(-4096)}`).toContain(
+      "stdio teardown probe passed\n",
+    );
+    expect(partial.length).toBeGreaterThan(0);
+    expect(partial.length).toBeLessThan(bytes);
+    expect(proc.signalCode).toBeNull();
     expect(exitCode).toBe(0);
   });
 

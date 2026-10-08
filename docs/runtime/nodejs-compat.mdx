@@ -244,7 +244,11 @@ Socket close notifications use internal scheduling and continue to run when user
 
 On POSIX, initializing `process.stdout` or `process.stderr` does not retain a duplicate pipe writer. Explicitly closing the underlying descriptor publishes EOF while the process remains alive. On Windows, the initialized pipe handle retains the writer until process exit, matching Node. On POSIX, socket and pipe stdio use nonblocking writes. `end()` and pipeline completion flush pending output and shut down the write side of socket stdio, so peers receive EOF before process exit. Actual pipes stay open until process exit or explicit descriptor closure. `destroy()` preserves fd 1/2; after POSIX socket or pipe finalization, later stream writes fail with `EPIPE`. On Windows, piped stdout/stderr reset their writable state after `end()` or pipeline completion and accept subsequent writes.
 
+Isolated test files release their process stdout/stderr polling registrations between files while keeping the underlying descriptors open for the next file.
+
 `NODE_OPTIONS` applies Bun-supported Node runtime flags before command-line arguments, including `--require`/`-r` and `--import` preloads. Injected flags are absent from `process.execArgv`. Unsupported Node flags remain ignored; flags outside the Node allowlist warn and are ignored. `process.config.variables.node_without_node_options` remains `true` because support is partial.
+
+`--max-old-space-size=N` limits the managed JavaScript heap in MiB through the pinned OpenClaw WebKit. ArrayBuffer backing stores are excluded. A full garbage collection that cannot bring the main VM under the limit causes a fatal heap out-of-memory error. Command-line values override `NODE_OPTIONS`; zero restores the default. Underscores may replace dashes in the flag name. This bounds the managed heap rather than total process RSS. Initialization overhead and fatal errors for extremely small or overflowing limits differ between JavaScriptCore and V8; Bun does not reproduce V8's internal assertions for extreme values.
 
 Direct file execution preserves a literal `--` after the script name in `process.argv`, including with `--import` preloads. Explicit `bun run` commands and package scripts consume one separator.
 
@@ -314,7 +318,7 @@ Valid `vm.Script` cached data is accepted when JSC runs without a JIT. Validatio
 
 ### [`node:worker_threads`](https://nodejs.org/api/worker_threads.html)
 
-`resourceLimits` reports effective heap, nursery, code-range, and stack settings. With the pinned OpenClaw WebKit, managed-heap exhaustion terminates only the affected worker with `ERR_WORKER_OUT_OF_MEMORY` and exit code 1. After a full GC confirms the cap is exceeded, pending termination is delivered at an existing JavaScript safe point without waiting for repeated full collections. ArrayBuffer backing stores are excluded. `codeRangeSizeMb` is reporting-only because JSC shares its executable allocator. See [worker resource limits](/runtime/workers#node-worker-resource-limits) for defaults and limitations.
+`resourceLimits` reports resolved heap, nursery, code-range, and stack settings. With the pinned OpenClaw WebKit, managed-heap exhaustion terminates only the affected worker with `ERR_WORKER_OUT_OF_MEMORY` and exit code 1. After a full GC confirms the cap is exceeded, pending termination is delivered at an existing JavaScript safe point without waiting for repeated full collections. ArrayBuffer backing stores are excluded. `codeRangeSizeMb` is reporting-only because JSC shares its executable allocator. See [worker resource limits](/runtime/workers#node-worker-resource-limits) for defaults and limitations.
 
 `worker.getHeapStatistics()` takes an owning-thread snapshot while a worker is idle, executing JavaScript, or blocked in `Atomics.wait()`. The snapshot includes freshly allocated external storage. Inspection preserves the atomic wait and pending requests settle if the worker exits.
 
@@ -323,6 +327,8 @@ Immediate engine GC timers wake idle workers when scheduled. These native wakeup
 Budgeted workers can use young-generation collections within their managed heap budgets; full collections still confirm heap-limit exhaustion. Synchronous GC wakes a passive collector even while another heap occupies the shared helpers.
 
 File workers select `--require` and `--import` preloads from their environment independently of `execArgv`. Explicit `env` or `execArgv` options re-read the worker's `NODE_OPTIONS` and `BUN_OPTIONS` before applying the selected CLI arguments. `execArgv: []` removes CLI preloads while environment preloads still apply. Require preloads run before import preloads.
+
+A process-level `--max-old-space-size` overrides `resourceLimits.maxOldGenerationSizeMb` for Node workers, including nested workers and workers with `execArgv: []`. Their public `resourceLimits` still reports the requested setting, as Node does. Worker-local `NODE_OPTIONS` cannot change the process heap flag; putting the flag in an explicit Worker `execArgv` throws `ERR_WORKER_INVALID_EXEC_ARGV`. Exceeding the limit still terminates only the worker.
 
 `MessagePort.emit()` and `parentPort.emit()` preserve the emitted value for Node listeners. Web listeners receive `MessageEvent` objects for `message` and `messageerror`, and `CustomEvent` objects for other events.
 

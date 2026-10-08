@@ -843,6 +843,13 @@ export const proxyInternals = {
 
 export const fileSinkInternals = {
   liveCount: $newRustFunction("runtime/webcore/FileSink.rs", "TestingAPIs.fileSinkLiveCount", 0) as () => number,
+  stdioSink(fd: 1 | 2): Bun.FileSink {
+    const { kWriteStreamFastPath } = require("internal/fs/streams");
+    return (fd === 1 ? process.stdout : process.stderr)[kWriteStreamFastPath];
+  },
+  expectStdioTeardown: $newRustFunction("runtime/webcore/FileSink.rs", "TestingAPIs.expectStdioTeardown", 1) as (
+    sink: Bun.FileSink,
+  ) => void,
 };
 
 export const byteStreamInternals = {

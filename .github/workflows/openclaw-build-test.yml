@@ -67,7 +67,7 @@ jobs:
           curl -fsSL --retry 5 https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc > /dev/null
           echo "deb https://apt.llvm.org/noble/ llvm-toolchain-noble-${LLVM_MAJOR} main" | sudo tee /etc/apt/sources.list.d/llvm.list
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends cmake ninja-build nasm ccache golang-go "clang-${LLVM_MAJOR}" "lld-${LLVM_MAJOR}" "llvm-${LLVM_MAJOR}"
+          sudo apt-get install -y --no-install-recommends cmake ninja-build nasm ccache golang-go python3-fuse "clang-${LLVM_MAJOR}" "lld-${LLVM_MAJOR}" "llvm-${LLVM_MAJOR}"
           rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
           echo "RUSTUP_TOOLCHAIN=$RUST_TOOLCHAIN" >> "$GITHUB_ENV"
           df -h /

@@ -72,8 +72,11 @@ pub struct FileSink {
     /// while an async operation is pending. This is set when endFromJS returns a
     /// pending Promise and cleared when the operation completes.
     pub(crate) js_sink_ref: JsCell<bun_jsc::strong::Optional>,
-    /// Armed while a file this sink opened for a `Bun.ModuleGraph`'s script is open.
+    /// Armed for graph-owned files and process stdio under `bun test --isolate`.
     abort_handle: bun_jsc::AbortHandle,
+    /// Isolated test files flush their stdio before releasing its poll registrations.
+    flush_on_abort: Cell<bool>,
+    isolation_flush_pending: Cell<bool>,
 }
 
 // `bun.ptr.RefCount(FileSink, "ref_count", deinit, .{})` — intrusive single-thread
@@ -96,6 +99,78 @@ pub(crate) mod testing_apis {
     ) -> JsResult<JSValue> {
         Ok(JSValue::js_number(LIVE_COUNT.load(Ordering::Relaxed) as f64))
     }
+
+    pub(crate) fn expect_stdio_teardown(
+        global: &JSGlobalObject,
+        frame: &CallFrame,
+    ) -> JsResult<JSValue> {
+        #[cfg(windows)]
+        {
+            let _ = frame;
+            Err(global.throw(format_args!("stdio teardown probe requires POSIX polls")))
+        }
+
+        #[cfg(not(windows))]
+        {
+            let Some(ptr) = JSSink::from_js(frame.argument(0)) else {
+                return Err(global.throw(format_args!("expected a FileSink")));
+            };
+            // SAFETY: the live JS wrapper owns this sink; the probe keeps it alive through teardown.
+            let sink = unsafe { RefPtr::init_ref(core::ptr::addr_of_mut!((*ptr).sink)) };
+            assert!(sink.flush_on_abort.get(), "expected isolated stdio");
+            assert!(sink.writer.get().is_backed_up(), "expected EAGAIN");
+            assert!(sink.writer.get().has_pending_data());
+            assert!(sink.writer.get().get_poll().is_some());
+            assert!(sink.must_be_kept_alive_until_eof.get());
+            sink.abort_handle.leave();
+            let sink_ptr = sink.as_ptr();
+            let probe = Box::into_raw(Box::new(StdioTeardownProbe {
+                abort_handle: bun_jsc::AbortHandle::for_owner::<StdioTeardownProbe>(),
+                sink,
+            }));
+            // SAFETY: both owners are heap-pinned; stop_handles unlinks before calling them.
+            // Register the probe before the sink so it observes the completed native close.
+            unsafe {
+                bun_jsc::AbortHandle::arm_owner(probe, global.bun_vm().root_context());
+                bun_jsc::AbortHandle::arm_owner(sink_ptr, global.bun_vm().root_context());
+            }
+            Ok(JSValue::UNDEFINED)
+        }
+    }
+
+    #[cfg(not(windows))]
+    struct StdioTeardownProbe {
+        abort_handle: bun_jsc::AbortHandle,
+        sink: RefPtr<FileSink>,
+    }
+
+    #[cfg(not(windows))]
+    bun_jsc::impl_abort_handle_owner!(StdioTeardownProbe, abort_handle, |this, cause| {
+        // SAFETY: the stop sweep unlinked the heap-pinned probe, transferring its ownership here.
+        let probe = unsafe { Box::from_raw(this) };
+        assert!(matches!(
+            cause,
+            bun_jsc::AbortCause::ContextStopped(bun_jsc::StopReason::VmTeardown)
+        ));
+        assert!(
+            probe.sink.writer.get().get_poll().is_none(),
+            "stdio poll retained at VM teardown"
+        );
+        assert!(
+            !probe.sink.must_be_kept_alive_until_eof.get(),
+            "stdio keep-alive retained at VM teardown"
+        );
+        assert!(!probe.sink.isolation_flush_pending.get());
+        let report_fd = if probe.sink.fd.get() == Fd::from_uv(1) {
+            2
+        } else {
+            1
+        };
+        let message = b"stdio teardown probe passed\n";
+        assert!(
+            matches!(sys::write(Fd::from_uv(report_fd), message), sys::Result::Ok(n) if n == message.len())
+        );
+    });
 }
 // `generated_js2native.rs` snake-cases `TestingAPIs` as `testing_ap_is`
 // (acronym splitter treats `AP|Is` as two words); alias so both resolve.
@@ -266,6 +341,12 @@ pub(crate) fn create_stdio(global: &JSGlobalObject, frame: &CallFrame) -> JsResu
     sink.writer
         .with_mut(|writer| writer.update_ref(sink.io_evtloop(), false));
     sink.started.set(true);
+    let vm = global.bun_vm();
+    if vm.test_isolation_enabled {
+        sink.flush_on_abort.set(true);
+        // SAFETY: the started sink is heap-allocated and leaves its context in on_close.
+        unsafe { bun_jsc::AbortHandle::arm_owner(sink.as_ptr(), vm.root_context()) };
+    }
     // SAFETY: the new sink is exclusively owned here; to_js takes the wrapper's reference.
     Ok(unsafe { (*sink.as_ptr()).to_js(global) })
 }
@@ -608,6 +689,11 @@ impl FileSink {
             let _entered = (*this).completion_scope();
 
             (*this).abort_handle.leave();
+            if (*this).isolation_flush_pending.replace(false) {
+                let vm = (*this).js_vm().expect("isolated stdio VM is alive");
+                let pending = &vm.test_isolation_pending_stdio;
+                pending.set(pending.get() - 1);
+            }
             if (*this).js_global().is_some() {
                 if let Some(stream) = (*this).pipe.get().stream() {
                     stream.done();
@@ -1752,11 +1838,13 @@ impl FileSink {
             pump_promise_ref: Cell::new(false),
             js_sink_ref: JsCell::new(bun_jsc::strong::Optional::empty()),
             abort_handle: bun_jsc::AbortHandle::for_owner::<FileSink>(),
+            flush_on_abort: Cell::new(false),
+            isolation_flush_pending: Cell::new(false),
         }
     }
 }
 
-bun_jsc::impl_abort_handle_owner!(FileSink, abort_handle, |this, _cause| {
+bun_jsc::impl_abort_handle_owner!(FileSink, abort_handle, |this, cause| {
     // What is buffered is dropped with the graph: the writer closes without draining (a reader
     // that never reads would keep it open for ever), and a parked write gives up its promise and
     // the wrapper it pins, as when an attached process exits. `on_close` may free `this`.
@@ -1764,6 +1852,24 @@ bun_jsc::impl_abort_handle_owner!(FileSink, abort_handle, |this, _cause| {
     // write+dealloc provenance; the guard keeps it so across `close()` and `run_pending`.
     unsafe {
         let _guard = RefPtr::init_ref(this);
+        // Only global swaps drain pending stdio; VM teardown must close it synchronously.
+        if (*this).flush_on_abort.get()
+            && matches!(
+                cause,
+                bun_jsc::AbortCause::ContextStopped(bun_jsc::StopReason::Disposed)
+            )
+        {
+            #[cfg(not(windows))]
+            if (*this).writer.get().has_pending_data()
+                && !(*this).isolation_flush_pending.replace(true)
+            {
+                let vm = (*this).js_vm().expect("isolated stdio VM is alive");
+                let pending = &vm.test_isolation_pending_stdio;
+                pending.set(pending.get() + 1);
+            }
+            let _ = (*this).end(None);
+            return;
+        }
         (*this).done.set(true);
         #[cfg(windows)]
         if !(*this).writer.get().owns_fd {

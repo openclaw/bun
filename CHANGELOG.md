@@ -2,7 +2,11 @@
 
 ## Unreleased
 
+- Release process stdio polling registrations between isolated test files so Linux parallel test runs can initialize stdout and stderr in each file. Adapts oven-sh/bun#38008 to the fork's borrowed stdio descriptors.
+
 - Publish ready POSIX subprocess exits and drain their owned pipes before stalled-host retirement observers, without changing the global event-loop phase order; wait for extra stdio pipes before emitting child `close`.
+
+- Enforce `--max-old-space-size` and its `NODE_OPTIONS` form through the pinned WebKit heap limits, with Node-compatible command-line precedence, child-process inheritance, and worker-scoped heap exhaustion.
 
 - Release retained heap-snapshot metadata when a local inspector Session disables `HeapProfiler` or disconnects, including sessions that never enabled the domain.
 

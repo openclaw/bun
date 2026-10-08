@@ -526,6 +526,7 @@ static SPLICED: &[SplicedFlag] = &[
     SplicedFlag { names: &[b"--disable-warning"], canonical: b"--disable-warning", kind: Supported::Value },
     SplicedFlag { names: &[b"--dns-result-order"], canonical: b"--dns-result-order", kind: Supported::Value },
     SplicedFlag { names: &[b"--max-http-header-size"], canonical: b"--max-http-header-size", kind: Supported::Value },
+    SplicedFlag { names: &[b"--max-old-space-size"], canonical: b"--max-old-space-size", kind: Supported::OptionalValue },
     SplicedFlag { names: &[b"--redirect-warnings"], canonical: b"--redirect-warnings", kind: Supported::Value },
     SplicedFlag { names: &[b"--title"], canonical: b"--title", kind: Supported::Value },
     SplicedFlag { names: &[b"--unhandled-rejections"], canonical: b"--unhandled-rejections", kind: Supported::Value },
@@ -594,7 +595,7 @@ fn fail_tokenize(detail: &str) -> ! {
 /// implements.
 ///
 /// - Allowed-but-unimplemented Node flags (for example
-///   `--max-old-space-size`) are dropped silently, matching Bun's CLI policy
+///   `--max-semi-space-size`) are dropped silently, matching Bun's CLI policy
 ///   for unknown long flags.
 /// - Flags outside Node's allowlist warn once and are dropped. Node exits
 ///   with status 9 here, but a hard error breaks tooling that forwards
@@ -762,16 +763,28 @@ mod tests {
 
     #[test]
     fn filter_drops_unimplemented_and_positionals() {
-        assert!(toks(b"--max-old-space-size=4096").is_empty());
+        assert!(toks(b"--max-semi-space-size=16").is_empty());
         assert!(toks(b"--enable-source-maps").is_empty());
         assert!(toks(b"/etc/passwd ./evil.js -").is_empty());
         assert!(toks(b"--bun --smol").is_empty());
         // The value of a dropped flag in space form falls out as a positional.
-        assert!(toks(b"--max-old-space-size 4096").is_empty());
+        assert!(toks(b"--max-semi-space-size 16").is_empty());
     }
 
     #[test]
     fn filter_optional_value_flags() {
+        assert_eq!(
+            toks(b"--max_old_space_size=4096"),
+            vec![b"--max-old-space-size=4096".to_vec()]
+        );
+        assert_eq!(
+            toks(b"--max-old-space-size="),
+            vec![b"--max-old-space-size=".to_vec()]
+        );
+        assert_eq!(
+            toks(b"--max-old-space-size 4096"),
+            vec![b"--max-old-space-size".to_vec()]
+        );
         assert_eq!(toks(b"--inspect"), vec![b"--inspect".to_vec()]);
         assert_eq!(
             toks(b"--inspect=localhost:9229"),

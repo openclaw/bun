@@ -422,6 +422,7 @@ pub struct VirtualMachine {
     /// the finalizer). Not the current context: that is what the async context says.
     pub(crate) entered_context: Cell<Option<crate::ContextId>>,
     pub test_isolation_enabled: bool,
+    pub test_isolation_pending_stdio: Cell<usize>,
     /// Counts `bun test --isolate` file swaps. The realm's context keeps its identifier across
     /// them, so a timer or pool job of the realm's remembers the count it was made under: one
     /// made under an earlier count is the finished file's, and is dropped.
@@ -3159,6 +3160,7 @@ unsafe extern "C" {
         eval_mode: bool,
         worker_ptr: *mut c_void,
     ) -> *mut JSGlobalObject;
+    safe fn Bun__installMainHeapLimit(global: *mut JSGlobalObject);
     // safe: `JSGlobalObject` is an opaque `UnsafeCell`-backed ZST handle (`&` is
     // ABI-identical to a non-null `*mut`); remaining args are by-value scalars.
     // The returned cell pointer is GC-owned (caller checks before deref).
@@ -3447,6 +3449,10 @@ impl VirtualMachine {
             unsafe { &*vm }.install_bytecode_string_table(graph);
             // SAFETY: as above.
             crate::bytecode_order_recorder::init_vm(unsafe { &*vm }, graph);
+        }
+
+        if opts.is_main_thread {
+            Bun__installMainHeapLimit(global);
         }
 
         Ok(vm)
@@ -6267,6 +6273,12 @@ impl VirtualMachine {
         // What the outgoing file's close handlers and last microtasks opened
         // since the caller's sweep.
         let _ = self.stop_context_handles(crate::StopReason::Disposed);
+        // A backpressured stdio sink still owns fd 1/2's poll until its tail drains.
+        // Retire the outgoing script before pumping I/O, and create no new sink yet.
+        while self.test_isolation_pending_stdio.get() != 0 {
+            self.event_loop_ref().auto_tick_active();
+            self.tick();
+        }
         // Nothing enters its script now, so no close handler dials again: this sweep leaves no socket.
         self.close_test_file_sockets();
         debug_assert!(!self.has_test_file_sockets());

@@ -374,6 +374,8 @@ pub struct ParseOptions<'a> {
     /// flag, never to an option's value or a `--` target. Node keeps its own
     /// aliases on exactly that branch (node_options-inl.h).
     pub short_aliases: &'static [(&'static [u8], &'static [u8])],
+    /// Observe each named option before repeated single-value options are collapsed.
+    pub on_option: Option<fn(Names, Option<&[u8]>)>,
 }
 
 // Help/usage/error rendering — none of this is on the cold-start hot chain
@@ -449,16 +451,7 @@ pub fn parse<Id: 'static>(
 ) -> crate::Result<Args<Id>> {
     let mut iter = args::OsIterator::init();
 
-    let clap = parse_ex::<Id, _>(
-        params,
-        &mut iter,
-        ParseOptions {
-            diagnostic: opt.diagnostic,
-            stop_after_positional_at: opt.stop_after_positional_at,
-            preserve_passthrough_separator: opt.preserve_passthrough_separator,
-            short_aliases: opt.short_aliases,
-        },
-    )?;
+    let clap = parse_ex::<Id, _>(params, &mut iter, opt)?;
     Ok(Args { clap })
 }
 
@@ -470,16 +463,7 @@ pub fn parse_with_table<Id: 'static>(
     opt: ParseOptions<'_>,
 ) -> crate::Result<Args<Id>> {
     let mut iter = args::OsIterator::init();
-    let clap = ComptimeClap::<Id>::parse_with_table(
-        table,
-        &mut iter,
-        ParseOptions {
-            diagnostic: opt.diagnostic,
-            stop_after_positional_at: opt.stop_after_positional_at,
-            preserve_passthrough_separator: opt.preserve_passthrough_separator,
-            short_aliases: opt.short_aliases,
-        },
-    )?;
+    let clap = ComptimeClap::<Id>::parse_with_table(table, &mut iter, opt)?;
     Ok(Args { clap })
 }
 

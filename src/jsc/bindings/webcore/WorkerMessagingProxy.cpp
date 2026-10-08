@@ -153,7 +153,15 @@ void WorkerMessagingProxy::installHeapLimitObserver(JSC::VM& vm, void* workerThr
     vm.heap.collectNow(JSC::Sync, JSC::CollectionScope::Full);
     auto limits = m_options.resourceLimits.resolved();
     vm.setWorkerStackUsage(WorkerResourceLimits::bytes(limits.stackSizeMb));
-    vm.heap.setWorkerHeapLimits(WorkerResourceLimits::bytes(limits.maxOldGenerationSizeMb), WorkerResourceLimits::bytes(limits.maxYoungGenerationSizeMb));
+    size_t megabytes = Bun__Node__maxOldSpaceSizeMiB();
+    size_t heapBytes = megabytes ? megabytes * 1024 * 1024 : WorkerResourceLimits::bytes(limits.maxOldGenerationSizeMb);
+    if (megabytes && !heapBytes) {
+        if (WebWorker__requestTermination(workerThread))
+            m_stoppedByHeapLimit.store(true, std::memory_order_release);
+        m_resourceLimitsReady.store(true, std::memory_order_release);
+        return;
+    }
+    vm.heap.setWorkerHeapLimits(heapBytes, WorkerResourceLimits::bytes(limits.maxYoungGenerationSizeMb));
     ASSERT(!m_heapLimitObserver);
     m_heapLimitObserver = makeUnique<WorkerHeapLimitObserver>(*this, vm, workerThread);
     vm.heap.addObserver(m_heapLimitObserver.get());

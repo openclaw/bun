@@ -1,6 +1,6 @@
 import { crash_handler } from "bun:internal-for-testing";
 import { describe, expect, test } from "bun:test";
-import { bunEnv, bunExe, isDebug, isLinux, isPosix, isWindows, mergeWindowEnvs, tempDir } from "harness";
+import { bunEnv, bunExe, isDebug, isLinux, isPosix, isWindows, mergeWindowEnvs, noCoreCmd, tempDir } from "harness";
 import { rmSync } from "node:fs";
 import { constants as osConstants } from "node:os";
 import path from "path";
@@ -19,7 +19,7 @@ test.if(isDebug && isLinux && hasSymbolizer)(
   "crash trace starts at the crash site, not inside the crash handler",
   async () => {
     await using proc = Bun.spawn({
-      cmd: [bunExe(), path.join(import.meta.dir, "fixture-crash.js"), "panic"],
+      cmd: noCoreCmd([bunExe(), path.join(import.meta.dir, "fixture-crash.js"), "panic"]),
       env: noReportEnv,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -54,7 +54,7 @@ test.if(isPosix)(
   "panic terminates the process even when JS registered trap-signal listeners",
   async () => {
     await using proc = Bun.spawn({
-      cmd: [
+      cmd: noCoreCmd([
         bunExe(),
         "-e",
         `process.on("SIGTRAP", () => {});
@@ -64,7 +64,7 @@ test.if(isPosix)(
         // Make debug builds take the fast trace-string path instead of
         // spawning llvm-symbolizer, which can take tens of seconds.
         "--debug-crash-handler-use-trace-string",
-      ],
+      ]),
       env: noReportEnv,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -104,12 +104,12 @@ describe.if(isPosix)("terminal signal reflects the crash cause", () => {
     ["trap", "SIGTRAP"],
   ] as const)("%s terminates with %s", async (approach, expectedSignal) => {
     await using proc = Bun.spawn({
-      cmd: [
+      cmd: noCoreCmd([
         bunExe(),
         path.join(import.meta.dir, "fixture-crash.js"),
         approach,
         "--debug-crash-handler-use-trace-string",
-      ],
+      ]),
       env: noReportEnv,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -136,7 +136,12 @@ describe.if(isPosix)("terminal signal reflects the crash cause", () => {
 // AVX is optional. AVX2 and AVX-512 are reported only with AVX, and after it.
 test("the crash report lists the CPU features", async () => {
   await using proc = Bun.spawn({
-    cmd: [bunExe(), path.join(import.meta.dir, "fixture-crash.js"), "panic", "--debug-crash-handler-use-trace-string"],
+    cmd: noCoreCmd([
+      bunExe(),
+      path.join(import.meta.dir, "fixture-crash.js"),
+      "panic",
+      "--debug-crash-handler-use-trace-string",
+    ]),
     env: noReportEnv,
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -388,7 +393,7 @@ test("raise ignoring panic handler does not trigger the panic handler", async ()
   });
 
   const proc = Bun.spawn({
-    cmd: [bunExe(), path.join(import.meta.dir, "fixture-crash.js"), "raiseIgnoringPanicHandler"],
+    cmd: noCoreCmd([bunExe(), path.join(import.meta.dir, "fixture-crash.js"), "raiseIgnoringPanicHandler"]),
     env: mergeWindowEnvs([
       bunEnv,
       {
@@ -406,13 +411,6 @@ test("raise ignoring panic handler does not trigger the panic handler", async ()
   expect(proc.exited).resolves.not.toBe(0);
   expect(sent).toBe(false);
 });
-
-// For children that die via SIG_DFL (rather than via a test hook that calls
-// suppress_core_dumps_if_necessary()): on the --coredump-upload CI lane the
-// runner flags leaked core files as a hard failure. ulimit -c 0 in a shell
-// wrapper is inherited by the bun child (and by anything it spawns); every
-// user is isPosix-gated so /bin/sh is available.
-const noCoreCmd = (argv: string[]) => ["/bin/sh", "-c", `ulimit -c 0 && exec "$@"`, "--", ...argv];
 
 // SIGABRT (libc abort(), mimalloc/glibc heap-corruption, std::terminate) and
 // SIGTRAP (WTF CRASH()/RELEASE_ASSERT, __builtin_trap() -> `brk` on aarch64)
@@ -437,12 +435,12 @@ describe.if(isPosix)("SIGABRT/SIGTRAP are caught by the crash handler", () => {
     });
 
     await using proc = Bun.spawn({
-      cmd: [
+      cmd: noCoreCmd([
         bunExe(),
         path.join(import.meta.dir, "fixture-crash.js"),
         approach,
         "--debug-crash-handler-use-trace-string",
-      ],
+      ]),
       env: mergeWindowEnvs([
         bunEnv,
         {
@@ -600,7 +598,7 @@ describe("automatic crash reporter", () => {
       });
 
       const proc = Bun.spawn({
-        cmd: [bunExe(), path.join(import.meta.dir, "fixture-crash.js"), approach],
+        cmd: noCoreCmd([bunExe(), path.join(import.meta.dir, "fixture-crash.js"), approach]),
         env: mergeWindowEnvs([
           bunEnv,
           {

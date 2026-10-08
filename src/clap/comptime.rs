@@ -548,6 +548,11 @@ impl<Id> ComptimeClap<Id> {
 
         while let Some(arg) = stream.next()? {
             let param = arg.param;
+            if param.names.long.is_some() || param.names.short.is_some() {
+                if let Some(on_option) = opt.on_option {
+                    on_option(param.names, arg.value);
+                }
+            }
             if param.names.long.is_none() && param.names.short.is_none() {
                 pos.push(arg.value.unwrap());
                 if opt.stop_after_positional_at > 0 && pos.len() >= opt.stop_after_positional_at {

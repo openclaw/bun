@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { bunEnv, bunExe, mergeWindowEnvs, tempDir } from "harness";
+import { bunEnv, bunExe, mergeWindowEnvs, noCoreCmd, tempDir } from "harness";
 import path from "path";
 
 // NOTE: kept separate from run-crash-handler.test.ts on purpose — that file
@@ -19,7 +19,7 @@ describe.concurrent("crash report command character", () => {
     // that inherits the crashing process's cwd, which would keep a tempDir
     // cwd alive past the test and make its cleanup fail with EBUSY.
     await using proc = Bun.spawn({
-      cmd: [bunExe(), ...args],
+      cmd: noCoreCmd([bunExe(), ...args]),
       env: mergeWindowEnvs([
         bunEnv,
         {
