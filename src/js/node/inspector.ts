@@ -625,7 +625,17 @@ class Session extends EventEmitter {
       stopAllocationSampling();
       this.#samplingAllocations = false;
     }
-    return { profile: JSON.parse(raw) };
+    return {
+      profile: JSON.parse(raw, (key, value) => {
+        if ((key === "size" || key === "selfSize") && typeof value === "number" && value >= 0 && $isFinite(value)) {
+          // JSC estimates fractional bytes; Node reports integral bytes. Keep
+          // node and sample estimates independent, as V8 rounds them separately.
+          const fraction = value % 1;
+          return value - fraction + (fraction >= 0.5 ? 1 : 0);
+        }
+        return value;
+      }),
+    };
   }
 
   #handleMethod(method: string, params?: object): any {

@@ -218,6 +218,63 @@ describe("node:inspector", () => {
   });
 
   describe("HeapProfiler", () => {
+    test("allocation sampling reports integral bytes for live and stopped profiles", async () => {
+      await using proc = Bun.spawn({
+        cmd: [
+          bunExe(),
+          "--input-type=module",
+          "-e",
+          `
+import assert from 'node:assert/strict';
+import { Session } from 'node:inspector/promises';
+const session = new Session();
+session.connect();
+function allocateHeapProfileWorkload() {
+  const retained = [];
+  for (let i = 0; i < 8; i++) {
+    const row = [];
+    row.length = 131072;
+    row.fill(i);
+    retained.push(row);
+  }
+  return retained;
+}
+function validate(profile) {
+  const nodes = [profile.head];
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    assert(Number.isSafeInteger(node.selfSize) && node.selfSize >= 0, 'fractional node byte size: ' + node.selfSize);
+    nodes.push(...node.children);
+  }
+  const allocated = nodes.filter(node => node.callFrame.functionName === 'allocateHeapProfileWorkload' && node.selfSize > 0);
+  assert(allocated.length > 0, 'allocation site missing');
+  assert(profile.samples.some(sample => allocated.some(node => node.id === sample.nodeId)), 'allocation samples missing');
+  for (const sample of profile.samples) {
+    assert(Number.isSafeInteger(sample.size) && sample.size > 0, 'fractional sample byte size: ' + sample.size);
+  }
+}
+try {
+  await session.post('HeapProfiler.startSampling', { samplingInterval: 65536 });
+  globalThis.retainedHeapProfileWorkload = allocateHeapProfileWorkload();
+  validate((await session.post('HeapProfiler.getSamplingProfile')).profile);
+  validate((await session.post('HeapProfiler.stopSampling')).profile);
+} finally {
+  session.disconnect();
+  delete globalThis.retainedHeapProfileWorkload;
+}
+console.log('integral allocation bytes passed');
+`,
+        ],
+        env: bunEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      expect(stdout).toBe("integral allocation bytes passed\n");
+      expect(stderr).toBe("");
+      expect(exitCode).toBe(0);
+    });
+
     test("worker allocation sampling is independent of the main VM", async () => {
       await using proc = Bun.spawn({
         cmd: [bunExe(), import.meta.dir + "/inspector-sampling-worker.fixture.cjs"],
