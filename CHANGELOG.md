@@ -192,6 +192,7 @@
 
 - Keep ESM namespaces free of inherited `__esModule` markers and preserve the own marker and live exports for `require(esm)`, fixing Vite/tsx namespace interop. Adapts [oven-sh/bun#33894](https://github.com/oven-sh/bun/pull/33894) and [oven-sh/WebKit#279](https://github.com/oven-sh/WebKit/pull/279). Thanks @robobun!
 
+
 - Sync oven-sh/bun through `c7b06d94bac19817ba34b6677bb1099fb4f6d2be`, preserving fork fixes and incorporating TLS handshake shutdown, macOS split-DNS failover, file-body cloning, Buffer write validation, mimalloc 3.5.3 and idle-memory release.
 - Pin immutable [OpenClaw WebKit `42ab38d705`](https://github.com/openclaw/WebKit/releases/tag/autobuild-42ab38d705d4838748ccee77e7deb0e4e35515ee) by archive checksum, together with the required namespace facade integration from #106; retain fail-closed artifact selection.
 
@@ -247,4 +248,4 @@
 
 - Name package-target resolution options explicitly to satisfy the Rust Mordant lint without changing resolution behavior.
 
-- Destroy Duplex-backed TLS transports without calling `end()`, matching Node.js, while preserving graceful TLS shutdown. Adapts HTTP/2 transport coverage from [oven-sh/bun#38154](https://github.com/oven-sh/bun/pull/38154); thanks @robobun!
+- Destroy Duplex-backed TLS transports without calling `end()`, preserve wrapped-socket close ordering, and honor half-open shutdown like Node.js. Ports HTTP/2 teardown from [oven-sh/bun#38195](https://github.com/oven-sh/bun/pull/38195) and adapts coverage from [oven-sh/bun#38154](https://github.com/oven-sh/bun/pull/38154); thanks @robobun!

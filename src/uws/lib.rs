@@ -406,6 +406,8 @@ pub mod ssl_wrapper {
         pub write: fn(T, &[u8]),
         pub on_data: fn(T, &[u8]),
         pub on_close: fn(T),
+        /// Stream owners handle peer EOF independently of their writable half.
+        pub on_end: Option<fn(T)>,
         /// A new resumable TLS session arrived (serialized SSL_SESSION bytes)
         /// - node's `'session'` event. `None` opts the SSL out of session
         /// parking entirely (fetch / WebSocket tunnels have no consumer).
@@ -838,6 +840,12 @@ pub mod ssl_wrapper {
                 || self.flags.sent_ssl_shutdown()
         }
 
+        pub fn is_write_shutdown(&self) -> bool {
+            self.flags.closed_notified()
+                || self.flags.fatal_error()
+                || self.flags.sent_ssl_shutdown()
+        }
+
         /// We sent and received the shutdown (fully closed)
         pub fn is_closed(&self) -> bool {
             self.flags.received_ssl_shutdown() && self.flags.sent_ssl_shutdown()
@@ -983,6 +991,21 @@ pub mod ssl_wrapper {
             (handlers.on_close)(handlers.ctx);
         }
 
+        fn handle_peer_shutdown(&self) {
+            let handlers = self.handlers.get();
+            if let Some(on_end) = handlers.on_end {
+                if self.flags.received_ssl_shutdown() {
+                    return;
+                }
+                self.flags.set_received_ssl_shutdown(true);
+                on_end(handlers.ctx);
+            } else {
+                self.flags.set_received_ssl_shutdown(true);
+                let _ = self.shutdown(false);
+                self.trigger_close_callback();
+            }
+        }
+
         /// The SSL's X509 verdict. Shutdown state does not change it.
         fn verify_error(&self) -> us_bun_verify_error_t {
             let Some(ssl) = self.ssl.get() else {
@@ -1013,11 +1036,7 @@ pub mod ssl_wrapper {
                     & boring_sys::SSL_RECEIVED_SHUTDOWN)
                     != 0
                 {
-                    // we received a shutdown
-                    self.flags.set_received_ssl_shutdown(true);
-                    // 2-step shutdown
-                    let _ = self.shutdown(false);
-                    self.trigger_close_callback();
+                    self.handle_peer_shutdown();
 
                     return false;
                 }
@@ -1065,10 +1084,14 @@ pub mod ssl_wrapper {
                 if err == boring_sys::SSL_ERROR_ZERO_RETURN {
                     // Remotely-Initiated Shutdown
                     // See: https://www.openssl.org/docs/manmaster/man3/SSL_shutdown.html
-                    self.flags.set_received_ssl_shutdown(true);
-                    // 2-step shutdown
-                    let _ = self.shutdown(false);
-                    self.handle_end_of_renegotiation();
+                    if self.handlers.get().on_end.is_some() {
+                        self.handle_end_of_renegotiation();
+                        self.handle_peer_shutdown();
+                    } else {
+                        self.flags.set_received_ssl_shutdown(true);
+                        let _ = self.shutdown(false);
+                        self.handle_end_of_renegotiation();
+                    }
                     return false;
                 }
                 // as far as I know these are the only errors we want to handle
@@ -1187,7 +1210,9 @@ pub mod ssl_wrapper {
                         } else if err == boring_sys::SSL_ERROR_ZERO_RETURN {
                             // Remotely-Initiated Shutdown
                             // See: https://www.openssl.org/docs/manmaster/man3/SSL_shutdown.html
-                            self.flags.set_received_ssl_shutdown(true);
+                            if self.handlers.get().on_end.is_none() {
+                                self.flags.set_received_ssl_shutdown(true);
+                            }
                             self.handle_end_of_renegotiation();
                         }
                         if err == boring_sys::SSL_ERROR_SSL || err == boring_sys::SSL_ERROR_SYSCALL
@@ -1213,10 +1238,10 @@ pub mod ssl_wrapper {
                             return false;
                         }
                         if err == boring_sys::SSL_ERROR_ZERO_RETURN {
-                            // 2-step shutdown, last: write_data fails once our close_notify is out.
-                            let _ = self.shutdown(false);
+                            self.handle_peer_shutdown();
+                        } else {
+                            self.trigger_close_callback();
                         }
-                        self.trigger_close_callback();
                         return false;
                     } else {
                         log!("wanna read/write just break");

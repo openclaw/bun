@@ -1,6 +1,6 @@
 /**
  * Tests for the net.Server → Http2SecureServer upgrade path
- * (upgradeRawSocketToH2 in _http2_upgrade.ts).
+ * through the inherited tls.Server connection listener.
  *
  * This pattern is used by http2-wrapper, crawlee, and other libraries that
  * accept raw TCP connections and upgrade them to HTTP/2 via
@@ -468,16 +468,30 @@ describe("HTTP/2 upgrade — session destruction releases the accepted transport
   for (const withError of [false, true]) {
     test(`destroyed ${withError ? "with" : "without"} an error`, async () => {
       const h2Server = http2.createSecureServer(TLS);
+      const error = withError ? new Error("test teardown") : undefined;
+      const errors: Error[] = [];
+      const events: string[] = [];
       const sessionClosed = new Promise<void>(resolve => {
         h2Server.once("session", (session: http2.ServerHttp2Session) => {
-          session.on("error", () => {});
-          session.once("close", resolve);
-          session.destroy(withError ? new Error("test teardown") : undefined);
+          session.on("error", error => {
+            errors.push(error);
+            events.push("session error");
+          });
+          session.once("close", () => {
+            events.push("session close");
+            resolve();
+          });
+          session.destroy(error);
         });
       });
       const accepted = Promise.withResolvers<{ raw: net.Socket; closed: Promise<boolean> }>();
       const netServer = net.createServer(raw => {
-        const closed = new Promise<boolean>(resolve => raw.once("close", resolve));
+        const closed = new Promise<boolean>(resolve =>
+          raw.once("close", hadError => {
+            events.push("raw close");
+            resolve(hadError);
+          }),
+        );
         accepted.resolve({ raw, closed });
         h2Server.emit("connection", raw);
       });
@@ -508,6 +522,11 @@ describe("HTTP/2 upgrade — session destruction releases the accepted transport
         const { raw, closed } = await accepted.promise;
         assert.strictEqual(await closed, false);
         assert.strictEqual(raw.destroyed, true);
+        assert.deepStrictEqual(
+          events,
+          withError ? ["raw close", "session error", "session close"] : ["raw close", "session close"],
+        );
+        assert.deepStrictEqual(errors, withError ? [error] : []);
         const connections = await new Promise<number>((resolve, reject) => {
           netServer.getConnections((err, count) => (err ? reject(err) : resolve(count)));
         });

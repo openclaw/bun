@@ -382,6 +382,7 @@ impl WindowsNamedPipe {
             on_handshake: Self::ssl_on_handshake,
             on_data: Self::ssl_on_data,
             on_close: Self::ssl_on_close,
+            on_end: None,
             write: Self::ssl_write,
             on_session: Some(Self::ssl_on_session),
             on_keylog: Some(Self::ssl_on_keylog),

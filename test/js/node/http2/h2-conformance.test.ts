@@ -1944,8 +1944,12 @@ describe("stream-reset floods (CVE-2023-44487 rapid reset, CVE-2025-8671 MadeYou
 
   function respondingServer(options: Record<string, unknown> = {}, rejectUploads = false) {
     const state = { handlers: 0, sessionErrorCode: undefined as string | undefined };
+    const sessionError = Promise.withResolvers<string>();
     const server = http2.createServer(options);
-    server.on("sessionError", (e: any) => (state.sessionErrorCode = e.code));
+    server.on("sessionError", (e: any) => {
+      state.sessionErrorCode = e.code;
+      sessionError.resolve(e.code);
+    });
     server.on("session", s => s.on("error", () => {}));
     server.on("stream", (stream: any, headers: any) => {
       state.handlers++;
@@ -1954,7 +1958,7 @@ describe("stream-reset floods (CVE-2023-44487 rapid reset, CVE-2025-8671 MadeYou
       stream.respond({ ":status": 200 });
       stream.end("x");
     });
-    return { server, state };
+    return { server, state, sessionError: sessionError.promise };
   }
 
   async function withClient<T>(server: http2.Http2Server, body: (c: RawH2) => Promise<T>): Promise<T> {
@@ -1972,10 +1976,11 @@ describe("stream-reset floods (CVE-2023-44487 rapid reset, CVE-2025-8671 MadeYou
   }
 
   async function flood(opts: { options?: Record<string, unknown>; count: number; kill?: (sid: number) => Buffer }) {
-    const { server, state } = respondingServer(opts.options);
+    const { server, state, sessionError } = respondingServer(opts.options);
     return withClient(server, async c => {
       c.send(pairs(opts.count, 1, opts.kill ?? rstStream));
       const goaway = await c.waitForGoaway(10_000);
+      await sessionError;
       return { c, goaway, ...state };
     });
   }
@@ -2143,20 +2148,21 @@ describe("stream-reset floods (CVE-2023-44487 rapid reset, CVE-2025-8671 MadeYou
     // nghttp2 can exempt every reset after its GOAWAY because it ignores the streams a client
     // opens after that frame. This engine still opens them, so only the earlier streams are exempt.
     // It also accepts ids below the held stream's, so the GOAWAY's last stream id is no criterion.
-    const { server, state } = respondingServer();
+    const { server, state, sessionError } = respondingServer();
     await withClient(server, async c => {
       c.send(upload(4001));
       await serverGoaway(c);
       c.send(pairs(1200, 1, rstStream));
       const goaway = await c.waitFor(calm, 10_000);
       expect(goaway.payload.subarray(8).toString()).toBe("too many stream resets");
+      await sessionError;
       expect(state.sessionErrorCode).toBe("ERR_HTTP2_ERROR");
     });
   });
 
   test("server-sent resets stay charged after the server has sent its GOAWAY", async () => {
     // Every stream here is older than the GOAWAY. The exemption is for the peer's own resets only.
-    const { server, state } = respondingServer();
+    const { server, state, sessionError } = respondingServer();
     await withClient(server, async c => {
       const ids = Array.from({ length: 1300 }, (_, i) => 1 + 2 * i);
       c.send(Buffer.concat(ids.map(upload)));
@@ -2164,6 +2170,7 @@ describe("stream-reset floods (CVE-2023-44487 rapid reset, CVE-2025-8671 MadeYou
       c.send(Buffer.concat(ids.map(madeYouReset["WINDOW_UPDATE with a 0 increment"])));
       const goaway = await c.waitFor(calm, 10_000);
       expect(goaway.payload.subarray(8).toString()).toBe("too many stream resets");
+      await sessionError;
       expect(state.sessionErrorCode).toBe("ERR_HTTP2_ERROR");
     });
   });

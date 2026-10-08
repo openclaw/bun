@@ -857,6 +857,24 @@ it("a client and a server TLSSocket connected through a synchronous in-memory du
   });
 });
 
+it.concurrent.each(["legacy-pair", "duplex-halfopen-false", "duplex-halfopen-true", "duplex-eof-halfopen-true"])(
+  "duplex TLS close_notify follows the transport's half-open policy: %s",
+  async scenario => {
+    await using proc = Bun.spawn({
+      cmd: [bunExe(), join(import.meta.dirname, "tls-half-close-transport-fixture.cjs"), scenario],
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect({ result: JSON.parse(stdout), stderr, exitCode }).toEqual({
+      result: { pass: true, complete: scenario !== "legacy-pair", failure: null, failedChecks: [] },
+      stderr: "",
+      exitCode: 0,
+    });
+  },
+);
+
 it("the last 'data' event fires before the close_notify reply is written to a duplex transport (tls.connect({ socket }))", async () => {
   // The peer's last application data and its close_notify reach the engine in
   // one chunk. The engine used to answer the close_notify before it emitted
@@ -882,6 +900,8 @@ it("the last 'data' event fires before the close_notify reply is written to a du
   // close_notify, then pushed to the client as one chunk.
   let held: Buffer | null = null;
   const clientSide: Duplex = new Duplex({
+    // Node inherits this flag from the transport; a half-open client sends no automatic reply.
+    allowHalfOpen: false,
     read() {},
     write(chunk: Buffer, _encoding, callback) {
       if (recordTypes(chunk)?.includes(21)) log.push("write close_notify");
@@ -932,7 +952,7 @@ it("the last 'data' event fires before the close_notify reply is written to a du
   await once(client, "close");
 
   // 23 is application data. One push carried it and the alert.
-  expect(log).toEqual(["push 23,21", "data last", "write close_notify", "transport end", "end"]);
+  expect(log).toEqual(["push 23,21", "data last", "end", "write close_notify", "transport end"]);
 });
 
 describe("application data written over a Duplex transport before the handshake completes", () => {
@@ -3480,11 +3500,7 @@ describe.each([
       expect(await run("duplex-destroySoon", "after-first-flight")).toEqual(clientDestroyed);
     });
 
-    // Known gap in bun: 'finish' does not wait for the transport's end(). In
-    // the turn that created the socket it fires before the engine exists, so
-    // destroySoon()'s destroy() runs first and destroys the transport: no
-    // ClientHello and no final(), the peer only sees the connection close.
-    (!exe ? it.skip : runtime === "bun" ? it.failing : it)(
+    it.skipIf(!exe)(
       "destroySoon() in the turn that created the socket ends the transport, then closes the socket",
       async () => {
         expect(await run("duplex-destroySoon", "same-turn")).toEqual(clientDestroyed);

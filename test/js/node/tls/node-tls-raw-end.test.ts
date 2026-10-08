@@ -64,3 +64,103 @@ for (const when of ["nextTick", "setImmediate"]) {
     assert.ok(!events.includes("raw end"), events.join(", "));
   });
 }
+
+for (const route of ["client", "server", "injected-server"]) {
+  test(`a half-open ${route} wrap retains its raw socket until the application ends`, async () => {
+    const version = { minVersion: "TLSv1.2", maxVersion: "TLSv1.2" } as const;
+    const resources = [];
+    const closes = [];
+    const events = [];
+    const errors = [];
+    const targetReady = Promise.withResolvers();
+    const peerReady = Promise.withResolvers();
+    const reply = Promise.withResolvers();
+    let raw;
+    let snapshot;
+    let endError;
+    let targetData = "";
+    let peerData = "";
+    function observe(socket, name) {
+      resources.push(socket);
+      closes.push(new Promise(resolve => socket.once("close", resolve)));
+      socket.on("close", () => events.push(`${name} close`));
+      socket.on("error", error => errors.push(error.code));
+      return socket;
+    }
+    function target(socket) {
+      observe(socket, "tls");
+      socket.on("data", data => (targetData += data));
+      socket.on("end", () => {
+        events.push("tls end");
+        setImmediate(() => {
+          snapshot = {
+            allowHalfOpen: socket.allowHalfOpen,
+            writableEnded: socket.writableEnded,
+            destroyed: socket.destroyed,
+            rawDestroyed: raw.destroyed,
+          };
+          events.push("application end");
+          socket.end("tail", error => {
+            endError = error?.code ?? null;
+            reply.resolve();
+          });
+        });
+      });
+      targetReady.resolve();
+    }
+    function peer(socket, secureEvent?) {
+      observe(socket, "peer");
+      socket.on("data", data => (peerData += data));
+      if (secureEvent) socket.once(secureEvent, () => socket.end("last"));
+      else socket.end("last");
+      peerReady.resolve();
+    }
+    const injected = route === "injected-server" ? tls.createServer({ key, cert, ...version }) : null;
+    injected?.on("secureConnection", target);
+    const server =
+      route === "client"
+        ? tls.createServer({ key, cert, ...version, allowHalfOpen: true }, socket => peer(socket))
+        : net.createServer({ allowHalfOpen: true }, socket => {
+            raw = observe(socket, "raw");
+            if (injected) injected.emit("connection", raw);
+            else target(new tls.TLSSocket(raw, { isServer: true, key, cert, ...version }));
+          });
+    try {
+      await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+      const address = server.address() as net.AddressInfo;
+      if (route === "client") {
+        raw = observe(net.connect({ host: "127.0.0.1", port: address.port, allowHalfOpen: true }), "raw");
+        target(tls.connect({ socket: raw, rejectUnauthorized: false, ...version }));
+      } else {
+        peer(
+          tls.connect({
+            host: "127.0.0.1",
+            port: address.port,
+            allowHalfOpen: true,
+            rejectUnauthorized: false,
+            ...version,
+          }),
+          "secureConnect",
+        );
+      }
+      await Promise.all([targetReady.promise, peerReady.promise]);
+      await Promise.all([reply.promise, ...closes]);
+      assert.deepStrictEqual(
+        { snapshot, targetData, peerData, endError, errors },
+        {
+          snapshot: { allowHalfOpen: true, writableEnded: false, destroyed: false, rawDestroyed: false },
+          targetData: "last",
+          peerData: "tail",
+          endError: null,
+          errors: [],
+        },
+      );
+      assert.ok(events.indexOf("application end") < events.indexOf("raw close"), events.join(", "));
+      assert.ok(events.indexOf("application end") < events.indexOf("tls close"), events.join(", "));
+    } finally {
+      for (const socket of resources) socket.destroy();
+      server.close();
+      injected?.close();
+    }
+  });
+}
