@@ -82,7 +82,11 @@ try {
   }
   // Keep the native observer attached: detaching it could itself clear the snapshot.
   const after = await post('Heap.getPreview', { heapObjectId });
-  assert.deepEqual(after.error, { code: -32000, message: 'No heap snapshot' });
+  assert.deepEqual(after.error, {
+    code: -32000,
+    message: 'No heap snapshot',
+    data: [{ code: -32000, message: 'No heap snapshot' }],
+  });
   assert.equal(globalThis.snapshotCleanupMarker, 'inspector-snapshot-cleanup-marker');
   console.log(JSON.stringify({ mode, trackedBefore: true, snapshotCleared: true, observerConnected: socket.readyState === WebSocket.OPEN }));
 } finally {
