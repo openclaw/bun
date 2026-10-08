@@ -5,8 +5,8 @@ import { existsSync, stat, writeFileSync } from "node:fs";
 import net, { type AddressInfo } from "node:net";
 import path from "node:path";
 import { clearInterval, clearTimeout, promises, setImmediate, setInterval, setTimeout } from "node:timers";
-import { promisify } from "util";
 import { Worker } from "node:worker_threads";
+import { promisify } from "util";
 
 for (const fn of [setTimeout, setInterval]) {
   describe(fn.name, () => {
