@@ -99,6 +99,78 @@ pub(crate) mod testing_apis {
     ) -> JsResult<JSValue> {
         Ok(JSValue::js_number(LIVE_COUNT.load(Ordering::Relaxed) as f64))
     }
+
+    pub(crate) fn expect_stdio_teardown(
+        global: &JSGlobalObject,
+        frame: &CallFrame,
+    ) -> JsResult<JSValue> {
+        #[cfg(windows)]
+        {
+            let _ = frame;
+            Err(global.throw(format_args!("stdio teardown probe requires POSIX polls")))
+        }
+
+        #[cfg(not(windows))]
+        {
+            let Some(ptr) = JSSink::from_js(frame.argument(0)) else {
+                return Err(global.throw(format_args!("expected a FileSink")));
+            };
+            // SAFETY: the live JS wrapper owns this sink; the probe keeps it alive through teardown.
+            let sink = unsafe { RefPtr::init_ref(core::ptr::addr_of_mut!((*ptr).sink)) };
+            assert!(sink.flush_on_abort.get(), "expected isolated stdio");
+            assert!(sink.writer.get().is_backed_up(), "expected EAGAIN");
+            assert!(sink.writer.get().has_pending_data());
+            assert!(sink.writer.get().get_poll().is_some());
+            assert!(sink.must_be_kept_alive_until_eof.get());
+            sink.abort_handle.leave();
+            let sink_ptr = sink.as_ptr();
+            let probe = Box::into_raw(Box::new(StdioTeardownProbe {
+                abort_handle: bun_jsc::AbortHandle::for_owner::<StdioTeardownProbe>(),
+                sink,
+            }));
+            // SAFETY: both owners are heap-pinned; stop_handles unlinks before calling them.
+            // Register the probe before the sink so it observes the completed native close.
+            unsafe {
+                bun_jsc::AbortHandle::arm_owner(probe, global.bun_vm().root_context());
+                bun_jsc::AbortHandle::arm_owner(sink_ptr, global.bun_vm().root_context());
+            }
+            Ok(JSValue::UNDEFINED)
+        }
+    }
+
+    #[cfg(not(windows))]
+    struct StdioTeardownProbe {
+        abort_handle: bun_jsc::AbortHandle,
+        sink: RefPtr<FileSink>,
+    }
+
+    #[cfg(not(windows))]
+    bun_jsc::impl_abort_handle_owner!(StdioTeardownProbe, abort_handle, |this, cause| {
+        // SAFETY: the stop sweep unlinked the heap-pinned probe, transferring its ownership here.
+        let probe = unsafe { Box::from_raw(this) };
+        assert!(matches!(
+            cause,
+            bun_jsc::AbortCause::ContextStopped(bun_jsc::StopReason::VmTeardown)
+        ));
+        assert!(
+            probe.sink.writer.get().get_poll().is_none(),
+            "stdio poll retained at VM teardown"
+        );
+        assert!(
+            !probe.sink.must_be_kept_alive_until_eof.get(),
+            "stdio keep-alive retained at VM teardown"
+        );
+        assert!(!probe.sink.isolation_flush_pending.get());
+        let report_fd = if probe.sink.fd.get() == Fd::from_uv(1) {
+            2
+        } else {
+            1
+        };
+        let message = b"stdio teardown probe passed\n";
+        assert!(
+            matches!(sys::write(Fd::from_uv(report_fd), message), sys::Result::Ok(n) if n == message.len())
+        );
+    });
 }
 // `generated_js2native.rs` snake-cases `TestingAPIs` as `testing_ap_is`
 // (acronym splitter treats `AP|Is` as two words); alias so both resolve.
@@ -1772,7 +1844,7 @@ impl FileSink {
     }
 }
 
-bun_jsc::impl_abort_handle_owner!(FileSink, abort_handle, |this, _cause| {
+bun_jsc::impl_abort_handle_owner!(FileSink, abort_handle, |this, cause| {
     // What is buffered is dropped with the graph: the writer closes without draining (a reader
     // that never reads would keep it open for ever), and a parked write gives up its promise and
     // the wrapper it pins, as when an attached process exits. `on_close` may free `this`.
@@ -1780,12 +1852,15 @@ bun_jsc::impl_abort_handle_owner!(FileSink, abort_handle, |this, _cause| {
     // write+dealloc provenance; the guard keeps it so across `close()` and `run_pending`.
     unsafe {
         let _guard = RefPtr::init_ref(this);
-        if (*this).flush_on_abort.get() {
-            #[cfg(not(windows))]
-            if matches!(
-                _cause,
+        // Only global swaps drain pending stdio; VM teardown must close it synchronously.
+        if (*this).flush_on_abort.get()
+            && matches!(
+                cause,
                 bun_jsc::AbortCause::ContextStopped(bun_jsc::StopReason::Disposed)
-            ) && (*this).writer.get().has_pending_data()
+            )
+        {
+            #[cfg(not(windows))]
+            if (*this).writer.get().has_pending_data()
                 && !(*this).isolation_flush_pending.replace(true)
             {
                 let vm = (*this).js_vm().expect("isolated stdio VM is alive");

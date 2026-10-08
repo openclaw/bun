@@ -1,5 +1,5 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
-import { bunEnv, bunExe, isASAN, normalizeBunSnapshot, tempDir, tls } from "harness";
+import { bunEnv, bunExe, isASAN, isWindows, noCoreCmd, normalizeBunSnapshot, tempDir, tls } from "harness";
 import fs from "node:fs";
 import net from "node:net";
 import { join } from "node:path";
@@ -149,6 +149,41 @@ describe.concurrent("bun test --isolate", () => {
     expect(output.endsWith("END\n")).toBeTrue();
     expect(output.replaceAll("x", "")).toBe("END\n");
     expect(normalizeBunSnapshot(stderr, dir)).toContain("2 pass");
+    expect(exitCode).toBe(0);
+  });
+
+  // Windows stdio uses synchronous borrowed handles, rather than POSIX polls.
+  test.skipIf(isWindows).each([1, 2] as const)("VM teardown closes backpressured stdio fd %i", async fd => {
+    const bytes = 8 * 1024 * 1024;
+    using dir = tempDir("isolate-stdio-teardown", {
+      "exit.test.ts": `import { test } from "bun:test";
+        import { fileSinkInternals } from "bun:internal-for-testing";
+        test("exit with pending stdio", () => {
+          const sink = fileSinkInternals.stdioSink(${fd});
+          sink.write(Buffer.alloc(${bytes}, "x"));
+          fileSinkInternals.expectStdioTeardown(sink);
+          process.exit(0);
+        });`,
+    });
+    await using proc = Bun.spawn({
+      cmd: noCoreCmd([bunExe(), "test", "--isolate", "./exit.test.ts"]),
+      cwd: String(dir),
+      env: { ...bunEnv, BUN_DESTRUCT_VM_ON_EXIT: "1", BUN_FEATURE_FLAG_INTERNAL_FOR_TESTING: "1" },
+      stdout: "pipe",
+      stderr: "pipe",
+      timeout: 5000,
+    });
+    const data = fd === 1 ? proc.stdout : proc.stderr;
+    const report = fd === 1 ? proc.stderr : proc.stdout;
+    // Deliberately leave the data pipe full through teardown: no reader can rescue end().
+    const [output, exitCode] = await Promise.all([report.text(), proc.exited]);
+    const partial = await data.text();
+    expect(output, `exit=${exitCode}, signal=${proc.signalCode}\n${partial.slice(-4096)}`).toContain(
+      "stdio teardown probe passed\n",
+    );
+    expect(partial.length).toBeGreaterThan(0);
+    expect(partial.length).toBeLessThan(bytes);
+    expect(proc.signalCode).toBeNull();
     expect(exitCode).toBe(0);
   });
 
