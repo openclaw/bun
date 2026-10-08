@@ -25,6 +25,11 @@ const startPreciseCoverage = $newCppFunction("JSInspectorProfiler.cpp", "jsFunct
 const stopPreciseCoverage = $newCppFunction("JSInspectorProfiler.cpp", "jsFunction_stopPreciseCoverage", 0);
 const collectPreciseCoverage = $newCppFunction("JSInspectorProfiler.cpp", "jsFunction_collectPreciseCoverage", 0);
 const collectInspectorGarbage = $newCppFunction("JSInspectorProfiler.cpp", "jsFunction_collectInspectorGarbage", 0);
+const clearInspectorHeapSnapshots = $newCppFunction(
+  "JSInspectorProfiler.cpp",
+  "jsFunction_clearInspectorHeapSnapshots",
+  0,
+);
 const startAllocationSampling = $newCppFunction("JSInspectorProfiler.cpp", "jsFunction_startAllocationSampling", 3);
 const stopAllocationSampling = $newCppFunction("JSInspectorProfiler.cpp", "jsFunction_stopAllocationSampling", 0);
 const getAllocationSamplingProfile = $newCppFunction(
@@ -478,6 +483,7 @@ class Session extends EventEmitter {
 
   disconnect() {
     if (!this.#connected) return;
+    if (!this.#connectedToMainThread) clearInspectorHeapSnapshots();
     if (this.#samplingAllocations) {
       stopAllocationSampling();
       this.#samplingAllocations = false;
@@ -526,9 +532,14 @@ class Session extends EventEmitter {
     }
 
     if (method === "HeapProfiler.enable" || method === "HeapProfiler.disable") {
-      if (method === "HeapProfiler.disable" && this.#samplingAllocations) {
-        stopAllocationSampling();
-        this.#samplingAllocations = false;
+      if (method === "HeapProfiler.disable") {
+        if (this.#samplingAllocations) {
+          stopAllocationSampling();
+          this.#samplingAllocations = false;
+        }
+        // Node clears the isolate's snapshot IDs even if this Session never enabled HeapProfiler.
+        // https://github.com/nodejs/node/blob/v24.21.0/deps/v8/src/inspector/v8-heap-profiler-agent-impl.cc#L335-L345
+        if (!this.#connectedToMainThread) clearInspectorHeapSnapshots();
       }
       if (callback) this.#heapCallback(callback, {});
       return;
