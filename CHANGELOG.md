@@ -245,3 +245,5 @@
 
 - Return integral byte sizes in `node:inspector` heap allocation profiles while preserving allocation-site sampling and independent node/sample estimates.
 - Share exact owned source buffers on matching `node:vm` compilation-cache entries while preserving cold misses, cached-data validation, per-script origins and the existing byte budget.
+
+- Name package-target resolution options explicitly to satisfy the Rust Mordant lint without changing resolution behavior.

@@ -1437,6 +1437,12 @@ pub(crate) struct ESModule<'a> {
     pub(crate) conditions: &'a ConditionsMap,
 }
 
+#[derive(Clone, Copy)]
+struct ResolveTargetOptions {
+    internal: bool,
+    in_array: bool,
+}
+
 #[derive(Clone)]
 pub struct Resolution {
     pub(crate) status: Status,
@@ -1866,8 +1872,15 @@ impl<'a> ESModule<'a> {
 
             if let Some(main_export) = main_export {
                 if !matches!(main_export.data, EntryData::Null) {
-                    let result =
-                        self.resolve_target::<false>(package_url, main_export, b"", false, false);
+                    let result = self.resolve_target::<false>(
+                        package_url,
+                        main_export,
+                        b"",
+                        ResolveTargetOptions {
+                            internal: false,
+                            in_array: false,
+                        },
+                    );
                     if result.status != Status::Null && result.status != Status::Undefined {
                         return Self::attach_failure_key(result, b".");
                     }
@@ -1921,8 +1934,15 @@ impl<'a> ESModule<'a> {
                     log.add_note_fmt(format_args!("Found \"{}\"", bstr::BStr::new(match_key)));
                 }
 
-                let result =
-                    self.resolve_target::<false>(package_url, target, b"", is_imports, false);
+                let result = self.resolve_target::<false>(
+                    package_url,
+                    target,
+                    b"",
+                    ResolveTargetOptions {
+                        internal: is_imports,
+                        in_array: false,
+                    },
+                );
                 return Self::attach_failure_key(result, match_key);
             }
         }
@@ -1963,8 +1983,10 @@ impl<'a> ESModule<'a> {
                                 package_url,
                                 target,
                                 subpath,
-                                is_imports,
-                                false,
+                                ResolveTargetOptions {
+                                    internal: is_imports,
+                                    in_array: false,
+                                },
                             );
                             return Self::attach_failure_key(result, &expansion.key);
                         }
@@ -1987,8 +2009,10 @@ impl<'a> ESModule<'a> {
                                 package_url,
                                 target,
                                 subpath,
-                                is_imports,
-                                false,
+                                ResolveTargetOptions {
+                                    internal: is_imports,
+                                    in_array: false,
+                                },
                             ),
                             &expansion.key,
                         );
@@ -2051,9 +2075,9 @@ impl<'a> ESModule<'a> {
         package_url: &[u8],
         target: &Entry,
         subpath: &[u8],
-        internal: bool,
-        in_array: bool,
+        options: ResolveTargetOptions,
     ) -> Resolution {
+        let ResolveTargetOptions { internal, in_array } = options;
         match &target.data {
             EntryData::String(str) => {
                 let mb = module_bufs();
@@ -2380,8 +2404,7 @@ impl<'a> ESModule<'a> {
                             package_url,
                             &entry.value,
                             subpath,
-                            internal,
-                            in_array,
+                            options,
                         );
                         if result.status.is_undefined() {
                             continue;
@@ -2432,8 +2455,10 @@ impl<'a> ESModule<'a> {
                         package_url,
                         target_value,
                         subpath,
-                        internal,
-                        true,
+                        ResolveTargetOptions {
+                            in_array: true,
+                            ..options
+                        },
                     );
                     if result.status == Status::InvalidPackageTarget
                         || result.status == Status::Null
