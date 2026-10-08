@@ -82,6 +82,7 @@ impl us_socket_t {
         unsafe extern "C" {
             fn us_socket_drain_readable(socket: *mut us_socket_t);
         }
+        // SAFETY: caller keeps the socket and its owner live across callbacks.
         unsafe { us_socket_drain_readable(socket) };
     }
 

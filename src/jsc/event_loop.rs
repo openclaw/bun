@@ -778,10 +778,10 @@ impl EventLoop {
         crate::top_scope!(scope, self.global_ref());
         #[cfg(any(target_os = "linux", target_os = "android", target_os = "macos"))]
         let ready = if self.entered_event_loop_count == 0
-            && self
-                .uws_loop
-                .is_none_or(|loop_| unsafe { (*loop_.as_ptr()).internal_loop_data.tick_depth == 0 })
-        {
+            && self.uws_loop.is_none_or(|loop_| {
+                // SAFETY: this event loop owns the native loop on this thread.
+                unsafe { (*loop_.as_ptr()).internal_loop_data.tick_depth == 0 }
+            }) {
             self.process_completions
                 .as_ref()
                 .map(|queue| queue.capture())
@@ -795,6 +795,7 @@ impl EventLoop {
         self.entered_event_loop_count -= 1;
         #[cfg(any(target_os = "linux", target_os = "android", target_os = "macos"))]
         for process in ready {
+            // SAFETY: capture retained this owner until the snapshot ref drops.
             unsafe { bun_spawn::Process::publish_captured_completion(process.as_ptr()) };
         }
     }
@@ -1262,14 +1263,17 @@ unsafe fn __bun_watch_process_completion(
         return Ok(());
     }
     let event_loop = pointer.cast::<EventLoop>();
+    // SAFETY: tag 1 denotes the live JS loop passed by Process::watch.
     // spawnSync's private loop cannot run an asynchronous retirement observer.
     if unsafe { (*event_loop).isolated_poster.is_some() } {
         return Ok(());
     }
+    // SAFETY: registration runs on the owning thread, without JS callbacks.
     let slot = unsafe { &mut (*event_loop).process_completions };
     if slot.is_none() {
         *slot = Some(bun_spawn::completion::CompletionQueue::new()?);
     }
+    // SAFETY: the primary watch retains process; the event loop retains this queue.
     unsafe { slot.as_ref().unwrap().add(process) }
 }
 

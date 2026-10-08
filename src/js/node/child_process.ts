@@ -1400,7 +1400,7 @@ class ChildProcess extends EventEmitter {
   #stderr;
   #stdioObject;
   #stdioOptions;
-  #extraStdioHandles = [];
+  #extraStdioHandles: unknown[] = [];
 
   #createStdioObject() {
     const opts = this.#stdioOptions;

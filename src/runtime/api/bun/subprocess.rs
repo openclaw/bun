@@ -1099,9 +1099,10 @@ impl Subprocess<'_> {
             {
                 if let Some(stream) = crate::webcore::ReadableStream::from_js_direct(value) {
                     if let crate::webcore::readable_stream::Source::File(file) = stream.ptr {
-                        // The cached stream roots its source. BufferedReader's
+                        // SAFETY: the cached stream roots its source. BufferedReader's
                         // read pins that source while callbacks can re-enter it.
                         let reader = unsafe { (*file).reader.get() };
+                        // SAFETY: the rooted source owns this reader; read pins it across callbacks.
                         unsafe {
                             if !(*reader).is_done() {
                                 (*reader).unpause();
@@ -1121,7 +1122,7 @@ impl Subprocess<'_> {
                 _ => None,
             };
             if let Some(socket) = socket {
-                // Retain the IPC owner while its final messages run callbacks.
+                // SAFETY: the cloned IPC owner retains the socket across its final callbacks.
                 unsafe { bun_uws::us_socket_t::drain_readable(socket) };
             }
         }

@@ -20,12 +20,12 @@ pub(crate) fn drain_subprocess_socket(global: &JSGlobalObject) -> JSValue {
         {
             let [value] = frame.arguments_as_array::<1>();
             if let Some(socket) = value.as_::<TCPSocket>() {
-                // The argument is a live wrapper; copy its handle before
+                // SAFETY: the argument is a live wrapper; copy its handle before
                 // entering callbacks, which may detach or replace it.
                 let (flags, handle) = unsafe { ((*socket).flags.get(), (*socket).socket.get()) };
                 if !flags.contains(SocketFlags::BYPASS_TLS) {
                     if let Some(raw) = handle.socket.get() {
-                        // The JS argument keeps the wrapper live; uSockets
+                        // SAFETY: the JS argument keeps the wrapper live; uSockets
                         // retains a closed native socket across nested callbacks.
                         unsafe { uws::us_socket_t::drain_readable(raw) };
                         value.ensure_still_alive();

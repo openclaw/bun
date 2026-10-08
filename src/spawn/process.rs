@@ -139,6 +139,7 @@ impl Drop for Process {
     fn drop(&mut self) {
         #[cfg(any(target_os = "linux", target_os = "android", target_os = "macos"))]
         if !self.completion_queue.is_null() {
+            // SAFETY: queue teardown clears the backref; self is live until Drop returns.
             unsafe { (*self.completion_queue).remove(self) };
         }
         self.poller.deinit();
@@ -333,28 +334,37 @@ impl Process {
 
     /// A retained process from a readiness snapshot, independent of the
     /// primary poll's dispatch ref. A nested task may have reaped it already.
+    ///
+    /// # Safety
+    /// The caller retains the snapshot ref on the process's owning thread.
     #[cfg(any(target_os = "linux", target_os = "android", target_os = "macos"))]
     pub unsafe fn publish_captured_completion(this: *mut Self) {
-        if unsafe { (*this).has_exited() } || !matches!(unsafe { &(*this).poller }, Poller::Fd(_)) {
+        // SAFETY: the caller's snapshot keeps the owner live on this thread.
+        if unsafe { (*this).has_exited() || !matches!(&(*this).poller, Poller::Fd(_)) } {
             return;
         }
         let mut rusage = rusage_zeroed();
         let result = posix_spawn::wait4(
+            // SAFETY: the retained owner still identifies this child.
             unsafe { (*this).pid },
             libc::WNOHANG as u32,
             Some(&mut rusage),
         );
+        // SAFETY: wait4 runs no JS callbacks; the snapshot still retains this owner.
         let Some(status) = Status::from(unsafe { (*this).pid }, &result) else {
             // A Darwin exit notification may precede a reapable status.
             // Keep this observed owner dirty after consuming the one-shot.
+            // SAFETY: the snapshot retains the process; teardown clears this backref.
             let queue = unsafe { (*this).completion_queue };
             if !queue.is_null() {
+                // SAFETY: a non-null backref denotes this owner's live registration.
                 unsafe { (*queue).retry_reap(this) };
             }
             return;
         };
+        // SAFETY: the snapshot retains the owner across reentrant exit callbacks.
         unsafe { (*this).on_exit(status, &rusage) };
-        // on_exit detached the undispatched primary watch. Its ref is ours
+        // SAFETY: on_exit detached the undispatched primary watch. Its ref is ours
         // to release; the caller still retains the snapshot ref.
         unsafe { Self::deref(this) };
     }
@@ -500,6 +510,7 @@ impl Process {
                             .exit_handler
                             .is_some_and(|handler| handler.kind == ProcessExitKind::Subprocess)
                         {
+                            // SAFETY: the primary watch just retained self and its owning loop.
                             if let Err(error) =
                                 unsafe { __bun_watch_process_completion(self, self.event_loop) }
                             {
@@ -649,6 +660,7 @@ impl Process {
     pub fn close(&mut self) {
         #[cfg(any(target_os = "linux", target_os = "android", target_os = "macos"))]
         if !self.completion_queue.is_null() {
+            // SAFETY: self is live and queue teardown clears the shared backref.
             unsafe { (*self.completion_queue).remove(self) };
         }
         #[cfg(unix)]
