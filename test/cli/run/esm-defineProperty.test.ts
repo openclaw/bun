@@ -74,6 +74,7 @@ test("arraylike", () => {
   expect(CJSArrayLike).toHaveProperty("4");
   expect(Object.getOwnPropertyNames(CJSArrayLike)).not.toContain("__esModule");
   expect(Object.getOwnPropertyNames(CJSArrayLike.default)).not.toContain("__esModule");
+  expect(CJSArrayLike["module.exports"]).toBe(CJSArrayLike.default);
   expect(Bun.inspect(CJSArrayLike)).toBe(`Module {
   "0": 0,
   "1": 1,
@@ -81,6 +82,13 @@ test("arraylike", () => {
   "3": 4,
   "4": undefined,
   default: {
+    "0": 0,
+    "1": 1,
+    "2": [Getter],
+    "3": 4,
+    "4": [Getter],
+  },
+  "module.exports": {
     "0": 0,
     "1": 1,
     "2": [Getter],
