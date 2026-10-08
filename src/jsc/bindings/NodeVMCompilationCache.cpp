@@ -147,9 +147,25 @@ static bool hasUncachedFunctionBodies(VM& vm, CachedBytecode& bytecode)
     return false;
 }
 
+static bool completeFunctionBytecode(VM& vm, UnlinkedProgramCodeBlock* block, const SourceCode& source)
+{
+    ParserError error;
+    for (unsigned i = 0; i < block->numberOfFunctionDecls(); ++i) {
+        recursivelyGenerateUnlinkedCodeBlocksForFunction(vm, block->functionDecl(i), source, error);
+        if (error.isValid())
+            return false;
+    }
+    for (unsigned i = 0; i < block->numberOfFunctionExprs(); ++i) {
+        recursivelyGenerateUnlinkedCodeBlocksForFunction(vm, block->functionExpr(i), source, error);
+        if (error.isValid())
+            return false;
+    }
+    return true;
+}
+
 void NodeVMCompilationCache::insert(JSGlobalObject* globalObject, const SourceCode& source, const Identity& identity, UnlinkedProgramCodeBlock* block, Promotion promotion)
 {
-    bool fullBytecode = promotion == Promotion::Full;
+    bool fullBytecode = promotion == Promotion::Full && identity.produceCachedData;
     const String& filename = source.provider()->sourceURL();
     size_t sourceBytes = source.length() * (source.view().is8Bit() ? size_t(1) : size_t(2));
     size_t filenameBytes = filename.length() * (filename.is8Bit() ? size_t(1) : size_t(2));
@@ -162,6 +178,9 @@ void NodeVMCompilationCache::insert(JSGlobalObject* globalObject, const SourceCo
         bytes = NodeVM::getBytecode(globalObject, SourceCodeType::ProgramType, source);
     else {
         DeferGC deferGC(globalObject->vm());
+        // Complete the decoded execution tree without recompiling its already cached bodies.
+        if (promotion == Promotion::Full && !completeFunctionBytecode(globalObject->vm(), block, source))
+            return;
         BytecodeCacheError error;
         FileSystem::FileHandle file;
         bytes = serializeBytecode(globalObject->vm(), block, source, SourceCodeType::ProgramType, static_cast<LexicallyScopedFeatures>(identity.lexicalFeatures), JSParserScriptMode::Classic, file, error, identity.codeGenerationMode);
@@ -194,7 +213,9 @@ void NodeVMCompilationCache::insert(JSGlobalObject* globalObject, const SourceCo
         entry->importer = Weak<JSCell>(importer.asCell());
     // Drop the encoder's update/leaf maps; cached payloads never own growing decoded graphs.
     entry->bytecode = NodeVM::createOwnedCachedBytecode(bytes->span());
-    entry->decoded = Weak<UnlinkedProgramCodeBlock>(block);
+    // Newly generated bodies can be cleared by GC while their decoded parent survives.
+    if (promotion != Promotion::Full)
+        entry->decoded = Weak<UnlinkedProgramCodeBlock>(block);
     entry->bytes = charge;
     m_lru.append(entry.get());
     m_entries.add(hash, WTF::move(entry));

@@ -244,3 +244,5 @@
 - Avoid eager full bytecode generation on live `node:vm` cache hits while retaining post-GC promotion for payloads missing function bodies, preserving the cache budget and public cached-data generation.
 
 - Return integral byte sizes in `node:inspector` heap allocation profiles while preserving allocation-site sampling and independent node/sample estimates.
+
+- Complete missing private `node:vm` cache bytecode in the decoded execution tree, avoiding recompilation of already cached function bodies at the same 256 MiB budget.
