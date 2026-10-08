@@ -72,8 +72,11 @@ pub struct FileSink {
     /// while an async operation is pending. This is set when endFromJS returns a
     /// pending Promise and cleared when the operation completes.
     pub(crate) js_sink_ref: JsCell<bun_jsc::strong::Optional>,
-    /// Armed while a file this sink opened for a `Bun.ModuleGraph`'s script is open.
+    /// Armed for graph-owned files and process stdio under `bun test --isolate`.
     abort_handle: bun_jsc::AbortHandle,
+    /// Isolated test files flush their stdio before releasing its poll registrations.
+    flush_on_abort: Cell<bool>,
+    isolation_flush_pending: Cell<bool>,
 }
 
 // `bun.ptr.RefCount(FileSink, "ref_count", deinit, .{})` — intrusive single-thread
@@ -266,6 +269,12 @@ pub(crate) fn create_stdio(global: &JSGlobalObject, frame: &CallFrame) -> JsResu
     sink.writer
         .with_mut(|writer| writer.update_ref(sink.io_evtloop(), false));
     sink.started.set(true);
+    let vm = global.bun_vm();
+    if vm.test_isolation_enabled {
+        sink.flush_on_abort.set(true);
+        // SAFETY: the started sink is heap-allocated and leaves its context in on_close.
+        unsafe { bun_jsc::AbortHandle::arm_owner(sink.as_ptr(), vm.root_context()) };
+    }
     // SAFETY: the new sink is exclusively owned here; to_js takes the wrapper's reference.
     Ok(unsafe { (*sink.as_ptr()).to_js(global) })
 }
@@ -608,6 +617,11 @@ impl FileSink {
             let _entered = (*this).completion_scope();
 
             (*this).abort_handle.leave();
+            if (*this).isolation_flush_pending.replace(false) {
+                let vm = (*this).js_vm().expect("isolated stdio VM is alive");
+                let pending = &vm.test_isolation_pending_stdio;
+                pending.set(pending.get() - 1);
+            }
             if (*this).js_global().is_some() {
                 if let Some(stream) = (*this).pipe.get().stream() {
                     stream.done();
@@ -1752,6 +1766,8 @@ impl FileSink {
             pump_promise_ref: Cell::new(false),
             js_sink_ref: JsCell::new(bun_jsc::strong::Optional::empty()),
             abort_handle: bun_jsc::AbortHandle::for_owner::<FileSink>(),
+            flush_on_abort: Cell::new(false),
+            isolation_flush_pending: Cell::new(false),
         }
     }
 }
@@ -1764,6 +1780,21 @@ bun_jsc::impl_abort_handle_owner!(FileSink, abort_handle, |this, _cause| {
     // write+dealloc provenance; the guard keeps it so across `close()` and `run_pending`.
     unsafe {
         let _guard = RefPtr::init_ref(this);
+        if (*this).flush_on_abort.get() {
+            #[cfg(not(windows))]
+            if matches!(
+                _cause,
+                bun_jsc::AbortCause::ContextStopped(bun_jsc::StopReason::Disposed)
+            ) && (*this).writer.get().has_pending_data()
+                && !(*this).isolation_flush_pending.replace(true)
+            {
+                let vm = (*this).js_vm().expect("isolated stdio VM is alive");
+                let pending = &vm.test_isolation_pending_stdio;
+                pending.set(pending.get() + 1);
+            }
+            let _ = (*this).end(None);
+            return;
+        }
         (*this).done.set(true);
         #[cfg(windows)]
         if !(*this).writer.get().owns_fd {
