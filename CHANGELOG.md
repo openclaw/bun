@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Release retained heap-snapshot metadata when a local inspector Session disables `HeapProfiler` or disconnects, including sessions that never enabled the domain.
+
 - Follow directory symlinks in Windows asynchronous recursive `fs.readdir` callback results and promise string results while preserving promise Dirent traversal boundaries.
 
 - Keep Windows stdio EOF tests aligned with Node's retained pipe handles, allow an explicit host Node version for compatibility qualification, and preserve the host identity in TLS session-reuse fixtures.

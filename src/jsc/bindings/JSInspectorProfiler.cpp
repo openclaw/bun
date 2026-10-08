@@ -24,6 +24,14 @@ using namespace JSC;
 
 extern "C" size_t Bun__gc(void* vm, bool sync);
 
+JSC_DECLARE_HOST_FUNCTION(jsFunction_clearInspectorHeapSnapshots);
+JSC_DEFINE_HOST_FUNCTION(jsFunction_clearInspectorHeapSnapshots, (JSGlobalObject * globalObject, CallFrame*))
+{
+    if (auto* profiler = globalObject->vm().heapProfiler())
+        profiler->clearSnapshots();
+    return JSValue::encode(jsUndefined());
+}
+
 JSC_DECLARE_HOST_FUNCTION(jsFunction_startAllocationSampling);
 JSC_DEFINE_HOST_FUNCTION(jsFunction_startAllocationSampling, (JSGlobalObject * globalObject, CallFrame* callFrame))
 {
