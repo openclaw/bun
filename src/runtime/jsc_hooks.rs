@@ -1665,10 +1665,10 @@ unsafe fn parse_worker_exec_argv(
             out.cpu_prof_dir = Some(v.into());
         } else if !inherited_exec_argv
             && index >= environment_argc
-            && matches!(
+            && (matches!(
                 bytes.strip_prefix(b"--disallow-code-generation-from-strings".as_slice()),
                 Some([] | [b'=', ..])
-            )
+            ) || crate::cli::arguments::is_max_old_space_size_flag(bytes))
         {
             out.invalid.get_or_insert(index);
         }

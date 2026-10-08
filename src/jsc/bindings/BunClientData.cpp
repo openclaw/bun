@@ -8,6 +8,7 @@
 #include "ExtendedDOMIsoSubspaces.h"
 #include <JavaScriptCore/FastMallocAlignedMemoryAllocator.h>
 #include <JavaScriptCore/HeapInlines.h>
+#include <JavaScriptCore/HeapObserver.h>
 #include <JavaScriptCore/IsoHeapCellType.h>
 #include <JavaScriptCore/JSDestructibleObjectHeapCellType.h>
 #include <JavaScriptCore/SimpleMarkingConstraint.h>
@@ -16,6 +17,7 @@
 #include <JavaScriptCore/CachedTypes.h>
 #include <JavaScriptCore/PrelinkedModuleGraph.h>
 #include <wtf/MainThread.h>
+#include <wtf/TZoneMallocInlines.h>
 
 #include "JSDOMConstructorBase.h"
 
@@ -31,9 +33,79 @@
 #include "NativePromiseContext.h"
 #include "ModuleGraph.h"
 #include "StrongRootBlock.h"
+#include <csignal>
+#include <cstdlib>
+#if OS(WINDOWS)
+#include <process.h>
+#endif
 
 namespace WebCore {
 using namespace JSC;
+
+[[noreturn]] static void mainHeapLimitExceeded()
+{
+    fputs("FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory\n", stderr);
+    fflush(stderr);
+#if OS(WINDOWS)
+    // Node's ABORT_NO_BACKTRACE uses _exit(kAbort): https://github.com/nodejs/node/blob/v24.21.0/src/node_exit_code.h#L36
+    _exit(134);
+#else
+    // A configured heap limit is a Node fatal OOM, not an internal Bun crash report.
+    std::signal(SIGABRT, SIG_DFL);
+    std::abort();
+#endif
+}
+
+class MainHeapLimitObserver final : public JSC::HeapObserver {
+    WTF_MAKE_TZONE_ALLOCATED(MainHeapLimitObserver);
+
+public:
+    explicit MainHeapLimitObserver(JSC::Heap& heap)
+        : m_heap(heap)
+    {
+        m_heap.addObserver(this);
+    }
+
+    ~MainHeapLimitObserver() final
+    {
+        m_heap.removeObserver(this);
+    }
+
+private:
+    void willGarbageCollect() final {}
+
+    void didGarbageCollect(JSC::CollectionScope scope) final
+    {
+        if (scope != JSC::CollectionScope::Full || !m_heap.heapLimitExceeded())
+            return;
+        mainHeapLimitExceeded();
+    }
+
+    JSC::Heap& m_heap;
+};
+
+WTF_MAKE_TZONE_ALLOCATED_IMPL(MainHeapLimitObserver);
+
+void JSVMClientData::installMainHeapLimit(JSC::VM& vm, size_t bytes)
+{
+    ASSERT(!m_mainHeapLimitObserver);
+    vm.heap.collectNow(JSC::Sync, JSC::CollectionScope::Full);
+    vm.heap.setWorkerHeapLimits(bytes, 0);
+    m_mainHeapLimitObserver = makeUnique<MainHeapLimitObserver>(vm.heap);
+}
+
+extern "C" void Bun__installMainHeapLimit(JSC::JSGlobalObject* globalObject)
+{
+    if (size_t megabytes = Bun__Node__maxOldSpaceSizeMiB()) {
+        size_t bytes = megabytes * 1024 * 1024;
+        // V8's unsigned MiB conversion can wrap, but only an explicit zero restores defaults.
+        if (!bytes)
+            mainHeapLimitExceeded();
+        auto& vm = JSC::getVM(globalObject);
+        JSC::JSLockHolder lock(vm);
+        WebCore::clientData(vm)->installMainHeapLimit(vm, bytes);
+    }
+}
 
 RefPtr<JSC::SourceProvider> createBuiltinsSourceProvider();
 
@@ -99,6 +171,7 @@ void JSVMClientData::JSHeapDataDeleter::operator()(JSHeapData* heapData) const
 
 JSVMClientData::~JSVMClientData()
 {
+    m_mainHeapLimitObserver.reset();
     while (!m_clients.isEmpty()) {
         auto* client = &*m_clients.begin();
         client->remove();

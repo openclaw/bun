@@ -160,6 +160,9 @@ const RUNTIME_PARAMS_: &[ParamType] = &[
         "--smol                            Use less memory, but run garbage collection more often"
     ),
     parse_param!(
+        "--max-old-space-size/--max_old_space_size/--max-old_space_size/--max_old-space_size/--max_old_space-size/--max-old-space_size/--max_old-space-size/--max-old_space-size <MB>?  Limit the JavaScript heap in MiB (0 uses the default)"
+    ),
+    parse_param!(
         "--interactive                     Start a Node.js-compatible REPL, like node --interactive"
     ),
     parse_param!(
@@ -734,6 +737,73 @@ fn tag_table(cmd: CommandTag) -> &'static clap::ConvertedTable {
 }
 
 // ─── exported FFI globals (written by parse(), read from C++) ────────────────
+static MAX_OLD_SPACE_SIZE_MIB: core::sync::atomic::AtomicUsize =
+    core::sync::atomic::AtomicUsize::new(0);
+
+#[unsafe(no_mangle)]
+pub(crate) extern "C" fn Bun__Node__maxOldSpaceSizeMiB() -> usize {
+    MAX_OLD_SPACE_SIZE_MIB.load(core::sync::atomic::Ordering::Relaxed)
+}
+
+unsafe extern "C" {
+    fn Bun__Node__parseMaxOldSpaceSize(value: *const core::ffi::c_char, result: *mut usize) -> u8;
+}
+
+pub(crate) fn is_max_old_space_size_flag(argument: &[u8]) -> bool {
+    let name = argument
+        .split(|byte| *byte == b'=')
+        .next()
+        .unwrap_or_default();
+    let expected = b"--max-old-space-size";
+    name.len() == expected.len()
+        && name
+            .iter()
+            .zip(expected)
+            .enumerate()
+            .all(|(index, (&a, &b))| a == b || (index > 1 && a == b'_' && b == b'-'))
+}
+
+fn apply_heap_limit_option(names: clap::Names, value: Option<&[u8]>) {
+    if names.long != Some(b"max-old-space-size") {
+        return;
+    }
+    let Some(value) = value else {
+        bun_core::print_errorln!(
+            "Error: missing value for flag --max-old-space-size of type size_t"
+        );
+        Global::exit(9);
+    };
+    let mut terminated = Vec::with_capacity(value.len() + 1);
+    terminated.extend_from_slice(value);
+    terminated.push(0);
+    let mut megabytes = 0usize;
+    // Match V8's strtoll/errno handling, including platform-specific empty-input behavior.
+    // https://github.com/nodejs/node/blob/v24.21.0/deps/v8/src/flags/flags.cc#L589-L608
+    let result =
+        unsafe { Bun__Node__parseMaxOldSpaceSize(terminated.as_ptr().cast(), &mut megabytes) };
+    if result & 1 != 0 {
+        bun_core::print_errorln!(
+            "Error: Value for flag --max-old-space-size={} of type size_t is out of bounds [0-{}]",
+            BStr::new(value),
+            usize::MAX
+        );
+    }
+    if result & 2 != 0 {
+        bun_core::print_errorln!(
+            "Error: illegal value for flag --max-old-space-size={} of type size_t",
+            BStr::new(value)
+        );
+        bun_core::print_errorln!("Try --help for options");
+        Global::exit(9);
+    }
+    if result != 0 {
+        bun_core::print_errorln!("Try --help for options");
+        Output::flush();
+        return;
+    }
+    MAX_OLD_SPACE_SIZE_MIB.store(megabytes, core::sync::atomic::Ordering::Relaxed);
+}
+
 // `AtomicBool` has the same size/alignment/bit-validity as `bool`, so the
 // `#[no_mangle]` symbol layout is unchanged for the C++ side that reads these
 // as plain `bool`. Rust writes go through `.store(.., Relaxed)`.
@@ -896,6 +966,7 @@ pub(crate) fn parse(cmd: CommandTag, ctx: Context<'_>) -> crate::Result<api::Tra
         table,
         clap::ParseOptions {
             diagnostic: Some(&mut diag),
+            on_option: Some(apply_heap_limit_option),
             stop_after_positional_at: match cmd {
                 CommandTag::RunCommand => 2,
                 CommandTag::AutoCommand | CommandTag::RunAsNodeCommand => 1,

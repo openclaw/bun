@@ -3159,6 +3159,7 @@ unsafe extern "C" {
         eval_mode: bool,
         worker_ptr: *mut c_void,
     ) -> *mut JSGlobalObject;
+    safe fn Bun__installMainHeapLimit(global: *mut JSGlobalObject);
     // safe: `JSGlobalObject` is an opaque `UnsafeCell`-backed ZST handle (`&` is
     // ABI-identical to a non-null `*mut`); remaining args are by-value scalars.
     // The returned cell pointer is GC-owned (caller checks before deref).
@@ -3447,6 +3448,10 @@ impl VirtualMachine {
             unsafe { &*vm }.install_bytecode_string_table(graph);
             // SAFETY: as above.
             crate::bytecode_order_recorder::init_vm(unsafe { &*vm }, graph);
+        }
+
+        if opts.is_main_thread {
+            Bun__installMainHeapLimit(global);
         }
 
         Ok(vm)

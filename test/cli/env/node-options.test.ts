@@ -261,9 +261,9 @@ describe("NODE_OPTIONS environment variable", () => {
   });
 
   describe.each([
-    ["V8 flag (= form)", "--max-old-space-size=4096"],
-    ["V8 flag (underscore form)", "--max_old_space_size=4096"],
-    ["V8 flag (space form)", "--max-old-space-size 4096"],
+    ["V8 flag (= form)", "--max-semi-space-size=16"],
+    ["V8 flag (underscore form)", "--max_semi_space_size=16"],
+    ["V8 flag (space form)", "--max-semi-space-size 16"],
     ["experimental flag", "--experimental-vm-modules"],
     ["--enable-source-maps", "--enable-source-maps"],
     ["bare -", "-"],
@@ -316,6 +316,7 @@ describe("NODE_OPTIONS environment variable", () => {
       "--disable-warning",
       "--dns-result-order",
       "--max-http-header-size",
+      "--max-old-space-size",
       "--redirect-warnings",
       "--title",
       "--unhandled-rejections",

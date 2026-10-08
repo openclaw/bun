@@ -21,6 +21,19 @@
 #include <JavaScriptCore/ObjectConstructor.h>
 #include <wtf/StdLibExtras.h>
 #include <array>
+#include <cerrno>
+#include <cstdlib>
+
+extern "C" uint8_t Bun__Node__parseMaxOldSpaceSize(const char* value, size_t* result)
+{
+    errno = 0;
+    char* end;
+    int64_t parsed = strtoll(value, &end, 10);
+    bool outOfBounds = parsed < 0 || errno != 0 || static_cast<uint64_t>(parsed) > std::numeric_limits<size_t>::max();
+    if (!outOfBounds)
+        *result = static_cast<size_t>(parsed);
+    return (outOfBounds ? 1 : 0) | (*end ? 2 : 0);
+}
 
 namespace Bun {
 
