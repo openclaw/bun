@@ -1,6 +1,7 @@
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, statfsSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, resolve } from "node:path";
 
 export const smoke = [
   "test/js/node/child_process/child-process-exec.test.ts",
@@ -158,6 +159,45 @@ function summary(text: string) {
   console.log(text);
 }
 
+function reportDiskUsage(stage: "before" | "after") {
+  if (process.platform === "win32") return;
+  const filesystem = statfsSync(".");
+  const directories: Record<string, number | null> = {};
+  const paths: [string, string | undefined][] = [
+    ["git", ".git"],
+    ["build", "build/release"],
+    ["buildCache", process.env.BUN_BUILD_CACHE_DIR ?? ".cache/openclaw-build"],
+    ["dependencies", "node_modules"],
+    ["testDependencies", "test/node_modules"],
+    ["cargo", `${homedir()}/.cargo`],
+    ["rustup", `${homedir()}/.rustup`],
+    ["runnerTemp", process.env.RUNNER_TEMP],
+  ];
+  for (const [name, path] of paths) {
+    if (!path || !existsSync(path)) continue;
+    const usage = spawnSync("du", ["-sk", resolve(path)], {
+      encoding: "utf8",
+      timeout: 5_000,
+      killSignal: "SIGKILL",
+    });
+    const kibibytes = Number.parseInt(usage.stdout, 10);
+    directories[name] = usage.status === 0 && Number.isFinite(kibibytes) ? kibibytes * 1024 : null;
+  }
+  const snapshot = {
+    stage,
+    availableBytes: filesystem.bavail * filesystem.bsize,
+    availableInodes: filesystem.ffree,
+    directories,
+  };
+  // Runner ENOSPC can lose the log blob; annotations preserve the last completed disk snapshot.
+  console.log(`::notice title=Native test disk usage::${JSON.stringify(snapshot)}`);
+  try {
+    writeFileSync(`build/openclaw-ci/disk-${stage}-tests.json`, JSON.stringify(snapshot, null, 2) + "\n");
+  } catch (error) {
+    console.warn("Could not write disk snapshot artifact", error);
+  }
+}
+
 export function assertSelectedTestResults(
   selected: readonly string[],
   results: readonly { testPath: string; ok: boolean }[],
@@ -196,6 +236,7 @@ if (import.meta.main) {
   } else if (command === "test") {
     const selected: string[] = JSON.parse(readFileSync(selectionPath, "utf8"));
     if (!selected.length) throw new Error("Refusing an empty test selection");
+    reportDiskUsage("before");
     // CI invokes this script with the built executable; the upstream runner uses it for every test.
     const result = spawnSync(
       "node",
@@ -238,6 +279,7 @@ if (import.meta.main) {
       if (direct.stdout) process.stdout.write(direct.stdout);
       if (direct.stderr) process.stderr.write(direct.stderr);
     }
+    reportDiskUsage("after");
     if (result.error) throw result.error;
     if (result.status !== 0) process.exit(result.status ?? 1);
     const results: { testPath: string; ok: boolean }[] = JSON.parse(readFileSync(resultsPath, "utf8"));

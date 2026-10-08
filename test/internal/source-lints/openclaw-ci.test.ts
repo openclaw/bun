@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { bunExe, tempDir } from "harness";
+import { bunEnv, bunExe, tempDir } from "harness";
 import { execFileSync, spawnSync } from "node:child_process";
-import { readFileSync, renameSync } from "node:fs";
+import { existsSync, readFileSync, renameSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
   assertSelectedTestResults,
@@ -186,4 +186,52 @@ test("a successful test step without a completed report cannot produce a green s
   });
   expect(result.stderr).toContain("No completed test report");
   expect(result.status).toBe(1);
+});
+
+test("the native test launcher preserves disk snapshots before and after its runner", () => {
+  using dir = tempDir("openclaw-ci-disk", {
+    "build/release/artifact": "fixture",
+    "build/openclaw-ci/selected.json": JSON.stringify(["test/fixture.test.ts"]),
+    "scripts/runner.node.ts": `require("node:fs").writeFileSync("build/openclaw-ci/results.json", JSON.stringify([{ testPath: "test/fixture.test.ts", ok: true }]));`,
+  });
+  const result = spawnSync(bunExe(), [resolve(import.meta.dir, "../../../scripts/openclaw-ci/tests.ts"), "test"], {
+    cwd: String(dir),
+    encoding: "utf8",
+    env: { ...bunEnv, HOME: String(dir), RUNNER_TEMP: String(dir), BUN_BUILD_CACHE_DIR: String(dir) },
+  });
+  for (const stage of ["before", "after"]) {
+    const path = join(String(dir), `build/openclaw-ci/disk-${stage}-tests.json`);
+    if (process.platform === "win32") {
+      expect(existsSync(path)).toBe(false);
+    } else {
+      const snapshot = JSON.parse(readFileSync(path, "utf8"));
+      expect(snapshot.stage).toBe(stage);
+      expect(snapshot.availableBytes).toBeGreaterThan(0);
+      expect(snapshot.availableInodes).toBeGreaterThan(0);
+      expect(snapshot.directories.build).toBeGreaterThan(0);
+      expect(result.stdout).toContain(`::notice title=Native test disk usage::${JSON.stringify(snapshot)}`);
+    }
+  }
+  expect({ stderr: result.stderr, exitCode: result.status }).toEqual({ stderr: "", exitCode: 0 });
+});
+
+test.each([
+  ["before", 0],
+  ["after", 0],
+  ["before", 7],
+  ["after", 7],
+] as const)("a failed %s disk artifact preserves runner exit %s", (stage, exitCode) => {
+  using dir = tempDir("openclaw-ci-disk-write", {
+    "build/openclaw-ci/selected.json": JSON.stringify(["test/fixture.test.ts"]),
+    [`build/openclaw-ci/disk-${stage}-tests.json/directory`]: "prevents a file write",
+    "scripts/runner.node.ts": `require("node:fs").writeFileSync("build/openclaw-ci/results.json", JSON.stringify([{ testPath: "test/fixture.test.ts", ok: true }])); process.exitCode = ${exitCode};`,
+  });
+  const result = spawnSync(bunExe(), [resolve(import.meta.dir, "../../../scripts/openclaw-ci/tests.ts"), "test"], {
+    cwd: String(dir),
+    encoding: "utf8",
+    env: { ...bunEnv, HOME: String(dir), RUNNER_TEMP: String(dir), BUN_BUILD_CACHE_DIR: String(dir) },
+  });
+  expect(existsSync(join(String(dir), "build/openclaw-ci/results.json"))).toBe(true);
+  if (process.platform !== "win32") expect(result.stderr).toContain("Could not write disk snapshot artifact");
+  expect(result.status).toBe(exitCode);
 });
