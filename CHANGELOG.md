@@ -289,3 +289,5 @@
 - Measure CPU profile duration across the full capture, including idle time, and capture the inspector startup stack synchronously like Node.js.
 
 - Release completed `node:worker_threads` Worker listeners in Node-compatible exit order so retained Worker wrappers do not retain caller state captured by callbacks.
+
+- Complete missing private `node:vm` cache bytecode in the decoded execution tree, avoiding recompilation of already cached function bodies at the same 256 MiB budget.
