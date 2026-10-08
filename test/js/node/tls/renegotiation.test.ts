@@ -29,6 +29,62 @@ afterAll(() => {
   process?.kill();
 });
 
+it.concurrent.each(["renegotiate-native", "renegotiate-duplex"])(
+  "closes both transport halves after server-initiated TLS 1.2 renegotiation: %s",
+  async scenario => {
+    const fixture = join(import.meta.dir, "tls-renegotiate-shutdown-fixture.cjs");
+    await using server = Bun.spawn({
+      cmd: ["node", fixture, "--oracle-server", scenario],
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const ready = Promise.withResolvers<number>();
+    const serverRows: any[] = [];
+    const serverOutput = (async () => {
+      let pending = "";
+      for await (const chunk of server.stdout) {
+        pending += Buffer.from(chunk).toString();
+        let end;
+        while ((end = pending.indexOf("\n")) !== -1) {
+          const row = JSON.parse(pending.slice(0, end));
+          pending = pending.slice(end + 1);
+          serverRows.push(row);
+          if (row.type === "oracle-ready") ready.resolve(row.port);
+        }
+      }
+      ready.reject(new Error("TLS oracle exited before listening"));
+    })();
+    const serverErrors = server.stderr.text();
+    await using client = Bun.spawn({
+      cmd: [bunExe(), fixture, "--client", scenario, String(await ready.promise)],
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, clientExit, serverStderr, serverExit] = await Promise.all([
+      client.stdout.text(),
+      client.stderr.text(),
+      client.exited,
+      serverErrors,
+      server.exited,
+      serverOutput,
+    ]);
+    const expected = { type: "role-result", pass: true, complete: true, failure: null, failedChecks: [] };
+    expect({ client: JSON.parse(stdout), server: serverRows[1], stderr, serverStderr, clientExit, serverExit }).toEqual(
+      {
+        client: { ...expected, role: "client" },
+        server: { ...expected, role: "oracle-server" },
+        stderr: "",
+        serverStderr: "",
+        clientExit: 0,
+        serverExit: 0,
+      },
+    );
+    expect(serverRows).toHaveLength(2);
+  },
+);
+
 it("allow renegotiation in fetch", async () => {
   const body = await fetch(url, {
     verbose: true,

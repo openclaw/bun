@@ -299,6 +299,7 @@ const kOnUpgradedClose = Symbol("kOnUpgradedClose");
 const kupgraded = Symbol("kupgraded");
 // On the raw handle of an adopted fd: the TLS socket that adopted it.
 const kAdoptedTLSRaw = Symbol("kAdoptedTLSRaw");
+const kAdoptedTLSTransport = Symbol("kAdoptedTLSTransport");
 // On that TLS socket: the fd closed, and the socket it wraps waits to be closed with it.
 const kOwesRawClose = Symbol("kOwesRawClose");
 const ksocket = Symbol("ksocket");
@@ -390,12 +391,23 @@ function writeErrnoException(negErrno) {
   }
   return er;
 }
-function endNT(socket, callback, err) {
+function endNT(socket, callback, err, transport) {
   // Node's _final half-closes the writable side (sends FIN) and leaves the
   // readable side open; the Duplex's allowHalfOpen drives the eventual destroy.
   // https://github.com/nodejs/node/blob/614050b657e9757c1097aa85f92f2cb51149dc0d/lib/net.js#L500
-  socket.shutdown();
-  callback(err);
+  if (transport) {
+    const eos = require("internal/streams/end-of-stream");
+    const cleanup = eos(transport, { readable: false }, () => {
+      cleanup();
+      // Node's afterShutdown completes successfully; the transport forwards its error separately.
+      // https://github.com/nodejs/node/blob/v24.21.0/lib/net.js#L774-L779
+      callback(err);
+    });
+    socket.shutdown();
+  } else {
+    socket.shutdown();
+    callback(err);
+  }
 }
 function emitCloseNT(self, hasError) {
   self.emit("close", hasError);
@@ -438,11 +450,15 @@ function destroyNT(self, err) {
 }
 // Node's wrap 'close' -> destroy(): https://github.com/nodejs/node/blob/v26.3.0/lib/internal/tls/wrap.js#L739-L741
 function onUpgradedClose(self, connection) {
-  if (self[kupgraded] !== connection) return;
+  if (self[kupgraded] !== connection || self.destroyed) return;
   // The stream-level engine reads its transport with no backpressure, so the
   // transport can close after the peer's EOF with plaintext still unread.
   if ((self[kended] || self[kOnreadPendingEnd]) && !self.readableEnded) self.once("end", self[kOnUpgradedClose]);
   else self.destroy();
+}
+function closeDuplexTLSOwner(self) {
+  const connection = self[kupgraded];
+  if (connection && !self[kAdoptedTLSTransport]) onUpgradedClose(self, connection);
 }
 // Armed ahead of the stream-level engine's own 'close' thunk: that thunk aborts
 // a pending handshake, which a socket destroyed first does not report.
@@ -687,6 +703,7 @@ const SocketHandlers = {
     //socket cannot be used after close
     detachSocket(self);
     if (!closeWithTLSSocket(self, socket)) SocketEmitEndNT(self, err);
+    closeDuplexTLSOwner(self);
     self.data = null;
   },
   data(socket, buffer) {
@@ -848,7 +865,7 @@ function unrefAfterDrain(self, handle) {
 }
 
 function finishSocketEnd(self) {
-  if (self[kended]) return;
+  if (self[kended] || self.destroyed) return;
   self[kended] = true;
   if (!self.allowHalfOpen) self.write = writeAfterFIN;
   self.push(null);
@@ -1121,6 +1138,7 @@ const ServerHandlers = {
         //socket cannot be used after close
         detachSocket(data);
         if (!closeWithTLSSocket(data, socket)) SocketEmitEndNT(data, err);
+        closeDuplexTLSOwner(data);
         data.data = null;
         socket[owner_symbol] = null;
       }
@@ -1626,6 +1644,7 @@ const SocketHandlers2 = {
       self[kwriteCallback] = null;
       pendingWrite($ERR_SOCKET_CLOSED());
     }
+    closeDuplexTLSOwner(self);
   },
   handshake(socket, success, verifyError) {
     $debug("Bun.Socket handshake");
@@ -1824,6 +1843,7 @@ function Socket(options?): void {
   this._parent = null;
   this._parentWrap = null;
   this[kupgraded] = null;
+  this[kAdoptedTLSTransport] = false;
   this[kStandaloneWrap] = false;
   this[kOnUpgradedClose] = undefined;
   this[kOwesRawClose] = false;
@@ -2244,6 +2264,8 @@ Socket.prototype.connect = function connect(...args) {
         // https://github.com/nodejs/node/blob/c5cfdd48497fe9bd8dbd55fd1fca84b321f48ec1/lib/net.js#L311
         // https://github.com/nodejs/node/blob/c5cfdd48497fe9bd8dbd55fd1fca84b321f48ec1/lib/net.js#L1126
         this._undestroy();
+        this[kupgraded] = connection;
+        this[kAdoptedTLSTransport] = false;
         const socket = connection._handle;
         if (!upgradeDuplex && socket) {
           // if is named pipe socket we can upgrade it using the same wrapper than we use for duplex
@@ -2281,8 +2303,8 @@ Socket.prototype.connect = function connect(...args) {
               // replace socket
               connection._handle = raw;
               raw[kAdoptedTLSRaw] = this;
+              this[kAdoptedTLSTransport] = true;
               destroyWhenUpgradedCloses(this, connection);
-              this.once("end", this[kCloseRawConnection]);
               raw.connecting = false;
               this._handle = tls;
             } else {
@@ -2332,8 +2354,8 @@ Socket.prototype.connect = function connect(...args) {
                   // replace socket
                   connection._handle = raw;
                   raw[kAdoptedTLSRaw] = this;
+                  this[kAdoptedTLSTransport] = true;
                   destroyWhenUpgradedCloses(this, connection);
-                  this.once("end", this[kCloseRawConnection]);
                   raw.connecting = false;
                   this._handle = tls;
                 } else {
@@ -2414,12 +2436,10 @@ Socket.prototype._destroy = function _destroy(err, callback) {
   // Node: after 'error', before 'close'. With no error it goes first, so the stream is errored before the EOF that the native close handler pushes can emit 'end'.
   if (canceledWrite && !err) process.nextTick(cancelWriteNT, canceledWrite);
 
-  // Tear down a wrapped generic duplex with this socket: the native handle's
-  // close only flushes close_notify and lets the wrapper drain; without an
-  // explicit destroy here a late RST on the underlying transport can surface
-  // as an unhandled error after this socket is gone.
+  // Stream-level TLS owns its transport; an adopted fd pair closes through closeOwedRaw.
+  // https://github.com/nodejs/node/blob/v24.21.0/lib/internal/js_stream_socket.js#L253
   const upgraded = this[kupgraded];
-  if (upgraded && !(upgraded instanceof Socket) && !upgraded.destroyed) {
+  if (upgraded && !this[kAdoptedTLSTransport] && !upgraded.destroyed) {
     upgraded.destroy?.();
   }
 
@@ -2515,7 +2535,7 @@ Socket.prototype._final = function _final(callback) {
   if (!socket) return callback();
 
   // emit FIN allowHalfOpen only allow the readable side to close first
-  process.nextTick(endNT, socket, callback);
+  process.nextTick(endNT, socket, callback, undefined, this[kAdoptedTLSTransport] ? undefined : this[kupgraded]);
 };
 
 Object.defineProperty(Socket.prototype, "localAddress", {
@@ -2694,8 +2714,8 @@ Socket.prototype[Symbol.for("::bunUpgradeServerTLS::")] = function (connection, 
     const [raw, tlsHandle] = result;
     connection._handle = raw;
     raw[kAdoptedTLSRaw] = this;
+    this[kAdoptedTLSTransport] = true;
     destroyWhenUpgradedCloses(this, connection);
-    this.once("end", this[kCloseRawConnection]);
     raw.connecting = false;
     this._handle = tlsHandle;
     // Match Node's initRead(): an injected socket may be paused, but TLS still

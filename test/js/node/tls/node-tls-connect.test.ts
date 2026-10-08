@@ -857,6 +857,27 @@ it("a client and a server TLSSocket connected through a synchronous in-memory du
   });
 });
 
+it.concurrent.each([
+  "legacy-pair",
+  "duplex-halfopen-false",
+  "duplex-halfopen-true",
+  "duplex-eof-halfopen-true",
+  "duplex-write-after-end",
+])("duplex TLS close_notify follows the transport's half-open policy: %s", async scenario => {
+  await using proc = Bun.spawn({
+    cmd: [bunExe(), join(import.meta.dirname, "tls-half-close-transport-fixture.cjs"), scenario],
+    env: bunEnv,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect({ result: JSON.parse(stdout), stderr, exitCode }).toEqual({
+    result: { pass: true, complete: scenario !== "legacy-pair", failure: null, failedChecks: [] },
+    stderr: "",
+    exitCode: 0,
+  });
+});
+
 it("the last 'data' event fires before the close_notify reply is written to a duplex transport (tls.connect({ socket }))", async () => {
   // The peer's last application data and its close_notify reach the engine in
   // one chunk. The engine used to answer the close_notify before it emitted
@@ -882,6 +903,8 @@ it("the last 'data' event fires before the close_notify reply is written to a du
   // close_notify, then pushed to the client as one chunk.
   let held: Buffer | null = null;
   const clientSide: Duplex = new Duplex({
+    // Node inherits this flag from the transport; a half-open client sends no automatic reply.
+    allowHalfOpen: false,
     read() {},
     write(chunk: Buffer, _encoding, callback) {
       if (recordTypes(chunk)?.includes(21)) log.push("write close_notify");
@@ -932,7 +955,7 @@ it("the last 'data' event fires before the close_notify reply is written to a du
   await once(client, "close");
 
   // 23 is application data. One push carried it and the alert.
-  expect(log).toEqual(["push 23,21", "data last", "write close_notify", "transport end", "end"]);
+  expect(log).toEqual(["push 23,21", "data last", "end", "write close_notify", "transport end"]);
 });
 
 describe("application data written over a Duplex transport before the handshake completes", () => {
@@ -2061,8 +2084,55 @@ describe("a TLS socket over a Duplex transport reports that transport's error", 
     expect(events).toEqual(["error:transport failed", "close destroyed=true"]);
   });
 
-  it("what a method or an accessor of the transport throws is reported", async () => {
-    // Out of process: a socket that has closed emits no 'error', so the throw is uncaught, as in node.
+  it("destroying TLS destroys its transport without ending it", async () => {
+    // Node 24 destroys the transport without accessing end, even if destroy is a no-op.
+    // Observe natural quiescence before cleanup so a delayed end getter cannot escape the assertion.
+    await using proc = Bun.spawn({
+      cmd: [bunExe(), join(import.meta.dir, "tls-destroy-transport-fixture.cjs")],
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    const rows = stdout
+      .trim()
+      .split("\n")
+      .map(line => JSON.parse(line));
+    const scenarios = rows.filter(row => row.type === "scenario-result");
+    expect(scenarios.map(row => row.scenario)).toEqual([
+      "isolated-immediate",
+      "isolated-after-check",
+      "consecutive-immediate-after-check",
+      "consecutive-after-check-immediate",
+    ]);
+    expect(scenarios.flatMap(row => row.cases)).toHaveLength(6);
+    for (const scenario of scenarios) {
+      expect(scenario).toMatchObject({
+        pass: true,
+        failures: [],
+        sequenceComplete: true,
+        cleanupComplete: true,
+        uncaughtCount: 0,
+        rejectionCount: 0,
+      });
+      for (const result of scenario.cases) {
+        expect(result).toMatchObject({
+          getterCount: 0,
+          destroyCalls: [{ phase: "observe", hasError: false, errorId: null }],
+          tlsCloses: [false],
+          continuation: true,
+          tlsErrors: [],
+          transportErrors: [],
+          transportCloses: [{ phase: "cleanup", cleanupRequested: true }],
+        });
+      }
+    }
+    expect(rows.at(-1)).toMatchObject({ type: "parent-result", pass: true, timedOut: false });
+    expect(stderr).toBe("");
+    expect(exitCode).toBe(0);
+  });
+
+  it("what the transport write method or accessor throws is reported", async () => {
     const script = `
       const tls = require("node:tls");
       const { Duplex } = require("node:stream");
@@ -2070,13 +2140,11 @@ describe("a TLS socket over a Duplex transport reports that transport's error", 
       const uncaught = [];
       process.on("uncaughtException", err => uncaught.push(err.message));
 
-      async function run(method, kind, when) {
+      async function run(kind) {
         const transport = new Duplex({ read() {}, write(chunk, encoding, callback) { callback(); } });
-        const name = method + " " + kind;
+        const name = "write " + kind;
         const fail = () => { throw new Error(name); };
-        Object.defineProperty(transport, method, kind === "call" ? { value: fail } : { get: fail });
-        // Only a transport that is still open is ended.
-        transport.destroy = function () { return this; };
+        Object.defineProperty(transport, "write", kind === "call" ? { value: fail } : { get: fail });
         const socket = tls.connect({ socket: transport, rejectUnauthorized: false });
         const events = [];
         const closed = Promise.withResolvers();
@@ -2085,17 +2153,13 @@ describe("a TLS socket over a Duplex transport reports that transport's error", 
           events.push("close:" + hadError);
           closed.resolve();
         });
-        if (when === "after the engine started") await new Promise(resolve => setImmediate(resolve));
         // The ClientHello is the write that fails, and that destroys the socket.
-        if (method === "end") socket.destroy();
         await closed.promise;
-        console.log(name + ", " + when + ": " + events.join("|") + " uncaught:" + uncaught.splice(0).join("|"));
+        console.log(name + ": " + events.join("|") + " uncaught:" + uncaught.splice(0).join("|"));
       }
 
       for (const kind of ["call", "getter"]) {
-        await run("end", kind, "before the engine starts");
-        await run("end", kind, "after the engine started");
-        await run("write", kind, "after the engine started");
+        await run(kind);
       }
     `;
     await using proc = Bun.spawn({
@@ -2107,12 +2171,8 @@ describe("a TLS socket over a Duplex transport reports that transport's error", 
     const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
     expect({ stdout: stdout.trim().split("\n"), stderr, exitCode }).toEqual({
       stdout: [
-        "end call, before the engine starts: close:false uncaught:end call",
-        "end call, after the engine started: close:false uncaught:end call",
-        "write call, after the engine started: error:write call|close:true uncaught:",
-        "end getter, before the engine starts: close:false uncaught:end getter",
-        "end getter, after the engine started: close:false uncaught:end getter",
-        "write getter, after the engine started: error:write getter|close:true uncaught:",
+        "write call: error:write call|close:true uncaught:",
+        "write getter: error:write getter|close:true uncaught:",
       ],
       stderr: "",
       exitCode: 0,
@@ -3443,11 +3503,7 @@ describe.each([
       expect(await run("duplex-destroySoon", "after-first-flight")).toEqual(clientDestroyed);
     });
 
-    // Known gap in bun: 'finish' does not wait for the transport's end(). In
-    // the turn that created the socket it fires before the engine exists, so
-    // destroySoon()'s destroy() runs first and destroys the transport: no
-    // ClientHello and no final(), the peer only sees the connection close.
-    (!exe ? it.skip : runtime === "bun" ? it.failing : it)(
+    it.skipIf(!exe)(
       "destroySoon() in the turn that created the socket ends the transport, then closes the socket",
       async () => {
         expect(await run("duplex-destroySoon", "same-turn")).toEqual(clientDestroyed);

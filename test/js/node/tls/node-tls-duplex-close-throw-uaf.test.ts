@@ -34,19 +34,15 @@ async function run(script: string, expected = "ok") {
 // build enables); release builds may read garbage without trapping. Each
 // test spawns an independent subprocess so they can run concurrently.
 describe.concurrent.skipIf(!isASAN && !isDebug)("tls.connect({socket: Duplex}) does not read freed Handlers", () => {
-  test("when duplex.end() throws after close", async () => {
-    // UpgradedDuplex.onClose → DuplexUpgradeContext.onClose → TLSSocket.onClose
-    // frees the Handlers; UpgradedDuplex.onClose then calls duplex.end(). If
-    // that throws, onError → tls.handleError → getHandlers() read the freed
-    // allocation.
+  test("closing a duplex does not call its throwing end method", async () => {
+    // Closing once called end() after freeing the Handlers. Like Node, destruction
+    // now avoids end() entirely, including when the transport emits close.
     await run(
       `
       const tls = require("node:tls");
       const { Duplex } = require("node:stream");
 
-      // Minimal duplex: write/read are no-ops. The only thing that matters is
-      // that end() throws synchronously — UpgradedDuplex.callWriteOrEnd catches
-      // that and routes it through onError.
+      // A throwing end method exposes any accidental graceful shutdown during close.
       const duplex = new Duplex({
         read() {},
         write(chunk, enc, cb) { cb(); },
@@ -55,7 +51,7 @@ describe.concurrent.skipIf(!isASAN && !isDebug)("tls.connect({socket: Duplex}) d
       duplex.end = function () {
         throw new Error("end() throws during close");
       };
-      // Only a duplex that is still open gets that end().
+      // Keep the transport open so destroyed-state guards cannot hide an end call.
       duplex.destroy = function () {
         return this;
       };
@@ -68,11 +64,7 @@ describe.concurrent.skipIf(!isASAN && !isDebug)("tls.connect({socket: Duplex}) d
       sock.on("error", () => {});
       sock.on("close", () => {});
 
-      // startTLS runs on the next tick; once onOpen has fired (is_open=true),
-      // emitting "close" on the duplex triggers the SSL wrapper's fast
-      // shutdown → UpgradedDuplex.onClose → DuplexUpgradeContext.onClose →
-      // TLSSocket.onClose (frees handlers) → callWriteOrEnd → duplex.end()
-      // throws → onError.
+      // Exercise transport close after the TLS engine has started.
       setImmediate(() => {
         setImmediate(() => {
           duplex.emit("close");
@@ -83,7 +75,7 @@ describe.concurrent.skipIf(!isASAN && !isDebug)("tls.connect({socket: Duplex}) d
         });
       });
     `,
-      "uncaught: end() throws during close\nok",
+      "ok",
     );
   });
 
@@ -127,12 +119,9 @@ describe.concurrent.skipIf(!isASAN && !isDebug)("tls.connect({socket: Duplex}) d
   });
 
   // Serial: four debug subprocesses at once reach the default test timeout on a loaded machine.
-  test.serial("when duplex.end() throws after a close that comes before StartTLS", async () => {
-    // No SSL wrapper exists yet, so the queued .StartTLS task carries the
-    // close out: TLSSocket.onClose frees the Handlers, then duplex.end()
-    // throws into onError. Only a duplex that is still open gets that
-    // end(), so destroy() leaves these open. One process runs both closes:
-    // each socket has its own Handlers.
+  test.serial("a close before StartTLS does not call duplex.end()", async () => {
+    // The queued StartTLS task carries out early closes. Both close paths
+    // must avoid end(), even when the transport's destroy() leaves it open.
     await run(
       `
       const tls = require("node:tls");
@@ -176,13 +165,7 @@ describe.concurrent.skipIf(!isASAN && !isDebug)("tls.connect({socket: Duplex}) d
         });
       });
     `,
-      [
-        "uncaught: end() throws when the duplex closes",
-        "uncaught: end() throws when the socket is destroyed",
-        "the duplex closes, end() calls: 1",
-        "the socket is destroyed, end() calls: 1",
-        "ok",
-      ].join("\n"),
+      ["the duplex closes, end() calls: 0", "the socket is destroyed, end() calls: 0", "ok"].join("\n"),
     );
   });
 

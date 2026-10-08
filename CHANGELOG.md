@@ -247,3 +247,5 @@
 - Share exact owned source buffers on matching `node:vm` compilation-cache entries while preserving cold misses, cached-data validation, per-script origins and the existing byte budget.
 
 - Name package-target resolution options explicitly to satisfy the Rust Mordant lint without changing resolution behavior.
+
+- Destroy Duplex-backed TLS transports without calling `end()`, preserve wrapped-socket close ordering, and honor half-open shutdown like Node.js. Ports HTTP/2 teardown from [oven-sh/bun#38195](https://github.com/oven-sh/bun/pull/38195) and adapts coverage from [oven-sh/bun#38154](https://github.com/oven-sh/bun/pull/38154); thanks @robobun!

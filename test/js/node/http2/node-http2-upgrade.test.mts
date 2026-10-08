@@ -1,6 +1,6 @@
 /**
  * Tests for the net.Server → Http2SecureServer upgrade path
- * (upgradeRawSocketToH2 in _http2_upgrade.ts).
+ * through the inherited tls.Server connection listener.
  *
  * This pattern is used by http2-wrapper, crawlee, and other libraries that
  * accept raw TCP connections and upgrade them to HTTP/2 via
@@ -16,6 +16,7 @@ import fs from "node:fs";
 import http2 from "node:http2";
 import net from "node:net";
 import path from "node:path";
+import { Duplex } from "node:stream";
 import { afterEach, describe, test } from "node:test";
 import tls from "node:tls";
 import { fileURLToPath } from "node:url";
@@ -459,6 +460,87 @@ describe("HTTP/2 upgrade — server TLS options", () => {
       netServer.close();
     }
   });
+});
+
+// Adapted from oven-sh/bun#38154: the peer deliberately keeps TCP half-open,
+// so only destroying the accepted transport releases the server connection.
+describe("HTTP/2 upgrade — session destruction releases the accepted transport", () => {
+  for (const withError of [false, true]) {
+    test(`destroyed ${withError ? "with" : "without"} an error`, async () => {
+      const h2Server = http2.createSecureServer(TLS);
+      const error = withError ? new Error("test teardown") : undefined;
+      const errors: Error[] = [];
+      const events: string[] = [];
+      const sessionClosed = new Promise<void>(resolve => {
+        h2Server.once("session", (session: http2.ServerHttp2Session) => {
+          session.on("error", error => {
+            errors.push(error);
+            events.push("session error");
+          });
+          session.once("close", () => {
+            events.push("session close");
+            resolve();
+          });
+          session.destroy(error);
+        });
+      });
+      const accepted = Promise.withResolvers<{ raw: net.Socket; closed: Promise<boolean> }>();
+      const netServer = net.createServer(raw => {
+        const closed = new Promise<boolean>(resolve =>
+          raw.once("close", hadError => {
+            events.push("raw close");
+            resolve(hadError);
+          }),
+        );
+        accepted.resolve({ raw, closed });
+        h2Server.emit("connection", raw);
+      });
+      await new Promise<void>(resolve => netServer.listen(0, "127.0.0.1", resolve));
+      const tcp = net.connect({
+        port: (netServer.address() as net.AddressInfo).port,
+        host: "127.0.0.1",
+        allowHalfOpen: true,
+      });
+      tcp.on("error", () => {});
+      const carrier = new Duplex({
+        read() {},
+        write(chunk, _encoding, callback) {
+          if (tcp.destroyed) return callback();
+          tcp.write(chunk, () => callback());
+        },
+        final(callback) {
+          callback();
+        },
+      });
+      tcp.on("data", chunk => carrier.push(chunk));
+      tcp.on("end", () => carrier.push(null));
+      const client = tls.connect({ socket: carrier, rejectUnauthorized: false, ALPNProtocols: ["h2"] });
+      client.on("error", () => {});
+      client.resume();
+      try {
+        await sessionClosed;
+        const { raw, closed } = await accepted.promise;
+        assert.strictEqual(await closed, false);
+        assert.strictEqual(raw.destroyed, true);
+        assert.deepStrictEqual(
+          events,
+          withError ? ["raw close", "session error", "session close"] : ["raw close", "session close"],
+        );
+        assert.deepStrictEqual(errors, withError ? [error] : []);
+        const connections = await new Promise<number>((resolve, reject) => {
+          netServer.getConnections((err, count) => (err ? reject(err) : resolve(count)));
+        });
+        assert.strictEqual(connections, 0);
+        await new Promise<void>(resolve => netServer.close(() => resolve()));
+      } finally {
+        client.destroy();
+        carrier.destroy();
+        tcp.destroy();
+        (await accepted.promise).raw.destroy();
+        if (netServer.listening) netServer.close();
+      }
+    });
+  }
 });
 
 if (typeof Bun !== "undefined") {

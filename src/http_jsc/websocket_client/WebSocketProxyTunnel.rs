@@ -183,6 +183,7 @@ impl WebSocketProxyTunnel {
                 on_data: Self::on_data,
                 on_handshake: Self::on_handshake,
                 on_close: Self::on_close,
+                on_end: None,
                 write: Self::write_encrypted,
                 // No JS TLSSocket fronts the tunnel; opting out keeps the
                 // SSL off the parked session/keylog queues entirely.
