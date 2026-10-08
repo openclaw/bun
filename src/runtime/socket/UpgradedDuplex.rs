@@ -220,8 +220,6 @@ impl UpgradedDuplex {
         js_wrapper.ensure_still_alive();
 
         (self.handlers.on_close)(self.handlers.ctx);
-        // closes the underlying duplex
-        self.call_write_or_end(None, false);
 
         // Early teardown (struct itself is dropped later by parent).
         self.teardown();

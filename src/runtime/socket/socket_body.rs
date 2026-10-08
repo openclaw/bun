@@ -4483,11 +4483,7 @@ impl DuplexUpgradeContext {
             // is the ext-slot/owner pin). Null our pointer first so the
             // `deinit_in_next_tick` → `deinit` path doesn't deref it a second
             // time — that's the over-deref behind the cross-file
-            // `TLSSocket::finalize` use-after-poison. It also means a throw
-            // from `duplex.end()` (called right after this returns via
-            // `UpgradedDuplex::on_close` → `call_write_or_end`) hits the null-check
-            // in `on_error` instead of reading the Handlers that `TLSSocket::on_close`
-            // → `mark_inactive` just released.
+            // `TLSSocket::finalize` use-after-poison.
             let p = tls.into_this_ptr();
             crate::dispatch::fold(TLSSocket::on_close(p, socket, 0, None));
         }

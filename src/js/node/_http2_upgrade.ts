@@ -5,7 +5,7 @@ const kSharedCreds = Symbol.for("::buntlssharedcreds::");
 interface NativeHandle {
   resume(): void;
   close(): void;
-  end(): void;
+  shutdown(): void;
   $write(chunk: Buffer, encoding: string): boolean;
   alpnProtocol?: string;
 }
@@ -109,6 +109,7 @@ function tlsSocketDestroy(this: TLSProxySocket, err: Error | null, callback: (er
     h.close();
     this._ctx.nativeHandle = null;
   }
+  this._ctx.rawSocket.destroy();
   // Must invoke pending write callback with error per Writable stream contract
   const writeCb = this._writeCallback;
   if (writeCb) {
@@ -125,7 +126,7 @@ function tlsSocketFinal(this: TLSProxySocket, callback: () => void) {
   const h = this._ctx.nativeHandle;
   if (!h) return callback();
   // Signal end-of-stream to the TLS layer
-  h.end();
+  h.shutdown();
   callback();
 }
 

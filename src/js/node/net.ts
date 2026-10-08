@@ -2414,12 +2414,10 @@ Socket.prototype._destroy = function _destroy(err, callback) {
   // Node: after 'error', before 'close'. With no error it goes first, so the stream is errored before the EOF that the native close handler pushes can emit 'end'.
   if (canceledWrite && !err) process.nextTick(cancelWriteNT, canceledWrite);
 
-  // Tear down a wrapped generic duplex with this socket: the native handle's
-  // close only flushes close_notify and lets the wrapper drain; without an
-  // explicit destroy here a late RST on the underlying transport can surface
-  // as an unhandled error after this socket is gone.
+  // Stream-level TLS owns its transport; an adopted fd pair closes through closeOwedRaw.
+  // https://github.com/nodejs/node/blob/v24.21.0/lib/internal/js_stream_socket.js#L253
   const upgraded = this[kupgraded];
-  if (upgraded && !(upgraded instanceof Socket) && !upgraded.destroyed) {
+  if (upgraded && !upgraded.destroyed && (!(upgraded instanceof Socket) || !upgraded._handle?.[kAdoptedTLSRaw])) {
     upgraded.destroy?.();
   }
 
