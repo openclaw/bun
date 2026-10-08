@@ -1037,7 +1037,11 @@ pub mod ssl_wrapper {
                     != 0
                 {
                     self.handle_peer_shutdown();
-
+                    // A half-open stream can still write after its readable side ends.
+                    if !self.flags.closed_notified() {
+                        let mut buffer = IoBuffer::uninit();
+                        self.handle_writing(&mut buffer);
+                    }
                     return false;
                 }
                 return true;

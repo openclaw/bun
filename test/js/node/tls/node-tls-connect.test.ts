@@ -857,23 +857,26 @@ it("a client and a server TLSSocket connected through a synchronous in-memory du
   });
 });
 
-it.concurrent.each(["legacy-pair", "duplex-halfopen-false", "duplex-halfopen-true", "duplex-eof-halfopen-true"])(
-  "duplex TLS close_notify follows the transport's half-open policy: %s",
-  async scenario => {
-    await using proc = Bun.spawn({
-      cmd: [bunExe(), join(import.meta.dirname, "tls-half-close-transport-fixture.cjs"), scenario],
-      env: bunEnv,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
-    expect({ result: JSON.parse(stdout), stderr, exitCode }).toEqual({
-      result: { pass: true, complete: scenario !== "legacy-pair", failure: null, failedChecks: [] },
-      stderr: "",
-      exitCode: 0,
-    });
-  },
-);
+it.concurrent.each([
+  "legacy-pair",
+  "duplex-halfopen-false",
+  "duplex-halfopen-true",
+  "duplex-eof-halfopen-true",
+  "duplex-write-after-end",
+])("duplex TLS close_notify follows the transport's half-open policy: %s", async scenario => {
+  await using proc = Bun.spawn({
+    cmd: [bunExe(), join(import.meta.dirname, "tls-half-close-transport-fixture.cjs"), scenario],
+    env: bunEnv,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect({ result: JSON.parse(stdout), stderr, exitCode }).toEqual({
+    result: { pass: true, complete: scenario !== "legacy-pair", failure: null, failedChecks: [] },
+    stderr: "",
+    exitCode: 0,
+  });
+});
 
 it("the last 'data' event fires before the close_notify reply is written to a duplex transport (tls.connect({ socket }))", async () => {
   // The peer's last application data and its close_notify reach the engine in

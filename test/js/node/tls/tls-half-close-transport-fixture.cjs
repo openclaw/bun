@@ -75,7 +75,8 @@ async function child(name) {
   if (name === "legacy-pair" || name.startsWith("duplex-")) {
     const legacy = name === "legacy-pair",
       rawEof = name === "duplex-eof-halfopen-true",
-      halfOpen = name === "duplex-halfopen-true" || rawEof;
+      writeAfterEnd = name === "duplex-write-after-end",
+      halfOpen = name === "duplex-halfopen-true" || rawEof || writeAfterEnd;
     let left,
       right,
       held = null;
@@ -142,6 +143,10 @@ async function child(name) {
     );
     server.on("data", chunk => {
       if (chunk.toString() === "go") server.end("last");
+      if (writeAfterEnd && chunk.toString() === "tail") {
+        event("application", "tail.received.before.end", { writableEnded: client.writableEnded });
+        client.end();
+      }
     });
     const client = observe(
       tls.connect({ ...tlsOptions, socket: left, rejectUnauthorized: false, ...version }),
@@ -155,8 +160,13 @@ async function child(name) {
         writableEnded: client.writableEnded,
       });
       if (halfOpen) {
-        event("application", "client.end.call", { text: "tail" });
-        client.end("tail");
+        if (writeAfterEnd) {
+          // Leave the native receive callback before writing; end() must not flush the tail for us.
+          setImmediate(() => client.write("tail"));
+        } else {
+          event("application", "client.end.call", { text: "tail" });
+          client.end("tail");
+        }
       }
     });
     evaluate = () => ({
@@ -172,6 +182,10 @@ async function child(name) {
       bothTlsClosed: legacy || (one("client", "close") && one("server", "close")),
       bothRawClosed: legacy || (one("client-transport", "close") && one("server-transport", "close")),
       tailDelivered: !halfOpen || entries("server", "data").some(x => x.text === "tail"),
+      tailBeforeEnd:
+        !writeAfterEnd ||
+        (one("application", "tail.received.before.end") &&
+          entries("application", "tail.received.before.end")[0].writableEnded === false),
       rawEofBeforeAlert:
         !rawEof ||
         (one("relay", "alert.dropped") &&
