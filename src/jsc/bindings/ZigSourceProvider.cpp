@@ -422,6 +422,19 @@ JSC_DEFINE_HOST_FUNCTION(jsSourceHasLineStarts, (JSC::JSGlobalObject*, JSC::Call
     return JSValue::encode(jsBoolean(function->jsExecutable()->source().provider()->lineStartTableIsBuilt()));
 }
 
+JSC_DEFINE_HOST_FUNCTION(jsSourcesShareBackingStore, (JSC::JSGlobalObject*, JSC::CallFrame* callFrame))
+{
+    auto* first = dynamicDowncast<JSC::JSFunction>(callFrame->argument(0));
+    auto* second = dynamicDowncast<JSC::JSFunction>(callFrame->argument(1));
+    if (!first || !second || first->isHostFunction() || second->isHostFunction())
+        return JSValue::encode(jsUndefined());
+    auto firstSource = first->jsExecutable()->source().provider()->source();
+    auto secondSource = second->jsExecutable()->source().provider()->source();
+    bool shared = firstSource.is8Bit() == secondSource.is8Bit() && firstSource.length() == secondSource.length()
+        && (firstSource.is8Bit() ? firstSource.span8().data() == secondSource.span8().data() : firstSource.span16().data() == secondSource.span16().data());
+    return JSValue::encode(jsBoolean(shared));
+}
+
 } // namespace Bun
 
 // What StringImpl::hash() returns for an 8-bit string with these bytes; `bun build --compile` records it per module.

@@ -2977,6 +2977,131 @@ describe("bounded vm compilation cache", () => {
     expect({ stdout, stderr, exitCode }).toEqual({ stdout: "ok\n", stderr: "", exitCode: 0 });
   }
 
+  test.concurrent.each(["é", "λ🚀"])("shares source buffers on Script compilation-cache hits: %s", async marker => {
+    await runCacheFixture(`
+      import assert from "node:assert/strict";
+      import { Script } from "node:vm";
+      import { sourcesShareBackingStore as shared, nodeVMCompilationCacheStats as stats } from "bun:internal-for-testing";
+      const text = "/* " + ${JSON.stringify(marker)} + " " + Buffer.alloc(8192, "x").toString() + " */\\n(function identify() { return [value, new Error().stack]; })";
+      const options = { filename: "shared.js", lineOffset: 10 };
+      const scripts = [];
+      const compile = (value, overrides = {}) => {
+        const script = new Script(Buffer.from(text).toString(), { ...options, ...overrides });
+        scripts.push(script);
+        return script.runInNewContext({ value });
+      };
+      const seed = compile("seed"); seed();
+      const first = compile("first"); first();
+      const afterPromotion = stats();
+      const second = compile("second");
+      assert.equal(stats().hits, afterPromotion.hits + 1);
+      assert.equal(stats().bytes, afterPromotion.bytes);
+      assert.equal(shared(first, second), true);
+      assert.notEqual(first, second);
+      assert.equal(first()[0], "first");
+      assert.equal(second()[0], "second");
+      assert.match(second()[1], /shared.js:12:/);
+      assert.equal(shared(first, compile("filename", { filename: "other.js" })), false);
+      const offset = compile("offset", { lineOffset: 20 });
+      assert.equal(shared(first, offset), false);
+      assert.match(offset()[1], /shared.js:22:/);
+      const beforeData = stats();
+      const cachedData = scripts[0].createCachedData();
+      const accepted = new Script(Buffer.from(text).toString(), { ...options, cachedData });
+      assert.equal(accepted.cachedDataRejected, false);
+      assert.equal(shared(first, accepted.runInNewContext({ value: "data" })), false);
+      assert.equal(stats().hits, beforeData.hits);
+      scripts.length = 0;
+      Bun.gc(true);
+      const afterGC = compile("after-gc");
+      assert.equal(shared(first, afterGC), true);
+      assert.equal(afterGC()[0], "after-gc");
+      assert.ok(stats().bytes <= stats().limit);
+      console.log("ok");
+    `);
+  });
+
+  test.concurrent.each(["é", "λ🚀"])(
+    "shares source buffers on compileFunction compilation-cache hits: %s",
+    async marker => {
+      await runCacheFixture(`
+      import assert from "node:assert/strict";
+      import { compileFunction, createContext } from "node:vm";
+      import { sourcesShareBackingStore as shared, nodeVMCompilationCacheStats as stats } from "bun:internal-for-testing";
+      const body = "/* " + ${JSON.stringify(marker)} + " " + Buffer.alloc(8192, "x").toString() + " */\\nreturn [value, new Error().stack];";
+      const compile = (value, extra = {}) => compileFunction(Buffer.from(body).toString(), [], {
+        filename: "shared-fn.js", lineOffset: 10, parsingContext: createContext({ value }), ...extra,
+      });
+      const seed = compile("seed"); seed();
+      const first = compile("first"); first();
+      const afterPromotion = stats();
+      const second = compile("second");
+      assert.equal(stats().hits, afterPromotion.hits + 1);
+      assert.equal(stats().bytes, afterPromotion.bytes);
+      assert.equal(shared(first, second), true);
+      assert.notEqual(first, second);
+      assert.equal(first()[0], "first");
+      assert.equal(second()[0], "second");
+      assert.match(second()[1], /shared-fn.js:12:/);
+      const other = compile("other", { filename: "other-fn.js", lineOffset: 20 });
+      assert.equal(shared(first, other), false);
+      assert.match(other()[1], /other-fn.js:22:/);
+      Bun.gc(true);
+      assert.equal(shared(first, compile("after-gc")), true);
+      console.log("ok");
+    `);
+    },
+  );
+
+  test.concurrent.each(["é", "λ🚀"])("shared source buffers survive compilation-cache eviction: %s", async marker => {
+    await runCacheFixture(
+      `
+      import assert from "node:assert/strict";
+      import { Script } from "node:vm";
+      import { sourcesShareBackingStore as shared, nodeVMCompilationCacheStats as stats } from "bun:internal-for-testing";
+      const text = "/* " + ${JSON.stringify(marker)} + " " + Buffer.alloc(4096, "x").toString() + " */ (() => 42)";
+      const compile = () => new Script(Buffer.from(text).toString(), { filename: "evicted.js" }).runInThisContext();
+      const seed = compile(); seed();
+      const first = compile(); first();
+      const second = compile();
+      assert.equal(shared(first, second), true);
+      for (let i = 0; i < 80; i++) new Script("(() => " + i + ")", { filename: "churn-" + i + ".js" }).runInThisContext()();
+      assert.ok(stats().evictions > 0);
+      assert.ok(stats().bytes <= stats().limit);
+      Bun.gc(true);
+      assert.equal(first(), 42);
+      assert.equal(second(), 42);
+      assert.equal(shared(first, second), true);
+      const before = stats();
+      const rebuilt = compile();
+      assert.equal(stats().misses, before.misses + 1);
+      assert.equal(shared(first, rebuilt), false);
+      assert.equal(rebuilt(), 42);
+      console.log("ok");
+    `,
+      "32768",
+    );
+  });
+
+  test.concurrent("shared source buffers preserve first-line columns and sourceURL", async () => {
+    await runCacheFixture(`
+      import assert from "node:assert/strict";
+      import { Script } from "node:vm";
+      const text = "(() => new Error().stack)";
+      for (const columnOffset of [0, 9]) {
+        for (let pass = 0; pass < 3; pass++) {
+          const fn = new Script(Buffer.from(text).toString(), { filename: "original.js", lineOffset: 10, columnOffset }).runInThisContext();
+          assert.ok(fn().includes("original.js:11:" + (text.indexOf("new Error") + 1 + columnOffset)));
+        }
+      }
+      for (let pass = 0; pass < 3; pass++) {
+        const fn = new Script(Buffer.from(text + "\\n//# sourceURL=virtual-cache.js").toString(), { filename: "original.js" }).runInThisContext();
+        assert.ok(fn().includes("virtual-cache.js:1:8"));
+      }
+      console.log("ok");
+    `);
+  });
+
   test.concurrent("reuses compilation beyond the shared JSC working set", async () => {
     await runCacheFixture(`
       import assert from "node:assert/strict";

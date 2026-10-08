@@ -147,7 +147,7 @@ static bool hasUncachedFunctionBodies(VM& vm, CachedBytecode& bytecode)
     return false;
 }
 
-void NodeVMCompilationCache::insert(JSGlobalObject* globalObject, const SourceCode& source, const Identity& identity, UnlinkedProgramCodeBlock* block, Promotion promotion)
+void NodeVMCompilationCache::insert(JSGlobalObject* globalObject, const SourceCode& source, const Identity& identity, UnlinkedProgramCodeBlock* block, Promotion promotion, String sharedSource)
 {
     bool fullBytecode = promotion == Promotion::Full;
     const String& filename = source.provider()->sourceURL();
@@ -185,8 +185,9 @@ void NodeVMCompilationCache::insert(JSGlobalObject* globalObject, const SourceCo
     entry->fullBytecode = fullBytecode;
     entry->hasUncachedFunctions = hasUncachedFunctions;
     entry->promotionAttempted = promotion;
-    // Copy the exact slices: a substring must not keep a much larger parent string alive.
-    entry->source = source.view().is8Bit() ? String(source.view().span8()) : String(source.view().span16());
+    // Misses copy exact slices; promotion retains the already-owned buffer shared with hit compilations.
+    // A substring must never keep a much larger parent string alive.
+    entry->source = sharedSource.isNull() ? (source.view().is8Bit() ? String(source.view().span8()) : String(source.view().span16())) : WTF::move(sharedSource);
     entry->filename = filename.is8Bit() ? String(filename.span8()) : String(filename.span16());
     JSValue importer = importerFor(source);
     entry->hasImporter = importer.isCell();
@@ -212,13 +213,47 @@ void NodeVMCompilationCache::observeCompilation(JSGlobalObject* globalObject, co
     insert(globalObject, source, identity, block, Promotion::None);
 }
 
-UnlinkedProgramCodeBlock* NodeVMCompilationCache::getOrCompile(JSGlobalObject* globalObject, ProgramExecutable* executable, const SourceCode& source, const Identity& identity, bool hasCachedData, ParserError& error)
+class CachedVMSourceProvider final : public StringSourceProvider {
+public:
+    static Ref<CachedVMSourceProvider> create(const String& cached, const SourceProvider& original, unsigned hash)
+    {
+        return adoptRef(*new CachedVMSourceProvider(cached, original, hash));
+    }
+
+    unsigned hash() const final { return m_hash; }
+
+private:
+    CachedVMSourceProvider(const String& cached, const SourceProvider& original, unsigned hash)
+        : StringSourceProvider(cached, original.sourceOrigin(), original.sourceTaintedOrigin(), String(original.sourceURL()), original.startPosition(), original.sourceType())
+        , m_hash(hash)
+    {
+    }
+
+    unsigned m_hash;
+};
+
+static void shareCachedSource(SourceCode& source, const String& cached)
 {
+    // Both callers compile complete programs. Keep their provider identity separate from the cache's source bytes.
+    ASSERT(!source.startOffset() && source.length() == source.provider()->source().length());
+    Ref original = *source.provider();
+    // The owned copy has no StringImpl hash yet; reuse the hash paid for by find(), rather than hashing it again.
+    Ref provider = CachedVMSourceProvider::create(cached, original, source.hash());
+    provider->setSourceURLDirective(original->sourceURLDirective());
+    provider->setSourceMappingURLDirective(original->sourceMappingURLDirective());
+    source = SourceCode(WTF::move(provider));
+}
+
+UnlinkedProgramCodeBlock* NodeVMCompilationCache::getOrCompile(JSGlobalObject* globalObject, ProgramExecutable*& executable, SourceCode& source, const Identity& identity, bool hasCachedData, ParserError& error)
+{
+    ASSERT(!executable);
     initialize();
     VM& vm = globalObject->vm();
     bool enabled = m_statistics.limit && !hasCachedData && identity.codeGenerationMode.isEmpty();
     if (enabled) {
         if (auto* entry = find(source, identity)) {
+            shareCachedSource(source, entry->source);
+            executable = ProgramExecutable::create(globalObject, source);
             auto* block = entry->decoded.get();
             bool decoded = false;
             if (!block) {
@@ -239,7 +274,7 @@ UnlinkedProgramCodeBlock* NodeVMCompilationCache::getOrCompile(JSGlobalObject* g
                     entry->promotionAttempted = promotion;
                     // Re-encoding a decoded snapshot would discard its still-lazy cached function bodies.
                     if (fullBytecode || !decoded)
-                        insert(globalObject, source, identity, block, promotion);
+                        insert(globalObject, source, identity, block, promotion, entry->source);
                 }
                 ++m_statistics.hits;
                 recordParseFromUnlinkedCodeBlock(executable, source, block);
@@ -248,6 +283,8 @@ UnlinkedProgramCodeBlock* NodeVMCompilationCache::getOrCompile(JSGlobalObject* g
         }
         ++m_statistics.misses;
     }
+    if (!executable)
+        executable = ProgramExecutable::create(globalObject, source);
     auto* block = vm.codeCache()->getUnlinkedProgramCodeBlock(vm, executable, source, identity.codeGenerationMode, error);
     if (block && enabled) {
         Strong<UnlinkedProgramCodeBlock> protectedBlock(vm, block);
