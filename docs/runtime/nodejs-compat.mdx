@@ -115,6 +115,8 @@ Upgrade requests emit `upgrade` while an earlier response on the connection is s
 
 ### [`node:timers`](https://nodejs.org/api/timers.html)
 
+On POSIX, each event-loop turn runs ready I/O before `setImmediate` callbacks and due timers. An immediate queued by an I/O callback runs before timers that came due in that callback. An immediate queued by a timer lets the next poll deliver ready I/O first. Windows retains its libuv timer ordering.
+
 🟢 Fully implemented. The exports are the same functions as the globals. `node:timers/promises` (including `scheduler.wait()` and `scheduler.yield()`) is also implemented.
 
 ### [`node:tty`](https://nodejs.org/api/tty.html)

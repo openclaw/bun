@@ -1,9 +1,12 @@
 import jsc from "bun:jsc";
 import { describe, expect, it, mock, test } from "bun:test";
-import { bunEnv, bunExe, bunRun, isWindows } from "harness";
+import { bunEnv, bunExe, bunRun, isWindows, tempDir } from "harness";
+import { existsSync, stat, writeFileSync } from "node:fs";
+import net, { type AddressInfo } from "node:net";
 import path from "node:path";
 import { clearInterval, clearTimeout, promises, setImmediate, setInterval, setTimeout } from "node:timers";
 import { promisify } from "util";
+import { Worker } from "node:worker_threads";
 
 for (const fn of [setTimeout, setInterval]) {
   describe(fn.name, () => {
@@ -374,4 +377,379 @@ describe.each(["with", "without"])("setImmediate %s timers running", mode => {
 
 it("should defer microtasks when an exception is thrown in an immediate", async () => {
   expect(await bunRun(["run", path.join(import.meta.dir, "timers-immediate-exception-fixture.js")])).toSpawn();
+});
+
+// Node's loop runs the poll (I/O callbacks), then the check phase
+// (setImmediate), then the timers. The caller of the loop checks its own
+// condition (a promise, an unhandled rejection, whether the loop is alive)
+// after the timers, before the next poll.
+describe.concurrent("event loop phases", () => {
+  async function run(cmd: string[], env: Record<string, string | undefined> = bunEnv, cwd?: string) {
+    await using proc = Bun.spawn({ cmd: [bunExe(), ...cmd], env, cwd, stdout: "pipe", stderr: "pipe" });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    return { stdout, stderr, exitCode };
+  }
+
+  // A connected loopback pair. `onData` runs in the client's first I/O callback.
+  const pair = `
+    const net = require("net");
+    function pair(onData) {
+      let serverSocket;
+      const server = net.createServer(socket => {
+        serverSocket = socket;
+        socket.write("go");
+      });
+      server.listen(0, "127.0.0.1", () => {
+        const client = net.connect(server.address().port, "127.0.0.1");
+        client.once("data", () => onData(client, server, serverSocket));
+      });
+    }
+    function busy(ms) {
+      const end = performance.now() + ms;
+      while (performance.now() < end) {}
+    }
+  `;
+
+  // On Windows, libuv runs the timers inside its poll, so the timer fires first there.
+  test.skipIf(isWindows)("an immediate queued by an I/O callback runs before a timer that came due in it", async () => {
+    const script = `${pair}
+      pair((client, server) => {
+        const order = [];
+        const done = () => order.length === 2 && (console.log(order.join(",")), client.destroy(), server.close());
+        setTimeout(() => (order.push("timeout"), done()), 1);
+        busy(5);
+        setImmediate(() => (order.push("immediate"), done()));
+      });
+    `;
+    expect(await run(["-e", script])).toEqual({ stdout: "immediate,timeout\n", stderr: "", exitCode: 0 });
+  });
+
+  // The POSIX check phase must poll ready I/O after a blocked timer callback.
+  // Windows runs timers inside libuv's poll and retains its existing phase order.
+  test.skipIf(isWindows)("an immediate queued by a timer runs after already-ready I/O", async () => {
+    const script = `${pair}
+      pair((client, server, serverSocket) => {
+        const order = [];
+        client.on("data", data => order.push("data:" + data));
+        setTimeout(() => {
+          order.push("timer");
+          serverSocket.write("ready");
+          // Model a stalled host while the loopback data becomes readable.
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+          setImmediate(() => {
+            order.push("immediate");
+            console.log(order.join(","));
+            client.destroy();
+            serverSocket.destroy();
+            server.close();
+          });
+        }, 1);
+      });
+    `;
+    expect(await run(["-e", script])).toEqual({ stdout: "timer,data:ready,immediate\n", stderr: "", exitCode: 0 });
+  });
+
+  // Windows retains the libuv phase order; this covers the POSIX task/poll boundary.
+  test.skipIf(isWindows).each(["timer", "task"])(
+    "ready I/O precedes an immediate queued by a %s when a task is already pending",
+    async source => {
+      const script = `${pair}
+        const { Worker } = require("node:worker_threads");
+        pair((client, server, serverSocket) => {
+          const order = [];
+          const shared = new Int32Array(new SharedArrayBuffer(4));
+          const worker = new Worker(\`
+            const { parentPort, workerData } = require("node:worker_threads");
+            const shared = new Int32Array(workerData);
+            parentPort.on("message", () => {
+              parentPort.postMessage("task");
+              Atomics.store(shared, 0, 1);
+              Atomics.notify(shared, 0);
+            });
+            parentPort.postMessage("ready");
+          \`, { eval: true, workerData: shared.buffer });
+          const finish = () => {
+            order.push("immediate");
+            console.log(JSON.stringify(order));
+            worker.terminate();
+            client.destroy();
+            serverSocket.destroy();
+            server.close();
+          };
+          client.on("data", data => order.push("data:" + data));
+          worker.once("message", () => {
+            worker.once("message", () => {
+              order.push("task");
+              if (${JSON.stringify(source)} === "task") setImmediate(finish);
+            });
+            setTimeout(() => {
+              order.push("timer");
+              serverSocket.write("ready");
+              worker.postMessage("go");
+              // The worker posts its completion before releasing this barrier.
+              while (Atomics.load(shared, 0) === 0) Atomics.wait(shared, 0, 0);
+              if (${JSON.stringify(source)} === "timer") setImmediate(finish);
+            }, 1);
+          });
+        });
+      `;
+      const { stdout, stderr, exitCode } = await run(["-e", script]);
+      expect(stderr).toBe("");
+      const order = JSON.parse(stdout);
+      expect(order[0]).toBe("timer");
+      expect(order.at(-1)).toBe("immediate");
+      // Socket and worker completions have no relative ordering contract.
+      expect(order.slice(1, -1).sort()).toEqual(["data:ready", "task"]);
+      expect(exitCode).toBe(0);
+    },
+  );
+
+  test("a timer that came due in an I/O callback runs before a thread pool callback", async () => {
+    const script = `${pair}
+      const crypto = require("crypto");
+      pair((client, server) => {
+        const order = [];
+        const done = () => order.length === 2 && (console.log(order.join(",")), client.destroy(), server.close());
+        crypto.pbkdf2("a", "b", 1, 8, "sha256", () => (order.push("pool"), done()));
+        setTimeout(() => (order.push("timeout"), done()), 1);
+        busy(20);
+      });
+    `;
+    expect(await run(["-e", script])).toEqual({ stdout: "timeout,pool\n", stderr: "", exitCode: 0 });
+  });
+
+  // Node runs a thread pool callback in the poll phase, so the connect it
+  // starts completes in a later poll, after the check phase.
+  test("an immediate queued by a thread pool callback runs before the connect that callback started", async () => {
+    const script = `
+      const fs = require("fs");
+      const net = require("net");
+      const server = net.createServer(socket => socket.end());
+      server.listen(0, "127.0.0.1", () => {
+        fs.stat(".", () => {
+          const order = [];
+          const client = net.connect(server.address().port, "127.0.0.1");
+          client.on("connect", () => order.push("connect"));
+          setImmediate(() => order.push("immediate"));
+          client.on("close", () => (console.log(order.join(",")), server.close()));
+        });
+      });
+    `;
+    expect(await run(["-e", script])).toEqual({ stdout: "immediate,connect\n", stderr: "", exitCode: 0 });
+  });
+
+  test("a due unref'd timer runs after an I/O callback unrefs the last handle", async () => {
+    const script = `${pair}
+      const order = [];
+      process.on("exit", () => console.log(order.join(",")));
+      pair((client, server, serverSocket) => {
+        setTimeout(() => order.push("timeout"), 1).unref();
+        busy(5);
+        client.unref();
+        serverSocket.unref();
+        server.unref();
+        order.push("unref");
+      });
+    `;
+    expect(await run(["-e", script])).toEqual({ stdout: "unref,timeout\n", stderr: "", exitCode: 0 });
+  });
+
+  // The 'unhandledRejection' listener runs only if the rejection is still
+  // unhandled when it is reported. The process then closes its sockets and exits.
+  test("a rejection in a timer is reported before the next I/O callback can handle it", async () => {
+    const script = `${pair}
+      const order = [];
+      process.on("unhandledRejection", error => order.push("unhandled: " + error.message));
+      process.on("exit", () => console.log(order.join(",")));
+      let rejected;
+      pair((client, server, serverSocket) => {
+        serverSocket.on("data", () => {
+          order.push("data");
+          rejected.catch(() => {});
+          client.destroy();
+          server.close();
+        });
+        setTimeout(() => {
+          client.write("x");
+          rejected = Promise.reject(new Error("rejected in a timer"));
+        }, 1);
+      });
+    `;
+    const { stdout, exitCode } = await run(["-e", script]);
+    expect(stdout).toBe("unhandled: rejected in a timer,data\n");
+    expect(exitCode).toBe(0);
+  });
+
+  // `expect(promise).resolves` waits for a pending promise in a nested loop.
+  // There, an I/O callback does not drain the nextTick queue when it returns.
+  test("in a nested loop, a nextTick queued by an I/O callback runs before an immediate it queued", async () => {
+    const order: string[] = [];
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const server = net.createServer(socket => socket.end("x"));
+    server.listen(0, "127.0.0.1", () => {
+      const client = net.connect((server.address() as AddressInfo).port, "127.0.0.1");
+      client.on("data", () => {
+        setImmediate(() => {
+          order.push("immediate");
+          client.destroy();
+          server.close();
+          resolve();
+        });
+        process.nextTick(() => order.push("tick"));
+      });
+    });
+    await expect(promise).resolves.toBeUndefined();
+    expect(order).toEqual(["tick", "immediate"]);
+  });
+
+  // A preload's promise is awaited by the loop's caller. The listening server
+  // keeps the loop active and the GC timer is off, so a poll that waited after
+  // the promise settled would not return before the test times out.
+  const preloadTest = (what: string, awaited: string) =>
+    test(`a preload that awaits ${what} does not wait for I/O before the entry point runs`, async () => {
+      using dir = tempDir("timers-phase-preload", {
+        "preload.mjs": `
+          import net from "node:net";
+          globalThis.server = net.createServer();
+          await new Promise(resolve => globalThis.server.listen(0, "127.0.0.1", resolve));
+          await new Promise(resolve => ${awaited});
+        `,
+        "main.mjs": `
+          console.log("main");
+          globalThis.server.close();
+        `,
+      });
+      const env = { ...bunEnv, BUN_GC_TIMER_DISABLE: "1" };
+      expect(await run(["--preload", "./preload.mjs", "./main.mjs"], env, String(dir))).toEqual({
+        stdout: "main\n",
+        stderr: "",
+        exitCode: 0,
+      });
+    });
+  preloadTest("a timer", "setTimeout(resolve, 1)");
+  // On Windows the check phase runs before the poll, so this wait still parks there.
+  if (!isWindows) preloadTest("an immediate", "setImmediate(resolve)");
+});
+
+test("a nested task wait drains nextTicks and promises before its immediate", () => {
+  const order: string[] = [];
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  stat(import.meta.filename, error => {
+    if (error) return reject(error);
+    order.push("task");
+    process.nextTick(() => order.push("nextTick"));
+    Promise.resolve().then(() => order.push("promise"));
+    setImmediate(() => {
+      order.push("immediate");
+      resolve();
+    });
+  });
+  expect(promise).resolves.toBeUndefined();
+  expect(order).toEqual(["task", "nextTick", "promise", "immediate"]);
+});
+
+// Windows uses libuv rather than the POSIX ready-event batch.
+test.skipIf(isWindows)("queued completion in a nested matcher preserves the outer ready pipe batch", async () => {
+  using fixture = tempDir("poll-reentry", {});
+  const dir = String(fixture);
+  const shared = new Int32Array(new SharedArrayBuffer(4));
+  const worker = new Worker(
+    `
+    const { parentPort, workerData } = require('node:worker_threads');
+    const shared = new Int32Array(workerData);
+    parentPort.on('message', () => {
+      parentPort.postMessage('task');
+      Atomics.store(shared, 0, 1);
+      Atomics.notify(shared, 0);
+    });
+    parentPort.postMessage('ready');
+  `,
+    { eval: true, workerData: shared.buffer },
+  );
+  const children: ReturnType<typeof Bun.spawn>[] = [];
+  const failure = Promise.withResolvers<never>();
+  worker.on("error", failure.reject);
+  const events: string[] = [];
+  let client: net.Socket | undefined;
+  let peer: net.Socket | undefined;
+  const server = net.createServer(socket => {
+    peer = socket;
+    socket.on("error", failure.reject);
+  });
+  server.on("error", failure.reject);
+  const pause = new Int32Array(new SharedArrayBuffer(4));
+  try {
+    await Promise.race([new Promise(resolve => worker.once("message", resolve)), failure.promise]);
+    await Promise.race([new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve)), failure.promise]);
+    client = net.connect((server.address() as net.AddressInfo).port, "127.0.0.1");
+    client.on("error", failure.reject);
+    await Promise.race([new Promise<void>(resolve => client!.once("connect", resolve)), failure.promise]);
+    while (!peer) await new Promise(resolve => setImmediate(resolve));
+    const victimReads: Promise<string>[] = [];
+    for (let i = 0; i < 8; i++) {
+      const child = Bun.spawn(
+        [
+          bunExe(),
+          "-e",
+          `
+        const fs = require('node:fs');
+        const d = ${JSON.stringify(dir)};
+        fs.writeFileSync(d + '/ready-${i}', '');
+        const a = new Int32Array(new SharedArrayBuffer(4));
+        while (!fs.existsSync(d + '/go')) Atomics.wait(a, 0, 0, 1);
+        fs.writeSync(1, 'victim-${i}');
+        fs.writeFileSync(d + '/done-${i}', '');
+      `,
+        ],
+        { stdout: "pipe", stderr: "inherit", env: bunEnv },
+      );
+      children.push(child);
+      victimReads.push(
+        new Response(child.stdout).text().then(text => {
+          events.push(text);
+          return text;
+        }),
+      );
+    }
+    while (children.some((_, i) => !existsSync(path.join(dir, `ready-${i}`)))) {
+      await new Promise(resolve => setTimeout(resolve, 1));
+    }
+    const nested = new Promise<void>((resolve, reject) =>
+      client!.once("data", () => {
+        try {
+          events.push("callback-enter");
+          const task = new Promise(resolve => worker.once("message", resolve));
+          worker.postMessage("go");
+          const deadline = performance.now() + 4000;
+          while (Atomics.load(shared, 0) === 0) {
+            if (performance.now() > deadline) throw new Error("worker completion was not posted");
+            Atomics.wait(shared, 0, 0, 1);
+          }
+          expect(task).resolves.toBe("task");
+          events.push("callback-exit");
+          resolve();
+        } catch (error) {
+          reject(error);
+        }
+      }),
+    );
+    peer.write("trigger");
+    writeFileSync(path.join(dir, "go"), "");
+    const deadline = performance.now() + 4000;
+    while (children.some((_, i) => !existsSync(path.join(dir, `done-${i}`)))) {
+      if (performance.now() > deadline) throw new Error("child readiness failed");
+      Atomics.wait(pause, 0, 0, 1);
+    }
+    await Promise.race([nested, failure.promise]);
+    expect(await Promise.race([Promise.all(victimReads), failure.promise])).toEqual(
+      Array.from({ length: 8 }, (_, i) => `victim-${i}`),
+    );
+    console.log(JSON.stringify({ events }));
+  } finally {
+    for (const child of children) child.kill();
+    await worker.terminate();
+    client?.destroy();
+    peer?.destroy();
+    server.close();
+  }
 });

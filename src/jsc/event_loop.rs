@@ -72,6 +72,8 @@ pub struct EventLoop {
     /// until the queue is empty (a task that re-posts itself there never lets
     /// the loop poll). Promoted into `tasks` by `auto_tick`, like immediates.
     pub yield_tasks: Vec<Task>,
+    /// A `tick()` ran a task since `auto_tick` last took this.
+    ran_tasks: bool,
 
     pub concurrent_tasks: ConcurrentQueue,
     /// Set only on Bun.spawnSync's isolated loop: how other threads reach *this*
@@ -120,6 +122,7 @@ impl Default for EventLoop {
             immediate_tasks: Vec::new(),
             next_immediate_tasks: Vec::new(),
             yield_tasks: Vec::new(),
+            ran_tasks: false,
             concurrent_tasks: ConcurrentQueue::default(),
             isolated_poster: None,
             global: None,
@@ -456,6 +459,15 @@ impl EventLoop {
         self.drain_microtasks_with_global(global, jsc_vm)
     }
 
+    /// `auto_tick`, after the poll. A callback that ran inside an entered scope
+    /// (a nested loop, such as a wait for a promise) did not drain the
+    /// microtask queue at its exit.
+    pub fn drain_microtasks_if_nested(&mut self) {
+        if self.entered_event_loop_count > 0 {
+            let _ = self.drain_microtasks();
+        }
+    }
+
     // should be called after exit()
     pub fn maybe_drain_microtasks(&mut self) -> Result<(), Stopped> {
         if self.entered_event_loop_count == 0 && !self.vm_ref().is_inside_deferred_task_queue.get()
@@ -565,8 +577,43 @@ impl EventLoop {
     /// turn is over (`tick()` / `tick_tasks_only()` return rather than run more against that VM).
     fn tick_with_count(&mut self, virtual_machine: *mut VirtualMachine) -> Result<u32, Stopped> {
         let mut counter: u32 = 0;
-        tick_queue_with_count(self, virtual_machine, &mut counter)?;
+        let result = tick_queue_with_count(self, virtual_machine, &mut counter);
+        if counter > 0 {
+            self.ran_tasks = true;
+        }
+        result?;
         Ok(counter)
+    }
+
+    fn tick_poll_phase_tasks(
+        &mut self,
+        virtual_machine: *mut VirtualMachine,
+        first_batch: &mut bool,
+    ) -> Result<u32, Stopped> {
+        if *first_batch && self.tasks.readable_length() > 0 {
+            *first_batch = false;
+            #[cfg(unix)]
+            {
+                // Sample ready I/O before callbacks can start new I/O. The check phase
+                // after these tasks may then run before those new operations complete.
+                let this = core::hint::black_box(core::ptr::from_mut(self));
+                // SAFETY: the initialized loop and its VM stay live across callbacks.
+                let loop_ = unsafe { (*this).usockets_loop() };
+                // A nested wait must not overwrite the native dispatcher's ready batch.
+                // SAFETY: only the owning thread reads or changes the native tick depth.
+                if unsafe { (*loop_).internal_loop_data.tick_depth } == 0 {
+                    // SAFETY: no native tick is active; the zero timeout cannot park.
+                    unsafe { (*loop_).tick_without_idle() };
+                    let this = core::hint::black_box(this);
+                    // SAFETY: the VM owns `this` and remains live after the poll.
+                    unsafe { (*(*this).vm()).on_after_event_loop() };
+                    // A poll inside `tick()` is nested, so callbacks defer their checkpoint.
+                    // SAFETY: `this` is still the live per-thread event loop.
+                    unsafe { (*this).drain_microtasks() }?;
+                }
+            }
+        }
+        self.tick_with_count(virtual_machine)
     }
 
     fn tick_concurrent(&mut self) {
@@ -789,9 +836,10 @@ impl EventLoop {
         let global_vm = self.vm_ref().jsc_vm();
 
         let mut refills = 0u32;
+        let mut first_task_batch = true;
         'tick: loop {
             loop {
-                if self.tick_with_count(ctx)? == 0 {
+                if self.tick_poll_phase_tasks(ctx, &mut first_task_batch)? == 0 {
                     break;
                 }
                 if refills == Self::CONCURRENT_REFILLS_PER_TICK {
@@ -822,7 +870,7 @@ impl EventLoop {
         }
 
         while refills < Self::CONCURRENT_REFILLS_PER_TICK {
-            if self.tick_with_count(ctx)? == 0 {
+            if self.tick_poll_phase_tasks(ctx, &mut first_task_batch)? == 0 {
                 break;
             }
             refills += 1;
@@ -979,6 +1027,11 @@ impl EventLoop {
             return self.enqueue_task(task);
         }
         self.yield_tasks.push(task);
+    }
+
+    /// `auto_tick`: whether a `tick()` ran a task since the last call.
+    pub fn take_ran_tasks(&mut self) -> bool {
+        core::mem::take(&mut self.ran_tasks)
     }
 
     /// `auto_tick`, before it polls: last iteration's yielded tasks become

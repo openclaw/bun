@@ -192,7 +192,6 @@
 
 - Keep ESM namespaces free of inherited `__esModule` markers and preserve the own marker and live exports for `require(esm)`, fixing Vite/tsx namespace interop. Adapts [oven-sh/bun#33894](https://github.com/oven-sh/bun/pull/33894) and [oven-sh/WebKit#279](https://github.com/oven-sh/WebKit/pull/279). Thanks @robobun!
 
-
 - Sync oven-sh/bun through `c7b06d94bac19817ba34b6677bb1099fb4f6d2be`, preserving fork fixes and incorporating TLS handshake shutdown, macOS split-DNS failover, file-body cloning, Buffer write validation, mimalloc 3.5.3 and idle-memory release.
 - Pin immutable [OpenClaw WebKit `42ab38d705`](https://github.com/openclaw/WebKit/releases/tag/autobuild-42ab38d705d4838748ccee77e7deb0e4e35515ee) by archive checksum, together with the required namespace facade integration from #106; retain fail-closed artifact selection.
 
@@ -244,3 +243,5 @@
 - Avoid eager full bytecode generation on live `node:vm` cache hits while retaining post-GC promotion for payloads missing function bodies, preserving the cache budget and public cached-data generation.
 
 - Return integral byte sizes in `node:inspector` heap allocation profiles while preserving allocation-site sampling and independent node/sample estimates.
+
+- Run POSIX `setImmediate` callbacks after ready I/O and before due timers, including when task completions are queued, while preserving nested microtasks and task-created connection ordering. Ports and extends the event-loop changes from [oven-sh/bun#41355](https://github.com/oven-sh/bun/pull/41355); thanks @robobun!
