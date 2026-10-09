@@ -11,6 +11,7 @@ import {
   isMusl,
   isWindows,
   nodeExeMatchingAbi,
+  noCoreCmd,
   tempDir,
 } from "harness";
 import { join } from "path";
@@ -2290,20 +2291,25 @@ async function checkBothFail(test: string, args: any[] | string, envArgs: Record
       if (executable === "node") executable = await nodeExeMatchingAbi();
       const { BUN_INSPECT_CONNECT_TO: _, ...rest } = bunEnv;
       const env = { ...rest, BUN_INTERNAL_SUPPRESS_CRASH_ON_NAPI_ABORT: "1", ...envArgs };
-      const exec = spawn({
-        cmd: [
-          executable,
-          "--expose-gc",
-          join(__dirname, "napi-app/main.js"),
-          test,
-          typeof args == "string" ? args : JSON.stringify(args),
-        ],
+      const command = [
+        executable,
+        "--expose-gc",
+        join(__dirname, "napi-app/main.js"),
+        test,
+        typeof args == "string" ? args : JSON.stringify(args),
+      ];
+      await using exec = spawn({
+        cmd: isWindows ? command : noCoreCmd(command),
         env,
         stdout: Bun.version_with_sha.includes("debug") ? "inherit" : "pipe",
         stderr: Bun.version_with_sha.includes("debug") ? "inherit" : "pipe",
         stdin: "inherit",
       });
-      const exitCode = await exec.exited;
+      const [exitCode] = await Promise.all([
+        exec.exited,
+        exec.stdout instanceof ReadableStream ? new Response(exec.stdout).arrayBuffer() : undefined,
+        exec.stderr instanceof ReadableStream ? new Response(exec.stderr).arrayBuffer() : undefined,
+      ]);
       return { exitCode, signalCode: exec.signalCode };
     }),
   );
