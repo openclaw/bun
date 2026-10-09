@@ -368,5 +368,13 @@
                 "NAPI_VERSION=8",
             ],
         },
+        {
+            "target_name": "test_worker_finalizers",
+            "sources": ["test_worker_finalizers.cpp"],
+            "defines": ["NAPI_VERSION=10"],
+            "cflags!": ["-DNDEBUG"],
+            "cflags_cc!": ["-DNDEBUG"],
+            "xcode_settings": {"GCC_PREPROCESSOR_DEFINITIONS": ["NAPI_VERSION=10"]},
+        },
     ]
 }
