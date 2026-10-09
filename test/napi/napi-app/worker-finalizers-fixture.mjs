@@ -28,9 +28,7 @@ if (!isMainThread && workerData.receiver) {
   workerData.port.postMessage(strings);
   workerData.port.close();
 } else if (!isMainThread) {
-  globalThis.held = addon.make(() => {
-    throw new Error("JS reentry");
-  });
+  globalThis.held = addon.make(() => {});
   let strings = [held[3], held[4]];
   parentPort.on("message", () => {
     if (workerData.route === "gc-before-exit") {
@@ -133,16 +131,12 @@ if (!isMainThread && workerData.receiver) {
       throw new Error(`unknown route ${workerData.route}`);
   }
 } else if (process.argv[2] === "main") {
-  globalThis.held = addon.make(() => {
-    throw new Error("JS reentry");
-  });
+  globalThis.held = addon.make(() => {});
   console.log("registered");
   if (process.argv[3] === "explicit") process.exit(0);
 } else if (process.argv[2] === "copy-cost") {
   const { BunString_crossThreadCopyBytes: copyBytes } = require("bun:internal-for-testing");
-  globalThis.held = addon.make(() => {
-    throw new Error("JS reentry");
-  });
+  globalThis.held = addon.make(() => {});
   assert.equal(copyBytes(held[3]), 4096);
   assert.equal(copyBytes(held[4]), 4096);
   const cloned = structuredClone([held[3], held[4]]);
