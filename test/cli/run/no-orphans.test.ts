@@ -815,6 +815,10 @@ test.concurrent.skipIf(!isPosix || !hasPerl)(
     // `$?` — carries the raw WIFSTOPPED bits on a WUNTRACED return.
     const shellSim =
       `use POSIX qw(:sys_wait_h setpgid tcsetpgrp WIFSTOPPED);` +
+      `sub foreground { my ($pgid) = @_; ` +
+      `  defined(tcsetpgrp(0, $pgid)) or die "tcsetpgrp: $!"; ` +
+      `  my $fg = POSIX::tcgetpgrp(0); defined($fg) or die "tcgetpgrp: $!"; ` +
+      `  $fg == $pgid or die "foreground group $fg, expected $pgid"; } ` +
       `$|=1; $SIG{TTOU}="IGNORE"; ` +
       `pipe(my $start_r, my $start_w) or die $!; ` +
       `my $bun = fork(); defined($bun) or die $!; ` +
@@ -822,7 +826,7 @@ test.concurrent.skipIf(!isPosix || !hasPerl)(
       `  my $go; sysread($start_r, $go, 1) == 1 or die $!; close($start_r); ` +
       `  exec($ENV{BUN_EXE}, "run", "--no-orphans", "--silent", "dev") or die $!; } ` +
       `close($start_r); setpgid($bun, $bun) or die $!; ` +
-      `tcsetpgrp(0, $bun) == 0 or die $!; ` +
+      `foreground($bun); ` +
       `print "BUN_PGID $bun\\n"; ` +
       `syswrite($start_w, "g", 1) == 1 or die $!; close($start_w); ` +
       `while (1) { ` +
@@ -830,7 +834,7 @@ test.concurrent.skipIf(!isPosix || !hasPerl)(
       `  if (WIFSTOPPED(\${^CHILD_ERROR_NATIVE})) { ` +
       `    print "BUN_STOPPED\\n"; ` +
       // `fg`: foreground back to the job, then SIGCONT its pgroup.
-      `    tcsetpgrp(0, $bun) == 0 or die $!; kill("CONT", -$bun) or die $!; ` +
+      `    foreground($bun); kill("CONT", -$bun) or die $!; ` +
       `  } else { last; } ` +
       `}`;
 
