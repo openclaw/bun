@@ -72,6 +72,20 @@ static void finalize(napi_env env, void *data, void *hint) {
   delete item;
 }
 static void cleanup(void *data) { finalize(nullptr, data, nullptr); }
+static napi_value makeEventName(napi_env env, napi_callback_info) {
+  const char name[] = "resourcetimingbufferfull";
+  auto *item = new Item{3, currentThread(), malloc(sizeof(name)), openFd()};
+  assert(item->bytes && item->fd >= 0);
+  memcpy(item->bytes, name, sizeof(name));
+  fds[3] = item->fd;
+  napi_value value;
+  bool copied = false;
+  assert(node_api_create_external_string_latin1(
+             env, static_cast<char *>(item->bytes), sizeof(name) - 1, finalize,
+             item, &value, &copied) == napi_ok);
+  assert(!copied);
+  return value;
+}
 static napi_value make(napi_env env, napi_callback_info info) {
   napi_value args[1], array;
   size_t argc = 1;
@@ -171,6 +185,9 @@ static napi_value stats(napi_env env, napi_callback_info) {
 }
 NAPI_MODULE_INIT() {
   napi_value fn;
+  assert(napi_create_function(env, "makeEventName", NAPI_AUTO_LENGTH,
+                              makeEventName, nullptr, &fn) == napi_ok);
+  assert(napi_set_named_property(env, exports, "makeEventName", fn) == napi_ok);
   assert(napi_create_function(env, "make", NAPI_AUTO_LENGTH, make, nullptr,
                               &fn) == napi_ok);
   assert(napi_set_named_property(env, exports, "make", fn) == napi_ok);
