@@ -10,6 +10,7 @@ import {
   isMacOS,
   isMusl,
   isWindows,
+  noCoreCmd,
   nodeExeMatchingAbi,
   tempDir,
 } from "harness";
@@ -69,10 +70,10 @@ beforeAll(async () => {
   // kills the install subprocess mid-build.
 }, 300_000);
 
-describe.concurrent.skipIf(!canBuildNodeAddons())("napi", () => {
-  it("module URLs identify native addons loaded from long paths", async () => {
-    await using dir = tempDir("native-addon-url", {
-      "load.cjs": `
+// The concurrent group's synchronous bundle/compile tests can starve this probe's event-loop callbacks.
+it.skipIf(!canBuildNodeAddons())("napi module URLs identify native addons loaded from long paths", async () => {
+  await using dir = tempDir("native-addon-url", {
+    "load.cjs": `
         const assert = require("node:assert/strict");
         const { toNamespacedPath } = require("node:path");
         const { fileURLToPath } = require("node:url");
@@ -88,25 +89,26 @@ describe.concurrent.skipIf(!canBuildNodeAddons())("napi", () => {
         assert.equal(fileURLToPath(addon.test_napi_module_filename()), filename);
         console.log("ok");
       `,
-    });
-    const addonDir = join(dir, Buffer.alloc(100, "x").toString(), Buffer.alloc(100, "y").toString(), "native # % é");
-    mkdirSync(addonDir, { recursive: true });
-    const addonPath = join(addonDir, "addon.node");
-    copyFileSync(join(__dirname, "napi-app/build/Debug/napitests.node"), addonPath);
-    for (const executable of [bunExe(), await nodeExeMatchingAbi()]) {
-      for (const mode of ["require", "direct"]) {
-        await using proc = spawn({
-          cmd: [executable, join(dir, "load.cjs"), addonPath, mode],
-          env: bunEnv,
-          stdout: "pipe",
-          stderr: "pipe",
-        });
-        const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
-        expect({ stdout, stderr, exitCode }).toEqual({ stdout: "ok\n", stderr: "", exitCode: 0 });
-      }
-    }
   });
+  const addonDir = join(dir, Buffer.alloc(100, "x").toString(), Buffer.alloc(100, "y").toString(), "native # % é");
+  mkdirSync(addonDir, { recursive: true });
+  const addonPath = join(addonDir, "addon.node");
+  copyFileSync(join(__dirname, "napi-app/build/Debug/napitests.node"), addonPath);
+  for (const executable of [bunExe(), await nodeExeMatchingAbi()]) {
+    for (const mode of ["require", "direct"]) {
+      await using proc = spawn({
+        cmd: [executable, join(dir, "load.cjs"), addonPath, mode],
+        env: bunEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      expect({ stdout, stderr, exitCode }).toEqual({ stdout: "ok\n", stderr: "", exitCode: 0 });
+    }
+  }
+});
 
+describe.concurrent.skipIf(!canBuildNodeAddons())("napi", () => {
   describe.each(["esm", "cjs"])("bundle .node files to %s via", format => {
     describe.each(["node", "bun"])("target %s", target => {
       it("Bun.build", async () => {
@@ -421,6 +423,102 @@ describe.concurrent.skipIf(!canBuildNodeAddons())("napi", () => {
         ...notWeakable.map(name => `declared=8 header=8 ${name}: status=1`),
         ...weakable.map(name => `declared=8 header=8 ${name}: status=0 roundTrip=1 heldAtZero=1 reref=1`),
       ]);
+    });
+  });
+
+  describe("Worker native finalizer lifetime", () => {
+    const fixture = join(__dirname, "napi-app/worker-finalizers-fixture.mjs");
+    it("drains GC-queued finalizers exactly once before Worker exit", async () => {
+      await using proc = spawn({
+        cmd: [bunExe(), "--expose-gc", fixture, "worker-exit", "gc-before-exit", "3"],
+        env: bunEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      expect({ stdout, stderr, exitCode }).toEqual({
+        stdout: "ok worker-exit gc-before-exit 3\n",
+        stderr: "",
+        exitCode: 0,
+      });
+    });
+    it.each(["terminate", "worker-exit"])("runs every retained finalizer at %s", async mode => {
+      await using proc = spawn({
+        cmd: [bunExe(), fixture, mode, "retained", "3"],
+        env: bunEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      expect({ stdout, stderr, exitCode }).toEqual({ stdout: `ok ${mode} retained 3\n`, stderr: "", exitCode: 0 });
+    });
+    it.each([
+      "latin",
+      "utf16",
+      "array",
+      "object",
+      "nested",
+      "map",
+      "structured",
+      "keys",
+      "transfer",
+      "invalid-transfer",
+      "shared",
+      "port",
+      "broadcast",
+      "workerData",
+      "env",
+      "share-env",
+      "argv",
+      "object-url",
+    ])("copies addon strings crossing via %s", async route => {
+      for (const mode of ["terminate", "worker-exit"]) {
+        await using proc = spawn({
+          cmd: [bunExe(), fixture, mode, route],
+          env: bunEnv,
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+        expect({ stdout, stderr, exitCode }).toEqual({ stdout: `ok ${mode} ${route} 1\n`, stderr: "", exitCode: 0 });
+      }
+    });
+    it("copies only addon-owned external storage", async () => {
+      await using proc = spawn({ cmd: [bunExe(), fixture, "copy-cost"], env: bunEnv, stdout: "pipe", stderr: "pipe" });
+      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      expect({ stdout, stderr, exitCode }).toEqual({
+        stdout: "latin1=4096 utf16=4096 received=0 ordinary=0\n",
+        stderr: "",
+        exitCode: 0,
+      });
+    });
+    it.each(["natural", "explicit"])("main %s exit preserves the Node cleanup boundary", async mode => {
+      await using proc = spawn({
+        cmd: [bunExe(), fixture, "main", mode],
+        env: { ...bunEnv, NAPI_FINALIZER_TRACE: "1", BUN_DESTRUCT_VM_ON_EXIT: undefined },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      const finalizers = stdout.trim().split(/\r?\n/).slice(1).sort();
+      // Main's JSC heap is not destroyed: storage-owned strings still outlive the env.
+      expect({ finalizers, stderr, exitCode }).toEqual({
+        finalizers:
+          mode === "explicit"
+            ? []
+            : [
+                "finalized 0 env",
+                "finalized 1 env",
+                "finalized 2 env",
+                "finalized 5 env",
+                "finalized 6 env",
+                "finalized 7 null",
+                "finalized 8 env",
+                "finalized 9 env",
+              ],
+        stderr: "",
+        exitCode: 0,
+      });
     });
   });
 
@@ -2193,20 +2291,25 @@ async function checkBothFail(test: string, args: any[] | string, envArgs: Record
       if (executable === "node") executable = await nodeExeMatchingAbi();
       const { BUN_INSPECT_CONNECT_TO: _, ...rest } = bunEnv;
       const env = { ...rest, BUN_INTERNAL_SUPPRESS_CRASH_ON_NAPI_ABORT: "1", ...envArgs };
-      const exec = spawn({
-        cmd: [
-          executable,
-          "--expose-gc",
-          join(__dirname, "napi-app/main.js"),
-          test,
-          typeof args == "string" ? args : JSON.stringify(args),
-        ],
+      const command = [
+        executable,
+        "--expose-gc",
+        join(__dirname, "napi-app/main.js"),
+        test,
+        typeof args == "string" ? args : JSON.stringify(args),
+      ];
+      await using exec = spawn({
+        cmd: isWindows ? command : noCoreCmd(command),
         env,
         stdout: Bun.version_with_sha.includes("debug") ? "inherit" : "pipe",
         stderr: Bun.version_with_sha.includes("debug") ? "inherit" : "pipe",
         stdin: "inherit",
       });
-      const exitCode = await exec.exited;
+      const [exitCode] = await Promise.all([
+        exec.exited,
+        exec.stdout instanceof ReadableStream ? new Response(exec.stdout).arrayBuffer() : undefined,
+        exec.stderr instanceof ReadableStream ? new Response(exec.stderr).arrayBuffer() : undefined,
+      ]);
       return { exitCode, signalCode: exec.signalCode };
     }),
   );

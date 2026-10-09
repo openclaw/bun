@@ -257,3 +257,5 @@
 - Destroy Duplex-backed TLS transports without calling `end()`, preserve wrapped-socket close ordering, and honor half-open shutdown like Node.js. Ports HTTP/2 teardown from [oven-sh/bun#38195](https://github.com/oven-sh/bun/pull/38195) and adapts coverage from [oven-sh/bun#38154](https://github.com/oven-sh/bun/pull/38154); thanks @robobun!
 
 - Verify dead-realm FinalizationRegistry cancellation only after observing collection, while requiring a collected realm and preserving zero callbacks for every collected context. Adapts [oven-sh/bun#44544](https://github.com/oven-sh/bun/pull/44544); thanks @robobun!
+
+- Run external-value and added Node-API finalizers at environment teardown, preserve nullable-env external-string finalization, and copy addon-owned string storage before sharing it across workers. Adapts [oven-sh/bun#32912](https://github.com/oven-sh/bun/pull/32912); thanks @robobun!

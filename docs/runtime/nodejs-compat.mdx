@@ -338,6 +338,10 @@ MessagePort message and close events run in the port creation AsyncLocalStorage 
 
 Node-API threadsafe functions deliver or return every accepted native payload before finalization when a worker stops, including during a microtask between callbacks.
 
+Node-API external values and `napi_add_finalizer` callbacks run during environment cleanup, including natural main-thread exit. Worker termination also releases external strings on their creating thread. String callbacks receive a null environment when their storage outlives environment cleanup, matching Node. Addon-owned external strings are copied before another thread receives their storage; other string sharing behavior is unchanged.
+
+Natural main-thread exit does not destroy the main JavaScript heap. External strings still retained by that heap therefore do not run their storage finalizers at natural exit. Explicit main-thread `process.exit()` skips environment cleanup, as in Node.
+
 Creating a `SHARE_ENV` worker preserves the parent's `process.env` identity. Cached references observe shared writes, deletes, property definitions, and enumeration.
 Repeated `delete` and `Reflect.deleteProperty()` calls remove shared entries even after JIT warmup.
 Writes also reach the shared environment when value coercion creates the first worker, including on Windows. Newly assigned Windows environment variables, including native-backed variables such as `TZ`, are enumerable and survive environment copies and child-process inheritance.
