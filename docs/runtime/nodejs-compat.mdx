@@ -326,6 +326,8 @@ Worker shutdown releases the thread's native event-name cache after destroying i
 
 Immediate engine GC timers wake idle workers when scheduled. These native wakeups do not keep a worker alive.
 
+Worker teardown avoids an extra full collection before final heap destruction. Native cleanup hooks and registered finalizers still run before the exit is acknowledged.
+
 Budgeted workers can use young-generation collections within their managed heap budgets; full collections still confirm heap-limit exhaustion. Synchronous GC wakes a passive collector even while another heap occupies the shared helpers.
 
 File workers select `--require` and `--import` preloads from their environment independently of `execArgv`. Explicit `env` or `execArgv` options re-read the worker's `NODE_OPTIONS` and `BUN_OPTIONS` before applying the selected CLI arguments. `execArgv: []` removes CLI preloads while environment preloads still apply. Require preloads run before import preloads.
