@@ -428,6 +428,44 @@ describe.concurrent.skipIf(!canBuildNodeAddons())("napi", () => {
 
   describe("Worker native finalizer lifetime", () => {
     const fixture = join(__dirname, "napi-app/worker-finalizers-fixture.mjs");
+    it.each(["terminate", "worker-exit"])(
+      "releases addon-owned event name storage after env cleanup at %s",
+      async mode => {
+        await using proc = spawn({
+          cmd: [
+            bunExe(),
+            "-e",
+            `
+            const assert = require("node:assert/strict");
+            const addon = require(${JSON.stringify(join(__dirname, "napi-app/build/Debug/test_worker_finalizers.node"))});
+            const worker = new Worker(${JSON.stringify(join(__dirname, "napi-app/worker-event-name-fixture.mjs"))});
+            let before;
+            await new Promise((resolve, reject) => {
+              worker.addEventListener("error", reject);
+              worker.addEventListener("message", event => {
+                before = event.data;
+                ${mode === "terminate" ? "worker.terminate();" : 'worker.postMessage("exit");'}
+              });
+              worker.addEventListener("close", resolve);
+            });
+            const counts = Array(10).fill(0);
+            const expected = { counts, nullEnv: Array(10).fill(0), liveFds: 1, offThread: 0, reentered: 0, unexpectedStatus: 0 };
+            assert.deepEqual(before, expected);
+            counts[3] = 1;
+            expected.nullEnv[3] = 1;
+            expected.liveFds = 0;
+            assert.deepEqual(addon.stats(), expected);
+            console.log("released");
+          `,
+          ],
+          env: bunEnv,
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+        expect({ stdout, stderr, exitCode }).toEqual({ stdout: "released\n", stderr: "", exitCode: 0 });
+      },
+    );
     it("drains GC-queued finalizers exactly once before Worker exit", async () => {
       await using proc = spawn({
         cmd: [bunExe(), "--expose-gc", fixture, "worker-exit", "gc-before-exit", "3"],

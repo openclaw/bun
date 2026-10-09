@@ -43,6 +43,12 @@ const EventNames& eventNames()
     return *eventNames_;
 }
 
+// C++ TLS destructors are disabled; release atoms before the worker thread's AtomStringTable dies.
+extern "C" void Bun__destroyEventNamesForThreadExit()
+{
+    eventNames_.reset();
+}
+
 enum class DOMEventName : uint8_t {
     rename = 0,
     change = 1,

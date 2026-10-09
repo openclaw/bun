@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Release each Worker thread's event-name cache after VM teardown, preventing native memory growth during repeated Worker creation. Ports [oven-sh/bun#38164](https://github.com/oven-sh/bun/pull/38164); thanks @robobun!
+
 - Release process stdio polling registrations between isolated test files so Linux parallel test runs can initialize stdout and stderr in each file. Adapts oven-sh/bun#38008 to the fork's borrowed stdio descriptors.
 
 - Publish ready POSIX subprocess exits and drain their owned pipes before stalled-host retirement observers, without changing the global event-loop phase order; wait for extra stdio pipes before emitting child `close`.

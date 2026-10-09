@@ -241,6 +241,7 @@ unsafe extern "C" {
     );
     safe fn WebWorker__disarmHeapLimitObserver(proxy: *mut c_void);
     safe fn WebWorker__stackSize(proxy: *mut c_void) -> usize;
+    safe fn Bun__destroyEventNamesForThreadExit();
     safe fn Bun__freeSharedHeaderBufferForThreadExit();
     // Raw FFI (no RAII guard) so `thread_main` can take the API lock and abandon
     // it with the VM — see the note there.
@@ -1365,9 +1366,9 @@ impl WebWorker {
             // gone so its raw `transpiler.env` borrow is dead.
             drop(unsafe { bun_core::heap::take(env_loader) });
         }
-        // This thread's C++ thread_local destructors are not guaranteed to run
-        // before the process exits, so free the HPACK scratch buffer that any
-        // http2 session on this thread allocated.
+        // C++ TLS destructors are disabled; release these after the VM, while
+        // the thread's atom table is still alive.
+        Bun__destroyEventNamesForThreadExit();
         Bun__freeSharedHeaderBufferForThreadExit();
         drop(arena.take());
         log!(

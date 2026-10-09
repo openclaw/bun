@@ -1,5 +1,5 @@
-import { expect, test } from "bun:test";
-import { bunEnv, bunExe, isASAN, isWindows } from "harness";
+import { describe, expect, test } from "bun:test";
+import { bunEnv, bunExe, isASAN, isWindows, tempDir } from "harness";
 import { join } from "path";
 
 // A worker's shutdown used to drain its concurrent queue and only then mark
@@ -47,3 +47,83 @@ test.skipIf(!isASAN || isWindows)(
     expect({ stdout, stderr, exitCode }).toEqual({ stdout: "", stderr: "", exitCode: 0 });
   },
 );
+
+// LSan sees the TLS table when WTF uses the system allocator.
+describe.concurrent("a worker thread frees its event name table when it exits", () => {
+  const lsanEnv = {
+    ...bunEnv,
+    BUN_DESTRUCT_VM_ON_EXIT: "1",
+    Malloc: "1",
+    ASAN_OPTIONS: [bunEnv.ASAN_OPTIONS, "detect_leaks=1"].filter(Boolean).join(":"),
+    LSAN_OPTIONS: `print_suppressions=0:suppressions=${join(import.meta.dirname, "../../../leaksan.supp")}`,
+  };
+
+  test.skipIf(!isASAN || isWindows).each([
+    {
+      route: "worker_threads Worker whose event loop drains",
+      files: {
+        "main.mjs": `
+          import { Worker } from "node:worker_threads";
+          new Worker("", { eval: true }).on("exit", code => console.log("exit", code));
+        `,
+      },
+      stdout: "exit 0\n",
+    },
+    {
+      route: "worker_threads Worker that calls process.exit()",
+      files: {
+        "main.mjs": `
+          import { Worker } from "node:worker_threads";
+          new Worker("setImmediate(() => process.exit(7));", { eval: true }).on("exit", code => console.log("exit", code));
+        `,
+      },
+      stdout: "exit 7\n",
+    },
+    {
+      route: "worker_threads Worker terminated by its parent while it listens on parentPort",
+      files: {
+        "main.mjs": `
+          import { Worker } from "node:worker_threads";
+          const worker = new Worker(
+            \`
+              const { parentPort } = require("node:worker_threads");
+              setImmediate(() => {
+                parentPort.on("message", () => {});
+                parentPort.postMessage("listening");
+              });
+            \`,
+            { eval: true },
+          );
+          worker.on("message", () => worker.terminate());
+          worker.on("exit", () => console.log("terminated"));
+        `,
+      },
+      stdout: "terminated\n",
+    },
+    {
+      route: "Web Worker whose event loop drains",
+      files: {
+        "main.mjs": `
+          new Worker(new URL("./worker.js", import.meta.url)).addEventListener("close", () => console.log("close"));
+        `,
+        "worker.js": "",
+      },
+      stdout: "close\n",
+    },
+  ])(
+    "$route",
+    async ({ files, stdout: expectedStdout }) => {
+      using dir = tempDir("worker-event-names", files);
+      await using proc = Bun.spawn({
+        cmd: [bunExe(), "main.mjs"],
+        cwd: String(dir),
+        env: lsanEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      expect({ stdout, stderr, exitCode }).toEqual({ stdout: expectedStdout, stderr: "", exitCode: 0 });
+    },
+    90_000,
+  );
+});
