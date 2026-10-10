@@ -1180,9 +1180,8 @@ describe("async context passes through", () => {
     expect(stderr).not.toContain("AssertionError");
   });
 
-  // destroy(err) with no 'error' listener throws out of the emit, which must
-  // not skip the frame clear (the 'close' tick after it never runs).
-  test("http2 clears the session frame when destroy(err) throws past the emit", async () => {
+  // The unhandled session error is deferred until socket close; its throw must not skip the frame clear.
+  test("http2 clears the session frame when a deferred destroy error escapes the emit", async () => {
     await using proc = Bun.spawn({
       cmd: [
         bunExe(),
@@ -1197,12 +1196,18 @@ describe("async context passes through", () => {
              client = http2.connect("http://127.0.0.1:" + server.address().port);
            });
            client.on("connect", () => {
-             try { client.destroy(new Error("boom")); } catch {}
-             const sym = Object.getOwnPropertySymbols(client)
-               .find(x => x.description === "::bunhttp2asynccontextframe::");
-             console.log(sym === undefined ? "SYMBOL-MISSING" : client[sym] === undefined ? "CLEARED" : "PINNED");
-             // Drain rather than process.exit(), like the siblings.
-             server.close();
+             const error = new Error("boom");
+             let destroyReturned = false;
+             process.once("uncaughtException", caught => {
+               if (caught !== error) throw caught;
+               if (!destroyReturned) throw new Error("session error must be deferred");
+               const sym = Object.getOwnPropertySymbols(client)
+                 .find(x => x.description === "::bunhttp2asynccontextframe::");
+               console.log(sym === undefined ? "SYMBOL-MISSING" : client[sym] === undefined ? "CLEARED" : "PINNED");
+               server.close();
+             });
+             client.destroy(error);
+             destroyReturned = true;
            });
          });`,
       ],
