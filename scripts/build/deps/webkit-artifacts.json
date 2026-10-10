@@ -1,58 +1,58 @@
 {
   "schema_version": 1,
-  "version": "cb8d6f202b5a396caa204ee1bb75d78175aa841a",
+  "version": "01f208ae7a87661e7503f514c946a37bc76ad1d1",
   "repository": "openclaw/WebKit",
-  "tag": "autobuild-cb8d6f202b5a396caa204ee1bb75d78175aa841a",
+  "tag": "autobuild-01f208ae7a87661e7503f514c946a37bc76ad1d1",
   "artifacts": {
     "bun-webkit-linux-amd64.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-cb8d6f202b5a396caa204ee1bb75d78175aa841a/bun-webkit-linux-amd64.tar.gz",
-      "sha256": "388ac26940e61c51ae82b00c8a338d1f447547c38746c8b856aa4afe4333f06c",
-      "size": 472551388
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-01f208ae7a87661e7503f514c946a37bc76ad1d1/bun-webkit-linux-amd64.tar.gz",
+      "sha256": "4b2bed185ee6899c644712a708192e5fa6d7bf713a9e2ac00a99290f0a960ca0",
+      "size": 602902968
     },
     "bun-webkit-macos-arm64.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-cb8d6f202b5a396caa204ee1bb75d78175aa841a/bun-webkit-macos-arm64.tar.gz",
-      "sha256": "fee6de8281339925019301e5072ca8f2daf1783182cd4c05e7718debc5418489",
-      "size": 210636302
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-01f208ae7a87661e7503f514c946a37bc76ad1d1/bun-webkit-macos-arm64.tar.gz",
+      "sha256": "01a3350f86beeac7b44290f83897b9206f1102113eccd65cf22628725a8b5cab",
+      "size": 210668958
     },
     "bun-webkit-linux-amd64-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-cb8d6f202b5a396caa204ee1bb75d78175aa841a/bun-webkit-linux-amd64-lto.tar.gz",
-      "sha256": "38d4a55b51c697a913bb3db6f84e7f63c2cf52da0fb45dee532d0be7d20153ce",
-      "size": 263162036
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-01f208ae7a87661e7503f514c946a37bc76ad1d1/bun-webkit-linux-amd64-lto.tar.gz",
+      "sha256": "38cadab75ca01d199f5f14d58fa23edcd0c6604f62aff57dcbadef7ba5955c2e",
+      "size": 321086065
     },
     "bun-webkit-linux-arm64-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-cb8d6f202b5a396caa204ee1bb75d78175aa841a/bun-webkit-linux-arm64-lto.tar.gz",
-      "sha256": "8dffa435e22327e7b31363e2415f7769af51c334d31ba8ead31cc3bb2d63fb66",
-      "size": 257292638
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-01f208ae7a87661e7503f514c946a37bc76ad1d1/bun-webkit-linux-arm64-lto.tar.gz",
+      "sha256": "117f1e3b5445ac8f48fed320cb315ebe30effc34868c41cc741d763a4d4669a3",
+      "size": 312642680
     },
     "bun-webkit-macos-arm64-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-cb8d6f202b5a396caa204ee1bb75d78175aa841a/bun-webkit-macos-arm64-lto.tar.gz",
-      "sha256": "a328defc36d1578d8d98c8dd9a7e92aacc71b23249005350e00f11223c3dce8e",
-      "size": 155496578
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-01f208ae7a87661e7503f514c946a37bc76ad1d1/bun-webkit-macos-arm64-lto.tar.gz",
+      "sha256": "2ce5266a4a6ad98e967c905b4677f0d25bace724bfeb3f7592d164e45ebdc897",
+      "size": 155495900
     },
     "bun-webkit-macos-amd64-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-cb8d6f202b5a396caa204ee1bb75d78175aa841a/bun-webkit-macos-amd64-lto.tar.gz",
-      "sha256": "e05cea80aadbbe861cc444d3e5a4757ca9291b1615b2752112167ce6c287fd93",
-      "size": 159853071
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-01f208ae7a87661e7503f514c946a37bc76ad1d1/bun-webkit-macos-amd64-lto.tar.gz",
+      "sha256": "de4ca5249123856248966ce978f0fd702c49bd139c5e0b08e5b41029050ce5bc",
+      "size": 159854529
     },
     "bun-webkit-linux-amd64-musl-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-cb8d6f202b5a396caa204ee1bb75d78175aa841a/bun-webkit-linux-amd64-musl-lto.tar.gz",
-      "sha256": "ee92d1e5911a11e2ee0c678f13a0816b89f611c438bf8a538ca5ca8834014238",
-      "size": 221906946
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-01f208ae7a87661e7503f514c946a37bc76ad1d1/bun-webkit-linux-amd64-musl-lto.tar.gz",
+      "sha256": "71f117804f7504d0445c3c9f5335e52658725cf5a7285be16c9fd968f2a0000b",
+      "size": 221926354
     },
     "bun-webkit-linux-arm64-musl-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-cb8d6f202b5a396caa204ee1bb75d78175aa841a/bun-webkit-linux-arm64-musl-lto.tar.gz",
-      "sha256": "96719b39d1a6efce6cea79940f1ae8d3122b99b72e1d3b774c3e67df1bfe88b1",
-      "size": 223788141
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-01f208ae7a87661e7503f514c946a37bc76ad1d1/bun-webkit-linux-arm64-musl-lto.tar.gz",
+      "sha256": "25179e0937976953f7b903351a0ba3e08621c6cf9ff6c5bee9da68314fb3b00c",
+      "size": 223781120
     },
     "bun-webkit-windows-amd64-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-cb8d6f202b5a396caa204ee1bb75d78175aa841a/bun-webkit-windows-amd64-lto.tar.gz",
-      "sha256": "daa7fc22e6c0b3f066d2ee02f2a91274afe46b1251af810822d1d7b2b854446a",
-      "size": 665627810
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-01f208ae7a87661e7503f514c946a37bc76ad1d1/bun-webkit-windows-amd64-lto.tar.gz",
+      "sha256": "710f533dbaced7f04850700124c7e5a7eac471506716c1a072d6c98cddf4a574",
+      "size": 665657963
     },
     "bun-webkit-windows-arm64.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-cb8d6f202b5a396caa204ee1bb75d78175aa841a/bun-webkit-windows-arm64.tar.gz",
-      "sha256": "a9446e24c43a8647f9da15708118ad1ef2641af211b3a9304fd3e3a46e2a06db",
-      "size": 367132369
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-01f208ae7a87661e7503f514c946a37bc76ad1d1/bun-webkit-windows-arm64.tar.gz",
+      "sha256": "3b191811b05af7db32f6bd7d90baa5ff27dcaf590640d6b86d3b9ce634608382",
+      "size": 367161114
     }
   },
   "variants": {
@@ -112,14 +112,14 @@
   },
   "qualification": {
     "passed": true,
-    "source": "cb8d6f202b5a396caa204ee1bb75d78175aa841a",
+    "source": "01f208ae7a87661e7503f514c946a37bc76ad1d1",
     "bun_commit": "b83b544ef744b6ab0dc1feadb59652261d64291d",
     "selected_files": 44,
     "result_files": 46,
     "als_variants_per_mode": 14,
     "proxy_minimum": 4,
     "resource_minimum": 16,
-    "bun_adapter_sha256": "b905c9d7744db922a3e890628b29a9d0715ca742eeaed7d808a003f36d99f50a",
+    "bun_adapter_sha256": "0383a54601050b837940594b5af751f7e727812ed111a827c3ea2ac293f1afc2",
     "upstream_sync": {
       "passed": true,
       "base_commit": "d2d2a26ef973cdd97b37953f5dba58052acad74f",
@@ -153,15 +153,15 @@
         "worldStateAtStall": 0,
         "collectorParkingThreadId": 0,
         "mutatorParkingThreadId": 0,
-        "conditionAddress": "0x49871a406ae",
-        "worldAddress": "0x49871a406a8",
-        "elapsedMs": 1.853
+        "conditionAddress": "0x3af810406ae",
+        "worldAddress": "0x3af810406a8",
+        "elapsedMs": 1.619
       },
-      "adapter_sha256": "81f056a7ab130284a8ede73ccb1a8a01528ea072218a80af515d8aab036a8275"
+      "adapter_sha256": "7dc42a478bcba1558dd8bda524cc04e2911b7ce512fbb28c9fb81cc0edb5e48e"
     },
     "engine": {
       "passed": true,
-      "source": "cb8d6f202b5a396caa204ee1bb75d78175aa841a",
+      "source": "01f208ae7a87661e7503f514c946a37bc76ad1d1",
       "stress_counts": {
         "jsc-stress": 1779,
         "jsc-modules": 1639
@@ -182,7 +182,7 @@
     },
     "compatibility": {
       "passed": true,
-      "source": "cb8d6f202b5a396caa204ee1bb75d78175aa841a",
+      "source": "01f208ae7a87661e7503f514c946a37bc76ad1d1",
       "base_commit": "d2d2a26ef973cdd97b37953f5dba58052acad74f",
       "prepared_tree": "d9ec052fccc81afbf43a5344e52bc980f439d587",
       "paired_tree": "aee7cd52d7efcb9835b434a24fa47de06cc664f6",
@@ -190,25 +190,25 @@
       "only_manifest_changed_after_pairing": true,
       "memory_tests": 3,
       "startup": true,
-      "manifest_patch_sha256": "ae991afdc1d3fa92e85e54bc0873178f380789e35bc2938f6bb736175ce24a40"
+      "manifest_patch_sha256": "9f8d8e40f0d514f5d48d48bbd95e02bcad3670d350f3bd2348b45192f6d7b17e"
     },
     "windows_arm64": {
       "startup": true,
-      "arraybuffer_accounting": true,
-      "dfg": true,
-      "sha256": "a9446e24c43a8647f9da15708118ad1ef2641af211b3a9304fd3e3a46e2a06db",
-      "arraybuffer_modes": 5,
-      "source": "cb8d6f202b5a396caa204ee1bb75d78175aa841a",
-      "lane": "bun-webkit-windows-arm64",
+      "sha256": "3b191811b05af7db32f6bd7d90baa5ff27dcaf590640d6b86d3b9ce634608382",
       "architecture": "arm64",
+      "ffi": true,
+      "dfg": true,
+      "lane": "bun-webkit-windows-arm64",
       "passed": true,
-      "ffi": true
+      "arraybuffer_modes": 5,
+      "source": "01f208ae7a87661e7503f514c946a37bc76ad1d1",
+      "arraybuffer_accounting": true
     }
   },
   "lanes": [
     {
       "schema_version": 1,
-      "source": "cb8d6f202b5a396caa204ee1bb75d78175aa841a",
+      "source": "01f208ae7a87661e7503f514c946a37bc76ad1d1",
       "base": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "lane": {
         "label": "bun-webkit-linux-amd64",
@@ -423,6 +423,21 @@
           "commit": "cb8d6f202b5a396caa204ee1bb75d78175aa841a",
           "subject": "docs: prepare passive collector and worker cadence release (#23)",
           "patch_sha256": "ca15bffd0e69f3d0c91f49626eef28baa0cffce4984036b4a105388dbb424eeb"
+        },
+        {
+          "commit": "235ca71a1f0a4c177b0a609fa6e5c2dda8a73986",
+          "subject": "fix(jsc): initialize VM entry and deferred-scope storage (#24)",
+          "patch_sha256": "d3cba464004f11f3f946a45dfd15293b2acb732d8c82e1922190995dffb10a69"
+        },
+        {
+          "commit": "791431dcde36ed21da655ed856acfc92c5a15528",
+          "subject": "fix(jsc): retry traps after foreign-stack suspension refusal (#25)",
+          "patch_sha256": "bf0449b1ee276b7e0249aff14a90f43450f91849a2e1524919e6f07e1fcc88f3"
+        },
+        {
+          "commit": "01f208ae7a87661e7503f514c946a37bc76ad1d1",
+          "subject": "docs: prepare conservative stack retention release (#27)",
+          "patch_sha256": "060c22af5a11134d70ab0d12b8f963c9275ccbe0848207281070ed45c379eb65"
         }
       ],
       "recipe_sha256": {
@@ -447,7 +462,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:eccb8f810765556958063a96d41fe0823c16b876eeef81bc37542bd32bd1beb3",
+      "toolchain_image_id": "sha256:8e953836309003cf49a3d2aaa0308d69fdec11b45efe301217216f7a424c9d5e",
       "commands": {
         "base": [
           "docker",
@@ -525,28 +540,28 @@
           "."
         ]
       },
-      "tool_versions": "Ubuntu clang version 23.1.2 (++20260910043923+069ef0e7cb36-1~exp1~20260910043934.72)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 4.4.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.10.0",
+      "tool_versions": "Ubuntu clang version 23.1.2 (++20260910043923+069ef0e7cb36-1~exp1~20260910043934.72)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 4.4.4\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.10.0",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "37562460601",
+      "workflow_run": "37986110429",
       "run_attempt": "1",
-      "elapsed_seconds": 573.590663433075,
+      "elapsed_seconds": 675.6875793933868,
       "files": {
         "bun-webkit-linux-amd64.tar.gz": {
-          "sha256": "388ac26940e61c51ae82b00c8a338d1f447547c38746c8b856aa4afe4333f06c",
-          "size": 472551388
+          "sha256": "4b2bed185ee6899c644712a708192e5fa6d7bf713a9e2ac00a99290f0a960ca0",
+          "size": 602902968
         }
       },
       "provenance_files": {
-        "artifact-build.json": "6544997bd85046602c67e8771d3724b00a4e5447ab937e156f7b1c150121ce38",
-        "toolchain-image.json": "ec12b513c7851936ac320b98624efc89bc8e6d800c45fcf6f9337df8b766111a",
-        "tool-versions.txt": "1f732938c107d159895e80daffe13bc457ce53c90ec3af6123ca41de962a231f",
-        "toolchain-build.json": "989066cf4e5adf3f81d64a401ad65e8055a7fe280faaef79c473cacd36368b83"
+        "artifact-build.json": "c02454c143604ea79b3fedef5986f0cc9ce00476dee9a8629c906b4649ae2a53",
+        "toolchain-image.json": "2a1498b909e0a0d3f0d702c76d2c0325cfa33ae81891c20b61614c6627ea782b",
+        "toolchain-build.json": "4627961fd52c3f120329475de15e81806d4871a8a40140bc9f9b72e836bc49cc",
+        "tool-versions.txt": "482e98b1eb54ae5a88a8e31aaeb70986e8f42683ee8ef8c0a34a569b5ae01b7b"
       }
     },
     {
       "schema_version": 1,
-      "source": "cb8d6f202b5a396caa204ee1bb75d78175aa841a",
+      "source": "01f208ae7a87661e7503f514c946a37bc76ad1d1",
       "base": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "lane": {
         "label": "bun-webkit-macos-arm64",
@@ -760,6 +775,21 @@
           "commit": "cb8d6f202b5a396caa204ee1bb75d78175aa841a",
           "subject": "docs: prepare passive collector and worker cadence release (#23)",
           "patch_sha256": "ca15bffd0e69f3d0c91f49626eef28baa0cffce4984036b4a105388dbb424eeb"
+        },
+        {
+          "commit": "235ca71a1f0a4c177b0a609fa6e5c2dda8a73986",
+          "subject": "fix(jsc): initialize VM entry and deferred-scope storage (#24)",
+          "patch_sha256": "d3cba464004f11f3f946a45dfd15293b2acb732d8c82e1922190995dffb10a69"
+        },
+        {
+          "commit": "791431dcde36ed21da655ed856acfc92c5a15528",
+          "subject": "fix(jsc): retry traps after foreign-stack suspension refusal (#25)",
+          "patch_sha256": "bf0449b1ee276b7e0249aff14a90f43450f91849a2e1524919e6f07e1fcc88f3"
+        },
+        {
+          "commit": "01f208ae7a87661e7503f514c946a37bc76ad1d1",
+          "subject": "docs: prepare conservative stack retention release (#27)",
+          "patch_sha256": "060c22af5a11134d70ab0d12b8f963c9275ccbe0848207281070ed45c379eb65"
         }
       ],
       "recipe_sha256": {
@@ -784,7 +814,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:0ed00552ad83c900cce547ab99115d090d809302bb2cb9421bd656969f78e71a",
+      "toolchain_image_id": "sha256:ea5a3cf6d7bdcee7700a349a0ef5822dcbbdb883420d313fed3bed5ec1852631",
       "commands": {
         "base": [
           "docker",
@@ -865,25 +895,25 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910044232+069ef0e7cb36-1~exp1~20260910044242.70)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.11.1",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "37562460601",
+      "workflow_run": "37986110429",
       "run_attempt": "1",
-      "elapsed_seconds": 317.60925912857056,
+      "elapsed_seconds": 290.6484544277191,
       "files": {
         "bun-webkit-macos-arm64.tar.gz": {
-          "sha256": "fee6de8281339925019301e5072ca8f2daf1783182cd4c05e7718debc5418489",
-          "size": 210636302
+          "sha256": "01a3350f86beeac7b44290f83897b9206f1102113eccd65cf22628725a8b5cab",
+          "size": 210668958
         }
       },
       "provenance_files": {
-        "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8",
-        "toolchain-build.json": "0124cf753e6a700d62275e955bc7d4b119ad011601c07a297e3edb13483c7889",
-        "artifact-build.json": "a2c2458eb184d00d571c81e9d1573d9180e7c09d7cf2e15404e7b3c63e485e51",
-        "toolchain-image.json": "bff07bf1239f3c6eab47a00542e6a00573f9ff5932173fbbef7f22643af71711"
+        "toolchain-build.json": "ff490bcdacc89b6d1b28175f17a383a7e520d86a8dda5d82284bd0c3aa2130d7",
+        "artifact-build.json": "d1f7fd1548949ee7938e63b331dbcd809c16478f02472f87639914f6bc0388f5",
+        "toolchain-image.json": "c24a55220e8f84faa0763af3790ba24343a77bc943db07ff1a3e12a344480556",
+        "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8"
       }
     },
     {
       "schema_version": 1,
-      "source": "cb8d6f202b5a396caa204ee1bb75d78175aa841a",
+      "source": "01f208ae7a87661e7503f514c946a37bc76ad1d1",
       "base": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "lane": {
         "label": "bun-webkit-linux-amd64-lto",
@@ -1098,6 +1128,21 @@
           "commit": "cb8d6f202b5a396caa204ee1bb75d78175aa841a",
           "subject": "docs: prepare passive collector and worker cadence release (#23)",
           "patch_sha256": "ca15bffd0e69f3d0c91f49626eef28baa0cffce4984036b4a105388dbb424eeb"
+        },
+        {
+          "commit": "235ca71a1f0a4c177b0a609fa6e5c2dda8a73986",
+          "subject": "fix(jsc): initialize VM entry and deferred-scope storage (#24)",
+          "patch_sha256": "d3cba464004f11f3f946a45dfd15293b2acb732d8c82e1922190995dffb10a69"
+        },
+        {
+          "commit": "791431dcde36ed21da655ed856acfc92c5a15528",
+          "subject": "fix(jsc): retry traps after foreign-stack suspension refusal (#25)",
+          "patch_sha256": "bf0449b1ee276b7e0249aff14a90f43450f91849a2e1524919e6f07e1fcc88f3"
+        },
+        {
+          "commit": "01f208ae7a87661e7503f514c946a37bc76ad1d1",
+          "subject": "docs: prepare conservative stack retention release (#27)",
+          "patch_sha256": "060c22af5a11134d70ab0d12b8f963c9275ccbe0848207281070ed45c379eb65"
         }
       ],
       "recipe_sha256": {
@@ -1122,7 +1167,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:0eb2a51466c084d15f8a3879eacb8330f50ad5b7d14f46422b9006cd5c1fe7b7",
+      "toolchain_image_id": "sha256:5a759a5f65eaf420a8c7606f832323d20455e838534502ee8d8e8884f5a6be6d",
       "commands": {
         "base": [
           "docker",
@@ -1200,28 +1245,28 @@
           "."
         ]
       },
-      "tool_versions": "Ubuntu clang version 23.1.2 (++20260910043923+069ef0e7cb36-1~exp1~20260910043934.72)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 4.4.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.10.0",
+      "tool_versions": "Ubuntu clang version 23.1.2 (++20260910043923+069ef0e7cb36-1~exp1~20260910043934.72)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 4.4.4\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.10.0",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "37562460601",
+      "workflow_run": "37986110429",
       "run_attempt": "1",
-      "elapsed_seconds": 616.068336725235,
+      "elapsed_seconds": 657.9045495986938,
       "files": {
         "bun-webkit-linux-amd64-lto.tar.gz": {
-          "sha256": "38d4a55b51c697a913bb3db6f84e7f63c2cf52da0fb45dee532d0be7d20153ce",
-          "size": 263162036
+          "sha256": "38cadab75ca01d199f5f14d58fa23edcd0c6604f62aff57dcbadef7ba5955c2e",
+          "size": 321086065
         }
       },
       "provenance_files": {
-        "tool-versions.txt": "1f732938c107d159895e80daffe13bc457ce53c90ec3af6123ca41de962a231f",
-        "toolchain-image.json": "14e138ee4bba0f95a85a3270bb96717ada386331dd367aa7449eaa934b1cc895",
-        "toolchain-build.json": "64624e64a4a8568a8a2bc32fedb00b221b26f725b7b2fe5d8ca1557534feca3e",
-        "artifact-build.json": "06cde12da1a4c592006c5c0757e588d35ced5b80a83139695e739fd6f2303907"
+        "toolchain-build.json": "f844200bf848af24f3d8c636857c7883bea191b02482285fc6cac87d6f8b6a0e",
+        "artifact-build.json": "7974b4c76b55a9aaab231b66b87454b6e39b5aaf5ae1234e318911eb18108c32",
+        "tool-versions.txt": "482e98b1eb54ae5a88a8e31aaeb70986e8f42683ee8ef8c0a34a569b5ae01b7b",
+        "toolchain-image.json": "d072689e551d8033af62d6539a7038e5e77eb2b744ab758a95e4d403f7912d2b"
       }
     },
     {
       "schema_version": 1,
-      "source": "cb8d6f202b5a396caa204ee1bb75d78175aa841a",
+      "source": "01f208ae7a87661e7503f514c946a37bc76ad1d1",
       "base": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "lane": {
         "label": "bun-webkit-linux-arm64-lto",
@@ -1436,6 +1481,21 @@
           "commit": "cb8d6f202b5a396caa204ee1bb75d78175aa841a",
           "subject": "docs: prepare passive collector and worker cadence release (#23)",
           "patch_sha256": "ca15bffd0e69f3d0c91f49626eef28baa0cffce4984036b4a105388dbb424eeb"
+        },
+        {
+          "commit": "235ca71a1f0a4c177b0a609fa6e5c2dda8a73986",
+          "subject": "fix(jsc): initialize VM entry and deferred-scope storage (#24)",
+          "patch_sha256": "d3cba464004f11f3f946a45dfd15293b2acb732d8c82e1922190995dffb10a69"
+        },
+        {
+          "commit": "791431dcde36ed21da655ed856acfc92c5a15528",
+          "subject": "fix(jsc): retry traps after foreign-stack suspension refusal (#25)",
+          "patch_sha256": "bf0449b1ee276b7e0249aff14a90f43450f91849a2e1524919e6f07e1fcc88f3"
+        },
+        {
+          "commit": "01f208ae7a87661e7503f514c946a37bc76ad1d1",
+          "subject": "docs: prepare conservative stack retention release (#27)",
+          "patch_sha256": "060c22af5a11134d70ab0d12b8f963c9275ccbe0848207281070ed45c379eb65"
         }
       ],
       "recipe_sha256": {
@@ -1460,7 +1520,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:7e57b3d6b59e7aa8dc0a5589f03dec743fed210417a0735664d8ee64ce2eb8ed",
+      "toolchain_image_id": "sha256:ee7d08ccd84af779377111751e79bb16fdb556cc59f94469d5c9a2c961402b58",
       "commands": {
         "base": [
           "docker",
@@ -1538,28 +1598,28 @@
           "."
         ]
       },
-      "tool_versions": "Ubuntu clang version 23.1.2 (++20260910043923+069ef0e7cb36-1~exp1~20260910043934.72)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 4.4.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.10.0",
+      "tool_versions": "Ubuntu clang version 23.1.2 (++20260910043923+069ef0e7cb36-1~exp1~20260910043934.72)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 4.4.4\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.10.0",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "37562460601",
+      "workflow_run": "37986110429",
       "run_attempt": "1",
-      "elapsed_seconds": 597.6936478614807,
+      "elapsed_seconds": 654.0468411445618,
       "files": {
         "bun-webkit-linux-arm64-lto.tar.gz": {
-          "sha256": "8dffa435e22327e7b31363e2415f7769af51c334d31ba8ead31cc3bb2d63fb66",
-          "size": 257292638
+          "sha256": "117f1e3b5445ac8f48fed320cb315ebe30effc34868c41cc741d763a4d4669a3",
+          "size": 312642680
         }
       },
       "provenance_files": {
-        "tool-versions.txt": "1f732938c107d159895e80daffe13bc457ce53c90ec3af6123ca41de962a231f",
-        "toolchain-image.json": "e831f3a84612656e757a6efedd534e8db74c839bdebfba19bba2183432751442",
-        "toolchain-build.json": "9ff344fb59feaa5170f48d0ce255745bb145eb288994792f520229aa8a335d9c",
-        "artifact-build.json": "a024fe15e3346cdfebd8bd5443c4ba668914f44ee2d591747cdc392b229900f9"
+        "tool-versions.txt": "482e98b1eb54ae5a88a8e31aaeb70986e8f42683ee8ef8c0a34a569b5ae01b7b",
+        "artifact-build.json": "95da843ce2000ffbd45626176272c13361b98a36598a9628f123b0cf90cea657",
+        "toolchain-build.json": "5cf2d10569dcd354bd1e1f746561d1d90329b25837c1d50aef010676da01d562",
+        "toolchain-image.json": "fa86f6189fefd3765c1c701da6a051aa95f5f8f8b211fc50961057e231830335"
       }
     },
     {
       "schema_version": 1,
-      "source": "cb8d6f202b5a396caa204ee1bb75d78175aa841a",
+      "source": "01f208ae7a87661e7503f514c946a37bc76ad1d1",
       "base": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "lane": {
         "label": "bun-webkit-macos-arm64-lto",
@@ -1773,6 +1833,21 @@
           "commit": "cb8d6f202b5a396caa204ee1bb75d78175aa841a",
           "subject": "docs: prepare passive collector and worker cadence release (#23)",
           "patch_sha256": "ca15bffd0e69f3d0c91f49626eef28baa0cffce4984036b4a105388dbb424eeb"
+        },
+        {
+          "commit": "235ca71a1f0a4c177b0a609fa6e5c2dda8a73986",
+          "subject": "fix(jsc): initialize VM entry and deferred-scope storage (#24)",
+          "patch_sha256": "d3cba464004f11f3f946a45dfd15293b2acb732d8c82e1922190995dffb10a69"
+        },
+        {
+          "commit": "791431dcde36ed21da655ed856acfc92c5a15528",
+          "subject": "fix(jsc): retry traps after foreign-stack suspension refusal (#25)",
+          "patch_sha256": "bf0449b1ee276b7e0249aff14a90f43450f91849a2e1524919e6f07e1fcc88f3"
+        },
+        {
+          "commit": "01f208ae7a87661e7503f514c946a37bc76ad1d1",
+          "subject": "docs: prepare conservative stack retention release (#27)",
+          "patch_sha256": "060c22af5a11134d70ab0d12b8f963c9275ccbe0848207281070ed45c379eb65"
         }
       ],
       "recipe_sha256": {
@@ -1797,7 +1872,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:6f5da618c0089c22d43fb5163e4d10a63136f63c0ec273a89f8fa9adb762b55a",
+      "toolchain_image_id": "sha256:890081526510b22c2e84fd52421ea58998e166a7f85afe4f0e3ee388ab832266",
       "commands": {
         "base": [
           "docker",
@@ -1878,25 +1953,25 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910044232+069ef0e7cb36-1~exp1~20260910044242.70)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.11.1",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "37562460601",
+      "workflow_run": "37986110429",
       "run_attempt": "1",
-      "elapsed_seconds": 320.179141998291,
+      "elapsed_seconds": 299.1335072517395,
       "files": {
         "bun-webkit-macos-arm64-lto.tar.gz": {
-          "sha256": "a328defc36d1578d8d98c8dd9a7e92aacc71b23249005350e00f11223c3dce8e",
-          "size": 155496578
+          "sha256": "2ce5266a4a6ad98e967c905b4677f0d25bace724bfeb3f7592d164e45ebdc897",
+          "size": 155495900
         }
       },
       "provenance_files": {
+        "toolchain-build.json": "99ef9abe9eda7e4d13db0c30a770302719aa9138e0be4e04a2f411c9ec4b7217",
         "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8",
-        "artifact-build.json": "9adfb9ed846479134b5d0d7f390ce7d772b5a65e57c275c47b0a75488be6f7ac",
-        "toolchain-image.json": "08694c81345af75c809e1e5c3f81b1b985fb466ae247ecadb6c6356c6ab289a4",
-        "toolchain-build.json": "25c4823c966ff64fcccf8ab5a32f023afaf993bce03c9a427361aa7170f7c0e2"
+        "artifact-build.json": "d4ec38a2f7ff10ad7617ae8b385a72c489d3ad30b00ba20b332a9f588d4cc5fa",
+        "toolchain-image.json": "6138d79fe3fd8c8307e97586889dcea596c015a24fb1734eba46f61142b4fcfe"
       }
     },
     {
       "schema_version": 1,
-      "source": "cb8d6f202b5a396caa204ee1bb75d78175aa841a",
+      "source": "01f208ae7a87661e7503f514c946a37bc76ad1d1",
       "base": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "lane": {
         "label": "bun-webkit-macos-amd64-lto",
@@ -2110,6 +2185,21 @@
           "commit": "cb8d6f202b5a396caa204ee1bb75d78175aa841a",
           "subject": "docs: prepare passive collector and worker cadence release (#23)",
           "patch_sha256": "ca15bffd0e69f3d0c91f49626eef28baa0cffce4984036b4a105388dbb424eeb"
+        },
+        {
+          "commit": "235ca71a1f0a4c177b0a609fa6e5c2dda8a73986",
+          "subject": "fix(jsc): initialize VM entry and deferred-scope storage (#24)",
+          "patch_sha256": "d3cba464004f11f3f946a45dfd15293b2acb732d8c82e1922190995dffb10a69"
+        },
+        {
+          "commit": "791431dcde36ed21da655ed856acfc92c5a15528",
+          "subject": "fix(jsc): retry traps after foreign-stack suspension refusal (#25)",
+          "patch_sha256": "bf0449b1ee276b7e0249aff14a90f43450f91849a2e1524919e6f07e1fcc88f3"
+        },
+        {
+          "commit": "01f208ae7a87661e7503f514c946a37bc76ad1d1",
+          "subject": "docs: prepare conservative stack retention release (#27)",
+          "patch_sha256": "060c22af5a11134d70ab0d12b8f963c9275ccbe0848207281070ed45c379eb65"
         }
       ],
       "recipe_sha256": {
@@ -2134,7 +2224,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:eb8fe8a953e248d0bfb5f417e50f819e17e3e3e69517ba03d43851b51cda2b72",
+      "toolchain_image_id": "sha256:69bf66abfb17651c4f349c7978e26a5a428e320bcf1ba56126cb9d702157710c",
       "commands": {
         "base": [
           "docker",
@@ -2215,25 +2305,25 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910044232+069ef0e7cb36-1~exp1~20260910044242.70)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.11.1",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "37562460601",
+      "workflow_run": "37986110429",
       "run_attempt": "1",
-      "elapsed_seconds": 323.44392251968384,
+      "elapsed_seconds": 365.2423486709595,
       "files": {
         "bun-webkit-macos-amd64-lto.tar.gz": {
-          "sha256": "e05cea80aadbbe861cc444d3e5a4757ca9291b1615b2752112167ce6c287fd93",
-          "size": 159853071
+          "sha256": "de4ca5249123856248966ce978f0fd702c49bd139c5e0b08e5b41029050ce5bc",
+          "size": 159854529
         }
       },
       "provenance_files": {
-        "artifact-build.json": "53c3e5bafba72e8ae21f704cd227a03736f7a4f14ff00e8501bfb89b3c18f2a1",
-        "toolchain-image.json": "eabcdd9ed287613cf4ce92924a796a34a2d3c6535eaeafb63101ca5b24b3a3fc",
-        "toolchain-build.json": "8f7ca66a4eddc9c73cbce2060444d14251c1750a7d9d2ff7d10894bd40c161b6",
+        "artifact-build.json": "2133b8525a6a77cb3d40619ba8e9357edd634e2fee7b72521c7fc25b3bab1454",
+        "toolchain-image.json": "8ab39d90198a5d79554bc4af4a77ec6c0ed256157515f6dd3e1f523f0d923019",
+        "toolchain-build.json": "6a11784c5344dce49667b9bf2233547bc7bf9daa643be70061795342216d5b12",
         "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8"
       }
     },
     {
       "schema_version": 1,
-      "source": "cb8d6f202b5a396caa204ee1bb75d78175aa841a",
+      "source": "01f208ae7a87661e7503f514c946a37bc76ad1d1",
       "base": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "lane": {
         "label": "bun-webkit-linux-amd64-musl-lto",
@@ -2445,6 +2535,21 @@
           "commit": "cb8d6f202b5a396caa204ee1bb75d78175aa841a",
           "subject": "docs: prepare passive collector and worker cadence release (#23)",
           "patch_sha256": "ca15bffd0e69f3d0c91f49626eef28baa0cffce4984036b4a105388dbb424eeb"
+        },
+        {
+          "commit": "235ca71a1f0a4c177b0a609fa6e5c2dda8a73986",
+          "subject": "fix(jsc): initialize VM entry and deferred-scope storage (#24)",
+          "patch_sha256": "d3cba464004f11f3f946a45dfd15293b2acb732d8c82e1922190995dffb10a69"
+        },
+        {
+          "commit": "791431dcde36ed21da655ed856acfc92c5a15528",
+          "subject": "fix(jsc): retry traps after foreign-stack suspension refusal (#25)",
+          "patch_sha256": "bf0449b1ee276b7e0249aff14a90f43450f91849a2e1524919e6f07e1fcc88f3"
+        },
+        {
+          "commit": "01f208ae7a87661e7503f514c946a37bc76ad1d1",
+          "subject": "docs: prepare conservative stack retention release (#27)",
+          "patch_sha256": "060c22af5a11134d70ab0d12b8f963c9275ccbe0848207281070ed45c379eb65"
         }
       ],
       "recipe_sha256": {
@@ -2469,7 +2574,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:b7dc608c603fa1fd970afa8abf9a9518481e0980f1982782c96da49385e8da55",
+      "toolchain_image_id": "sha256:cf221b1b38bf2bb2519b97c53362dac1b93f26061683e7bfa19cc235ceafdc85",
       "commands": {
         "base": [
           "docker",
@@ -2539,28 +2644,28 @@
           "."
         ]
       },
-      "tool_versions": "Alpine clang version 23.1.2\nTarget: x86_64-alpine-linux-musl\nThread model: posix\nInstalledDir: /usr/lib/llvm23/bin\nConfiguration file: /etc/clang23/x86_64-alpine-linux-musl.cfg\ncmake version 4.1.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.9",
+      "tool_versions": "Alpine clang version 23.1.3\nTarget: x86_64-alpine-linux-musl\nThread model: posix\nInstalledDir: /usr/lib/llvm23/bin\nConfiguration file: /etc/clang23/x86_64-alpine-linux-musl.cfg\ncmake version 4.1.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.9",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "37562460601",
+      "workflow_run": "37986110429",
       "run_attempt": "1",
-      "elapsed_seconds": 705.1598060131073,
+      "elapsed_seconds": 778.7306983470917,
       "files": {
         "bun-webkit-linux-amd64-musl-lto.tar.gz": {
-          "sha256": "ee92d1e5911a11e2ee0c678f13a0816b89f611c438bf8a538ca5ca8834014238",
-          "size": 221906946
+          "sha256": "71f117804f7504d0445c3c9f5335e52658725cf5a7285be16c9fd968f2a0000b",
+          "size": 221926354
         }
       },
       "provenance_files": {
-        "tool-versions.txt": "4792d68346e97d6f8bcf05124f904e68c9f56299be740663f00da9e1ddc96e9f",
-        "artifact-build.json": "c4ba1b008897e4c560805d8ba0397bc07bdc6c09af5e2e5bbe9917702b8358d2",
-        "toolchain-build.json": "b06d302c43d4f76d467e808504c6d113dd44e526e651c32e60e61127c8afb227",
-        "toolchain-image.json": "31285edce5a446c654210fa4d667322ff49a7c1e8d03fe5baf35f9d6b2a62aca"
+        "artifact-build.json": "df6cd2996a3fbc1b535bb6adf7ef392b036120b839fb84f8561a16f2b469e85d",
+        "toolchain-build.json": "6d76e26db7f60057529ca4b8ac94dd07abfcd2ac5127161c1acde57ba2fdfc31",
+        "tool-versions.txt": "18b7a0ab4a50ab306af67d0696ecc83148a35d6ac6f001a361bb3b849b8e87a7",
+        "toolchain-image.json": "015b7faaf1d178ff5d767d28a2e6bb200d3de6209b59819caf8114ec1f6ef92c"
       }
     },
     {
       "schema_version": 1,
-      "source": "cb8d6f202b5a396caa204ee1bb75d78175aa841a",
+      "source": "01f208ae7a87661e7503f514c946a37bc76ad1d1",
       "base": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "lane": {
         "label": "bun-webkit-linux-arm64-musl-lto",
@@ -2772,6 +2877,21 @@
           "commit": "cb8d6f202b5a396caa204ee1bb75d78175aa841a",
           "subject": "docs: prepare passive collector and worker cadence release (#23)",
           "patch_sha256": "ca15bffd0e69f3d0c91f49626eef28baa0cffce4984036b4a105388dbb424eeb"
+        },
+        {
+          "commit": "235ca71a1f0a4c177b0a609fa6e5c2dda8a73986",
+          "subject": "fix(jsc): initialize VM entry and deferred-scope storage (#24)",
+          "patch_sha256": "d3cba464004f11f3f946a45dfd15293b2acb732d8c82e1922190995dffb10a69"
+        },
+        {
+          "commit": "791431dcde36ed21da655ed856acfc92c5a15528",
+          "subject": "fix(jsc): retry traps after foreign-stack suspension refusal (#25)",
+          "patch_sha256": "bf0449b1ee276b7e0249aff14a90f43450f91849a2e1524919e6f07e1fcc88f3"
+        },
+        {
+          "commit": "01f208ae7a87661e7503f514c946a37bc76ad1d1",
+          "subject": "docs: prepare conservative stack retention release (#27)",
+          "patch_sha256": "060c22af5a11134d70ab0d12b8f963c9275ccbe0848207281070ed45c379eb65"
         }
       ],
       "recipe_sha256": {
@@ -2796,7 +2916,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:56b2a605b2038c09090f8be89e164589a63b1d7b0d65257f154dbc7390a65b56",
+      "toolchain_image_id": "sha256:ec3eddef460ff44c7539550938a0b574159ae93ef75f9dd67dd2b077375d3e84",
       "commands": {
         "base": [
           "docker",
@@ -2866,28 +2986,28 @@
           "."
         ]
       },
-      "tool_versions": "Alpine clang version 23.1.2\nTarget: x86_64-alpine-linux-musl\nThread model: posix\nInstalledDir: /usr/lib/llvm23/bin\nConfiguration file: /etc/clang23/x86_64-alpine-linux-musl.cfg\ncmake version 4.1.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.9",
+      "tool_versions": "Alpine clang version 23.1.3\nTarget: x86_64-alpine-linux-musl\nThread model: posix\nInstalledDir: /usr/lib/llvm23/bin\nConfiguration file: /etc/clang23/x86_64-alpine-linux-musl.cfg\ncmake version 4.1.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.9",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "37562460601",
+      "workflow_run": "37986110429",
       "run_attempt": "1",
-      "elapsed_seconds": 776.1442596912384,
+      "elapsed_seconds": 712.3723208904266,
       "files": {
         "bun-webkit-linux-arm64-musl-lto.tar.gz": {
-          "sha256": "96719b39d1a6efce6cea79940f1ae8d3122b99b72e1d3b774c3e67df1bfe88b1",
-          "size": 223788141
+          "sha256": "25179e0937976953f7b903351a0ba3e08621c6cf9ff6c5bee9da68314fb3b00c",
+          "size": 223781120
         }
       },
       "provenance_files": {
-        "toolchain-image.json": "3e6bb5a5cf96fa428f818624982f6af63f4f83197389afe1a2521cb7a90866e0",
-        "tool-versions.txt": "4792d68346e97d6f8bcf05124f904e68c9f56299be740663f00da9e1ddc96e9f",
-        "toolchain-build.json": "ab38a4bb2ca8a68281e300b936b0e40760c7a9b54aad3bfa839c17052e805f2f",
-        "artifact-build.json": "900f74ea8cdcdb2654b0cbd474cd4a5c22cf0b0eccf75732dc3a8801738187e2"
+        "toolchain-image.json": "1019b7b47ca682b9f9b45d6048b017a4d3c6fc1570da18fb1ba1c1e7de606ba8",
+        "artifact-build.json": "776d7ebc39e867a2550568fb1635f17df74dc25d00ceff016d6fde246fddb418",
+        "toolchain-build.json": "ddd924fb1830886cd19316d3adeb9764f7f2069fc26eb47dc97c250e144ba65f",
+        "tool-versions.txt": "18b7a0ab4a50ab306af67d0696ecc83148a35d6ac6f001a361bb3b849b8e87a7"
       }
     },
     {
       "schema_version": 1,
-      "source": "cb8d6f202b5a396caa204ee1bb75d78175aa841a",
+      "source": "01f208ae7a87661e7503f514c946a37bc76ad1d1",
       "base": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "lane": {
         "label": "bun-webkit-windows-amd64-lto",
@@ -3102,6 +3222,21 @@
           "commit": "cb8d6f202b5a396caa204ee1bb75d78175aa841a",
           "subject": "docs: prepare passive collector and worker cadence release (#23)",
           "patch_sha256": "ca15bffd0e69f3d0c91f49626eef28baa0cffce4984036b4a105388dbb424eeb"
+        },
+        {
+          "commit": "235ca71a1f0a4c177b0a609fa6e5c2dda8a73986",
+          "subject": "fix(jsc): initialize VM entry and deferred-scope storage (#24)",
+          "patch_sha256": "d3cba464004f11f3f946a45dfd15293b2acb732d8c82e1922190995dffb10a69"
+        },
+        {
+          "commit": "791431dcde36ed21da655ed856acfc92c5a15528",
+          "subject": "fix(jsc): retry traps after foreign-stack suspension refusal (#25)",
+          "patch_sha256": "bf0449b1ee276b7e0249aff14a90f43450f91849a2e1524919e6f07e1fcc88f3"
+        },
+        {
+          "commit": "01f208ae7a87661e7503f514c946a37bc76ad1d1",
+          "subject": "docs: prepare conservative stack retention release (#27)",
+          "patch_sha256": "060c22af5a11134d70ab0d12b8f963c9275ccbe0848207281070ed45c379eb65"
         }
       ],
       "recipe_sha256": {
@@ -3126,7 +3261,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:77aa9b0b5ec3a52207e161d6727333b167cd207980742639a1bb7c85254265dd",
+      "toolchain_image_id": "sha256:21d0a835d3a0f05f7fe41203e691c577872bbc19f48e2b6290944ba484d26016",
       "commands": {
         "base": [
           "docker",
@@ -3211,25 +3346,25 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910044232+069ef0e7cb36-1~exp1~20260910044242.70)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.11.1",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "37562460601",
+      "workflow_run": "37986110429",
       "run_attempt": "1",
-      "elapsed_seconds": 739.50270819664,
+      "elapsed_seconds": 769.361243724823,
       "files": {
         "bun-webkit-windows-amd64-lto.tar.gz": {
-          "sha256": "daa7fc22e6c0b3f066d2ee02f2a91274afe46b1251af810822d1d7b2b854446a",
-          "size": 665627810
+          "sha256": "710f533dbaced7f04850700124c7e5a7eac471506716c1a072d6c98cddf4a574",
+          "size": 665657963
         }
       },
       "provenance_files": {
-        "artifact-build.json": "5b4cc39c55dc551b368a27163e1d8fa0bee785d186e61294df220690beb1a6cc",
-        "toolchain-build.json": "d81861cdc206405a36cdf9a52febb9ee0c23c426ff56cc7a034cd3883691b58a",
-        "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8",
-        "toolchain-image.json": "b13cc654d6bd3b1848b6cfa58fa4e99efd4ea01b3389a8c6d43c10d0057ef144"
+        "toolchain-build.json": "7a1a3e03a6340d02b2e75776c4444400363db8400b2139509d03f3d41b5e55a8",
+        "artifact-build.json": "8e79f5ed5f2846317d6282cdec56083600a00b232b3c2710228e2a887b5908ee",
+        "toolchain-image.json": "d23bb90cd11ece35ef63058316d58694965c14a81a8bb9f861f46b28ee7d8f6c",
+        "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8"
       }
     },
     {
       "schema_version": 1,
-      "source": "cb8d6f202b5a396caa204ee1bb75d78175aa841a",
+      "source": "01f208ae7a87661e7503f514c946a37bc76ad1d1",
       "base": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "lane": {
         "label": "bun-webkit-windows-arm64",
@@ -3444,6 +3579,21 @@
           "commit": "cb8d6f202b5a396caa204ee1bb75d78175aa841a",
           "subject": "docs: prepare passive collector and worker cadence release (#23)",
           "patch_sha256": "ca15bffd0e69f3d0c91f49626eef28baa0cffce4984036b4a105388dbb424eeb"
+        },
+        {
+          "commit": "235ca71a1f0a4c177b0a609fa6e5c2dda8a73986",
+          "subject": "fix(jsc): initialize VM entry and deferred-scope storage (#24)",
+          "patch_sha256": "d3cba464004f11f3f946a45dfd15293b2acb732d8c82e1922190995dffb10a69"
+        },
+        {
+          "commit": "791431dcde36ed21da655ed856acfc92c5a15528",
+          "subject": "fix(jsc): retry traps after foreign-stack suspension refusal (#25)",
+          "patch_sha256": "bf0449b1ee276b7e0249aff14a90f43450f91849a2e1524919e6f07e1fcc88f3"
+        },
+        {
+          "commit": "01f208ae7a87661e7503f514c946a37bc76ad1d1",
+          "subject": "docs: prepare conservative stack retention release (#27)",
+          "patch_sha256": "060c22af5a11134d70ab0d12b8f963c9275ccbe0848207281070ed45c379eb65"
         }
       ],
       "recipe_sha256": {
@@ -3468,7 +3618,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:00aef4a00766e0c87ddc97835ec3a3f8f244cbefd44d1255ec2aefead8a05cc0",
+      "toolchain_image_id": "sha256:d84268d264805ef818c034944cae8dc13e75104d6e15667e551f5c04e3dc724e",
       "commands": {
         "base": [
           "docker",
@@ -3553,31 +3703,31 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910044232+069ef0e7cb36-1~exp1~20260910044242.70)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.11.1",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "37562460601",
+      "workflow_run": "37986110429",
       "run_attempt": "1",
-      "elapsed_seconds": 611.1740033626556,
+      "elapsed_seconds": 710.5446963310242,
       "files": {
         "bun-webkit-windows-arm64.tar.gz": {
-          "sha256": "a9446e24c43a8647f9da15708118ad1ef2641af211b3a9304fd3e3a46e2a06db",
-          "size": 367132369
+          "sha256": "3b191811b05af7db32f6bd7d90baa5ff27dcaf590640d6b86d3b9ce634608382",
+          "size": 367161114
         }
       },
       "provenance_files": {
-        "toolchain-build.json": "4ebeee2aa296cacb8e247a70a3e57dffe9d3178deef84bc45f8746be3c60f8b5",
+        "toolchain-build.json": "16115b58754982dd55330a9e0dc1be6c32f00701f7099d19b477ad2f60debb24",
         "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8",
-        "artifact-build.json": "780dd87e670e785d18821f49941b96294025d5f3a85170000469d04dcca1ced6",
-        "toolchain-image.json": "4ee02d04e7ebcfd3465acd7676ae67543280cde4c79ad6eff65bc217261c00de"
+        "toolchain-image.json": "a75b43265faabe6ae5e1c9ca19c1aa0e29fdeec97a16a388898c6c5cd2904632",
+        "artifact-build.json": "993b9a6124de643915a9a257debdf950c102bf6457629abe7b56d64f09a00762"
       }
     }
   ],
   "supporting_files": {
     "LICENSE-SOURCES.txt": {
-      "sha256": "b914220dfd50aa44e55263ae7cf3df724af9e6beec90b4091ee8c943a0348a24",
+      "sha256": "f8bb9209b5f9dd5883735ac8dd779fe99a06312193cdc4c7dbb86ad14736db3c",
       "size": 26102
     },
     "provenance.tar.gz": {
-      "sha256": "6a35097091aadaf4d746904c4e41d006841edc9c89ec4d1850947ed019a5402d",
-      "size": 931695
+      "sha256": "21fda56d6f042f0502d91728963cf9917201486954cb21debf905b3ce32429ff",
+      "size": 937568
     }
   }
 }

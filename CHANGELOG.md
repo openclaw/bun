@@ -265,3 +265,5 @@
 - Run external-value and added Node-API finalizers at environment teardown, preserve nullable-env external-string finalization, and copy addon-owned string storage before sharing it across workers. Adapts [oven-sh/bun#32912](https://github.com/oven-sh/bun/pull/32912); thanks @robobun!
 
 - Observe deferred HTTP/2 session errors in the async-context fixture while preserving frame-clearing and clean-exit checks.
+
+- Update the ten checksum-pinned [OpenClaw WebKit archives](https://github.com/openclaw/WebKit/releases/tag/autobuild-01f208ae7a87661e7503f514c946a37bc76ad1d1) to prevent stale VM entry storage from retaining unreachable objects and fix Linux Worker termination deadlocks during foreign-stack native calls. The storage fix builds on oven-sh/WebKit#694; thanks @robobun.

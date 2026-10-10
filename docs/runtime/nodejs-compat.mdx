@@ -294,6 +294,8 @@ Map and Set serialization copies entries and ignores custom own properties, like
 
 Contextified globals, `DONT_CONTEXTIFY` globals, and the main realm allow a Proxy in their prototype chain, including jsdom Window prototypes. This requires the fork’s pinned OpenClaw WebKit.
 
+The pinned engine initializes VM entry storage and deferred microtask scopes so stale native values do not retain otherwise unreachable objects.
+
 🟢 Fully implemented, including `vm.Script`, `vm.createContext`, `vm.runInContext`, `vm.runInNewContext`, `vm.runInThisContext`, `vm.compileFunction`, `vm.isContext`, the ES module classes `vm.Module`, `vm.SourceTextModule` and `vm.SyntheticModule` (exported without `--experimental-vm-modules`), and `importModuleDynamically` support. The `timeout`, `breakOnSigint`, `cachedData`, `microtaskMode` and `codeGeneration` options are supported. An `importModuleDynamically` callback that returns a promise for a `vm.Module` resolves `import()` to the module object rather than its namespace. `vm.measureMemory()` reports whole-heap figures for every context.
 
 The OpenClaw fork caches repeated `vm.Script` and `vm.compileFunction` compilations, including the `runInThisContext`, `runInContext`, and `runInNewContext` helpers. Each evaluation still creates fresh values and uses the target context's global object. Source text, filenames, offsets, compilation options, and dynamic import callback identity distinguish entries. Explicit `cachedData` uses the existing validation path. Valid `vm.Script` cached data also works when the JIT is unavailable. Empty, invalid, or incompatible-version data sets `cachedDataRejected` to `true`, and the script falls back to compiling the source.
@@ -329,6 +331,8 @@ Immediate engine GC timers wake idle workers when scheduled. These native wakeup
 Worker teardown avoids an extra full collection before final heap destruction. Native cleanup hooks and registered finalizers still run before the exit is acknowledged.
 
 Budgeted workers can use young-generation collections within their managed heap budgets; full collections still confirm heap-limit exhaustion. Synchronous GC wakes a passive collector even while another heap occupies the shared helpers.
+
+On Linux, other VMs can collect when termination is requested for a worker blocked on a foreign native stack. Termination stays pending until the worker reaches a JavaScript safe point. Blocking GC suspension still requires a valid stack and register snapshot.
 
 File workers select `--require` and `--import` preloads from their environment independently of `execArgv`. Explicit `env` or `execArgv` options re-read the worker's `NODE_OPTIONS` and `BUN_OPTIONS` before applying the selected CLI arguments. `execArgv: []` removes CLI preloads while environment preloads still apply. Require preloads run before import preloads.
 
