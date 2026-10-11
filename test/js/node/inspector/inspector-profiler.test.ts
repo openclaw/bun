@@ -823,6 +823,45 @@ console.log('allocation sampling contract passed');
         );
       }
     }
+    test.concurrent("includes idle time in an externally started worker CPU profile", async () => {
+      await using proc = Bun.spawn({
+        cmd: [
+          bunExe(),
+          "--input-type=module",
+          "-e",
+          `import assert from 'node:assert/strict';
+           import { Worker } from 'node:worker_threads';
+           import { setTimeout as delay } from 'node:timers/promises';
+           const worker = new Worker(\`const { parentPort } = require('node:worker_threads');
+             parentPort.on('message', () => {}); parentPort.postMessage('ready');\`, { eval: true });
+           try {
+             await new Promise((resolve, reject) => {
+               worker.once('message', resolve);
+               worker.once('error', reject);
+               worker.once('exit', () => reject(new Error('worker exited before ready')));
+             });
+             const before = performance.now();
+             const handle = await worker.startCpuProfile();
+             const started = performance.now();
+             // The worker stays outside JS: JSC can return no periodic samples.
+             await delay(25);
+             const stopping = performance.now();
+             const profile = JSON.parse(await handle.stop());
+             const stopped = performance.now();
+             const duration = (profile.endTime - profile.startTime) / 1000;
+             assert.ok(duration >= stopping - started - 0.001, JSON.stringify(profile));
+             assert.ok(duration <= stopped - before + 0.001);
+           } finally { await worker.terminate(); }
+           console.log('ok');`,
+        ],
+        env: bunEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      expect({ stdout, stderr, exitCode }).toEqual({ stdout: "ok\n", stderr: "", exitCode: 0 });
+    });
+
     let session: inspector.Session;
 
     beforeEach(() => {
