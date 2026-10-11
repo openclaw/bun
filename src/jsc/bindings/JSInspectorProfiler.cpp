@@ -83,7 +83,7 @@ JSC_DEFINE_HOST_FUNCTION(jsFunction_collectInspectorGarbage, (JSGlobalObject * g
 JSC_DECLARE_HOST_FUNCTION(jsFunction_startCPUProfiler);
 JSC_DEFINE_HOST_FUNCTION(jsFunction_startCPUProfiler, (JSGlobalObject * globalObject, CallFrame*))
 {
-    Bun::startCPUProfiler(globalObject->vm());
+    Bun::startCPUProfiler(globalObject->vm(), true);
     return JSValue::encode(jsUndefined());
 }
 
@@ -116,9 +116,9 @@ JSC_DEFINE_HOST_FUNCTION(jsFunction_setCPUSamplingInterval, (JSGlobalObject * gl
 }
 
 JSC_DECLARE_HOST_FUNCTION(jsFunction_isCPUProfilerRunning);
-JSC_DEFINE_HOST_FUNCTION(jsFunction_isCPUProfilerRunning, (JSGlobalObject*, CallFrame*))
+JSC_DEFINE_HOST_FUNCTION(jsFunction_isCPUProfilerRunning, (JSGlobalObject * globalObject, CallFrame*))
 {
-    return JSValue::encode(jsBoolean(Bun::isCPUProfilerRunning()));
+    return JSValue::encode(jsBoolean(Bun::isCPUProfilerRunning(globalObject->vm())));
 }
 
 // Precise code coverage via JSC's control-flow profiler. Unlike V8 (which
