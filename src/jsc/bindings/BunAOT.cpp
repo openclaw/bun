@@ -30,6 +30,7 @@ static bool aotDisabled()
 
 void configureAOT()
 {
+    JSC::Options::useAOTFunctionSource() = true;
     if (const char* options = getenv("BUN_AOT_OPTIONS")) {
         for (auto option : String::fromUTF8(options).split(',')) {
             if (!JSC::Options::setOption(reinterpret_cast<const char*>(option.utf8().data()))) {

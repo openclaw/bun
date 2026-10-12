@@ -1932,12 +1932,21 @@ test.skipIf(process.platform !== "darwin")(
       import { value } from "./value.ts";
       import { isAOTCompiled } from "bun:jsc";
       import { readFileSync } from "node:fs";
+      import { Worker as NodeWorker } from "node:worker_threads";
       const { lazy } = await import("./lazy.ts");
       function fail() { throw new Error("AOT native failure"); }
       if (process.env.AOT_THROW) fail();
       if (process.env.AOT_MUTATE) { Array.prototype.aotTest = 123; console.log([].aotTest); }
       const diskPath = process.cwd() + "/disk.mjs";
       const { disk } = await import(diskPath);
+      function workerProbe() { return 42; }
+      const probeWorker = new NodeWorker('require("node:worker_threads").parentPort.postMessage((' + workerProbe.toString() + ')())', { eval: true });
+      await new Promise((resolve, reject) => {
+        probeWorker.once("message", result => result === 42 ? resolve() : reject(new Error("incorrect source round-trip")));
+        probeWorker.once("error", reject);
+        probeWorker.once("exit", () => reject(new Error("source worker exited without a result")));
+      });
+      await probeWorker.terminate();
       const shared = new Int32Array(new SharedArrayBuffer(4));
       Atomics.store(shared, 0, 7);
       if (Atomics.load(shared, 0) !== 7) throw new Error("shared memory did not retain its value");
