@@ -451,6 +451,7 @@ impl JSBundleCompletionTask {
         let result = match to_executable(
             &compile_options.compile_target,
             output_files,
+            &[],
             root_dir.fd,
             module_prefix,
             outfile_for_executable,

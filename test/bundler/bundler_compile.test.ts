@@ -1923,3 +1923,81 @@ test("a standalone executable does not run a synchronous full GC after loading i
   expect(stderr).not.toContain("FullCollection");
   expect(exitCode).toBe(0);
 });
+
+test.skipIf(process.platform !== "darwin")(
+  "compile/AOT covers split modules, Workers and interpreted disk imports",
+  async () => {
+    using dir = tempDir("compile-aot-graph", {
+      "entry.ts": `
+      import { value } from "./value.ts";
+      import { isAOTCompiled } from "bun:jsc";
+      import { readFileSync } from "node:fs";
+      const { lazy } = await import("./lazy.ts");
+      function fail() { throw new Error("AOT native failure"); }
+      if (process.env.AOT_THROW) fail();
+      if (process.env.AOT_MUTATE) { Array.prototype.aotTest = 123; console.log([].aotTest); }
+      const diskPath = process.cwd() + "/disk.mjs";
+      const { disk } = await import(diskPath);
+      console.log(value(4), lazy(), disk(), isAOTCompiled(value), isAOTCompiled(lazy), isAOTCompiled(disk), typeof readFileSync);
+      const worker = new Worker(new URL("./worker.ts", import.meta.url));
+      worker.onmessage = ({data}) => { console.log(data); worker.terminate(); };
+      worker.onerror = () => process.exit(1);
+    `,
+      "value.ts": `export function value(n: number) { return n * 3; }`,
+      "lazy.ts": `import { value } from "./value.ts"; export function lazy() { return value(7); }`,
+      "worker.ts": `import { value } from "./value.ts"; import { isAOTCompiled } from "bun:jsc"; postMessage(value(9) + ":" + isAOTCompiled(value));`,
+      "disk.mjs": `export function disk() { return 8; }`,
+    });
+    const cwd = String(dir);
+    const build = Bun.spawnSync({
+      cmd: [
+        bunExe(),
+        "build",
+        "--compile",
+        "--compile-aot",
+        "--splitting",
+        "entry.ts",
+        "worker.ts",
+        "--outfile",
+        "app",
+      ],
+      cwd,
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(build.stderr.toString()).toContain("AOT: compiled");
+    expect(build.exitCode).toBe(0);
+    for (const disabled of [false, true]) {
+      const result = Bun.spawnSync({
+        cmd: [join(cwd, "app")],
+        cwd,
+        env: { ...bunEnv, BUN_AOT_DISABLE: disabled ? "1" : undefined },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const compiled = !disabled;
+      expect(result.stdout.toString()).toBe(`12 21 8 ${compiled} ${compiled} false function\n27:${compiled}\n`);
+      expect(result.exitCode).toBe(0);
+    }
+    const thrown = Bun.spawnSync({
+      cmd: [join(cwd, "app")],
+      cwd,
+      env: { ...bunEnv, AOT_THROW: "1" },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(thrown.stderr.toString()).toContain("error: AOT native failure");
+    expect(thrown.exitCode).toBe(1);
+    const mutable = Bun.spawnSync({
+      cmd: [join(cwd, "app")],
+      cwd,
+      env: { ...bunEnv, BUN_AOT_DISABLE: "1", AOT_MUTATE: "1" },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(mutable.stdout.toString()).toBe("123\n12 21 8 false false false function\n27:false\n");
+    expect(mutable.exitCode).toBe(0);
+  },
+  60_000,
+);

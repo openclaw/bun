@@ -41,6 +41,21 @@ Bun bundles all imported files and packages into the executable, along with a co
 
 ---
 
+## Experimental JSC ahead-of-time compilation
+
+A local Bun build linked with the AOT-enabled JavaScriptCore engine supports:
+
+```sh
+bun build --compile --compile-aot --splitting ./main.ts ./worker.ts --outfile app
+./app
+```
+
+This CLI-only option compiles every JavaScript module in the standalone graph into one native image embedded in the executable. It implies `--bytecode` to preserve the module graph metadata. At startup, Bun maps the image from the executable before creating JavaScript VMs and disables JIT compilation. Dynamic imports and Workers can use the same image. Runtime files and Bun's own JavaScript modules use the interpreter when they have no image entry.
+
+The current implementation supports the native macOS target. It requires immutable JavaScript intrinsics; programs that patch built-in objects may fail. Run `BUN_AOT_DISABLE=1 ./app` to skip the image and immutable intrinsics while retaining interpreter-only execution. Source text stays embedded for this fallback.
+
+`BUN_AOT_OPTIONS` accepts comma-separated JSC options without leading dashes, for example `BUN_AOT_OPTIONS=validateAOTInferredTypes=1`. Set `BUN_AOT_STATS=1` to print mapping and module-registration diagnostics. The experimental `isAOTCompiled(fn)` export from `bun:jsc` checks whether a function has a native AOT entry.
+
 ## Cross-compile to other platforms
 
 Use the `--target` flag to compile your standalone executable for a different operating system, architecture, or version of Bun than the machine you're running `bun build` on.

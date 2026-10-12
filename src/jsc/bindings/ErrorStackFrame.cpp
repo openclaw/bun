@@ -11,6 +11,8 @@ using namespace JSC;
 
 static bool isConstruct(JSC::CodeBlock* code, JSC::BytecodeIndex bc)
 {
+    if (code->unlinkedCodeBlock()->hasNoInstructions())
+        return false;
     switch (code->instructionAt(bc)->opcodeID()) {
     case op_construct:
     case op_construct_varargs:

@@ -120,8 +120,15 @@ static void populateStackFramePosition(const JSC::StackFrame& stackFrame, BunStr
     ZigStackFramePosition& position, JSC::SourceProvider** referenced_source_provider, PopulateStackTraceFlags flags)
 {
     auto code = stackFrame.codeBlock();
-    if (!code)
+    if (!code) {
+        if (stackFrame.hasLineAndColumnInfo()) {
+            auto lineColumn = stackFrame.computeLineAndColumn();
+            position.line_zero_based = OrdinalNumber::fromOneBasedInt(lineColumn.line).zeroBasedInt();
+            position.column_zero_based = OrdinalNumber::fromOneBasedInt(lineColumn.column).zeroBasedInt();
+        }
+        position.byte_position = -1;
         return;
+    }
 
     auto* provider = code->source().provider();
     if (!provider) [[unlikely]]

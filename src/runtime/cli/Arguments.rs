@@ -424,6 +424,7 @@ pub(crate) const BUILD_ONLY_PARAMS: &[ParamType] = concat_params!(
         parse_param!(
             "--compile                        Generate a standalone Bun executable containing your bundled code. Implies --production"
         ),
+        parse_param!("--compile-aot                    Compile the standalone module graph to native JSC AOT code (macOS)"),
         parse_param!(
             "--compile-exec-argv <STR>       Prepend arguments to the standalone executable's execArgv"
         ),
@@ -2477,6 +2478,19 @@ fn parse_build_command_options(
     if args.flag(b"--compile") {
         ctx.bundler_options.compile = true;
         ctx.bundler_options.inline_entrypoint_import_meta_main = true;
+    }
+
+    if args.flag(b"--compile-aot") {
+        if !ctx.bundler_options.compile {
+            Output::err_generic("--compile-aot requires --compile", ());
+            Global::exit(1);
+        }
+        if !cfg!(target_os = "macos") || !ctx.bundler_options.compile_target.is_default() {
+            Output::err_generic("--compile-aot currently requires the native macOS target", ());
+            Global::exit(1);
+        }
+        ctx.bundler_options.compile_aot = true;
+        ctx.bundler_options.bytecode = true;
     }
 
     if let Some(compile_exec_argv) = args.option(b"--compile-exec-argv") {

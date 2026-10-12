@@ -5040,3 +5040,65 @@ fn __bun_stdio_blob_store_deinit(ptr: *mut ()) {
         Store::deref(this);
     }
 }
+
+
+fn standalone_aot_parts() -> Option<(&'static [u8], &'static [u8])> {
+    let blob = bun_standalone_graph::Graph::get_ref()?.aot_image;
+    let tail = blob.len().checked_sub(8)?;
+    let size = u64::from_le_bytes(blob[tail..].try_into().ok()?);
+    let size = usize::try_from(size).ok()?;
+    if size == 0 || size > tail {
+        return None;
+    }
+    Some((&blob[..size], &blob[size..tail]))
+}
+
+#[unsafe(no_mangle)]
+pub(crate) unsafe extern "C" fn Bun__standaloneAOTImage(
+    bytes: *mut *const u8,
+    length: *mut usize,
+) -> bool {
+    let Some((image, _)) = standalone_aot_parts() else {
+        return false;
+    };
+    // SAFETY: C++ supplies live output pointers; the immutable image lives with the executable.
+    unsafe {
+        *bytes = image.as_ptr();
+        *length = image.len();
+    }
+    true
+}
+
+fn take_aot_word(bytes: &mut &[u8]) -> Option<u32> {
+    let (word, rest) = bytes.split_at_checked(4)?;
+    *bytes = rest;
+    Some(u32::from_le_bytes(word.try_into().ok()?))
+}
+
+#[unsafe(no_mangle)]
+pub(crate) unsafe extern "C" fn Bun__standaloneAOTModuleID(name: *const u8, length: usize) -> u32 {
+    let Some((_, mut manifest)) = standalone_aot_parts() else {
+        return 0;
+    };
+    // SAFETY: C++ passes a live UTF-8 source URL for this synchronous lookup.
+    let name = unsafe { core::slice::from_raw_parts(name, length) };
+    let Some(count) = take_aot_word(&mut manifest) else {
+        return 0;
+    };
+    for _ in 0..count {
+        let Some(size) = take_aot_word(&mut manifest) else {
+            return 0;
+        };
+        let Some((path, rest)) = manifest.split_at_checked(size as usize) else {
+            return 0;
+        };
+        manifest = rest;
+        let Some(id) = take_aot_word(&mut manifest) else {
+            return 0;
+        };
+        if path == name {
+            return id;
+        }
+    }
+    0
+}

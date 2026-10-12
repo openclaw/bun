@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add native macOS AOT standalone compilation with `--compile-aot`, including split chunks and explicit Worker entrypoints.
+
 - Drain queued Worker stdout and stderr before emitting `exit`, preserving output when a synchronous worker exit races the parent's stdio setup.
 
 - Avoid an extra tracing collection when destroying Workers while preserving native-resource finalizers and the mandatory final heap sweep.

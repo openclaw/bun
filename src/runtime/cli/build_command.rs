@@ -1,5 +1,8 @@
 use std::io::Write as _;
 
+#[path = "compile_aot.rs"]
+mod compile_aot;
+
 use crate::cli::command::{Context, HotReload};
 use bun_bundler::bundle_v2::{self, BundleV2};
 use bun_bundler::linker_context::metafile_builder as MetafileBuilder;
@@ -921,9 +924,22 @@ impl BuildCommand {
                     }
                 }
 
+                let aot_image = if ctx.bundler_options.compile_aot {
+                    match compile_aot::build(output_files, &opt_public_path, opt_output_format) {
+                        Ok(image) => image,
+                        Err(error) => {
+                            Output::print_errorln(format_args!("AOT compilation failed: {}", error));
+                            Global::exit(1);
+                        }
+                    }
+                } else {
+                    Vec::new()
+                };
+
                 let result = match bun_standalone_module_graph::StandaloneModuleGraph::to_executable(
                     compile_target,
                     output_files,
+                    &aot_image,
                     root_dir.fd,
                     &opt_public_path,
                     outfile,

@@ -1,4 +1,6 @@
 #include "root.h"
+#include "BunAOT.h"
+#include <JavaScriptCore/InitializeThreading.h>
 
 #include "ZigGlobalObject.h"
 #include "CodeGenerationFromStrings.h"
@@ -398,8 +400,10 @@ extern "C" void JSCInitialize(const char* envp[], size_t envc, void (*onCrash)(c
             // After the loop: BUN_JSC_useWasm=1 does not bring it back, and BUN_JSC_useWasm=0 stays a valid name.
             JSC::Options::useWasm() = false;
 #endif
+            Bun::configureAOT();
             JSC::Options::assertOptionsAreCoherent();
         }); // end JSC::initialize lambda
+        Bun::registerAOT();
 
 #if OS(WINDOWS) && (CPU(X86_64) || CPU(ARM64))
         // JSC::initialize() registered unwind info + a language-specific SEH

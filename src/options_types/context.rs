@@ -249,6 +249,7 @@ pub struct BundlerOptions {
     pub elide_lines: Option<usize>,
     // Compile options
     pub compile: bool,
+    pub compile_aot: bool,
     pub compile_target: CompileTarget,
     pub compile_exec_argv: Option<Box<[u8]>>,
     pub compile_autoload_dotenv: bool,
@@ -310,6 +311,7 @@ impl Default for BundlerOptions {
             env_prefix: Box::default(),
             elide_lines: None,
             compile: false,
+            compile_aot: false,
             compile_target: CompileTarget::default(),
             compile_exec_argv: None,
             compile_autoload_dotenv: true,

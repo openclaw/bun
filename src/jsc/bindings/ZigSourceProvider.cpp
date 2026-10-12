@@ -1,4 +1,5 @@
 #include "root.h"
+#include "BunAOT.h"
 
 #include "helpers.h"
 
@@ -129,6 +130,8 @@ Ref<SourceProvider> SourceProvider::create(
     };
 
     auto provider = getProvider();
+    if (provider->sourceURL().startsWith("/$bunfs/"_s))
+        Bun::attachAOTSource(globalObject->vm(), provider.get(), !resolvedSource.isCommonJSModule);
 
     if (shouldGenerateCodeCoverage) {
         BunString providerURL = Bun::toString(provider->sourceURL());

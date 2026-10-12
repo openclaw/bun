@@ -38,6 +38,7 @@ pub struct StandaloneModuleGraph {
     /// `File.bytecode`. Holding a `&'static [u8]` over those bytes would freeze
     /// them under Stacked/Tree Borrows and make the later foreign write UB.
     pub bytes: *const [u8],
+    pub aot_image: &'static [u8],
     pub files: StringArrayHashMap<File>,
     /// Directory prefixes derived from `files` keys (no trailing `/`, always posix-separated).
     pub dirs: StringArrayHashMap<()>,
@@ -940,7 +941,8 @@ bitflags::bitflags! {
         /// `bytecode_order::REGION_COUNT` regions ends (`u32` each; the first two regions are what the recorded run
         /// read). A module's `bytecode` then runs from its cache entry to the end of that payload.
         const HAS_LINKED_BYTECODE_PAYLOAD   = 1 << 13;
-        // _padding: u19
+        const HAS_AOT_IMAGE = 1 << 14;
+        // _padding: u17
     }
 }
 
@@ -965,6 +967,7 @@ impl StandaloneModuleGraph {
         if raw_len == 0 {
             return Ok(StandaloneModuleGraph {
                 bytes: core::ptr::slice_from_raw_parts(NonNull::<u8>::dangling().as_ptr(), 0),
+                aot_image: &[],
                 files: StringArrayHashMap::new(),
                 dirs: StringArrayHashMap::new(),
                 entry_point_id: 0,
@@ -1160,6 +1163,19 @@ impl StandaloneModuleGraph {
                 linked_bytecode_payload = ptr;
             }
         }
+        let aot_image = if offsets.flags.contains(Flags::HAS_AOT_IMAGE)
+            && record_at + 8 <= raw_len
+        {
+            let ptr = StringPointer { offset: read_u32(record_at), length: read_u32(record_at + 4) };
+            if (ptr.offset as usize).checked_add(ptr.length as usize).is_some_and(|end| end <= offsets.byte_count)
+                && ptr.length != 0
+            {
+                // SAFETY: immutable AOT data is a separate, bounds-checked subrange of the section.
+                unsafe { slice_to(raw_const, raw_len, ptr) }
+            } else {
+                return Err(crate::Error::ModuleGraphTooLarge);
+            }
+        } else { &[] };
         if linked_bytecode_payload.length != 0 {
             // Like a module's `bytecode`, an internal module's runs from its cache entry to the end of the payload.
             builtin_bytecode.retain_mut(|(_, bytes, entry_offset)| {
@@ -1315,6 +1331,7 @@ impl StandaloneModuleGraph {
             }
             .as_bytes(),
             flags: offsets.flags,
+            aot_image,
             builtin_bytecode,
             bytecode_string_table,
             linked_bytecode_payload: (linked_bytecode_payload.length != 0).then(|| {
@@ -1463,6 +1480,7 @@ pub(crate) fn to_bytes(
     target: &CompileTarget,
     prefix: &[u8],
     output_files: &[OutputFile],
+    aot_image: &[u8],
     output_format: Format,
     compile_exec_argv: &[u8],
     flags: Flags,
@@ -1529,9 +1547,18 @@ pub(crate) fn to_bytes(
     string_builder.cap += 16 + 4 * size_of::<u32>();
     string_builder.cap += (2 + bun_bundler::bytecode_order::REGION_COUNT) * size_of::<u32>();
     string_builder.cap += size_of::<Offsets>();
+    string_builder.cap += aot_image.len() + 16384 + 8;
     string_builder.count_z(compile_exec_argv);
 
     string_builder.allocate()?;
+
+    // Mach-O places the graph after an eight-byte section length header.
+    let aot_image_ptr = if !aot_image.is_empty() {
+        let padding = (16384 - (string_builder.len + 8) % 16384) % 16384;
+        string_builder.writable()[..padding].fill(0);
+        string_builder.len += padding;
+        string_builder.append_count(aot_image)
+    } else { StringPointer::default() };
 
     let mut module_files: Vec<&OutputFile> = Vec::with_capacity(module_count);
     let mut entry_point_file: Option<&OutputFile> = None;
@@ -1917,6 +1944,11 @@ pub(crate) fn to_bytes(
             .any(|file| file.output_kind == options::OutputKind::Bytecode)
     {
         flags |= Flags::CROSS_COMPILED_BYTECODE;
+    }
+    if aot_image_ptr.length != 0 {
+        let _ = string_builder.append_count(&aot_image_ptr.offset.to_le_bytes());
+        let _ = string_builder.append_count(&aot_image_ptr.length.to_le_bytes());
+        flags |= Flags::HAS_AOT_IMAGE;
     }
     let compile_exec_argv_ptr = string_builder.append_count_z(compile_exec_argv);
 
@@ -2843,6 +2875,7 @@ pub fn target_builtins(
 pub fn to_executable(
     target: &CompileTarget,
     output_files: &[OutputFile],
+    aot_image: &[u8],
     root_dir: Fd,
     module_prefix: &[u8],
     outfile: &[u8],
@@ -2860,6 +2893,7 @@ pub fn to_executable(
         target,
         module_prefix,
         output_files,
+        aot_image,
         output_format,
         compile_exec_argv,
         flags,

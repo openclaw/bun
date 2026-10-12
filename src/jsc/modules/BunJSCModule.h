@@ -450,6 +450,17 @@ JSC_DEFINE_HOST_FUNCTION(functionCreateMemoryFootprint,
     return JSValue::encode(object);
 }
 
+JSC_DECLARE_HOST_FUNCTION(functionIsAOTCompiled);
+JSC_DEFINE_HOST_FUNCTION(functionIsAOTCompiled, (JSGlobalObject*, CallFrame* callFrame))
+{
+#if ENABLE(AOT)
+    auto* function = dynamicDowncast<JSFunction>(callFrame->argument(0));
+    return JSValue::encode(jsBoolean(function && !function->isHostFunction() && function->jsExecutable()->hasAOTEntry()));
+#else
+    return JSValue::encode(jsBoolean(false));
+#endif
+}
+
 JSC_DECLARE_HOST_FUNCTION(functionNeverInlineFunction);
 JSC_DEFINE_HOST_FUNCTION(functionNeverInlineFunction,
     (JSGlobalObject * globalObject,
@@ -1003,6 +1014,7 @@ DEFINE_NATIVE_MODULE(BunJSC)
     putNativeFn(Identifier::fromString(vm, "heapStats"_s), functionMemoryUsageStatistics);
     putNativeFn(Identifier::fromString(vm, "startSamplingProfiler"_s), functionStartSamplingProfiler);
     putNativeFn(Identifier::fromString(vm, "samplingProfilerStackTraces"_s), functionSamplingProfilerStackTraces);
+    putNativeFn(Identifier::fromString(vm, "isAOTCompiled"_s), functionIsAOTCompiled);
     putNativeFn(Identifier::fromString(vm, "noInline"_s), functionNeverInlineFunction);
     putNativeFn(Identifier::fromString(vm, "isRope"_s), functionIsRope);
     putNativeFn(Identifier::fromString(vm, "memoryUsage"_s), functionCreateMemoryFootprint);

@@ -228,7 +228,7 @@ JSCStackFrame::JSCStackFrame(JSC::VM& vm, const JSC::StackFrame& frame)
         auto lineColumn = frame.computeLineAndColumn();
         m_sourcePositions = { OrdinalNumber::fromOneBasedInt(lineColumn.line), OrdinalNumber::fromOneBasedInt(lineColumn.column) };
         m_sourcePositionsState = SourcePositionsState::Calculated;
-        auto codeType = frame.codeBlock()->codeType();
+        auto codeType = frame.codeType();
         if (codeType == JSC::FunctionCode || codeType == JSC::EvalCode) {
             m_isFunctionOrEval = true;
         }
@@ -411,7 +411,9 @@ String sourceURL(JSC::VM& vm, const JSC::StackFrame& frame)
         return "[native code]"_s;
     }
 
-    return sourceURL(frame.codeBlock());
+    if (auto* executable = frame.ownerExecutable())
+        return sourceURL(executable->source());
+    return String();
 }
 
 String sourceURL(JSC::StackVisitor& visitor)
@@ -513,12 +515,11 @@ String functionName(JSC::VM& vm, const JSC::StackFrame& frame, unsigned int* fla
     JSC::JSObject* callee = frame.callee() ? frame.callee()->getObject() : nullptr;
 
     if (frame.hasLineAndColumnInfo()) {
-        auto* codeblock = frame.codeBlock();
-        if (codeblock->isConstructor()) {
+        if (frame.isConstructor()) {
             isConstructor = true;
         }
 
-        auto codeType = codeblock->codeType();
+        auto codeType = frame.codeType();
         switch (codeType) {
         case JSC::CodeType::FunctionCode:
         case JSC::CodeType::EvalCode: {
@@ -532,7 +533,7 @@ String functionName(JSC::VM& vm, const JSC::StackFrame& frame, unsigned int* fla
             if (callee) {
                 functionName = Zig::functionName(vm, callee);
 
-                if (flags && codeblock->unlinkedCodeBlock()->isBuiltinFunction()) {
+                if (flags && frame.isBuiltinFunction()) {
                     *flags |= static_cast<unsigned int>(FunctionNameFlags::Builtin);
                 }
             }
@@ -544,7 +545,7 @@ String functionName(JSC::VM& vm, const JSC::StackFrame& frame, unsigned int* fla
         }
 
         if (functionName.isEmpty()) {
-            functionName = Zig::functionName(vm, codeblock);
+            functionName = frame.functionName(vm);
         }
     } else if (callee) {
         functionName = Zig::functionName(vm, callee);

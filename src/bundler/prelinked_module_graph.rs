@@ -12,7 +12,7 @@ use bun_js_printer::analyze_transpiled_module::{
 use crate::analyze_transpiled_module::ModuleInfoSlotTableBuilder;
 
 pub const MAGIC: u32 = 0x474d_4c50; // "PLMG"
-pub const VERSION: u32 = 2;
+pub const VERSION: u32 = 4;
 pub const NO_MODULE: u32 = u32::MAX;
 /// Hash column value of an entry whose name is a sentinel (never looked up by name); sorts last.
 const SENTINEL_HASH: u32 = u32::MAX;
@@ -33,7 +33,7 @@ mod module_flags {
 const PHASE_DEFER_BIT: u32 = 1 << 3;
 
 const HEADER_WORDS: usize = 16;
-const MODULE_WORDS: usize = 10;
+const MODULE_WORDS: usize = 12;
 const REQUEST_WORDS: usize = 4;
 const IMPORT_WORDS: usize = 6;
 const EXPORT_WORDS: usize = 6;
@@ -570,8 +570,8 @@ fn serialize(graph: &[Module], string_count: u32, hashes: &[Option<u32>]) -> Vec
         to_u32(imports_offset),
         to_u32(exports_offset),
         to_u32(stars_offset),
-        0,
-        0,
+        0, // No frontend binding hints; JSC infers from the module source.
+        to_u32(total),
         0,
     ] {
         put(v);
@@ -591,6 +591,8 @@ fn serialize(graph: &[Module], string_count: u32, hashes: &[Option<u32>]) -> Vec
             to_u32(m.exports.len()),
             to_u32(first_star),
             to_u32(m.star_exports.len()),
+            0,
+            0,
         ] {
             put(v);
         }
