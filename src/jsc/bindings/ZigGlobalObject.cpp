@@ -298,6 +298,9 @@ extern "C" void JSCInitialize(const char* envp[], size_t envc, void (*onCrash)(c
 
         std::set_terminate([]() { Zig__GlobalObject__onCrash(); });
         WTF::initializeMainThread();
+#if ENABLE(AOT)
+        JSC::installCompilers();
+#endif
 
         // Use JSC::initialize with a callback to set Options during initialization.
         // The callback runs BEFORE IPInt::initialize() so we can configure WASM options early.
@@ -305,7 +308,11 @@ extern "C" void JSCInitialize(const char* envp[], size_t envc, void (*onCrash)(c
         // useWasmFaultSignalHandler/FastMemory when ASAN_OPTIONS lacks
         // allow_user_segv_handler=1, so we don't force it off here.
         JSC::initialize([&] {
+#if defined(BUN_DISABLE_WEBASSEMBLY)
+            JSC::Options::useWasm() = false;
+#else
             JSC::Options::useWasm() = true;
+#endif
             JSC::Options::useJIT() = true;
             JSC::Options::useBBQJIT() = true;
             JSC::Options::useConcurrentJIT() = true;
@@ -387,6 +394,10 @@ extern "C" void JSCInitialize(const char* envp[], size_t envc, void (*onCrash)(c
             // that are not Bun's, where eval is on. After the loop: BUN_JSC_useDollarVM does not bring it back.
             if (Bun::codeGenerationFromStrings() != Bun::CodeGenerationFromStrings::Allowed) [[unlikely]]
                 JSC::Options::useDollarVM() = false;
+#if defined(BUN_DISABLE_WEBASSEMBLY)
+            // After the loop: BUN_JSC_useWasm=1 does not bring it back, and BUN_JSC_useWasm=0 stays a valid name.
+            JSC::Options::useWasm() = false;
+#endif
             JSC::Options::assertOptionsAreCoherent();
         }); // end JSC::initialize lambda
 
@@ -1845,7 +1856,7 @@ JSC_DEFINE_HOST_FUNCTION(makeGetterTypeErrorForBuiltins, (JSGlobalObject * globa
     auto attributeName = callFrame->uncheckedArgument(1).getString(globalObject);
     RETURN_IF_EXCEPTION(scope, {});
 
-    auto error = static_cast<ErrorInstance*>(createTypeError(globalObject, JSC::makeDOMAttributeGetterTypeErrorMessage(interfaceName.utf8().legacyCStringPointer(), attributeName)));
+    auto error = static_cast<ErrorInstance*>(createTypeError(globalObject, JSC::makeDOMAttributeGetterTypeErrorMessage(interfaceName, attributeName)));
     error->setNativeGetterTypeError();
     return JSValue::encode(error);
 }
@@ -3240,14 +3251,14 @@ void GlobalObject::visitChildrenImpl(JSCell* cell, Visitor& visitor)
 #undef VISIT_GLOBALOBJECT_GC_MEMBER
 
     // This runs on a concurrent GC helper thread. Fetch the VM through the
-    // visitor (AbstractSlotVisitor::vm() returns m_heap.vm(), guaranteed alive
-    // for the duration of marking) rather than thisObject->vm() which
+    // visitor (its collector's heap, guaranteed alive for the duration of
+    // marking) rather than thisObject->vm() which
     // dereferences JSGlobalObject::m_vm and can read stale bytes if the cell
     // was picked up via conservative scan mid-recycle (see the
     // visitGlobalObjectMember(unique_ptr) guard above for the same window).
     // A stale m_vm surfaces as a SEGV in TypeCastTraits<JSVMClientData>::isType
     // when downcast<> calls the virtual isWebCoreJSClientData() on garbage.
-    WebCore::clientData(visitor.vm())->httpHeaderIdentifiers().template visit<Visitor>(visitor);
+    WebCore::clientData(visitor.collector().heap().vm())->httpHeaderIdentifiers().template visit<Visitor>(visitor);
 
     thisObject->visitGeneratedLazyClasses<Visitor>(thisObject, visitor);
     thisObject->visitAdditionalChildrenInGCThread<Visitor>(visitor);
@@ -3526,13 +3537,13 @@ JSC::Identifier GlobalObject::moduleLoaderResolve(JSGlobalObject* jsGlobalObject
         auto moduleName = uncheckedDowncast<JSString>(key)->value(globalObject);
         RETURN_IF_EXCEPTION(scope, {});
         if (!globalObject->onLoadPlugins.hasVirtualModules() && !Bun__hasPlugins(globalObject)) {
-            CString narrowed;
+            Latin1CString narrowed;
             std::span<const Latin1Character> chars;
             if (moduleName->is8Bit())
                 chars = moduleName->span8();
             else if (moduleName->containsOnlyLatin1()) {
                 narrowed = moduleName->latin1();
-                chars = { std::bit_cast<const Latin1Character*>(narrowed.data()), narrowed.length() };
+                chars = narrowed.span();
             }
             if (chars.data()) {
                 if (int index = ModuleLoader__builtinAliasIndex(chars.data(), chars.size()); index >= 0)

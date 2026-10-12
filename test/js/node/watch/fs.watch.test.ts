@@ -106,7 +106,7 @@ describe("fs.watch", () => {
       count++;
       try {
         expect(["rename", "change"]).toContain(event);
-        expect(["new-file.txt", "new-folder.txt"]).toContain(filename);
+        expect(["new-file.txt", "new-folder.txt"]).toContain(filename as string);
         if (count >= 2) {
           watcher.close();
         }
@@ -290,7 +290,7 @@ describe("fs.watch", () => {
       expect(watcher.constructor.name).toBe("FSWatcher");
       expect(typeof watcher.ref).toBe("function");
       expect(typeof watcher.unref).toBe("function");
-      expect(typeof watcher.start).toBe("function");
+      expect(typeof (watcher as any).start).toBe("function");
     } finally {
       watcher.close();
     }
@@ -1098,7 +1098,7 @@ describe("fs.promises.watch", () => {
         count++;
         try {
           expect(["rename", "change"]).toContain(event.eventType);
-          expect(["new-file.txt", "new-folder.txt"]).toContain(event.filename);
+          expect(["new-file.txt", "new-folder.txt"]).toContain(event.filename!);
 
           if (count >= 2) {
             success = true;
@@ -1336,7 +1336,6 @@ describe("fs.promises.watch", () => {
 
     expect(event).toBeDefined();
     expect(Object.getPrototypeOf(event)).toBe(null);
-    // @ts-expect-error
     expect(event.hasOwnProperty).toBeUndefined();
     expect(() => String(event)).toThrow(TypeError);
     expect(Object.keys(event!).sort()).toEqual(["eventType", "filename"]);

@@ -782,7 +782,11 @@ bool WorkerMessagingProxy::postSerializedErrorToWorkerObject(Zig::GlobalObject& 
     if (!serialized && !vm.hasPendingTerminationException()) {
         if (auto* errorInstance = dynamicDowncast<JSC::ErrorInstance>(value)) {
             errorInstance->putDirect(vm, vm.propertyNames->stack, JSC::jsUndefined(), static_cast<unsigned>(JSC::PropertyAttribute::DontEnum));
+#if ENABLE(AOT)
+            errorInstance->setStackPropertyProvidedByCapturedStackTrace();
+#else
             errorInstance->setStackPropertyAlreadyMaterialized();
+#endif
             serialized = SerializedScriptValue::create(workerGlobalObject, value, SerializationForStorage::No, SerializationErrorMode::NonThrowing);
             CLEAR_IF_EXCEPTION(scope);
         }

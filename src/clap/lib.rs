@@ -376,6 +376,10 @@ pub struct ParseOptions<'a> {
     pub short_aliases: &'static [(&'static [u8], &'static [u8])],
     /// Observe each named option before repeated single-value options are collapsed.
     pub on_option: Option<fn(Names, Option<&[u8]>)>,
+    /// A `--flag` or `--flag=value` that no param names is a positional, with its dashes, in its
+    /// place among the others. For a command that hands flags on: `bun check --strict`. Otherwise
+    /// such a flag is skipped.
+    pub unknown_long_flags_are_positional: bool,
 }
 
 // Help/usage/error rendering — none of this is on the cold-start hot chain

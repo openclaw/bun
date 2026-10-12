@@ -524,7 +524,7 @@ pub fn apply(
 
 use crate::p::P;
 
-impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_ONLY> {
+impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool, const SEMA: bool> P<'a, TYPESCRIPT, SCAN_ONLY, SEMA> {
     pub fn ts_strip_check_assertion_grouping(&mut self, left: &bun_ast::Expr) {
         use bun_ast::{ExprData, OpCode, op::Level};
         let Some(recorder) = &self.ts_strip else {
@@ -612,7 +612,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
     }
 }
 
-impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_ONLY> {
+impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool, const SEMA: bool> P<'a, TYPESCRIPT, SCAN_ONLY, SEMA> {
     pub fn take_ts_strip_output(&mut self) -> Output {
         let recorder = self
             .ts_strip

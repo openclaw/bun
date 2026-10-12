@@ -691,8 +691,7 @@ JSValue fetchCommonJSModule(
         return {};
 
     if (Bun::isDataOrBlobURL(specifierWtfString)) [[unlikely]] {
-        Bun::throwIfMayNotMakeScriptFromStrings(globalObject, scope);
-        RETURN_IF_EXCEPTION(scope, {});
+        RETURN_IF_MAY_NOT_MAKE_SCRIPT_FROM_STRINGS(globalObject, scope, {});
     }
 
     String fileURLPath = specifierWtfString;
@@ -883,8 +882,7 @@ JSValue fetchCommonJSModuleNonBuiltin(
     JSC::JSModuleLoader* loader = Bun::moduleLoaderOf(globalObject, scope, target->moduleGraph());
     RETURN_IF_EXCEPTION(scope, {});
     if (Bun::isDataOrBlobURL(specifierWtfString)) [[unlikely]] {
-        Bun::throwIfMayNotMakeScriptFromStrings(globalObject, scope);
-        RETURN_IF_EXCEPTION(scope, {});
+        RETURN_IF_MAY_NOT_MAKE_SCRIPT_FROM_STRINGS(globalObject, scope, {});
     }
     {
         if constexpr (isExtension) {
