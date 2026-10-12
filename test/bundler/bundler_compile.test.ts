@@ -1932,7 +1932,14 @@ test.skipIf(process.platform !== "darwin")(
       import { value } from "./value.ts";
       import { isAOTCompiled } from "bun:jsc";
       import { readFileSync } from "node:fs";
+      import { createRequire } from "node:module";
       import { Worker as NodeWorker } from "node:worker_threads";
+      const require = createRequire(import.meta.url);
+      function loadDefault(path) { return require(path).default; }
+      for (let i = 0; i < 6; i++) {
+        const loaded = loadDefault("./default-" + i + ".js");
+        if (loaded.tag !== i) throw new Error("wrong required default: " + i + " got " + loaded.tag);
+      }
       const { lazy } = await import("./lazy.ts");
       function fail() { throw new Error("AOT native failure"); }
       if (process.env.AOT_THROW) fail();
@@ -1959,6 +1966,7 @@ test.skipIf(process.platform !== "darwin")(
       "lazy.ts": `import { value } from "./value.ts"; export function lazy() { return value(7); }`,
       "worker.ts": `import { value } from "./value.ts"; import { isAOTCompiled } from "bun:jsc"; postMessage(value(9) + ":" + isAOTCompiled(value));`,
       "disk.mjs": `export function disk() { return 8; }`,
+      ...Object.fromEntries(Array.from({ length: 6 }, (_, i) => [`default-${i}.js`, `export default { tag: ${i} };`])),
     });
     const cwd = String(dir);
     const build = Bun.spawnSync({
@@ -1970,6 +1978,7 @@ test.skipIf(process.platform !== "darwin")(
         "--splitting",
         "entry.ts",
         "worker.ts",
+        ...Array.from({ length: 6 }, (_, i) => `default-${i}.js`),
         "--outfile",
         "app",
       ],
