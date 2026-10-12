@@ -31,6 +31,16 @@ fn main() {
         .map(PathBuf::from)
         .unwrap_or_else(|_| repo.join("build/debug/codegen"));
 
+    println!("cargo:rustc-check-cfg=cfg(jsc_short_function_executable)");
+    let type_header = codegen_dir.parent().unwrap().join("deps/WebKit/JavaScriptCore/PrivateHeaders/JavaScriptCore/JSType.h");
+    if type_header.exists() {
+        println!("cargo:rerun-if-changed={}", type_header.display());
+        let source = std::fs::read_to_string(&type_header).expect("read local WebKit JSType layout");
+        if source.contains("macro(ShortFunctionExecutableType,") {
+            println!("cargo:rustc-cfg=jsc_short_function_executable");
+        }
+    }
+
     let cpp_rs = codegen_dir.join("cpp.rs");
     if !cpp_rs.exists() {
         panic!(
