@@ -11,7 +11,9 @@
 
 const kFlushSync = Symbol("kFlushSync");
 
-type PortReadable = import("node:stream").Readable & { endFromOwner?(): void };
+type PortReadable = import("node:stream").Readable & {
+  endFromOwner?(receiveMessageOnPort: (port: MessagePort) => { message: Uint8Array[] | null } | undefined): void;
+};
 
 // Readable fed by a MessagePort (worker.stdout/stderr on the parent, process.stdin
 // in the worker). The peer posts arrays of Buffers; null signals EOF.
@@ -59,8 +61,13 @@ function makePortReadable(port: MessagePort, incrementsPortRef: boolean) {
       port.unref();
     }
   });
-  // Lets the parent end worker.stdout/stderr when the worker exits abruptly.
-  stream.endFromOwner = function () {
+  // The worker's exit can arrive before the stdio port starts dispatching.
+  // Drain its finite queue before EOF, just like the public parentPort.
+  stream.endFromOwner = function (receiveMessageOnPort) {
+    let entry;
+    while (ended === false && (entry = receiveMessageOnPort(port)) !== undefined) {
+      onMessage({ data: entry.message });
+    }
     if (ended === false) {
       ended = true;
       stream.push(null);

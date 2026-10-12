@@ -845,6 +845,88 @@ describe("captured stdio backpressure", () => {
 describe("stdio is flushed when the worker exits synchronously", () => {
   const N = 300;
 
+  test.each(["exit", "exception", "rejection"])("queued stdout and stderr precede worker exit: %s", async mode => {
+    const stop =
+      mode === "exit"
+        ? "process.exit(7)"
+        : mode === "exception"
+          ? 'throw new Error("boom")'
+          : 'Promise.reject(new Error("boom"))';
+    const onExit =
+      mode === "rejection"
+        ? ""
+        : `process.on("exit", code => {
+      process.stdout.write("exit " + code + " " + process._exiting + "\\n");
+      process.stderr.write("exit stderr\\n");
+      process.exitCode = 42;
+    });`;
+    const workerSrc = `${onExit}
+    process.stdout.write("stdout 1\\n");
+    process.stdout.write("stdout 2\\n");
+    process.stderr.write("stderr 1\\n");
+    process.stderr.write("stderr 2\\n");
+    ${stop};`;
+    await using proc = Bun.spawn({
+      cmd: [
+        bunExe(),
+        "-e",
+        `const { Worker, MessagePort } = require("node:worker_threads");
+         const subscribe = MessagePort.prototype.addEventListener;
+         let deferred = 0;
+         // Force exit to reach the owner before any stdio port dispatch. A fast
+         // worker can finish before its parent has installed these listeners.
+         MessagePort.prototype.addEventListener = function(type, ...args) {
+           if (type === "message") { deferred++; return; }
+           return subscribe.call(this, type, ...args);
+         };
+         let w;
+         try {
+           w = new Worker(${JSON.stringify(workerSrc)}, { eval: true, stdout: true, stderr: true });
+         } finally {
+           MessagePort.prototype.addEventListener = subscribe;
+         }
+         if (deferred < 2) throw new Error("stdio port delivery was not deferred");
+         let out = "", err = "", error = null, termination, stderrTermination, callbackCode;
+         w.stdout.setEncoding("utf8").on("data", d => {
+           out += d;
+           termination ??= w.terminate((error, code) => { callbackCode = code; });
+         });
+         w.stderr.setEncoding("utf8").on("data", d => {
+           err += d;
+           stderrTermination ??= w.terminate();
+         });
+         w.on("error", e => error = e.message);
+         w.on("exit", code => {
+           console.log(JSON.stringify({ code, out, err, error }));
+           Promise.all([termination, stderrTermination]).then(([terminated, stderrTerminated]) => {
+             console.log(JSON.stringify({ terminated, stderrTerminated, callbackCode }));
+           });
+         });`,
+      ],
+      env: { ...bunEnv, NODE_NO_WARNINGS: "1" },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect(stdout).toBe(
+      JSON.stringify({
+        code: mode === "rejection" ? 1 : 42,
+        out: "stdout 1\nstdout 2\n" + (mode === "rejection" ? "" : `exit ${mode === "exit" ? 7 : 1} true\n`),
+        err: "stderr 1\nstderr 2\n" + (mode === "rejection" ? "" : "exit stderr\n"),
+        error: mode === "exit" ? null : "boom",
+      }) +
+        "\n" +
+        JSON.stringify({
+          terminated: mode === "rejection" ? 1 : 42,
+          stderrTerminated: mode === "rejection" ? 1 : 42,
+          callbackCode: mode === "rejection" ? 1 : 42,
+        }) +
+        "\n",
+    );
+    expect(stderr).toBe("");
+    expect(exitCode).toBe(0);
+  });
+
   test.each(["stdout", "stderr"] as const)("captured %s: console + raw write, then process.exit(0)", async name => {
     const method = name === "stdout" ? "log" : "error";
     const worker = new Worker(
@@ -4245,6 +4327,61 @@ describe("inherited NODE_OPTIONS errors", () => {
 });
 
 describe("resourceLimits", () => {
+  test("initial resource limits snapshot allows unresolved defaults", async () => {
+    const worker = new Worker("setInterval(() => {}, 1000)", { eval: true });
+    try {
+      const initial = worker.resourceLimits;
+      await once(worker, "online");
+      const online = worker.resourceLimits;
+      // The child can publish resolved limits before the parent receives online.
+      expect([-1, online.maxYoungGenerationSizeMb]).toContain(initial.maxYoungGenerationSizeMb);
+      expect([-1, online.maxOldGenerationSizeMb]).toContain(initial.maxOldGenerationSizeMb);
+      expect([-1, online.codeRangeSizeMb]).toContain(initial.codeRangeSizeMb);
+      expect(initial.stackSizeMb).toBe(4);
+      expect(online.maxYoungGenerationSizeMb).toBeGreaterThanOrEqual(0);
+      expect(online.maxOldGenerationSizeMb).toBeGreaterThanOrEqual(0);
+      expect(online.codeRangeSizeMb).toBeGreaterThanOrEqual(0);
+      expect(online.stackSizeMb).toBe(4);
+    } finally {
+      await worker.terminate();
+      expect(worker.resourceLimits).toEqual({});
+    }
+  });
+
+  test("initial resource limits snapshot preserves explicit limits", async () => {
+    const requested = {
+      maxYoungGenerationSizeMb: 8,
+      maxOldGenerationSizeMb: 64,
+      codeRangeSizeMb: 16,
+      stackSizeMb: 2,
+    };
+    const worker = new Worker("setInterval(() => {}, 1000)", { eval: true, resourceLimits: requested });
+    const partial = new Worker("setInterval(() => {}, 1000)", {
+      eval: true,
+      resourceLimits: { maxOldGenerationSizeMb: 64 },
+    });
+    try {
+      expect(worker.resourceLimits).toEqual(requested);
+      const initial = partial.resourceLimits;
+      await Promise.all([once(worker, "online"), once(partial, "online")]);
+      expect(worker.resourceLimits).toEqual(requested);
+      const online = partial.resourceLimits;
+      expect([-1, online.maxYoungGenerationSizeMb]).toContain(initial.maxYoungGenerationSizeMb);
+      expect([-1, online.codeRangeSizeMb]).toContain(initial.codeRangeSizeMb);
+      expect(initial.maxOldGenerationSizeMb).toBe(64);
+      expect(initial.stackSizeMb).toBe(4);
+      expect(online.maxYoungGenerationSizeMb).toBeGreaterThanOrEqual(0);
+      expect(online.codeRangeSizeMb).toBeGreaterThanOrEqual(0);
+      expect(online.maxOldGenerationSizeMb).toBe(64);
+      expect(online.stackSizeMb).toBe(4);
+    } finally {
+      await partial.terminate();
+      await worker.terminate();
+      expect(partial.resourceLimits).toEqual({});
+      expect(worker.resourceLimits).toEqual({});
+    }
+  });
+
   test("reads numeric getters in Node order and converts the second value", async () => {
     const calls: string[] = [];
     const values = { maxOldGenerationSizeMb: 64, maxYoungGenerationSizeMb: 16, codeRangeSizeMb: 32, stackSizeMb: 2 };

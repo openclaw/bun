@@ -842,6 +842,7 @@ class Worker extends EventEmitter {
   // this is used by terminate();
   // either is the exit code if exited, a promise resolving to the exit code, or undefined if we haven't sent .terminate() yet
   #onExitPromise: Promise<number> | number | undefined = undefined;
+  #resolveOnExit: ((code: number) => void) | undefined;
   #urlToRevoke = "";
   // threadId captured for cleaning up the messaging control port on close.
   #messagingThreadId: number | undefined = undefined;
@@ -1133,7 +1134,7 @@ class Worker extends EventEmitter {
         "DeprecationWarning",
         "DEP0132",
       );
-      this.#worker.addEventListener("close", event => callback(null, event.code), { once: true });
+      if (typeof this.#onExitPromise !== "number") this.once("exit", code => callback(null, code));
     }
 
     const onExitPromise = this.#onExitPromise;
@@ -1146,13 +1147,9 @@ class Worker extends EventEmitter {
     }
 
     const { resolve, promise } = Promise.withResolvers<number>();
-    this.#worker.addEventListener(
-      "close",
-      event => {
-        resolve(event.code);
-      },
-      { once: true },
-    );
+    // A stdio listener can call terminate() while native close is dispatching.
+    // The owner settles it even when no later native close listener can run.
+    this.#resolveOnExit = resolve;
     // Keep the event loop alive until termination completes so the returned
     // promise still resolves even if the worker was unref()'ed.
     this.#worker.ref();
@@ -1261,10 +1258,10 @@ class Worker extends EventEmitter {
       // End captured stdio readables when the worker exits, even if it was
       // terminated before its own streams finished.
       if (this.#stdout) {
-        this.#stdout.endFromOwner();
+        this.#stdout.endFromOwner(_receiveMessageOnPort);
       }
       if (this.#stderr) {
-        this.#stderr.endFromOwner();
+        this.#stderr.endFromOwner(_receiveMessageOnPort);
       }
       // Close the captured stdout/stderr control ports so worker.ref() can't pin the
       // parent loop after exit (mirrors #stdinPort below).
@@ -1288,6 +1285,10 @@ class Worker extends EventEmitter {
       this.#onExitPromise = e.code;
       this.emit("exit", e.code);
     } finally {
+      const resolve = this.#resolveOnExit;
+      this.#resolveOnExit = undefined;
+      this.#onExitPromise = e.code;
+      resolve?.(e.code);
       // Native exit releases the handle after this callback; dispatch later,
       // including when an exit listener throws or calls terminate() again.
       if (asyncId !== 0) require("internal/async_hooks_tick").queueDestroy(asyncId);
