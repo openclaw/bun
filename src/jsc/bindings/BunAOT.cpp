@@ -41,6 +41,11 @@ void configureAOT()
     const uint8_t* bytes = nullptr;
     size_t size = 0;
     if (Bun__standaloneAOTImage(&bytes, &size)) {
+#if OS(DARWIN)
+        // Like the JSC shell, this CLI can use Mach exceptions even when the JIT is off.
+        if (JSC::Options::machExceptionHandlerSandboxPolicy == JSC::Options::SandboxPolicy::Unknown)
+            JSC::Options::machExceptionHandlerSandboxPolicy = JSC::Options::SandboxPolicy::Allow;
+#endif
         JSC::Options::useJIT() = false;
         JSC::Options::useAOT() = !aotDisabled();
         if (aotDisabled())

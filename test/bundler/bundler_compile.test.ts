@@ -1938,6 +1938,9 @@ test.skipIf(process.platform !== "darwin")(
       if (process.env.AOT_MUTATE) { Array.prototype.aotTest = 123; console.log([].aotTest); }
       const diskPath = process.cwd() + "/disk.mjs";
       const { disk } = await import(diskPath);
+      const shared = new Int32Array(new SharedArrayBuffer(4));
+      Atomics.store(shared, 0, 7);
+      if (Atomics.load(shared, 0) !== 7) throw new Error("shared memory did not retain its value");
       console.log(value(4), lazy(), disk(), isAOTCompiled(value), isAOTCompiled(lazy), isAOTCompiled(disk), typeof readFileSync);
       const worker = new Worker(new URL("./worker.ts", import.meta.url));
       worker.onmessage = ({data}) => { console.log(data); worker.terminate(); };
