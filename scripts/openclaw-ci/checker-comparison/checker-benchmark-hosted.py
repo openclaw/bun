@@ -2,6 +2,7 @@
 """Run beside hosted.py after its reviewed prepare_dependencies extraction."""
 import argparse
 import json
+import math
 import os
 from pathlib import Path
 import shutil
@@ -11,8 +12,27 @@ import time
 
 import hosted
 
-DRIVER_SHA256 = "146c76db090ffe99b91011b43059a2eb976a3eeb7d89390c40911d6dae9d05d3"
+DRIVER_SHA256 = "c095e68dc036f51d31c0ae05b142dfa1784a23af279c1da680e4900adc8c2b4d"
 DRIVER_PATH = "tools/checker-compare.mts"
+
+
+def production_complete(summary):
+    proof = summary.get("production", {})
+    samples = proof.get("samples", [])
+    return (
+        summary.get("source") == hosted.SOURCE
+        and str(summary.get("runId", "")).startswith("production-")
+        and summary.get("controlsPassed") is True
+        and proof.get("eligible") is True
+        and proof.get("protocol") == {"name": "production-cold-reuse", "version": 1, "graphs": ["core", "ui", "extensions"], "repetitions": 1}
+        and len(samples) == 4
+        and all(sample.get("candidate") == ("current" if index < 2 else "bun")
+                and sample.get("state") == ("first" if index % 2 == 0 else "second")
+                and sample.get("valid") is True
+                and isinstance(sample.get("wallMs"), (int, float))
+                and math.isfinite(sample["wallMs"]) and sample["wallMs"] > 0
+                for index, sample in enumerate(samples))
+    )
 
 
 def write_status(output, status):
@@ -21,7 +41,7 @@ def write_status(output, status):
     temporary.replace(output / "benchmark-status.json")
 
 
-def run(source, output, receipt, receipt_sha256, status, parent_deadline):
+def run(source, output, receipt, receipt_sha256, status, parent_deadline, phase="timing"):
     hosted.require(output.is_relative_to(Path("/work/crabbox")) and not output.is_relative_to(source), "output must be a separate task-owned work root")
     hosted.require(subprocess.check_output(["stat", "-f", "-c", "%T", str(output)], text=True).strip() != "tmpfs", "output is tmpfs")
     hosted.require(not receipt.is_relative_to(source), "completed matrix receipt must be external")
@@ -59,7 +79,8 @@ def run(source, output, receipt, receipt_sha256, status, parent_deadline):
     bun = manifest["bun"]
     command = [
         str(output / "runtime/node-v24.16.0-linux-x64/bin/node"), str(target),
-        "--phase", "timing", "--graphs", "core,ui", "--repetitions", "3",
+        "--phase", phase, "--graphs", "core,ui,extensions" if phase == "production" else "core,ui",
+        "--repetitions", "1" if phase == "production" else "3",
         "--driver-sha256", DRIVER_SHA256,
         "--discovery-receipt", str(receipt), "--discovery-receipt-sha256", receipt_sha256,
         "--bun-bin", str(binary), "--bun-sha256", bun["binarySha256"],
@@ -76,7 +97,7 @@ def run(source, output, receipt, receipt_sha256, status, parent_deadline):
     if remaining <= 0:
         cohort.update(outcome="not-run", reason="comparison budget exhausted")
         return 1
-    cohort_output = output / "benchmark" / cohort["native"]
+    cohort_output = output / ("production" if phase == "production" else "benchmark") / cohort["native"]
     cohort.update(outcome="running", budgetSeconds=remaining)
     write_status(output, status)
     result = subprocess.run([
@@ -84,8 +105,9 @@ def run(source, output, receipt, receipt_sha256, status, parent_deadline):
         "--native", cohort["native"], "--out", str(cohort_output),
         "--budget-seconds", str(remaining),
     ], cwd=source, env=env).returncode
-    summaries = list(cohort_output.glob("timing-*/summary.json"))
-    completed = len(summaries) == 1 and json.loads(summaries[0].read_bytes()).get("completed") is True
+    summaries = list(cohort_output.glob(f"{phase}-*/summary.json"))
+    summary = json.loads(summaries[0].read_bytes()) if len(summaries) == 1 else {}
+    completed = summary.get("completed") is True and (phase != "production" or production_complete(summary))
     cohort.update(outcome="passed" if result == 0 and completed else "failed", runExitCode=result, completed=completed)
     write_status(output, status)
     return 0 if cohort["outcome"] == "passed" else 1
@@ -98,12 +120,15 @@ def main():
     parser.add_argument("--receipt", type=Path, required=True)
     parser.add_argument("--receipt-sha256", required=True)
     parser.add_argument("--native", choices=("current",), required=True)
+    parser.add_argument("--phase", choices=("timing", "production"), default="timing")
     args = parser.parse_args()
     source, output = args.source.resolve(strict=True), args.output.resolve(strict=True)
     status = {"phase": "benchmark", "source": hosted.SOURCE, "manifestSha256": hosted.MANIFEST, "driverSha256": DRIVER_SHA256, "matrixReceiptSha256": args.receipt_sha256, "runExitCode": None, "comparisonBudgetSeconds": 3600, "outerWatchdogSeconds": 4500, "cohort": {"native": args.native, "outcome": "pending"}, "hostedContext": {key: os.environ.get(key) for key in ("GITHUB_REPOSITORY", "GITHUB_WORKFLOW", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "GITHUB_JOB", "GITHUB_SHA")}}
+    if args.phase == "production":
+        status["phase"] = "production-trial"
     parent_deadline = time.monotonic() + 4500
     try:
-        result = run(source, output, args.receipt.resolve(strict=True), args.receipt_sha256, status, parent_deadline)
+        result = run(source, output, args.receipt.resolve(strict=True), args.receipt_sha256, status, parent_deadline, args.phase)
         status.update(runExitCode=result, adapterExitCode=result)
         return result
     except Exception as error:

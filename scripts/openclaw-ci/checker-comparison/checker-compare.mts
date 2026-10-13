@@ -14,6 +14,7 @@ import { hasUnjoinedWork, runManagedCommand } from "../scripts/lib/managed-child
 import { readProcessMemoryCapacity } from "../scripts/lib/process-memory.mts";
 import { expandTsgoExecutionGraphs, TSGO_CI_GRAPHS } from "../scripts/lib/tsgo-core-test-shards.mts";
 import { createTsgoResourceSampler } from "../scripts/lib/tsgo-performance.mts";
+import { prepareTsgoCommand } from "../scripts/run-tsgo.mts";
 
 const SOURCE = "06af34cba25d549736807a334ca8028a1f6e9662";
 const SOURCE_INVENTORY_SHA256 = "e5f1924bdb1aa5e32f17e4e9f257935892d6b7c3c197f70b3af84db82b5da8fa";
@@ -717,11 +718,11 @@ function cleanComparisons(results: Result[], candidateCount: number) {
     results.every(row => row.validOutput && row.exitCode === 0 && row.resourceContractStable)
   );
 }
-function preflightPassed(results: Result[], candidateCount: number) {
+function preflightPassed(results: Result[], candidateCount: number, graphNames = ["core", "ui"]) {
   const rows = results.filter(row => ["preflight", "inventory"].includes(row.state));
   return (
-    rows.length === candidateCount * 4 &&
-    ["core", "ui"].every(graph =>
+    rows.length === candidateCount * graphNames.length * 2 &&
+    graphNames.every(graph =>
       ["preflight", "inventory"].every(
         state =>
           rows.filter(
@@ -736,6 +737,93 @@ function preflightPassed(results: Result[], candidateCount: number) {
     cleanComparisons(rows, candidateCount)
   );
 }
+const PRODUCTION_SCRIPTS = {
+  "tsgo:prod": "pnpm tsgo:core && pnpm tsgo:ui && pnpm tsgo:extensions",
+  ...Object.fromEntries(
+    ["core", "ui", "extensions"].map(name => [
+      `tsgo:${name}`,
+      `node scripts/run-tsgo.mjs -p tsconfig.${name}.json --incremental --tsBuildInfoFile .artifacts/tsgo-cache/${name}.tsbuildinfo`,
+    ]),
+  ),
+};
+const PRODUCTION_PROTOCOL = {
+  name: "production-cold-reuse",
+  version: 1,
+  graphs: ["core", "ui", "extensions"],
+  repetitions: 1,
+};
+type ProductionSample = {
+  candidate: string;
+  state: string;
+  wallMs: number;
+  valid: boolean;
+  [key: string]: unknown;
+};
+function productionEvidence(stdout: string, stderr: string, graphs: Graph[]) {
+  if (stderr !== "") throw new Error("Production command emitted stderr");
+  const leaves: { version: number; id: string; config: string; exitCode: number; stdout: string; stderr: string }[] =
+    [];
+  const completions: { version: number; id: string; planned: number; completed: number; leaves: string[] }[] = [];
+  const order: string[] = [];
+  for (const line of stdout.split(/\r?\n/)) {
+    if (line.startsWith("[ci-static:tsgo:leaf] ")) {
+      leaves.push(JSON.parse(line.slice("[ci-static:tsgo:leaf] ".length)));
+      order.push("leaf");
+    } else if (line.startsWith("[ci-static:tsgo:completion] ")) {
+      completions.push(JSON.parse(line.slice("[ci-static:tsgo:completion] ".length)));
+      order.push("completion");
+    }
+  }
+  if (
+    leaves.length !== graphs.length ||
+    completions.length !== graphs.length ||
+    order.join(",") !== graphs.flatMap(() => ["leaf", "completion"]).join(",") ||
+    new Set(leaves.map(leaf => leaf.id)).size !== graphs.length ||
+    leaves.some((leaf, index) => {
+      const completion = completions[index];
+      return (
+        leaf.version !== 1 ||
+        leaf.config !== graphs[index]!.config ||
+        leaf.exitCode !== 0 ||
+        leaf.stdout !== "" ||
+        leaf.stderr !== "" ||
+        typeof leaf.id !== "string" ||
+        completion?.version !== 1 ||
+        completion.planned !== 1 ||
+        completion.completed !== 1 ||
+        leaf.id !== `${completion.id}:0` ||
+        completion.leaves?.length !== 1 ||
+        completion.leaves[0] !== leaf.id
+      );
+    })
+  )
+    throw new Error("Production command did not prove every canonical check completed cleanly in order");
+  return { leaves, completions };
+}
+function productionCacheState(repo: string, graphs: Graph[], version: string, required: boolean) {
+  return graphs.map(graph => {
+    const file = path.join(repo, ".artifacts", "tsgo-cache", `${graph.name}.tsbuildinfo`);
+    const stat = fs.lstatSync(file, { throwIfNoEntry: false });
+    if (stat && !stat.isFile()) throw new Error(`Non-file production cache: ${graph.name}`);
+    const sha256 = readHash(file);
+    if (required && (!sha256 || !validBuildInfo(file, version)))
+      throw new Error(`Production cache is absent or invalid: ${graph.name}`);
+    return { file, sha256 };
+  });
+}
+function productionEligible(samples: ProductionSample[], results: Result[], controlsPassed: boolean) {
+  return (
+    controlsPassed &&
+    preflightPassed(results, 2, ["core", "ui", "extensions"]) &&
+    samples.length === 4 &&
+    samples.every(
+      (sample, index) =>
+        sample.valid &&
+        sample.candidate === (index < 2 ? "current" : "bun") &&
+        sample.state === (index % 2 === 0 ? "first" : "second"),
+    )
+  );
+}
 async function main() {
   const repo = fs.realpathSync(process.cwd());
   if (process.platform !== "linux" || process.arch !== "x64")
@@ -743,8 +831,8 @@ async function main() {
   const materializedHead = exec("git", ["rev-parse", "HEAD"], repo);
   const sourceTransportRecords = verifySource(repo);
   const phase = option("--phase", "smoke");
-  if (!["smoke", "matrix", "timing", "probe"].includes(phase))
-    throw new Error("Expected --phase smoke|matrix|timing|probe");
+  if (!["smoke", "matrix", "timing", "probe", "production"].includes(phase))
+    throw new Error("Expected --phase smoke|matrix|timing|probe|production");
   const repetitions = Number(option("--repetitions", phase === "timing" ? "3" : "1"));
   if (!Number.isInteger(repetitions) || repetitions < 1 || repetitions > 5)
     throw new Error("Repetitions must be 1 through 5");
@@ -756,6 +844,8 @@ async function main() {
     nativeNames.some(name => !NATIVE_PACKAGES.some(candidate => candidate.name === name))
   )
     throw new Error("Expected admitted native comparators: current and/or next");
+  if (phase === "production" && (repetitions !== 1 || nativeNames.join(",") !== "current"))
+    throw new Error("Production screening requires one pair and the pinned current native checker");
   const discoveryReceipt = externalFile(repo, requiredOption("--discovery-receipt"));
   const discoveryReceiptHash = requiredOption("--discovery-receipt-sha256");
   const initialInputs = inputState(repo, discoveryReceipt, discoveryReceiptHash);
@@ -806,9 +896,11 @@ async function main() {
   const allGraphs = expandTsgoExecutionGraphs(TSGO_CI_GRAPHS);
   const requested = option(
     "--graphs",
-    phase === "smoke" || phase === "timing"
-      ? "core,ui"
-      : "core,ui,extensions,scripts,core-test-packages,test-root-tooling",
+    phase === "production"
+      ? "core,ui,extensions"
+      : phase === "smoke" || phase === "timing"
+        ? "core,ui"
+        : "core,ui,extensions,scripts,core-test-packages,test-root-tooling",
   ).split(",");
   const graphs =
     phase === "matrix"
@@ -823,6 +915,52 @@ async function main() {
     (graphs.length !== 2 || !graphs.some(graph => graph.name === "core") || !graphs.some(graph => graph.name === "ui"))
   )
     throw new Error("The admitted timing protocol covers exactly core and ui");
+  if (phase === "production" && graphs.map(graph => graph.name).join(",") !== "core,ui,extensions")
+    throw new Error("Production screening requires the canonical core, UI, extensions order");
+  const productionEnv = { ...ciEnv, OPENCLAW_CI_STATIC_EVIDENCE: "1", OPENCLAW_TSGO_TIMEOUT_MS: "600000" };
+  const prepareProduction = () =>
+    graphs.map(graph => {
+      const command = prepareTsgoCommand(
+        ["-p", graph.config, "--incremental", "--tsBuildInfoFile", `.artifacts/tsgo-cache/${graph.name}.tsbuildinfo`],
+        productionEnv,
+        repo,
+      );
+      if (!command) throw new Error("The canonical production command cannot be skipped");
+      verifyHash(command.bin, "ade0aa4724ed7164fb4644255e94d4f98cbcd9f53dbb3973f19aea130fceb51d");
+      if (readHash(command.bin) !== candidates.find(candidate => candidate.name === "current")?.sha256)
+        throw new Error("Installed and provisioned native compiler differ");
+      return {
+        bin: command.bin,
+        args: command.args,
+        env: policyEnvironment(command.env),
+        timeoutMs: command.timeoutMs,
+      };
+    });
+  let production: Record<string, unknown> | undefined;
+  if (phase === "production") {
+    const scripts = JSON.parse(fs.readFileSync(path.join(repo, "package.json"), "utf8")).scripts;
+    for (const [name, command] of Object.entries(PRODUCTION_SCRIPTS))
+      if (scripts[name] !== command) throw new Error(`Canonical production script differs: ${name}`);
+    production = {
+      protocol: PRODUCTION_PROTOCOL,
+      command: ["pnpm", "tsgo:prod"],
+      scripts: PRODUCTION_SCRIPTS,
+      pnpmVersion: exec("pnpm", ["--version"], repo, productionEnv),
+      nativeCommands: prepareProduction(),
+      sourceFiles: Object.fromEntries(
+        [
+          "package.json",
+          "scripts/run-tsgo.mjs",
+          "scripts/run-tsgo.mts",
+          "scripts/lib/local-check-runtime.mts",
+          "scripts/lib/dist-artifact-ownership.mts",
+        ].map(file => [file, readHash(path.join(repo, file))]),
+      ),
+      nativeEvidence: "three ordered canonical wrapper leaf and completion records per whole command",
+      resourceScope: "whole-lane wall time only; pnpm parent CPU/RSS is not compiler resource usage",
+    };
+    if (production.pnpmVersion !== "12.9.0") throw new Error("Unexpected production pnpm version");
+  }
   const host = {
     materializedHead,
     platform: process.platform,
@@ -848,7 +986,10 @@ async function main() {
     resourceContract: resources,
     memoryCapacity: memory,
     rssScope: "leader process, sampled lower bound, excludes descendants",
-    interpretation: "constrained CI deployment-policy comparison, not equal-thread; core/UI only; no overall winner",
+    interpretation:
+      phase === "production"
+        ? "single-pair whole production-typecheck screening; constrained CI policy, not whole CI or cross-commit cache hits"
+        : "constrained CI deployment-policy comparison, not equal-thread; core/UI only; no overall winner",
   };
   const runId = `${phase}-${Date.now()}`;
   const runDir = path.join(output, runId);
@@ -877,6 +1018,7 @@ async function main() {
         phase,
         graphs,
         repetitions,
+        ...(production ? { production } : {}),
         standardLibraries: candidates.map(candidate => ({
           name: candidate.name,
           baseline: candidate.name === "bun" ? embeddedTypeScript : candidate.version,
@@ -1069,6 +1211,127 @@ async function main() {
     if (interrupted) throw new Error("Comparison interrupted; no further compiler started");
     return row;
   };
+  const productionSamples: ProductionSample[] = [];
+  let warmCaches: ReturnType<typeof productionCacheState> | undefined;
+  const runProduction = async (candidate: Candidate, state: "first" | "second") => {
+    verifyInputs();
+    const resourcesBefore = resourceContract();
+    if (JSON.stringify(resourcesBefore) !== JSON.stringify(host.resourceContract))
+      throw new Error("Host resource constraints changed before production start");
+    let before: ReturnType<typeof productionCacheState> = [];
+    if (candidate.name === "current") {
+      if (JSON.stringify(prepareProduction()) !== JSON.stringify(production!.nativeCommands))
+        throw new Error("Canonical production compiler/policy changed");
+      before = productionCacheState(repo, graphs, candidate.version, state === "second");
+      if (state === "first") {
+        // Only these three canonical files belong to this cold/reuse experiment.
+        for (const entry of before) if (entry.sha256 !== null) fs.unlinkSync(entry.file);
+        before = productionCacheState(repo, graphs, candidate.version, false);
+        if (before.some(entry => entry.sha256 !== null)) throw new Error("Production cold cache was not cleared");
+      } else if (JSON.stringify(before) !== JSON.stringify(warmCaches))
+        throw new Error("Production cache changed before immediate reuse");
+    }
+    const buffers: Buffer[][] = [[], []];
+    let bytes = 0,
+      overflow = false,
+      interrupted = false;
+    let code: number | null = null;
+    let failure: unknown;
+    let evidence: ReturnType<typeof productionEvidence> | undefined;
+    let after: ReturnType<typeof productionCacheState> = [];
+    const childRows: Result[] = [];
+    const began = performance.now();
+    try {
+      if (began >= deadline) throw new Error("Production comparison budget exhausted");
+      if (candidate.name === "current") {
+        // Each run-tsgo wrapper owns its artifact lock. An outer lock would deadlock pnpm's children.
+        code = await runManagedCommand({
+          bin: "pnpm",
+          args: ["tsgo:prod"],
+          cwd: repo,
+          env: productionEnv,
+          stdio: ["ignore", "pipe", "pipe"],
+          requireProcessTreeExit: true,
+          timeoutMs: deadline - began,
+          onSignal() {
+            interrupted = true;
+          },
+          onReady(child) {
+            for (const [index, stream] of [child.stdout, child.stderr].entries())
+              stream?.on("data", (chunk: Buffer) => {
+                bytes += chunk.length;
+                if (bytes <= 8 * 1024 * 1024) buffers[index]!.push(chunk);
+                else overflow = true;
+              });
+          },
+        });
+      } else {
+        await withDistArtifactOwnership(repo, async () => {
+          for (const graph of graphs) {
+            const row = await run(
+              candidate,
+              graph,
+              `production-${state}`,
+              0,
+              path.join(runDir, "cache", `production-${graph.name}.unused`),
+            );
+            childRows.push(row);
+            if (!row.validOutput || row.exitCode !== 0) throw new Error("Bun production check failed");
+          }
+        });
+        code = 0;
+      }
+    } catch (error) {
+      failure = error;
+    }
+    const wallMs = performance.now() - began;
+    let resourcesAfter: ReturnType<typeof resourceContract> | null = null;
+    try {
+      resourcesAfter = resourceContract();
+      if (JSON.stringify(resourcesAfter) !== JSON.stringify(host.resourceContract))
+        throw new Error("Host resource constraints changed during production command");
+      verifyInputs();
+      if (code !== 0 || overflow || interrupted) throw new Error("Production command did not complete cleanly");
+      if (candidate.name === "current") {
+        evidence = productionEvidence(
+          Buffer.concat(buffers[0]!).toString("utf8"),
+          Buffer.concat(buffers[1]!).toString("utf8"),
+          graphs,
+        );
+        after = productionCacheState(repo, graphs, candidate.version, true);
+        if (state === "first") warmCaches = after;
+      }
+    } catch (error) {
+      failure ??= error;
+    }
+    const fileBase = `production-${candidate.name}-${state}`;
+    const sample: ProductionSample = {
+      candidate: candidate.name,
+      state,
+      wallMs,
+      valid: failure === undefined,
+      exitCode: code,
+      error: failure instanceof Error ? failure.message : failure ? String(failure) : null,
+      command:
+        candidate.name === "current" ? ["pnpm", "tsgo:prod"] : childRows.map(row => [candidate.bin, ...row.args]),
+      cwd: candidate.name === "current" ? repo : neutral,
+      policyEnvironment: policyEnvironment(candidate.name === "current" ? productionEnv : ciEnv),
+      resourcesBefore,
+      resourcesAfter,
+      cacheBefore: before,
+      cacheAfter: after,
+      evidence,
+      children: childRows.map(row => ({ graph: row.graph, stdoutFile: row.stdoutFile, stderrFile: row.stderrFile })),
+      stdoutFile: `${fileBase}.stdout`,
+      stderrFile: `${fileBase}.stderr`,
+    };
+    fs.writeFileSync(path.join(runDir, sample.stdoutFile as string), Buffer.concat(buffers[0]!));
+    fs.writeFileSync(path.join(runDir, sample.stderrFile as string), Buffer.concat(buffers[1]!));
+    productionSamples.push(sample);
+    fs.appendFileSync(path.join(runDir, "production-samples.jsonl"), `${JSON.stringify(sample)}\n`);
+    console.log(`[checker-production] ${JSON.stringify(sample)}`);
+    if (failure) throw failure;
+  };
   let completed = false;
   try {
     await withDistArtifactOwnership(repo, async () => {
@@ -1087,7 +1350,7 @@ async function main() {
         path.join(runDir, "manifest.json"),
         `${JSON.stringify({ ...manifest, preparedInputs: frozenInputs }, null, 2)}\n`,
       );
-      if (phase === "smoke" || phase === "timing") {
+      if (phase === "smoke" || phase === "timing" || phase === "production") {
         const fixture = path.join(runDir, "fixture.ts");
         const config = path.join(runDir, "fixture.json");
         fs.writeFileSync(
@@ -1118,7 +1381,7 @@ async function main() {
         );
         if (!controlsPassed) throw new Error("Strict scalar controls failed; no timed pair started");
       }
-      if (phase === "timing") {
+      if (phase === "timing" || phase === "production") {
         for (const graph of graphs)
           for (const candidate of candidates) {
             verifyInputs();
@@ -1137,8 +1400,14 @@ async function main() {
               path.join(runDir, "cache", `inventory-${graph.name}-${candidate.name}.tsbuildinfo`),
             );
           }
-        if (!preflightPassed(results, candidates.length))
-          throw new Error("Core/UI diagnostics or application inputs differ; no timed pair started");
+        if (
+          !preflightPassed(
+            results,
+            candidates.length,
+            graphs.map(graph => graph.name),
+          )
+        )
+          throw new Error("Preflight diagnostics or application inputs differ; no timed pair started");
       }
       if (phase === "probe") {
         const graph = allGraphs.find(value => value.name === "core")!;
@@ -1170,7 +1439,7 @@ async function main() {
         } finally {
           fs.rmSync(probe, { force: true });
         }
-      } else {
+      } else if (phase !== "production") {
         for (const graph of graphs)
           for (let repetition = 0; repetition < repetitions; repetition += 1) {
             const ordered = [
@@ -1201,6 +1470,13 @@ async function main() {
       }
       verifyInputs();
     });
+    if (phase === "production") {
+      // Preserve the canonical native wrapper's lock ownership across the whole pnpm chain.
+      for (const candidate of candidates) {
+        await runProduction(candidate, "first");
+        await runProduction(candidate, "second");
+      }
+    }
     completed = true;
   } finally {
     const comparisons = compare(results, candidates.length);
@@ -1214,11 +1490,26 @@ async function main() {
       controlsPassed,
       controls,
       results: summarize(results, eligible),
+      ...(phase === "production"
+        ? {
+            production: {
+              protocol: PRODUCTION_PROTOCOL,
+              eligible: completed && productionEligible(productionSamples, results, controlsPassed),
+              samples: productionSamples,
+              interpretation:
+                "single cold/reuse pair per compiler; whole production-typecheck wall time including orchestration; Bun reuse is a fresh check; no Actions cache or statistical speed claim",
+            },
+          }
+        : {}),
       interpretation: "informational policy-specific timings; differing standard-library baselines; no overall winner",
       output: runDir,
     };
     fs.writeFileSync(path.join(runDir, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
     console.log(`[checker-compare:summary] ${JSON.stringify(summary)}`);
+  }
+  if (phase === "production") {
+    if (!completed || !productionEligible(productionSamples, results, controlsPassed)) process.exitCode = 1;
+    return;
   }
   const negatives = results.filter(row => ["new-root-negative", "fixture-negative"].includes(row.state));
   const expectedFailures =

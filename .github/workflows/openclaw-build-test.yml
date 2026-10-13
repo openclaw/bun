@@ -25,20 +25,20 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "Build Bun, qualify an existing artifact, or benchmark a qualified artifact"
+        description: "Build Bun, qualify an artifact, benchmark core/UI, or screen the full production lane"
         type: choice
-        options: [native, comparison, benchmark]
+        options: [native, comparison, benchmark, production-trial]
         default: native
       benchmark_receipt_run_id:
-        description: "Completed comparison workflow run ID (benchmark mode only)"
+        description: "Completed comparison workflow run ID (benchmark or production-trial)"
         type: string
         required: false
       benchmark_receipt_artifact_id:
-        description: "Completed comparison evidence artifact ID (benchmark mode only)"
+        description: "Completed comparison evidence artifact ID (benchmark or production-trial)"
         type: string
         required: false
       benchmark_receipt_sha256:
-        description: "Verified decompressed 38-row receipt SHA-256 (benchmark mode only)"
+        description: "Verified decompressed 38-row receipt SHA-256 (benchmark or production-trial)"
         type: string
         required: false
       base_sha:
@@ -124,15 +124,16 @@ jobs:
           compression-level: 0
 
   benchmark:
-    name: Benchmark (current)
-    if: github.repository == 'openclaw/bun' && github.event_name == 'workflow_dispatch' && inputs.mode == 'benchmark'
+    name: ${{ inputs.mode == 'production-trial' && 'Production trial (current)' || 'Benchmark (current)' }}
+    if: github.repository == 'openclaw/bun' && github.event_name == 'workflow_dispatch' && (inputs.mode == 'benchmark' || inputs.mode == 'production-trial')
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     permissions:
       contents: read
       actions: read
     env:
-      BENCHMARK_OUTPUT: /work/crabbox/openclaw-checker-benchmark-${{ github.run_id }}-${{ github.run_attempt }}-current
+      BENCHMARK_OUTPUT: /work/crabbox/openclaw-checker-${{ inputs.mode == 'production-trial' && 'production-trial' || 'benchmark' }}-${{ github.run_id }}-${{ github.run_attempt }}-current
+      BENCHMARK_PHASE: ${{ inputs.mode == 'production-trial' && 'production' || 'timing' }}
       NATIVE_CHECKER: current
       MATRIX_RUN_ID: ${{ inputs.benchmark_receipt_run_id }}
       MATRIX_ARTIFACT_ID: ${{ inputs.benchmark_receipt_artifact_id }}
@@ -204,13 +205,14 @@ jobs:
         run: |
           "$BENCHMARK_OUTPUT/runtime/node-v24.16.0-linux-x64/bin/node" --test \
             pipeline/scripts/openclaw-ci/checker-comparison/checker-compare.test.mjs
-      - name: Benchmark qualified core and UI graphs
+      - name: Run qualified typecheck timing protocol
         id: benchmark
         timeout-minutes: 80
         run: |
           timeout --signal=TERM --kill-after=5s 4500s python3 pipeline/scripts/openclaw-ci/checker-comparison/checker-benchmark-hosted.py \
             "$GITHUB_WORKSPACE/source" "$BENCHMARK_OUTPUT" \
             --native "$NATIVE_CHECKER" \
+            --phase "$BENCHMARK_PHASE" \
             --receipt "$BENCHMARK_OUTPUT/completed-matrix.json" \
             --receipt-sha256 "$MATRIX_RECEIPT_SHA256"
       - name: Record benchmark workflow outcome
@@ -233,7 +235,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: openclaw-checker-benchmark-current-${{ github.run_id }}-attempt${{ github.run_attempt }}
+          name: openclaw-checker-${{ inputs.mode == 'production-trial' && 'production-trial' || 'benchmark' }}-current-${{ github.run_id }}-attempt${{ github.run_attempt }}
           path: |
             ${{ env.BENCHMARK_OUTPUT }}/benchmark-status.json
             ${{ env.BENCHMARK_OUTPUT }}/run-status.json
@@ -244,6 +246,13 @@ jobs:
             ${{ env.BENCHMARK_OUTPUT }}/benchmark/*/timing-*/results.jsonl
             ${{ env.BENCHMARK_OUTPUT }}/benchmark/*/timing-*/*.stdout
             ${{ env.BENCHMARK_OUTPUT }}/benchmark/*/timing-*/*.stderr
+            ${{ env.BENCHMARK_OUTPUT }}/production/*/identity.json
+            ${{ env.BENCHMARK_OUTPUT }}/production/*/production-*/manifest.json
+            ${{ env.BENCHMARK_OUTPUT }}/production/*/production-*/summary.json
+            ${{ env.BENCHMARK_OUTPUT }}/production/*/production-*/results.jsonl
+            ${{ env.BENCHMARK_OUTPUT }}/production/*/production-*/production-samples.jsonl
+            ${{ env.BENCHMARK_OUTPUT }}/production/*/production-*/*.stdout
+            ${{ env.BENCHMARK_OUTPUT }}/production/*/production-*/*.stderr
           if-no-files-found: error
           retention-days: 7
           compression-level: 0

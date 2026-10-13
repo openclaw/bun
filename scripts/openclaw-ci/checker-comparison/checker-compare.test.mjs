@@ -654,10 +654,290 @@ test("workflow dispatch selects exactly its intended workload", () => {
       .map(([job]) => job);
   assert.deepEqual(admitted("workflow_dispatch", "comparison"), ["comparison"]);
   assert.deepEqual(admitted("workflow_dispatch", "benchmark"), ["benchmark"]);
+  assert.deepEqual(admitted("workflow_dispatch", "production-trial"), ["benchmark"]);
   assert.deepEqual(admitted("workflow_dispatch", "native"), ["linux-x64", "darwin-arm64"]);
   assert.deepEqual(admitted("workflow_dispatch", "native", "linux-x64"), ["linux-x64"]);
   assert.deepEqual(admitted("workflow_dispatch", "native", "darwin-arm64"), ["darwin-arm64"]);
   assert.deepEqual(admitted("pull_request", undefined), ["linux-x64", "darwin-arm64"]);
   assert.deepEqual(admitted("schedule", undefined), ["linux-x64", "darwin-arm64"]);
   assert.deepEqual(admitted("workflow_dispatch", "benchmark", "both", "another/repo"), []);
+});
+
+function productionOutput(graphs) {
+  return graphs
+    .map((graph, index) => {
+      const id = `wrapper-${index}`;
+      return (
+        `[ci-static:tsgo:leaf] ${JSON.stringify({ version: 1, id: `${id}:0`, config: graph.config, exitCode: 0, stdout: "", stderr: "" })}\n` +
+        `[ci-static:tsgo:completion] ${JSON.stringify({ version: 1, id, planned: 1, completed: 1, leaves: [`${id}:0`] })}\n`
+      );
+    })
+    .join("");
+}
+const productionGraphs = ["core", "ui", "extensions"].map(name => ({ name, config: `tsconfig.${name}.json` }));
+
+test("production proof requires every wrapper completion and all three inventories", () => {
+  const ctx = vm.createContext({ path });
+  vm.runInContext(
+    stripTypeScriptTypes(
+      section("function compare(", "async function main(") +
+        "globalThis.api = { productionEvidence, productionEligible };",
+    ),
+    ctx,
+  );
+  const raw = productionOutput(productionGraphs);
+  assert.equal(ctx.api.productionEvidence(raw, "", productionGraphs).leaves.length, 3);
+  for (const invalid of [
+    productionOutput(productionGraphs.slice(0, 2)),
+    raw.replace('"completed":1', '"completed":0'),
+    raw.replace('"exitCode":0', '"exitCode":2'),
+    raw.replace('"stdout":""', '"stdout":"unexpected diagnostic"'),
+    raw.replace("tsconfig.ui.json", "tsconfig.core.json"),
+    raw
+      .split("\n")
+      .filter(line => line.includes(":leaf]"))
+      .join("\n") +
+      "\n" +
+      raw
+        .split("\n")
+        .filter(line => line.includes(":completion]"))
+        .join("\n"),
+    raw + raw,
+  ])
+    assert.throws(() => ctx.api.productionEvidence(invalid, "", productionGraphs));
+  assert.throws(() => ctx.api.productionEvidence(raw, "warning", productionGraphs));
+  const preflight = adapted.filter(row => ["preflight", "inventory"].includes(row.state));
+  const complete = [
+    ...preflight,
+    ...preflight.filter(row => row.graph === "core").map(row => ({ ...row, graph: "extensions" })),
+  ];
+  const samples = ["current", "bun"].flatMap(candidate =>
+    ["first", "second"].map(state => ({ candidate, state, valid: true })),
+  );
+  assert.equal(ctx.api.productionEligible(samples, complete, true), true);
+  assert.equal(ctx.api.productionEligible(samples, preflight, true), false);
+  assert.equal(ctx.api.productionEligible(samples.slice(0, 3), complete, true), false);
+  assert.equal(ctx.api.productionEligible(samples, complete, false), false);
+});
+
+test("production binds the actual canonical resolver and rejects an unavailable or different native ELF", () => {
+  const expected = "ade0aa4724ed7164fb4644255e94d4f98cbcd9f53dbb3973f19aea130fceb51d";
+  for (const failure of ["none", "skip", "wrong-elf", "wrong-version", "wrong-script"]) {
+    const calls = [];
+    const ctx = vm.createContext({
+      path,
+      JSON,
+      phase: "production",
+      repo: "/source",
+      graphs: productionGraphs,
+      ciEnv: { CI: "true", OPENCLAW_LOCAL_CHECK: "0" },
+      candidates: [{ name: "current", sha256: failure === "wrong-version" ? "other" : expected }],
+      readHash: () => (failure === "wrong-elf" ? "other" : expected),
+      verifyHash(_file, hash) {
+        assert.equal(hash, expected);
+        assert.notEqual(failure, "wrong-elf");
+      },
+      prepareTsgoCommand(args, env, cwd) {
+        calls.push({ args: Array.from(args), env, cwd });
+        if (failure === "skip") return null;
+        return { args, env, cwd, bin: "/source/node_modules/native/bin/tsgo", timeoutMs: 600000 };
+      },
+      policyEnvironment: env => env,
+      exec: () => "12.9.0",
+      fs: {
+        readFileSync() {
+          const scripts = { "tsgo:prod": "pnpm tsgo:core && pnpm tsgo:ui && pnpm tsgo:extensions" };
+          for (const graph of productionGraphs)
+            scripts[`tsgo:${graph.name}`] =
+              `node scripts/run-tsgo.mjs -p ${graph.config} --incremental --tsBuildInfoFile .artifacts/tsgo-cache/${graph.name}.tsbuildinfo`;
+          if (failure === "wrong-script") scripts["tsgo:prod"] = "exit 0";
+          return JSON.stringify({ scripts });
+        },
+      },
+    });
+    const code = stripTypeScriptTypes(
+      section("const PRODUCTION_SCRIPTS =", "type ProductionSample =") +
+        section("  const productionEnv =", "  const host =") +
+        "globalThis.bound = production;",
+    );
+    if (failure !== "none") assert.throws(() => vm.runInContext(code, ctx), failure);
+    else {
+      vm.runInContext(code, ctx);
+      assert.equal(calls.length, 3);
+      assert.deepEqual(
+        calls.map(call => call.args[1]),
+        productionGraphs.map(graph => graph.config),
+      );
+      assert.ok(
+        calls.every(
+          call => call.env.OPENCLAW_CI_STATIC_EVIDENCE === "1" && call.env.OPENCLAW_TSGO_TIMEOUT_MS === "600000",
+        ),
+      );
+      assert.equal(ctx.bound.nativeCommands.length, 3);
+    }
+  }
+});
+
+test("production adapter rejects partial, wrong-protocol and ineligible summaries", () => {
+  const python = String.raw`
+import copy,importlib.util,json,sys
+from pathlib import Path
+sys.path.insert(0, str(Path(sys.argv[1]).parent))
+spec=importlib.util.spec_from_file_location("adapter",sys.argv[1]); adapter=importlib.util.module_from_spec(spec);spec.loader.exec_module(adapter)
+proof={"source":adapter.hosted.SOURCE,"runId":"production-fixture","completed":True,"controlsPassed":True,"production":{"eligible":True,"protocol":{"name":"production-cold-reuse","version":1,"graphs":["core","ui","extensions"],"repetitions":1},"samples":[{"candidate":candidate,"state":state,"valid":True,"wallMs":100} for candidate in ("current","bun") for state in ("first","second")]}}
+assert adapter.production_complete(proof)
+for case in ("missing-row","wrong-phase","wrong-protocol","wrong-source","ineligible","failed-row","bad-duration","missing-control","wrong-order"):
+    value=copy.deepcopy(proof)
+    if case=="missing-row": value["production"]["samples"].pop()
+    if case=="wrong-phase": value["runId"]="timing-fixture"
+    if case=="wrong-protocol": value["production"]["protocol"]["repetitions"]=3
+    if case=="wrong-source": value["source"]="another-source"
+    if case=="ineligible": value["production"]["eligible"]=False
+    if case=="failed-row": value["production"]["samples"][0]["valid"]=False
+    if case=="bad-duration": value["production"]["samples"][0]["wallMs"]=float("nan")
+    if case=="missing-control": value["controlsPassed"]=False
+    if case=="wrong-order": value["production"]["samples"].reverse()
+    assert not adapter.production_complete(value),case
+print("adapter production gate: ten cases passed")
+`;
+  const result = spawnSync(
+    "python3",
+    ["-c", python, new URL("./checker-benchmark-hosted.py", import.meta.url).pathname],
+    { encoding: "utf8", timeout: 10_000, env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" } },
+  );
+  assert.equal(result.error, undefined);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /ten cases passed/);
+});
+
+test("whole production samples preserve lock ownership, exact caches and failures", async () => {
+  for (const failure of ["none", "missing-completion", "cache-change", "timeout", "resource-after"]) {
+    const files = new Map();
+    const samples = [];
+    let ownership = 0,
+      nativeStarts = 0,
+      bunStarts = 0,
+      clock = 0,
+      snapshot = 0;
+    const cache = graph => path.join("/repo/.artifacts/tsgo-cache", `${graph.name}.tsbuildinfo`);
+    for (const graph of productionGraphs) files.set(cache(graph), "old cache");
+    files.set("/repo/.artifacts/tsgo-cache/unrelated.tsbuildinfo", "preserve");
+    const ctx = vm.createContext({
+      path,
+      Buffer,
+      JSON,
+      console: { log() {} },
+      graphs: productionGraphs,
+      repo: "/repo",
+      runDir: "/proof",
+      deadline: 1e9,
+      neutral: "/neutral",
+      ciEnv: { CI: "true", OPENCLAW_LOCAL_CHECK: "0" },
+      productionEnv: { CI: "true", OPENCLAW_CI_STATIC_EVIDENCE: "1", OPENCLAW_TSGO_TIMEOUT_MS: "600000" },
+      production: { nativeCommands: ["bound actual native ELF"] },
+      productionSamples: samples,
+      warmCaches: undefined,
+      performance: { now: () => ++clock },
+      host: { resourceContract: { stable: true } },
+      verifyInputs() {},
+      prepareProduction: () => ["bound actual native ELF"],
+      resourceContract() {
+        snapshot++;
+        if (failure === "resource-after" && snapshot === 2) throw new Error("post-snapshot unavailable");
+        return { stable: true };
+      },
+      policyEnvironment: env => env,
+      readHash: file => files.get(file) ?? null,
+      validBuildInfo(file, version) {
+        try {
+          return JSON.parse(files.get(file)).version === version;
+        } catch {
+          return false;
+        }
+      },
+      fs: {
+        existsSync: file => files.has(file),
+        lstatSync: file => (files.has(file) ? { isFile: () => true } : undefined),
+        unlinkSync: file => {
+          assert.ok(productionGraphs.some(graph => cache(graph) === file));
+          files.delete(file);
+        },
+        writeFileSync: (file, value) => files.set(file, value),
+        appendFileSync: (file, value) => files.set(file, (files.get(file) ?? "") + value),
+      },
+      async withDistArtifactOwnership(_repo, callback) {
+        ownership++;
+        try {
+          return await callback();
+        } finally {
+          ownership--;
+        }
+      },
+      async runManagedCommand(command) {
+        assert.equal(ownership, 0, "canonical wrappers must acquire their own lock");
+        assert.deepEqual(Array.from(command.args), ["tsgo:prod"]);
+        assert.equal(command.bin, "pnpm");
+        assert.equal(command.env.OPENCLAW_CI_STATIC_EVIDENCE, "1");
+        if (nativeStarts++ === 0) assert.ok(productionGraphs.every(graph => !files.has(cache(graph))));
+        if (failure === "timeout") throw new Error("ETIMEDOUT");
+        for (const graph of productionGraphs)
+          files.set(cache(graph), JSON.stringify({ version: "pinned", root: [1], fileNames: ["input.ts"] }));
+        const raw = productionOutput(
+          failure === "missing-completion" ? productionGraphs.slice(0, 2) : productionGraphs,
+        );
+        command.onReady({ stdout: { on: (_event, callback) => callback(Buffer.from(raw)) }, stderr: { on() {} } });
+        return 0;
+      },
+      async run(_candidate, graph, state) {
+        assert.equal(ownership, 1);
+        bunStarts++;
+        return {
+          graph: graph.name,
+          state,
+          validOutput: true,
+          exitCode: 0,
+          args: ["check", "--project", graph.config],
+          stdoutFile: "child.stdout",
+          stderrFile: "child.stderr",
+        };
+      },
+    });
+    vm.runInContext(
+      stripTypeScriptTypes(
+        section("function productionEvidence(", "async function main(") +
+          section("  const runProduction = async (", "  let completed = false;") +
+          "globalThis.runProduction = runProduction;",
+      ),
+      ctx,
+    );
+    let caught;
+    try {
+      await ctx.runProduction({ name: "current", version: "pinned" }, "first");
+      if (failure === "cache-change")
+        files.set(cache(productionGraphs[0]), JSON.stringify({ version: "pinned", changed: true }));
+      await ctx.runProduction({ name: "current", version: "pinned" }, "second");
+      await ctx.runProduction({ name: "bun" }, "first");
+      await ctx.runProduction({ name: "bun" }, "second");
+    } catch (error) {
+      caught = error;
+    }
+    assert.equal(files.get("/repo/.artifacts/tsgo-cache/unrelated.tsbuildinfo"), "preserve");
+    assert.equal(ownership, 0);
+    if (failure === "none") {
+      assert.equal(caught, undefined);
+      assert.equal(nativeStarts, 2);
+      assert.equal(bunStarts, 6);
+      assert.equal(samples.length, 4);
+      assert.ok(samples.every(sample => sample.valid && sample.wallMs > 0));
+      assert.deepEqual(samples[1].cacheBefore, samples[0].cacheAfter);
+    } else {
+      assert.ok(caught, failure);
+      assert.equal(bunStarts, 0);
+      if (failure !== "cache-change") {
+        assert.equal(samples.length, 1);
+        assert.equal(samples[0].valid, false);
+        assert.ok(files.has("/proof/production-current-first.stdout"));
+      }
+    }
+  }
 });
