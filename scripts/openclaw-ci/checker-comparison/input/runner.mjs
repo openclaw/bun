@@ -136,15 +136,23 @@ async function main() {
   const { TSGO_CI_GRAPHS, expandTsgoExecutionGraphs } = await import(pathToFileURL(path.join(repo, 'scripts/lib/tsgo-core-test-shards.mts')));
   const graphs = expandTsgoExecutionGraphs(TSGO_CI_GRAPHS);
   if (JSON.stringify(graphs) !== JSON.stringify(manifest.graphs.filter(g => !g.build).map(({ name, config }) => ({ name, config })))) throw new Error('Canonical graph registry mismatch');
-  const resumePath = path.join(inputs, 'resume-receipt.json');
-  if (fileHash(resumePath) !== manifest.resumeReceipt.sha256) throw new Error('Resume receipt hash differs');
-  const resume = JSON.parse(fs.readFileSync(resumePath, 'utf8'));
-  if (resume.identity.source !== manifest.source || resume.identity.sourceInventorySha256 !== manifest.sourceInventorySha256 || resume.identity.manifest.lockfileSha256 !== manifest.lockfileSha256 || JSON.stringify(resume.identity.manifest.graphs) !== JSON.stringify(manifest.graphs) || resume.identity.bun.binarySha256 !== manifest.resumeReceipt.binarySha256 || resume.identity.native.binarySha256 !== manifest.native.binarySha256 || resume.identity.manifest.runnerSha256 !== manifest.resumeReceipt.runnerSha256 || resume.identity.materializedHead !== manifest.resumeReceipt.materializedHead) throw new Error('Resume source or compiler identity differs');
-  if (JSON.stringify(resume.controls) !== JSON.stringify(['bun', 'native', 'upstream', 'oracle'].map(candidate => ({ candidate, passed: true }))) || JSON.stringify(resume.rows.map(row => row.name)) !== JSON.stringify(manifest.resumeReceipt.rows) || JSON.stringify(manifest.resumeReceipt.rows) !== JSON.stringify(manifest.graphs.slice(0, resume.rows.length).map(graph => graph.name))) throw new Error('Resume coverage or controls differ');
-  if (resume.rows.some((row, index) => row.config !== manifest.graphs[index].config || !/^[a-f0-9]{64}$/.test(row.bunFileHash) || !/^[a-f0-9]{64}$/.test(row.nativeFileHash) || row.bunApplicationCount <= 0 || row.nativeApplicationCount <= 0)) throw new Error('Resume contains an incomplete prior row');
-  // A new compiler must check every graph. The old receipt remains historical
-  // evidence, never a substitute for checks by a different candidate binary.
-  const resumeRows = resume.identity.bun.binarySha256 === manifest.bun.binarySha256 && resume.identity.manifest.receiptSchema === manifest.receiptSchema && (resume.sourceCheckpoint?.verified === true || resume.sourceVerified === true) ? resume.rows : [];
+  let resume = null, resumeRows = [];
+  // Explicit null starts a new dataset without inventing a prior control receipt.
+  // Same-source resumes retain every existing identity and coverage check.
+  if (manifest.resumeReceipt !== null) {
+    const resumePath = path.join(inputs, 'resume-receipt.json');
+    if (fileHash(resumePath) !== manifest.resumeReceipt.sha256) throw new Error('Resume receipt hash differs');
+    resume = JSON.parse(fs.readFileSync(resumePath, 'utf8'));
+    if (resume.identity.source !== manifest.source || resume.identity.sourceInventorySha256 !== manifest.sourceInventorySha256 || resume.identity.manifest.lockfileSha256 !== manifest.lockfileSha256 || JSON.stringify(resume.identity.manifest.graphs) !== JSON.stringify(manifest.graphs) || resume.identity.bun.binarySha256 !== manifest.resumeReceipt.binarySha256 || resume.identity.native.binarySha256 !== manifest.native.binarySha256 || resume.identity.manifest.runnerSha256 !== manifest.resumeReceipt.runnerSha256 || resume.identity.materializedHead !== manifest.resumeReceipt.materializedHead) throw new Error('Resume source or compiler identity differs');
+    if (JSON.stringify(resume.controls) !== JSON.stringify(['bun', 'native', 'upstream', 'oracle'].map(candidate => ({ candidate, passed: true }))) || JSON.stringify(resume.rows.map(row => row.name)) !== JSON.stringify(manifest.resumeReceipt.rows) || JSON.stringify(manifest.resumeReceipt.rows) !== JSON.stringify(manifest.graphs.slice(0, resume.rows.length).map(graph => graph.name))) throw new Error('Resume coverage or controls differ');
+    if (resume.rows.some((row, index) => row.config !== manifest.graphs[index].config || !/^[a-f0-9]{64}$/.test(row.bunFileHash) || !/^[a-f0-9]{64}$/.test(row.nativeFileHash) || row.bunApplicationCount <= 0 || row.nativeApplicationCount <= 0)) throw new Error('Resume contains an incomplete prior row');
+    // A different compiler or dataset cannot reuse prior checks.
+    resumeRows = resume.identity.bun.binarySha256 === manifest.bun.binarySha256 && resume.identity.manifest.receiptSchema === manifest.receiptSchema && (resume.sourceCheckpoint?.verified === true || resume.sourceVerified === true) ? resume.rows : [];
+  }
+  const baseline = manifest.native.hostedBaseline;
+  if (baseline.source !== manifest.source || baseline.version !== manifest.native.version || baseline.binding !== 'version-only' || !Number.isSafeInteger(baseline.run)) throw new Error('Native hosted baseline identity differs');
+  if (JSON.stringify(baseline.rows.map(({ config, configSha256 }) => ({ config, configSha256 }))) !== JSON.stringify(manifest.graphs.filter(graph => !graph.build).map(({ config, configSha256 }) => ({ config, configSha256 }))) || baseline.rows.some(row => !Number.isSafeInteger(row.job))) throw new Error('Native hosted baseline coverage differs');
+  const nativeBaselines = new Map(baseline.rows.map(row => [row.config, row]));
   const began = Date.now(), leaseDeadline = Number(process.env.BUN_MATRIX_DEADLINE_MS);
   if (!Number.isSafeInteger(leaseDeadline) || leaseDeadline <= began) throw new Error('Missing authoritative lease work deadline');
   if (!Number.isInteger(manifest.maxNewRows) || manifest.maxNewRows < 1 || manifest.maxNewRows > manifest.graphs.length) throw new Error('Invalid batch row limit');
@@ -153,7 +161,7 @@ async function main() {
   if (resumeRows.length > 0 && resume.identity.upstream.binarySha256 === manifest.upstream.binarySha256) comparisons.push(...(resume.comparisons ?? []));
   const executables = { bun, native, upstream, oracle };
   const identity = { kind: 'compatibility discovery, not adoption qualification', source: manifest.source, materializedHead: exec('git', ['rev-parse', 'HEAD']).trim(), sourceInventorySha256: manifest.sourceInventorySha256, manifest, native: { version: nativeVersion, binarySha256: nativeBinaryHash, bin: native }, bun: { version, revision, embedded, binarySha256: fileHash(bun), bin: bun }, upstream: { revision: upstreamRevision, embedded: upstreamTypeScript, binarySha256: fileHash(upstream) }, oracle: { version: '7.0.2', binarySha256: fileHash(oracle) }, host: { platform: process.platform, arch: process.arch, node: process.version, cpus: os.availableParallelism(), totalMemory: os.totalmem() }, output };
-  identity.priorReceipt = { sha256: manifest.resumeReceipt.sha256, materializedHead: resume.identity.materializedHead, runnerSha256: resume.identity.manifest.runnerSha256, lease: manifest.resumeReceipt.lease, binarySha256: resume.identity.bun.binarySha256, reusedChecks: resumeRows.length };
+  if (resume) identity.priorReceipt = { sha256: manifest.resumeReceipt.sha256, materializedHead: resume.identity.materializedHead, runnerSha256: resume.identity.manifest.runnerSha256, lease: manifest.resumeReceipt.lease, binarySha256: resume.identity.bun.binarySha256, reusedChecks: resumeRows.length };
   identity.leaseWorkDeadlineAt = new Date(deadline).toISOString();
   fs.writeFileSync(path.join(output, 'identity.json'), JSON.stringify(identity, null, 2));
   function writeReceipt(receipt) {
@@ -182,7 +190,7 @@ async function main() {
     const buffers = [[], []]; let bytes = 0, overflow = false, error = null, interrupted = false, code = null, fatal = null;
     const started = Date.now();
     try {
-      code = await runManagedCommand({ bin, args, cwd: neutral, env: { ...process.env, NODE_OPTIONS: '', GOMAXPROCS: '1', GOGC: '30', GOMEMLIMIT: '4GiB' }, stdio: ['ignore', 'pipe', 'pipe'], requireProcessTreeExit: true, timeoutMs: Math.min(manifest.rowTimeoutSeconds * 1000, deadline - started), onSignal() { interrupted = true; }, onReady(child) {
+      code = await runManagedCommand({ bin, args, cwd: neutral, env: { ...process.env, NODE_OPTIONS: '', GOMAXPROCS: '1', GOGC: '30', GOMEMLIMIT: '4GiB' }, stdio: ['ignore', 'pipe', 'pipe'], requireProcessTreeExit: true, timeoutMs: Math.min((candidate === 'native' && graph.build && phase === 'check' ? manifest.nativeReferenceTimeoutSeconds : manifest.rowTimeoutSeconds) * 1000, deadline - started), onSignal() { interrupted = true; }, onReady(child) {
         for (const [i, stream] of [child.stdout, child.stderr].entries()) stream?.on('data', chunk => { bytes += chunk.length; if (bytes <= 64 * 1024 ** 2) buffers[i].push(chunk); else overflow = true; });
       } });
     } catch (caught) { error = caught.message; if (hasUnjoinedWork(caught)) fatal = caught; }
@@ -268,8 +276,8 @@ async function main() {
         const bunFiles = await run('bun', graph, 'inventory');
         const nativeFiles = await nativeInventory(graph);
         const inventoryMatches = bunFiles.validOutput && nativeFiles.validOutput && bunFiles.inventory.application.length > 0 && nativeFiles.inventory.application.length > 0 && bunFiles.inventory.applicationSha256 === nativeFiles.inventory.applicationSha256 && JSON.stringify(bunFiles.inventory.application) === JSON.stringify(nativeFiles.inventory.application);
-        const nativeChecked = checked.code === 0 && checked.validOutput && inventoryMatches && !graph.build ? null : await run('native', graph, 'check');
-        const row = { name: graph.name, build: graph.build ?? false, config: graph.config, bunCode: checked.code, bunValidOutput: checked.validOutput, bunDiagnostics: checked.diagnostics, bunCheckedFiles: checked.summary?.checkedFiles, bunProjects: checked.summary?.projects, inventoryMatches, nativeInventoryMethod: graph.build ? 'referenced-leaf sorted multiset' : 'listFilesOnly', nativeInventoryReferences: graph.build ? manifest.buildReferences : undefined, bunApplicationCount: bunFiles.inventory?.application.length, nativeApplicationCount: nativeFiles.inventory?.application.length, bunFileHash: bunFiles.inventory?.applicationSha256, nativeFileHash: nativeFiles.inventory?.applicationSha256, nativeCode: nativeChecked?.code ?? null, nativeValidOutput: nativeChecked?.validOutput ?? null, nativeDiagnostics: nativeChecked?.diagnostics ?? [], baseline: nativeChecked ? 'same-source remote native' : 'exact-source hosted CI', clean: checked.code === 0 && checked.validOutput && checked.summary?.checkedFiles > 0 && inventoryMatches && (!nativeChecked || (nativeChecked.code === 0 && nativeChecked.validOutput)) };
+        const nativeChecked = checked.code === 0 && checked.validOutput && inventoryMatches && !graph.build && nativeBaselines.has(graph.config) ? null : await run('native', graph, 'check');
+        const row = { name: graph.name, build: graph.build ?? false, config: graph.config, bunCode: checked.code, bunValidOutput: checked.validOutput, bunDiagnostics: checked.diagnostics, bunCheckedFiles: checked.summary?.checkedFiles, bunProjects: checked.summary?.projects, inventoryMatches, nativeInventoryMethod: graph.build ? 'referenced-leaf sorted multiset' : 'listFilesOnly', nativeInventoryReferences: graph.build ? manifest.buildReferences : undefined, bunApplicationCount: bunFiles.inventory?.application.length, nativeApplicationCount: nativeFiles.inventory?.application.length, bunFileHash: bunFiles.inventory?.applicationSha256, nativeFileHash: nativeFiles.inventory?.applicationSha256, nativeCode: nativeChecked?.code ?? null, nativeValidOutput: nativeChecked?.validOutput ?? null, nativeDiagnostics: nativeChecked?.diagnostics ?? [], baseline: nativeChecked ? 'same-source remote native' : 'exact-source hosted CI (version-bound)', baselineEvidence: nativeChecked ? undefined : { ...nativeBaselines.get(graph.config), source: baseline.source, version: baseline.version, run: baseline.run, binding: baseline.binding }, clean: checked.code === 0 && checked.validOutput && checked.summary?.checkedFiles > 0 && inventoryMatches && (!nativeChecked || (nativeChecked.code === 0 && nativeChecked.validOutput)) };
         row.bunApplicationFiles = bunFiles.inventory.application;
         row.nativeApplicationFiles = nativeFiles.inventory.application;
         rows.push(row);

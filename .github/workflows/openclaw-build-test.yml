@@ -68,7 +68,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: openclaw/openclaw
-          ref: aed6c05cc43d898daf4c82bf6cb64222e78bde7c
+          ref: 06af34cba25d549736807a334ca8028a1f6e9662
           path: source
           fetch-depth: 1
           persist-credentials: false

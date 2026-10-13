@@ -14,13 +14,13 @@ import time
 import urllib.request
 import zipfile
 
-SOURCE = "aed6c05cc43d898daf4c82bf6cb64222e78bde7c"
-MANIFEST = "9b6dbd59ac58d3f0f814612c2cb7b1cd7fa0ccb19a19290ef01cd362c31485b1"
+SOURCE = "06af34cba25d549736807a334ca8028a1f6e9662"
+MANIFEST = "edb57365d61848ffa49b941c0d3c94b57950f65c69a98a60e44b3433534c9339"
 NODE_ARCHIVE = "d804845d34eddc21dc1092b519d643ef40b1f58ec5dec5c22b1f4bd8fabde6c9"
 NODE_BINARY = "b2959781cc5a74c357ffa02367efa8a0330cbb1c9cb347732fdfaaaca381cbcd"
 RECORDS = {
-    "runner.mjs": "1a77a743776cd2f1c43f851242e83124e8f7d3bd",
-    "manifest.json": "7b0875bce0b1a2a61cdad32f7b48cdc874042db6",
+    "runner.mjs": "d6d047b2ca1c9655412963ab83706ec5eee1cac3",
+    "manifest.json": "d519fb5cdcf3a33529de62b098b57a89bcd9481a",
     "resume-receipt.json": "6a8e69d3c4b62c44dade149e006671fa8ad936fc",
     "semantic-cases.json": "d252c21f7ec0c1bc71d9245776d0603184a74576",
     "binary.archive": "c327030058bd41c681beada3fd340ce819729e6f",
@@ -136,8 +136,7 @@ def require_complete(receipt):
     require(receipt["completed"] and receipt["sourceVerified"] and receipt["clean"] == 38 and receipt["failures"] == 0 and len(receipt["rows"]) == 38, "successful process has incomplete matrix")
 
 
-def run(source, payload, output):
-    step_started = int(time.time() * 1000)
+def prepare_dependencies(source, output):
     require(not os.environ.get("GH_TOKEN") and not os.environ.get("GITHUB_TOKEN"), "compiler step must not receive GitHub credentials")
     inputs = source / PREFIX
     manifest = verify(source, inputs, True)
@@ -157,6 +156,13 @@ def run(source, payload, output):
     require(deps.is_relative_to(source), "dependencies escape source")
     dependency = {"createdAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "sourceRoot": str(source), "node": "v24.16.0", "nodeBinarySha256": NODE_BINARY, "nodeArchiveSha256": NODE_ARCHIVE, "pnpm": "12.9.0", "nodeModules": str(deps), "files": {name: sha(source / name) for name in ("package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "node_modules/.modules.yaml", "node_modules/.pnpm/lock.yaml")}, "qualification": "successful frozen-lockfile install; frozen source/config verification before and after"}
     (output / "dependency-receipt.json").write_text(json.dumps(dependency, indent=2) + "\n")
+    return manifest, env, dependency
+
+
+def run(source, payload, output):
+    step_started = int(time.time() * 1000)
+    manifest, env, dependency = prepare_dependencies(source, output)
+    inputs = source / PREFIX
     deadline = min(int(time.time() * 1000) + manifest["budgetSeconds"] * 1000, step_started + 5_610_000)
     env.update(BUN_MATRIX_OUTPUT_ROOT=str(output / "results"), BUN_MATRIX_DEADLINE_MS=str(deadline))
     print("[bun-matrix:ready] deadline_ms=" + str(deadline), flush=True)
