@@ -161,7 +161,11 @@ def run(source, payload, output):
     env.update(BUN_MATRIX_OUTPUT_ROOT=str(output / "results"), BUN_MATRIX_DEADLINE_MS=str(deadline))
     print("[bun-matrix:ready] deadline_ms=" + str(deadline), flush=True)
     timeout_seconds = max(1, (deadline - int(time.time() * 1000)) // 1000 + 15)
-    result = subprocess.run(["timeout", "--signal=TERM", "--kill-after=5s", str(timeout_seconds) + "s", "node", str(inputs / "runner.mjs")], cwd=source, env=env).returncode
+    # Match Bun's differential harness: annotations are a hosted UI side channel,
+    # while the unchanged strict parser compares the plain diagnostic stream.
+    matrix_env = env.copy()
+    matrix_env.pop("GITHUB_ACTIONS", None)
+    result = subprocess.run(["timeout", "--signal=TERM", "--kill-after=5s", str(timeout_seconds) + "s", "node", str(inputs / "runner.mjs")], cwd=source, env=matrix_env).returncode
     context = {key: os.environ.get(key) for key in ("GITHUB_REPOSITORY", "GITHUB_WORKFLOW", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "GITHUB_JOB", "GITHUB_SHA")}
     status = {"phase": "matrix", "runExitCode": result, "source": SOURCE, "manifestSha256": MANIFEST, "deadlineOrigin": "hosted-run-step-budget", "workDeadlineMs": deadline, "hostedContext": context}
     (output / "run-status.json").write_text(json.dumps(status) + "\n")
@@ -178,6 +182,22 @@ def run(source, payload, output):
     require(receipt["identity"]["bun"]["binarySha256"] == manifest["bun"]["binarySha256"], "receipt candidate differs")
     receipt["dependencyReceipt"] = dependency
     receipt["executionContext"] = status
+    executions = receipts[0].parent / "executions.jsonl"
+    if result != 0:
+        controls = {}
+        with executions.open() as stream:
+            for _ in range(4):
+                record = json.loads(stream.readline())
+                candidate = record["candidate"]
+                require(record["graph"] == "negative-control" and record["phase"] == "check" and candidate in ("bun", "native", "upstream", "oracle") and candidate not in controls, "control execution identity differs")
+                controls[candidate] = {}
+                for kind in ("stdout", "stderr"):
+                    name = record[kind + "File"]
+                    require(Path(name).name == name, "control stream path escapes output")
+                    file = receipts[0].parent / name
+                    require(file.is_file() and not file.is_symlink() and file.stat().st_size <= 1024 ** 2, "control stream exceeds bound")
+                    controls[candidate][kind] = file.read_bytes().decode("utf-8")
+        receipt["controlOutputs"] = controls
     data = (json.dumps(receipt, separators=(",", ":")) + "\n").encode()
     require(len(data) <= 256 * 1024 ** 2, "receipt envelope exceeds bound")
     compressed = gzip.compress(data, compresslevel=1, mtime=0)
@@ -185,7 +205,6 @@ def run(source, payload, output):
     temporary = output / "receipt.json.gz.part"
     temporary.write_bytes(compressed)
     temporary.replace(output / "receipt.json.gz")
-    executions = receipts[0].parent / "executions.jsonl"
     require(executions.stat().st_size <= 256 * 1024 ** 2, "execution record exceeds bound")
     packed_executions = gzip.compress(executions.read_bytes(), compresslevel=1, mtime=0)
     require(len(packed_executions) <= 64 * 1024 ** 2, "compressed execution record exceeds bound")
