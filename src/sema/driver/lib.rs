@@ -3551,7 +3551,7 @@ fn check_with_references(
     let is_small = |index: usize| {
         !reads_sources
             && built_at_once > large_at_once
-            && roots[index].len() <= request.plan_options.files_of_a_small_project
+            && root_paths[index].len() <= request.plan_options.files_of_a_small_project
     };
     // `is_built`: by project, now. `Err`: the projects that have to be built first, besides those
     // that it references.
