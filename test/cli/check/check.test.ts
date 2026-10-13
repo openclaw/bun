@@ -18267,7 +18267,8 @@ describe("project ownership", () => {
   //
 
   async function run(cwd: string, cmd: string[]) {
-    await using proc = Bun.spawn({
+    await using proc = spawn({
+      timeout: longLimit,
       cmd: [bunExe(), ...cmd],
       cwd,
       env: projectSelectionEnv,
@@ -18507,7 +18508,14 @@ describe("project ownership", () => {
         using dir = tempDir("bun-check-project-of-file", Object.fromEntries(copies));
         const outcomeOf = async (cmd: string[], side: string) => {
           const cwd = join(String(dir), side);
-          await using proc = Bun.spawn({ cmd, cwd, env: projectSelectionEnv, stdout: "pipe", stderr: "ignore" });
+          await using proc = spawn({
+            timeout: longLimit,
+            cmd,
+            cwd,
+            env: projectSelectionEnv,
+            stdout: "pipe",
+            stderr: "ignore",
+          });
           const [stdout, exitCode] = await Promise.all([proc.stdout.text(), proc.exited]);
           const lines = stdout.replaceAll("\\", "/").replaceAll(cwd.replaceAll("\\", "/"), "").split(/\r?\n/);
           // tsc exits with 2 if it has written files in spite of errors.
@@ -18805,7 +18813,14 @@ describe("listed directory roots", () => {
   };
 
   async function run(cwd: { toString(): string }, cmd: string[]) {
-    await using proc = Bun.spawn({ cmd: [bunExe(), ...cmd], cwd: String(cwd), env, stdout: "pipe", stderr: "pipe" });
+    await using proc = spawn({
+      timeout: longLimit,
+      cmd: [bunExe(), ...cmd],
+      cwd: String(cwd),
+      env,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
     const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
     return { stdout: stdout.replaceAll("\\", "/").trim(), stderr: stderr.replaceAll("\\", "/").trim(), exitCode };
   }
@@ -19119,7 +19134,7 @@ describe("empty path requests", () => {
 
   // `cwd` may be another spelling of `root`, which is what the output has.
   async function run(cwd: string, cmd: string[], root = cwd) {
-    await using proc = Bun.spawn({ cmd: [bunExe(), ...cmd], cwd, env, stdout: "pipe", stderr: "pipe" });
+    await using proc = spawn({ timeout: longLimit, cmd: [bunExe(), ...cmd], cwd, env, stdout: "pipe", stderr: "pipe" });
     const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
     const clean = (text: string) => text.replaceAll("\\", "/").replaceAll(root.replaceAll("\\", "/"), "<dir>").trim();
     return { stdout: clean(stdout), stderr: clean(stderr), exitCode };
