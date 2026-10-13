@@ -211,7 +211,9 @@ def run(source, payload, output):
         for graph in manifest["graphs"]:
             expected += [(graph["name"], "bun", phase) for phase in ("check", "inventory")]
             expected.append((graph["name"], "native", "check" if graph.get("build") else "inventory"))
-        expected += [(row["name"], "upstream", phase) for row in receipt["comparisons"] for phase in ("check", "inventory")]
+        comparisons = [graph["name"] for graph in manifest["graphs"] if graph["name"] in ("core", "ui") or graph.get("build")]
+        require(Counter(row["name"] for row in receipt["comparisons"]) == Counter(comparisons), "completed matrix comparisons differ")
+        expected += [(name, "upstream", phase) for name in comparisons for phase in ("check", "inventory")]
         require(Counter((row["graph"], row["candidate"], row["phase"]) for row in records) == Counter(expected), "completed matrix execution ledger differs")
     elif receipt.get("admission", {}).get("status") != "rejected":
         controls = {}

@@ -590,16 +590,18 @@ from types import SimpleNamespace
 spec=importlib.util.spec_from_file_location("hosted",sys.argv[1])
 hosted=importlib.util.module_from_spec(spec);spec.loader.exec_module(hosted)
 original=json.load(sys.stdin)
-for case in ("rejected","missing","nonempty","unexplained-empty","success","success-empty","success-corrupt","success-truncated"):
+for case in ("rejected","missing","nonempty","unexplained-empty","success","success-empty","success-corrupt","success-truncated","success-missing-comparisons"):
     with tempfile.TemporaryDirectory(prefix="checker-collection-") as directory:
         root=Path(directory);source=root/"source";output=root/"output";leaf=output/"results"/"bun-matrix-case"
         source.mkdir();leaf.mkdir(parents=True)
         success=case.startswith("success")
         receipt=copy.deepcopy(original["success" if success else "rejected"])
         if case=="unexplained-empty": receipt["admission"]={"status":"accepted"}
+        if case=="success-missing-comparisons": receipt["comparisons"]=[]
         (leaf/"receipt.json").write_text(json.dumps(receipt))
         records=original["records"][:-1] if case=="success-truncated" else original["records"]
-        text="".join(json.dumps(record)+"\n" for record in records) if case in ("success","success-truncated") else ""
+        if case=="success-missing-comparisons": records=records[:-6]
+        text="".join(json.dumps(record)+"\n" for record in records) if case in ("success","success-truncated","success-missing-comparisons") else ""
         if case in ("nonempty","success-corrupt"): text="invalid record"
         if case!="missing": (leaf/"executions.jsonl").write_text(text)
         hosted.prepare_dependencies=lambda *args:(receipt["identity"]["manifest"],dict(os.environ),{})
@@ -615,7 +617,7 @@ for case in ("rejected","missing","nonempty","unexplained-empty","success","succ
             assert case not in ("rejected","success"),case
         finally:
             signal.alarm(0)
-print("producer/collector: eight cases passed")
+print("producer/collector: nine cases passed")
 `;
   const result = spawnSync("python3", ["-c", python, new URL("./hosted.py", import.meta.url).pathname], {
     input: JSON.stringify({ rejected, success: successful, records }),
@@ -624,7 +626,7 @@ print("producer/collector: eight cases passed")
   });
   assert.equal(result.error, undefined);
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /eight cases passed/);
+  assert.match(result.stdout, /nine cases passed/);
 });
 
 test("workflow dispatch selects exactly its intended workload", () => {
