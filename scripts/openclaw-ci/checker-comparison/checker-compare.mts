@@ -26,8 +26,8 @@ const DRIVER_PATH = "tools/checker-compare.mts";
 // receipt is still mandatory; different batches require new reviewed bindings.
 const MATRIX_TRANSPORT_BLOBS = {
   "tools/bun-checker-matrix-input/runner.mjs": "0e8531f52f27b0770188bf9a5f12b26d3b1e66c6",
-  "tools/bun-checker-matrix-input/manifest.json": "41a9679ee03a3ce2d7c0c12341d5e6965e2c89c0",
-  "tools/bun-checker-matrix-input/binary.archive": "",
+  "tools/bun-checker-matrix-input/manifest.json": "e69ed986b7f24ef5c260746fe508d91ff554227b",
+  "tools/bun-checker-matrix-input/binary.archive": "725262bfddc678ec2b54523042a2bc80d620bc07",
   "tools/bun-checker-matrix-input/upstream.archive": "f164058004a813f329fe73afbd6a0a98bbe5c479",
   "tools/bun-checker-matrix-input/oracle.archive": "52ce00e26b2eeb223f32621b1bfb0302ce959dcb",
   "tools/bun-checker-matrix-input/semantic-cases.json": "d252c21f7ec0c1bc71d9245776d0603184a74576",

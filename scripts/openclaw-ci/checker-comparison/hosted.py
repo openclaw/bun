@@ -15,15 +15,15 @@ import urllib.request
 import zipfile
 
 SOURCE = "06af34cba25d549736807a334ca8028a1f6e9662"
-MANIFEST = "3cccaafe306f1b285152faa0211ad06ddb31e29e49171ce3d6faa866e40327a3"
+MANIFEST = "05fae127079e15b70840a7835b3c1aad05e345d8d1b22d36698698609de87359"
 NODE_ARCHIVE = "d804845d34eddc21dc1092b519d643ef40b1f58ec5dec5c22b1f4bd8fabde6c9"
 NODE_BINARY = "b2959781cc5a74c357ffa02367efa8a0330cbb1c9cb347732fdfaaaca381cbcd"
 RECORDS = {
     "runner.mjs": "0e8531f52f27b0770188bf9a5f12b26d3b1e66c6",
-    "manifest.json": "41a9679ee03a3ce2d7c0c12341d5e6965e2c89c0",
+    "manifest.json": "e69ed986b7f24ef5c260746fe508d91ff554227b",
     "resume-receipt.json": "6a8e69d3c4b62c44dade149e006671fa8ad936fc",
     "semantic-cases.json": "d252c21f7ec0c1bc71d9245776d0603184a74576",
-    "binary.archive": "",
+    "binary.archive": "725262bfddc678ec2b54523042a2bc80d620bc07",
     "upstream.archive": "f164058004a813f329fe73afbd6a0a98bbe5c479",
     "oracle.archive": "52ce00e26b2eeb223f32621b1bfb0302ce959dcb",
 }

@@ -7,12 +7,12 @@
     "source": "9f96744fa671d072371f53542cc869332407602f",
     "productSource": "dd64ee2300fc54051063d717fd27ac8d94bca9b2",
     "run": 38423920966,
-    "artifactId": null,
-    "zipSha256": null,
-    "archiveSha256": null,
-    "binarySha256": null,
-    "version": null,
-    "revision": null,
+    "artifactId": 11828756856,
+    "zipSha256": "bc99ae635bd412b10259474369858e38e7dca41a6a4a380ef292b2baf2470659",
+    "archiveSha256": "707fd6857a8ab2e0142760f4de1057214ec02aea984036fa611f06b64b2710b4",
+    "binarySha256": "ea948d34b0380562447629f5206ea5d015475c71f1390b85cfa9850f6ea59906",
+    "version": "1.4.4",
+    "revision": "1.4.4-canary.1+9f96744fa",
     "typescript": "7.0.2"
   },
   "native": {
@@ -410,18 +410,10 @@
   "budgetSeconds": 5400,
   "rowTimeoutSeconds": 300,
   "semanticProbes": {
-    "cases": [
-      "99-W1",
-      "99-W2",
-      "99-W3"
-    ],
+    "cases": ["99-W1", "99-W2", "99-W3"],
     "sha256": "c35b9c75f1b516367921593dc02bb570be1fbb7451bc48110924b3d815d0de6b",
     "source": "https://github.com/oven-sh/bun/blob/95a66b9103f0dc2ac8393790a163c3b1eff2ad54/test/cli/check/differential-cases.json",
-    "issues": [
-      45075,
-      45073,
-      45077
-    ]
+    "issues": [45075, 45073, 45077]
   },
   "buildReferences": [
     {
