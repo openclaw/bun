@@ -118,14 +118,20 @@ jobs:
           compression-level: 0
 
   benchmark:
+    name: Benchmark (${{ matrix.native }})
     if: github.repository == 'openclaw/bun' && github.event_name == 'workflow_dispatch' && inputs.mode == 'benchmark'
+    strategy:
+      fail-fast: false
+      matrix:
+        native: [current, next]
     runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 120
     permissions:
       contents: read
       actions: read
     env:
-      BENCHMARK_OUTPUT: /work/crabbox/openclaw-checker-benchmark-${{ github.run_id }}-${{ github.run_attempt }}
+      BENCHMARK_OUTPUT: /work/crabbox/openclaw-checker-benchmark-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.native }}
+      NATIVE_CHECKER: ${{ matrix.native }}
       MATRIX_RUN_ID: ${{ inputs.benchmark_receipt_run_id }}
       MATRIX_ARTIFACT_ID: ${{ inputs.benchmark_receipt_artifact_id }}
       MATRIX_RECEIPT_SHA256: ${{ inputs.benchmark_receipt_sha256 }}
@@ -189,26 +195,35 @@ jobs:
             "$GITHUB_WORKSPACE/source" \
             "$GITHUB_WORKSPACE/pipeline/scripts/openclaw-ci/checker-comparison/input" \
             "$BENCHMARK_OUTPUT"
+      - name: Check comparator output contracts
+        id: contracts
+        env:
+          NODE_NO_WARNINGS: "1"
+        run: |
+          "$BENCHMARK_OUTPUT/runtime/node-v24.16.0-linux-x64/bin/node" --test \
+            pipeline/scripts/openclaw-ci/checker-comparison/checker-compare.test.mjs
       - name: Benchmark qualified core and UI graphs
         id: benchmark
-        timeout-minutes: 70
+        timeout-minutes: 80
         run: |
-          timeout --signal=TERM --kill-after=5s 3000s python3 pipeline/scripts/openclaw-ci/checker-comparison/checker-benchmark-hosted.py \
+          timeout --signal=TERM --kill-after=5s 4500s python3 pipeline/scripts/openclaw-ci/checker-comparison/checker-benchmark-hosted.py \
             "$GITHUB_WORKSPACE/source" "$BENCHMARK_OUTPUT" \
+            --native "$NATIVE_CHECKER" \
             --receipt "$BENCHMARK_OUTPUT/completed-matrix.json" \
             --receipt-sha256 "$MATRIX_RECEIPT_SHA256"
       - name: Record benchmark workflow outcome
         if: always()
         env:
           PREPARE_OUTCOME: ${{ steps.prepare.outcome }}
+          CONTRACTS_OUTCOME: ${{ steps.contracts.outcome }}
           BENCHMARK_OUTCOME: ${{ steps.benchmark.outcome }}
         run: |
           python3 - <<'PY'
           import json, os
           from pathlib import Path
           target = Path(os.environ["BENCHMARK_OUTPUT"]) / "benchmark-status.json"
-          status = json.loads(target.read_text()) if target.exists() else {"phase": "preparation", "runExitCode": None}
-          status["workflowOutcomes"] = {"prepare": os.environ["PREPARE_OUTCOME"], "benchmark": os.environ["BENCHMARK_OUTCOME"]}
+          status = json.loads(target.read_text()) if target.exists() else {"phase": "preparation", "native": os.environ["NATIVE_CHECKER"], "runExitCode": None}
+          status["workflowOutcomes"] = {"prepare": os.environ["PREPARE_OUTCOME"], "contracts": os.environ["CONTRACTS_OUTCOME"], "benchmark": os.environ["BENCHMARK_OUTCOME"]}
           status["matrixArtifact"] = {"repository": "openclaw/bun", "runId": os.environ["MATRIX_RUN_ID"], "artifactId": os.environ["MATRIX_ARTIFACT_ID"], "receiptSha256": os.environ["MATRIX_RECEIPT_SHA256"]}
           target.write_text(json.dumps(status) + "\n")
           PY
@@ -216,7 +231,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: openclaw-checker-benchmark-${{ github.run_id }}-attempt${{ github.run_attempt }}
+          name: openclaw-checker-benchmark-${{ matrix.native }}-${{ github.run_id }}-attempt${{ github.run_attempt }}
           path: |
             ${{ env.BENCHMARK_OUTPUT }}/benchmark-status.json
             ${{ env.BENCHMARK_OUTPUT }}/run-status.json

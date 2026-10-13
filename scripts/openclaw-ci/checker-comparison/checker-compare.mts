@@ -330,7 +330,10 @@ function parseDiagnostics(output: string, root: string, cwd: string) {
   }
   return { diagnostics, unparsed };
 }
-function matchesBunSummary(stderr: string, diagnostics: Diagnostic[], root: string, cwd: string) {
+function matchesBunSummary(
+  stderr: string, diagnostics: Diagnostic[], root: string, cwd: string,
+  mode: "check" | "inventory",
+) {
   const lines = stderr.replace(/\n$/, "").split("\n");
   const header = lines.shift() ?? "";
   const count = "(\\d{1,3}(?:,\\d{3})*|\\d+)";
@@ -338,7 +341,8 @@ function matchesBunSummary(stderr: string, diagnostics: Diagnostic[], root: stri
     `^✓ No type errors in ${count} files?(?: across ${count} projects?)? \\[[\\d.]+(?:ms|s)\\]$`,
   );
   const passed = success.exec(header);
-  if (passed) return Number(passed[1]!.replaceAll(",", "")) > 0 &&
+  // listFilesOnly lists the loaded program without checking its files.
+  if (passed) return (mode === "inventory" || Number(passed[1]!.replaceAll(",", "")) > 0) &&
     diagnostics.length === 0 && lines.length === 0;
   const failure = new RegExp(
     `^Found ${count} errors? in ${count} files?, checked ${count} files?(?: across ${count} projects?)? \\[[\\d.]+(?:ms|s)\\]$`,
@@ -777,12 +781,17 @@ async function main() {
       inventoryValid && (!inventory || inventory.application.length > 0) &&
       parsed.unparsed.length === 0 &&
       (candidate.name === "bun"
-        ? matchesBunSummary(stderr, parsed.diagnostics, repo, cwd) &&
+        ? matchesBunSummary(stderr, parsed.diagnostics, repo, cwd,
+            state === "inventory" ? "inventory" : "check") &&
           ((code === 0 && parsed.diagnostics.length === 0) ||
             (code === 1 && parsed.diagnostics.length > 0))
         : stderr === "" &&
           ((code === 0 && parsed.diagnostics.length === 0) ||
             ([1, 2].includes(code ?? -1) && parsed.diagnostics.length > 0)));
+    const checkedFiles = candidate.name === "bun" ? Number(
+      /^✓ No type errors in ([\d,]+) files?/.exec(stderr)?.[1]?.replaceAll(",", "") ??
+      /^Found .* checked ([\d,]+) files?/.exec(stderr)?.[1]?.replaceAll(",", "") ?? NaN) :
+      inventory ? inventory.application.length + inventory.libraries.length : null;
     const fileBase = `${(results.length + controls.length).toString().padStart(3, "0")}-${graph.name}-${candidate.name}-${state}-${repetition}`;
     const row: Result = {
       graph: graph.name,
@@ -808,10 +817,7 @@ async function main() {
         : "fresh-process; OS page cache uncontrolled" :
         expectedCache === null ? "fresh incremental build-info" :
           expectedCache === undefined ? "unmeasured cache state" : "reused incremental build-info",
-      checkedFiles: candidate.name === "bun" ? Number(
-        /^✓ No type errors in ([\d,]+) files?/.exec(stderr)?.[1]?.replaceAll(",", "") ??
-        /^Found .* checked ([\d,]+) files?/.exec(stderr)?.[1]?.replaceAll(",", "") ?? NaN) || null :
-        inventory ? inventory.application.length + inventory.libraries.length : null,
+      checkedFiles: Number.isNaN(checkedFiles) ? null : checkedFiles,
       resourceContractStable,
     };
     fs.writeFileSync(path.join(runDir, row.stdoutFile), stdout);

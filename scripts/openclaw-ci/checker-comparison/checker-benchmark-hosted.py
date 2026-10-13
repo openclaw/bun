@@ -11,7 +11,7 @@ import time
 
 import hosted
 
-DRIVER_SHA256 = "977be59d2f7efd1cd3d200acc8dc6b40dbad248f1fda3dd291440988e5dc785a"
+DRIVER_SHA256 = "8511826e58e5a389cf6f1f426128c64b49ec20915dcffd8fadf1866ea3dbaa2f"
 DRIVER_PATH = "tools/checker-compare.mts"
 
 
@@ -70,32 +70,24 @@ def run(source, output, receipt, receipt_sha256, status, parent_deadline):
     # while preserving CI and the outer job's hosted context.
     env = dict(env)
     env.pop("GITHUB_ACTIONS", None)
-    comparison_deadline = min(parent_deadline - 5, time.monotonic() + 2400)
-    for cohort in status["cohorts"]:
-        remaining = int(comparison_deadline - time.monotonic())
-        if remaining <= 0:
-            cohort.update(outcome="not-run", reason="shared comparison budget exhausted")
-            break
-        cohort_output = output / "benchmark" / cohort["native"]
-        cohort.update(outcome="running", budgetSeconds=remaining)
-        write_status(output, status)
-        result = subprocess.run([
-            "timeout", "--signal=TERM", "--kill-after=5s", f"{remaining}s", *command,
-            "--native", cohort["native"], "--out", str(cohort_output),
-            "--budget-seconds", str(remaining),
-        ], cwd=source, env=env).returncode
-        summaries = list(cohort_output.glob("timing-*/summary.json"))
-        completed = len(summaries) == 1 and json.loads(summaries[0].read_bytes()).get("completed") is True
-        cohort.update(outcome="passed" if result == 0 and completed else "failed", runExitCode=result, completed=completed)
-        write_status(output, status)
-        # A nonzero exit does not prove that descendants settled. Preserve the
-        # failed cohort without starting another compiler group after it.
-        if result != 0 or not completed:
-            break
-    for cohort in status["cohorts"]:
-        if cohort["outcome"] == "pending":
-            cohort.update(outcome="not-run", reason="previous cohort did not complete safely")
-    return 0 if all(cohort["outcome"] == "passed" for cohort in status["cohorts"]) else 1
+    cohort = status["cohort"]
+    remaining = int(min(parent_deadline - 5, time.monotonic() + 3600) - time.monotonic())
+    if remaining <= 0:
+        cohort.update(outcome="not-run", reason="comparison budget exhausted")
+        return 1
+    cohort_output = output / "benchmark" / cohort["native"]
+    cohort.update(outcome="running", budgetSeconds=remaining)
+    write_status(output, status)
+    result = subprocess.run([
+        "timeout", "--signal=TERM", "--kill-after=5s", f"{remaining}s", *command,
+        "--native", cohort["native"], "--out", str(cohort_output),
+        "--budget-seconds", str(remaining),
+    ], cwd=source, env=env).returncode
+    summaries = list(cohort_output.glob("timing-*/summary.json"))
+    completed = len(summaries) == 1 and json.loads(summaries[0].read_bytes()).get("completed") is True
+    cohort.update(outcome="passed" if result == 0 and completed else "failed", runExitCode=result, completed=completed)
+    write_status(output, status)
+    return 0 if cohort["outcome"] == "passed" else 1
 
 
 def main():
@@ -104,19 +96,19 @@ def main():
     parser.add_argument("output", type=Path)
     parser.add_argument("--receipt", type=Path, required=True)
     parser.add_argument("--receipt-sha256", required=True)
+    parser.add_argument("--native", choices=("current", "next"), required=True)
     args = parser.parse_args()
     source, output = args.source.resolve(strict=True), args.output.resolve(strict=True)
-    status = {"phase": "benchmark", "source": hosted.SOURCE, "manifestSha256": hosted.MANIFEST, "driverSha256": DRIVER_SHA256, "matrixReceiptSha256": args.receipt_sha256, "runExitCode": None, "comparisonBudgetSeconds": 2400, "outerWatchdogSeconds": 3000, "cohorts": [{"native": native, "outcome": "pending"} for native in ("current", "next")], "hostedContext": {key: os.environ.get(key) for key in ("GITHUB_REPOSITORY", "GITHUB_WORKFLOW", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "GITHUB_JOB", "GITHUB_SHA")}}
-    parent_deadline = time.monotonic() + 3000
+    status = {"phase": "benchmark", "source": hosted.SOURCE, "manifestSha256": hosted.MANIFEST, "driverSha256": DRIVER_SHA256, "matrixReceiptSha256": args.receipt_sha256, "runExitCode": None, "comparisonBudgetSeconds": 3600, "outerWatchdogSeconds": 4500, "cohort": {"native": args.native, "outcome": "pending"}, "hostedContext": {key: os.environ.get(key) for key in ("GITHUB_REPOSITORY", "GITHUB_WORKFLOW", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "GITHUB_JOB", "GITHUB_SHA")}}
+    parent_deadline = time.monotonic() + 4500
     try:
         result = run(source, output, args.receipt.resolve(strict=True), args.receipt_sha256, status, parent_deadline)
         status.update(runExitCode=result, adapterExitCode=result)
         return result
     except Exception as error:
         status.update(adapterExitCode=1, adapterFailure=str(error))
-        for cohort in status["cohorts"]:
-            if cohort["outcome"] == "pending":
-                cohort.update(outcome="not-run", reason="adapter failed before this cohort")
+        if status["cohort"]["outcome"] == "pending":
+            status["cohort"].update(outcome="not-run", reason="adapter failed before this cohort")
         raise
     finally:
         write_status(output, status)
