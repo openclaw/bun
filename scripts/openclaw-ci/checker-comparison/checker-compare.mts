@@ -25,8 +25,8 @@ const DRIVER_PATH = "tools/checker-compare.mts";
 // Exact 06af hosted matrix transports for the final upstream candidate. A completed matching matrix
 // receipt is still mandatory; different batches require new reviewed bindings.
 const MATRIX_TRANSPORT_BLOBS = {
-  "tools/bun-checker-matrix-input/runner.mjs": "0e8531f52f27b0770188bf9a5f12b26d3b1e66c6",
-  "tools/bun-checker-matrix-input/manifest.json": "e69ed986b7f24ef5c260746fe508d91ff554227b",
+  "tools/bun-checker-matrix-input/runner.mjs": "b993674e14094583c67c0cefeaf66eb7ce873b20",
+  "tools/bun-checker-matrix-input/manifest.json": "2f616cbc3738f6a04994b8368aac7ed983a584d2",
   "tools/bun-checker-matrix-input/binary.archive": "725262bfddc678ec2b54523042a2bc80d620bc07",
   "tools/bun-checker-matrix-input/upstream.archive": "f164058004a813f329fe73afbd6a0a98bbe5c479",
   "tools/bun-checker-matrix-input/oracle.archive": "52ce00e26b2eeb223f32621b1bfb0302ce959dcb",

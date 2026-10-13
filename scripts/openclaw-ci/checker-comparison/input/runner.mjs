@@ -275,6 +275,7 @@ async function main() {
     throw new Error("Output root escapes the task work root");
   if (exec("stat", ["-f", "-c", "%T", outputRoot]).trim() === "tmpfs") throw new Error("Output root is tmpfs");
   const output = fs.mkdtempSync(path.join(outputRoot, "bun-matrix-"));
+  fs.writeFileSync(path.join(output, "executions.jsonl"), "", { flag: "wx" });
   const neutral = path.join(output, "neutral");
   fs.mkdirSync(neutral);
   const archive = path.join(inputs, "binary.archive");
@@ -518,6 +519,7 @@ async function main() {
     // belongs to the completed run; retain all evidence needed after transport loss.
     writeReceipt({
       identity,
+      admission,
       controls,
       rows,
       probes,
@@ -692,7 +694,8 @@ async function main() {
   }
   let completed = false,
     batchComplete = false,
-    failure = null;
+    failure = null,
+    admission = { status: "pending" };
   try {
     assertCiProfile(
       hostResources.logicalCpuCount,
@@ -702,6 +705,7 @@ async function main() {
       workers,
       nativePolicy,
     );
+    admission = { status: "accepted" };
     await withDistArtifactOwnership(repo, async () => {
       await ensureKyselyTypes(repo);
       verifySource();
@@ -941,6 +945,8 @@ async function main() {
     completed = false;
     batchComplete = false;
     failure = caught.stack ?? String(caught);
+    if (admission.status === "pending")
+      admission = { status: "rejected", reason: "resource-profile", error: caught.message ?? String(caught) };
   }
   let sourceVerified = false,
     sourceVerificationError = null;
@@ -954,6 +960,7 @@ async function main() {
   batchComplete &&= sourceVerified;
   const receipt = {
     identity,
+    admission,
     controls,
     rows,
     probes,

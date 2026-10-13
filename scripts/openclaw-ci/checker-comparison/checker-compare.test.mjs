@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { spawnSync } from "node:child_process";
 import { stripTypeScriptTypes } from "node:module";
 import path from "node:path";
 import test from "node:test";
@@ -456,6 +457,99 @@ test("comparator resource failures retain completed rows and prevent unsafe star
   }
 });
 
+test("rejected resource admission preserves an empty execution log and seals its receipt", async () => {
+  const written = new Map();
+  let receipt;
+  const manifest = { source: "fixture", budgetSeconds: 60, bun: { binarySha256: "fixture" } };
+  const ctx = vm.createContext({
+    path,
+    Date,
+    output: "/proof",
+    hostResources: {},
+    memory: {},
+    resources: {},
+    hardwareConcurrency: 2,
+    workers: 2,
+    nativePolicy: {},
+    identity: { manifest, bun: { binarySha256: "fixture" } },
+    manifest,
+    rows: [],
+    controls: [],
+    probes: [],
+    comparisons: [],
+    began: Date.now(),
+    process: { exitCode: 0 },
+    console: { log() {} },
+    fs: {
+      writeFileSync: (file, data, options) => {
+        assert.equal(options.flag, "wx");
+        written.set(file, data);
+      },
+    },
+    assertCiProfile() {
+      throw new Error("Host is outside the admitted four-CPU constrained CI profile");
+    },
+    withDistArtifactOwnership() {
+      assert.fail("a rejected host must not start compiler work");
+    },
+    verifySource() {},
+    writeReceipt(value) {
+      receipt = JSON.parse(JSON.stringify(value));
+    },
+  });
+  const initialize = runnerSource.match(/^  fs\.writeFileSync\(path\.join\(output, "executions\.jsonl"\).*$/m)?.[0];
+  assert.ok(initialize);
+  const start = runnerSource.indexOf("  let completed = false,");
+  const end = runnerSource.lastIndexOf("\n}\nmain().catch");
+  assert.ok(start >= 0 && end > start);
+  await vm.runInContext("(async () => {\n" + initialize + "\n" + runnerSource.slice(start, end) + "\n})()", ctx);
+  assert.equal(ctx.process.exitCode, 1);
+  assert.equal(written.get("/proof/executions.jsonl"), "");
+  assert.equal(receipt.admission.status, "rejected");
+  assert.equal(receipt.admission.reason, "resource-profile");
+  assert.equal(receipt.sourceVerified, true);
+  assert.equal(receipt.rows.length, 0);
+
+  const python = String.raw`
+import copy,gzip,importlib.util,json,os,signal,sys,tempfile
+from pathlib import Path
+from types import SimpleNamespace
+spec=importlib.util.spec_from_file_location("hosted",sys.argv[1])
+hosted=importlib.util.module_from_spec(spec);spec.loader.exec_module(hosted)
+original=json.load(sys.stdin)
+for case in ("rejected","missing","nonempty","unexplained-empty"):
+    with tempfile.TemporaryDirectory(prefix="checker-collection-") as directory:
+        root=Path(directory);source=root/"source";output=root/"output";leaf=output/"results"/"bun-matrix-case"
+        source.mkdir();leaf.mkdir(parents=True)
+        receipt=copy.deepcopy(original)
+        if case=="unexplained-empty": receipt["admission"]={"status":"accepted"}
+        (leaf/"receipt.json").write_text(json.dumps(receipt))
+        if case!="missing": (leaf/"executions.jsonl").write_text("invalid record" if case=="nonempty" else "")
+        hosted.prepare_dependencies=lambda *args:(receipt["identity"]["manifest"],dict(os.environ),{})
+        hosted.subprocess.run=lambda *args,**kwargs:SimpleNamespace(returncode=1)
+        try:
+            result=hosted.run(source,root,output)
+            assert case=="rejected" and result==1
+            sealed=json.loads(gzip.decompress((output/"receipt.json.gz").read_bytes()))
+            assert sealed["admission"]==receipt["admission"] and sealed["failure"]==receipt["failure"]
+            assert gzip.decompress((output/"executions.jsonl.gz").read_bytes())==b""
+            assert "controlOutputs" not in sealed
+        except (RuntimeError,json.JSONDecodeError):
+            assert case!="rejected",case
+        finally:
+            signal.alarm(0)
+print("producer/collector: four cases passed")
+`;
+  const result = spawnSync("python3", ["-c", python, new URL("./hosted.py", import.meta.url).pathname], {
+    input: JSON.stringify(receipt),
+    encoding: "utf8",
+    timeout: 10_000,
+  });
+  assert.equal(result.error, undefined);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /four cases passed/);
+});
+
 test("workflow dispatch selects exactly its intended workload", () => {
   const workflow = fs.readFileSync(
     new URL("../../../.github/workflows/openclaw-build-test.yml", import.meta.url),
@@ -464,6 +558,8 @@ test("workflow dispatch selects exactly its intended workload", () => {
   const jobs = ["comparison", "benchmark", "linux-x64", "darwin-arm64"];
   const expressions = jobs.map(job => {
     const block = workflow.slice(workflow.indexOf("  " + job + ":"));
+    if (job === "comparison" || job === "benchmark")
+      assert.equal(/^    runs-on: (.*)$/m.exec(block)?.[1], "ubuntu-24.04");
     const expression = /^    if: (.*)$/m.exec(block)?.[1];
     assert.ok(expression, job);
     return [job, expression];

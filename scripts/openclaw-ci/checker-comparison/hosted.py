@@ -15,12 +15,12 @@ import urllib.request
 import zipfile
 
 SOURCE = "06af34cba25d549736807a334ca8028a1f6e9662"
-MANIFEST = "05fae127079e15b70840a7835b3c1aad05e345d8d1b22d36698698609de87359"
+MANIFEST = "43b1b38354fdcbef5884e110a2aa820dffe4f0082a17e4b404e897f0d5b43c51"
 NODE_ARCHIVE = "d804845d34eddc21dc1092b519d643ef40b1f58ec5dec5c22b1f4bd8fabde6c9"
 NODE_BINARY = "b2959781cc5a74c357ffa02367efa8a0330cbb1c9cb347732fdfaaaca381cbcd"
 RECORDS = {
-    "runner.mjs": "0e8531f52f27b0770188bf9a5f12b26d3b1e66c6",
-    "manifest.json": "e69ed986b7f24ef5c260746fe508d91ff554227b",
+    "runner.mjs": "b993674e14094583c67c0cefeaf66eb7ce873b20",
+    "manifest.json": "2f616cbc3738f6a04994b8368aac7ed983a584d2",
     "resume-receipt.json": "6a8e69d3c4b62c44dade149e006671fa8ad936fc",
     "semantic-cases.json": "d252c21f7ec0c1bc71d9245776d0603184a74576",
     "binary.archive": "725262bfddc678ec2b54523042a2bc80d620bc07",
@@ -136,7 +136,7 @@ def prepare(source, payload, output):
 
 
 def require_complete(receipt):
-    require(receipt["completed"] and receipt["sourceVerified"] and receipt["clean"] == 38 and receipt["failures"] == 0 and len(receipt["rows"]) == 38, "successful process has incomplete matrix")
+    require(receipt.get("admission") == {"status": "accepted"} and receipt["completed"] and receipt["sourceVerified"] and receipt["clean"] == 38 and receipt["failures"] == 0 and len(receipt["rows"]) == 38, "successful process has incomplete matrix")
 
 
 def prepare_dependencies(source, output):
@@ -193,7 +193,12 @@ def run(source, payload, output):
     receipt["dependencyReceipt"] = dependency
     receipt["executionContext"] = status
     executions = receipts[0].parent / "executions.jsonl"
-    if result != 0:
+    require(executions.is_file() and not executions.is_symlink(), "missing execution log")
+    require(executions.stat().st_size <= 256 * 1024 ** 2, "execution record exceeds bound")
+    if receipt.get("admission", {}).get("status") == "rejected":
+        require(result != 0 and receipt["admission"].get("reason") == "resource-profile" and bool(receipt["admission"].get("error")), "invalid rejected admission")
+        require(not receipt["completed"] and not receipt["batchComplete"] and bool(receipt["failure"]) and not any(receipt[key] for key in ("controls", "rows", "probes", "comparisons")) and executions.stat().st_size == 0, "rejected admission contains compiler work")
+    elif result != 0:
         controls = {}
         with executions.open() as stream:
             for _ in range(4):
