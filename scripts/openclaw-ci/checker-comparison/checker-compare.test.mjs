@@ -482,7 +482,7 @@ test("rejected resource admission preserves an empty execution log and seals its
     console: { log() {} },
     fs: {
       writeFileSync: (file, data, options) => {
-        assert.equal(options.flag, "wx");
+        if (options) assert.equal(options.flag, "wx");
         written.set(file, data);
       },
     },
@@ -509,6 +509,79 @@ test("rejected resource admission preserves an empty execution log and seals its
   assert.equal(receipt.admission.reason, "resource-profile");
   assert.equal(receipt.sourceVerified, true);
   assert.equal(receipt.rows.length, 0);
+  const rejected = receipt;
+  Object.assign(manifest, JSON.parse(fs.readFileSync(new URL("./input/manifest.json", import.meta.url), "utf8")));
+  manifest.semanticProbes.sha256 = "fixture";
+  ctx.identity.bun.binarySha256 = manifest.bun.binarySha256;
+  const records = [];
+  Object.assign(ctx, {
+    repo: "/source",
+    inputs: "/input",
+    resumeRows: [],
+    nativeInventories: new Map(),
+    diagnosticExitCode: { bun: 1, native: 2, upstream: 1, oracle: 1 },
+    baseline: manifest.native.hostedBaseline,
+    nativeBaselines: new Map(manifest.native.hostedBaseline.rows.map(row => [row.config, row])),
+    rows: [],
+    controls: [],
+    probes: [],
+    comparisons: [],
+    process: { exitCode: 0 },
+    hash: text => text,
+    fileHash: () => "fixture",
+    checkpoint() {},
+    assertCiProfile() {},
+    ensureKyselyTypes() {},
+    withDistArtifactOwnership: (_repo, callback) => callback(),
+    async run(candidate, graph, phase) {
+      const record = { candidate, graph: graph.name, phase };
+      records.push(record);
+      const application = graph.build ? manifest.buildReferences.map(ref => ref.config).sort() : [graph.config];
+      const negative = graph.name === "negative-control";
+      return {
+        ...record,
+        validOutput: true,
+        code: negative ? (candidate === "native" ? 2 : 1) : 0,
+        diagnostics: negative
+          ? [
+              {
+                file: path.relative("/source", "/proof/control.ts"),
+                line: 1,
+                column: 7,
+                code: 2322,
+                message: "Type 'string' is not assignable to type 'number'.",
+              },
+            ]
+          : [],
+        summary: { checkedFiles: 1, projects: graph.build ? 2 : 0 },
+        inventory: { application, libraries: [], applicationSha256: JSON.stringify(application) },
+        args: [],
+        executableSha256: "fixture",
+        stdoutFile: "stdout",
+        stderrFile: "stderr",
+      };
+    },
+  });
+  ctx.fs.mkdirSync = () => {};
+  ctx.fs.readFileSync = file => {
+    if (String(file).endsWith("semantic-cases.json"))
+      return fs.readFileSync(new URL("./input/semantic-cases.json", import.meta.url), "utf8");
+    const graph = manifest.graphs.find(graph => graph.build && path.join("/source", graph.config) === file);
+    if (graph)
+      return JSON.stringify({
+        references: manifest.buildReferences.map(ref => ({
+          path: path.relative(path.dirname(graph.config), ref.config),
+        })),
+      });
+    return written.get(file) ?? "";
+  };
+  const inventoryStart = runnerSource.indexOf("  async function nativeInventory(");
+  await vm.runInContext("(async () => {\n" + runnerSource.slice(inventoryStart, end) + "\n})()", ctx);
+  assert.equal(ctx.process.exitCode, 0, receipt.failure);
+  assert.equal(receipt.completed, true);
+  assert.equal(receipt.rows.length, 38);
+  assert.equal(records.length, 133);
+  const successful = receipt;
 
   const python = String.raw`
 import copy,gzip,importlib.util,json,os,signal,sys,tempfile
@@ -517,37 +590,41 @@ from types import SimpleNamespace
 spec=importlib.util.spec_from_file_location("hosted",sys.argv[1])
 hosted=importlib.util.module_from_spec(spec);spec.loader.exec_module(hosted)
 original=json.load(sys.stdin)
-for case in ("rejected","missing","nonempty","unexplained-empty"):
+for case in ("rejected","missing","nonempty","unexplained-empty","success","success-empty","success-corrupt","success-truncated"):
     with tempfile.TemporaryDirectory(prefix="checker-collection-") as directory:
         root=Path(directory);source=root/"source";output=root/"output";leaf=output/"results"/"bun-matrix-case"
         source.mkdir();leaf.mkdir(parents=True)
-        receipt=copy.deepcopy(original)
+        success=case.startswith("success")
+        receipt=copy.deepcopy(original["success" if success else "rejected"])
         if case=="unexplained-empty": receipt["admission"]={"status":"accepted"}
         (leaf/"receipt.json").write_text(json.dumps(receipt))
-        if case!="missing": (leaf/"executions.jsonl").write_text("invalid record" if case=="nonempty" else "")
+        records=original["records"][:-1] if case=="success-truncated" else original["records"]
+        text="".join(json.dumps(record)+"\n" for record in records) if case in ("success","success-truncated") else ""
+        if case in ("nonempty","success-corrupt"): text="invalid record"
+        if case!="missing": (leaf/"executions.jsonl").write_text(text)
         hosted.prepare_dependencies=lambda *args:(receipt["identity"]["manifest"],dict(os.environ),{})
-        hosted.subprocess.run=lambda *args,**kwargs:SimpleNamespace(returncode=1)
+        hosted.subprocess.run=lambda *args,**kwargs:SimpleNamespace(returncode=0 if success else 1)
         try:
             result=hosted.run(source,root,output)
-            assert case=="rejected" and result==1
+            assert case in ("rejected","success") and result==(0 if success else 1)
             sealed=json.loads(gzip.decompress((output/"receipt.json.gz").read_bytes()))
             assert sealed["admission"]==receipt["admission"] and sealed["failure"]==receipt["failure"]
-            assert gzip.decompress((output/"executions.jsonl.gz").read_bytes())==b""
+            assert gzip.decompress((output/"executions.jsonl.gz").read_bytes()).decode()==text
             assert "controlOutputs" not in sealed
         except (RuntimeError,json.JSONDecodeError):
-            assert case!="rejected",case
+            assert case not in ("rejected","success"),case
         finally:
             signal.alarm(0)
-print("producer/collector: four cases passed")
+print("producer/collector: eight cases passed")
 `;
   const result = spawnSync("python3", ["-c", python, new URL("./hosted.py", import.meta.url).pathname], {
-    input: JSON.stringify(receipt),
+    input: JSON.stringify({ rejected, success: successful, records }),
     encoding: "utf8",
     timeout: 10_000,
   });
   assert.equal(result.error, undefined);
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /four cases passed/);
+  assert.match(result.stdout, /eight cases passed/);
 });
 
 test("workflow dispatch selects exactly its intended workload", () => {

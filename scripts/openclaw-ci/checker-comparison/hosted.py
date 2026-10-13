@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Prepare and run the frozen OpenClaw checker comparison on a hosted runner."""
 import gzip
+from collections import Counter
 import hashlib
 import json
 import os
@@ -195,10 +196,24 @@ def run(source, payload, output):
     executions = receipts[0].parent / "executions.jsonl"
     require(executions.is_file() and not executions.is_symlink(), "missing execution log")
     require(executions.stat().st_size <= 256 * 1024 ** 2, "execution record exceeds bound")
+    with executions.open() as stream:
+        records = [json.loads(line) for line in stream]
+    require(all(isinstance(record, dict) and record.get("candidate") in ("bun", "native", "upstream", "oracle") and record.get("phase") in ("check", "inventory") and isinstance(record.get("graph"), str) for record in records), "invalid execution record")
     if receipt.get("admission", {}).get("status") == "rejected":
         require(result != 0 and receipt["admission"].get("reason") == "resource-profile" and bool(receipt["admission"].get("error")), "invalid rejected admission")
         require(not receipt["completed"] and not receipt["batchComplete"] and bool(receipt["failure"]) and not any(receipt[key] for key in ("controls", "rows", "probes", "comparisons")) and executions.stat().st_size == 0, "rejected admission contains compiler work")
-    elif result != 0:
+    else:
+        require(bool(records), "non-rejected admission has no execution records")
+    if result == 0:
+        require_complete(receipt)
+        expected = [("negative-control", candidate, "check") for candidate in ("bun", "native", "upstream", "oracle")]
+        expected += [(name, candidate, "check") for name in manifest["semanticProbes"]["cases"] for candidate in ("bun", "oracle", "upstream")]
+        for graph in manifest["graphs"]:
+            expected += [(graph["name"], "bun", phase) for phase in ("check", "inventory")]
+            expected.append((graph["name"], "native", "check" if graph.get("build") else "inventory"))
+        expected += [(row["name"], "upstream", phase) for row in receipt["comparisons"] for phase in ("check", "inventory")]
+        require(Counter((row["graph"], row["candidate"], row["phase"]) for row in records) == Counter(expected), "completed matrix execution ledger differs")
+    elif receipt.get("admission", {}).get("status") != "rejected":
         controls = {}
         with executions.open() as stream:
             for _ in range(4):
