@@ -136,8 +136,7 @@ def require_complete(receipt):
     require(receipt["completed"] and receipt["sourceVerified"] and receipt["clean"] == 38 and receipt["failures"] == 0 and len(receipt["rows"]) == 38, "successful process has incomplete matrix")
 
 
-def run(source, payload, output):
-    step_started = int(time.time() * 1000)
+def prepare_dependencies(source, output):
     require(not os.environ.get("GH_TOKEN") and not os.environ.get("GITHUB_TOKEN"), "compiler step must not receive GitHub credentials")
     inputs = source / PREFIX
     manifest = verify(source, inputs, True)
@@ -157,6 +156,13 @@ def run(source, payload, output):
     require(deps.is_relative_to(source), "dependencies escape source")
     dependency = {"createdAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "sourceRoot": str(source), "node": "v24.16.0", "nodeBinarySha256": NODE_BINARY, "nodeArchiveSha256": NODE_ARCHIVE, "pnpm": "12.9.0", "nodeModules": str(deps), "files": {name: sha(source / name) for name in ("package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "node_modules/.modules.yaml", "node_modules/.pnpm/lock.yaml")}, "qualification": "successful frozen-lockfile install; frozen source/config verification before and after"}
     (output / "dependency-receipt.json").write_text(json.dumps(dependency, indent=2) + "\n")
+    return manifest, env, dependency
+
+
+def run(source, payload, output):
+    step_started = int(time.time() * 1000)
+    manifest, env, dependency = prepare_dependencies(source, output)
+    inputs = source / PREFIX
     deadline = min(int(time.time() * 1000) + manifest["budgetSeconds"] * 1000, step_started + 5_610_000)
     env.update(BUN_MATRIX_OUTPUT_ROOT=str(output / "results"), BUN_MATRIX_DEADLINE_MS=str(deadline))
     print("[bun-matrix:ready] deadline_ms=" + str(deadline), flush=True)

@@ -1,0 +1,92 @@
+#!/usr/bin/env python3
+"""Run beside hosted.py after its reviewed prepare_dependencies extraction."""
+import argparse
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import tarfile
+
+import hosted
+
+DRIVER_SHA256 = "84f1c261ff4a0ff606c781cbefe1909bf32913d82c216570cfebaf51f72c2077"
+DRIVER_PATH = "tools/checker-compare.mts"
+
+
+def run(source, output, receipt, receipt_sha256):
+    hosted.require(output.is_relative_to(Path("/work/crabbox")) and not output.is_relative_to(source), "output must be a separate task-owned work root")
+    hosted.require(subprocess.check_output(["stat", "-f", "-c", "%T", str(output)], text=True).strip() != "tmpfs", "output is tmpfs")
+    hosted.require(not receipt.is_relative_to(source), "completed matrix receipt must be external")
+    hosted.require(receipt.stat().st_size <= 256 * 1024 ** 2 and hosted.sha(receipt) == receipt_sha256, "completed matrix receipt hash or size differs")
+    proof = json.loads(receipt.read_bytes())
+    hosted.require_complete(proof)
+    manifest = hosted.verify(source, source / hosted.PREFIX, True)
+    hosted.require(proof["identity"]["manifest"] == manifest, "completed matrix manifest differs")
+    driver = Path(__file__).with_name("checker-compare.mts")
+    hosted.require(driver.is_file() and not driver.is_symlink() and hosted.sha(driver) == DRIVER_SHA256, "comparator source differs")
+
+    # Keep the matrix's dependency preparation unchanged. Only the comparator
+    # owns source verification once its eighth transport is committed below.
+    prepared_manifest, env, _dependency = hosted.prepare_dependencies(source, output)
+    hosted.require(prepared_manifest == manifest, "prepared manifest differs")
+    archive = output / "final-bun.tar.gz"
+    shutil.copyfile(source / hosted.PREFIX / "binary.archive", archive)
+    hosted.require(hosted.sha(archive) == manifest["bun"]["archiveSha256"], "external Bun archive differs")
+    binary = output / "final-bun"
+    with tarfile.open(archive) as bundle:
+        members = bundle.getmembers()
+        hosted.require(len(members) == 1 and members[0].name == "bun" and members[0].isfile(), "Bun archive entries differ")
+        with bundle.extractfile(members[0]) as src, binary.open("xb") as dst:
+            shutil.copyfileobj(src, dst)
+    binary.chmod(0o755)
+    hosted.require(hosted.sha(binary) == manifest["bun"]["binarySha256"], "Bun executable differs")
+
+    target = source / DRIVER_PATH
+    hosted.require(not target.exists() and not target.is_symlink(), "comparator target already exists")
+    shutil.copyfile(driver, target)
+    target.chmod(0o644)
+    subprocess.run(["git", "-C", str(source), "add", "--", DRIVER_PATH], check=True)
+    subprocess.run(["git", "-C", str(source), "-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false", "-c", "user.name=Checker comparison", "-c", "user.email=checker-comparison@example.invalid", "commit", "--no-verify", "-m", "chore: materialize frozen comparator"], check=True, stdout=subprocess.DEVNULL)
+
+    bun = manifest["bun"]
+    command = [
+        str(output / "runtime/node-v24.16.0-linux-x64/bin/node"), str(target),
+        "--phase", "timing", "--graphs", "core,ui", "--repetitions", "3", "--native", "current",
+        "--driver-sha256", DRIVER_SHA256,
+        "--discovery-receipt", str(receipt), "--discovery-receipt-sha256", receipt_sha256,
+        "--bun-bin", str(binary), "--bun-sha256", bun["binarySha256"],
+        "--bun-artifact", str(archive), "--bun-artifact-sha256", bun["archiveSha256"],
+        "--bun-source", bun["source"], "--bun-revision", bun["revision"], "--bun-version", bun["version"],
+        "--out", str(output / "benchmark"), "--budget-seconds", "2400",
+    ]
+    # Bun adds annotation lines under Actions; keep the strict compiler stream
+    # while preserving CI and the outer job's hosted context.
+    env = dict(env)
+    env.pop("GITHUB_ACTIONS", None)
+    result = subprocess.run(["timeout", "--signal=TERM", "--kill-after=5s", "3000s", *command], cwd=source, env=env).returncode
+    return result
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("source", type=Path)
+    parser.add_argument("output", type=Path)
+    parser.add_argument("--receipt", type=Path, required=True)
+    parser.add_argument("--receipt-sha256", required=True)
+    args = parser.parse_args()
+    source, output = args.source.resolve(strict=True), args.output.resolve(strict=True)
+    status = {"phase": "benchmark", "source": hosted.SOURCE, "manifestSha256": hosted.MANIFEST, "driverSha256": DRIVER_SHA256, "matrixReceiptSha256": args.receipt_sha256, "runExitCode": None, "hostedContext": {key: os.environ.get(key) for key in ("GITHUB_REPOSITORY", "GITHUB_WORKFLOW", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "GITHUB_JOB", "GITHUB_SHA")}}
+    try:
+        result = run(source, output, args.receipt.resolve(strict=True), args.receipt_sha256)
+        status.update(runExitCode=result, adapterExitCode=result)
+        return result
+    except Exception as error:
+        status.update(adapterExitCode=1, adapterFailure=str(error))
+        raise
+    finally:
+        (output / "benchmark-status.json").write_text(json.dumps(status) + "\n")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

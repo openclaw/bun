@@ -25,10 +25,22 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "Build Bun or compare a verified existing artifact"
+        description: "Build Bun, qualify an existing artifact, or benchmark a qualified artifact"
         type: choice
-        options: [native, comparison]
+        options: [native, comparison, benchmark]
         default: native
+      benchmark_receipt_run_id:
+        description: "Completed comparison workflow run ID (benchmark mode only)"
+        type: string
+        required: false
+      benchmark_receipt_artifact_id:
+        description: "Completed comparison evidence artifact ID (benchmark mode only)"
+        type: string
+        required: false
+      benchmark_receipt_sha256:
+        description: "Verified decompressed 38-row receipt SHA-256 (benchmark mode only)"
+        type: string
+        required: false
       base_sha:
         description: "Optional comparison base for changed-test selection"
         type: string
@@ -105,8 +117,122 @@ jobs:
           retention-days: 7
           compression-level: 0
 
+  benchmark:
+    if: github.repository == 'openclaw/bun' && github.event_name == 'workflow_dispatch' && inputs.mode == 'benchmark'
+    runs-on: blacksmith-16vcpu-ubuntu-2404
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
+    env:
+      BENCHMARK_OUTPUT: /work/crabbox/openclaw-checker-benchmark-${{ github.run_id }}-${{ github.run_attempt }}
+      MATRIX_RUN_ID: ${{ inputs.benchmark_receipt_run_id }}
+      MATRIX_ARTIFACT_ID: ${{ inputs.benchmark_receipt_artifact_id }}
+      MATRIX_RECEIPT_SHA256: ${{ inputs.benchmark_receipt_sha256 }}
+    steps:
+      - name: Create benchmark work directory
+        run: sudo install -d -o "$(id -u)" -g "$(id -g)" -m 700 "$BENCHMARK_OUTPUT"
+      - name: Checkout frozen benchmark carrier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: pipeline
+          persist-credentials: false
+      - name: Checkout frozen OpenClaw source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: openclaw/openclaw
+          ref: aed6c05cc43d898daf4c82bf6cb64222e78bde7c
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Validate completed comparison binding
+        run: |
+          python3 - <<'PY'
+          import os, re
+          for name in ("MATRIX_RUN_ID", "MATRIX_ARTIFACT_ID"):
+              if not re.fullmatch(r"[1-9][0-9]*", os.environ[name]):
+                  raise SystemExit("benchmark requires one numeric " + name)
+          if not re.fullmatch(r"[a-f0-9]{64}", os.environ["MATRIX_RECEIPT_SHA256"]):
+              raise SystemExit("benchmark requires the verified decompressed receipt SHA-256")
+          PY
+      - name: Download exact completed comparison evidence
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ inputs.benchmark_receipt_artifact_id }}
+          run-id: ${{ inputs.benchmark_receipt_run_id }}
+          repository: openclaw/bun
+          github-token: ${{ github.token }}
+          path: matrix-evidence
+          digest-mismatch: error
+      - name: Verify external completed receipt
+        run: |
+          python3 - <<'PY'
+          import gzip, hashlib, os
+          from pathlib import Path
+          source = Path("matrix-evidence/receipt.json.gz")
+          if not source.is_file() or source.is_symlink() or source.stat().st_size > 64 * 1024 ** 2:
+              raise SystemExit("missing or oversized comparison receipt")
+          with gzip.open(source, "rb") as stream:
+              data = stream.read(256 * 1024 ** 2 + 1)
+          if len(data) > 256 * 1024 ** 2 or hashlib.sha256(data).hexdigest() != os.environ["MATRIX_RECEIPT_SHA256"]:
+              raise SystemExit("comparison receipt size or SHA-256 differs")
+          with (Path(os.environ["BENCHMARK_OUTPUT"]) / "completed-matrix.json").open("xb") as target:
+              target.write(data)
+          PY
+      - name: Prepare verified archives and transport records
+        id: prepare
+        timeout-minutes: 20
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 pipeline/scripts/openclaw-ci/checker-comparison/hosted.py prepare \
+            "$GITHUB_WORKSPACE/source" \
+            "$GITHUB_WORKSPACE/pipeline/scripts/openclaw-ci/checker-comparison/input" \
+            "$BENCHMARK_OUTPUT"
+      - name: Benchmark qualified core and UI graphs
+        id: benchmark
+        timeout-minutes: 70
+        run: |
+          python3 pipeline/scripts/openclaw-ci/checker-comparison/checker-benchmark-hosted.py \
+            "$GITHUB_WORKSPACE/source" "$BENCHMARK_OUTPUT" \
+            --receipt "$BENCHMARK_OUTPUT/completed-matrix.json" \
+            --receipt-sha256 "$MATRIX_RECEIPT_SHA256"
+      - name: Record benchmark workflow outcome
+        if: always()
+        env:
+          PREPARE_OUTCOME: ${{ steps.prepare.outcome }}
+          BENCHMARK_OUTCOME: ${{ steps.benchmark.outcome }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          target = Path(os.environ["BENCHMARK_OUTPUT"]) / "benchmark-status.json"
+          status = json.loads(target.read_text()) if target.exists() else {"phase": "preparation", "runExitCode": None}
+          status["workflowOutcomes"] = {"prepare": os.environ["PREPARE_OUTCOME"], "benchmark": os.environ["BENCHMARK_OUTCOME"]}
+          status["matrixArtifact"] = {"repository": "openclaw/bun", "runId": os.environ["MATRIX_RUN_ID"], "artifactId": os.environ["MATRIX_ARTIFACT_ID"], "receiptSha256": os.environ["MATRIX_RECEIPT_SHA256"]}
+          target.write_text(json.dumps(status) + "\n")
+          PY
+      - name: Preserve benchmark results and failure status
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: openclaw-checker-benchmark-${{ github.run_id }}-attempt${{ github.run_attempt }}
+          path: |
+            ${{ env.BENCHMARK_OUTPUT }}/benchmark-status.json
+            ${{ env.BENCHMARK_OUTPUT }}/run-status.json
+            ${{ env.BENCHMARK_OUTPUT }}/dependency-receipt.json
+            ${{ env.BENCHMARK_OUTPUT }}/benchmark/identity.json
+            ${{ env.BENCHMARK_OUTPUT }}/benchmark/timing-*/manifest.json
+            ${{ env.BENCHMARK_OUTPUT }}/benchmark/timing-*/summary.json
+            ${{ env.BENCHMARK_OUTPUT }}/benchmark/timing-*/results.jsonl
+            ${{ env.BENCHMARK_OUTPUT }}/benchmark/timing-*/*.stdout
+            ${{ env.BENCHMARK_OUTPUT }}/benchmark/timing-*/*.stderr
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
   linux-x64:
-    if: github.repository == 'openclaw/bun' && (github.event_name != 'workflow_dispatch' || inputs.mode != 'comparison') && (github.event_name != 'workflow_dispatch' || inputs.platform != 'darwin-arm64')
+    if: github.repository == 'openclaw/bun' && (github.event_name != 'workflow_dispatch' || inputs.mode == 'native' || inputs.mode == '') && (github.event_name != 'workflow_dispatch' || inputs.platform != 'darwin-arm64')
     runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 115
     env:
@@ -226,7 +352,7 @@ jobs:
           retention-days: 7
 
   darwin-arm64:
-    if: github.repository == 'openclaw/bun' && (github.event_name != 'workflow_dispatch' || inputs.mode != 'comparison') && (github.event_name != 'workflow_dispatch' || inputs.platform != 'linux-x64')
+    if: github.repository == 'openclaw/bun' && (github.event_name != 'workflow_dispatch' || inputs.mode == 'native' || inputs.mode == '') && (github.event_name != 'workflow_dispatch' || inputs.platform != 'linux-x64')
     runs-on: macos-15
     timeout-minutes: 115
     env:
