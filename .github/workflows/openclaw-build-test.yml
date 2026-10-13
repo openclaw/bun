@@ -24,6 +24,11 @@ on:
       - ".github/workflows/openclaw-build-test.yml"
   workflow_dispatch:
     inputs:
+      mode:
+        description: "Build Bun or compare a verified existing artifact"
+        type: choice
+        options: [native, comparison]
+        default: native
       base_sha:
         description: "Optional comparison base for changed-test selection"
         type: string
@@ -40,12 +45,68 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.platform || 'both' }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.platform || 'both' }}-${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'native' }}
   cancel-in-progress: true
 
 jobs:
+  comparison:
+    if: github.repository == 'openclaw/bun' && github.event_name == 'workflow_dispatch' && inputs.mode == 'comparison'
+    runs-on: blacksmith-16vcpu-ubuntu-2404
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
+    env:
+      COMPARISON_OUTPUT: /work/crabbox/openclaw-checker-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Checkout frozen comparison carrier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: pipeline
+          persist-credentials: false
+      - name: Checkout frozen OpenClaw source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: openclaw/openclaw
+          ref: aed6c05cc43d898daf4c82bf6cb64222e78bde7c
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Create comparison work directory
+        run: sudo install -d -o "$(id -u)" -g "$(id -g)" -m 700 "$COMPARISON_OUTPUT"
+      - name: Prepare verified archives and transport records
+        timeout-minutes: 20
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 pipeline/scripts/openclaw-ci/checker-comparison/hosted.py prepare \
+            "$GITHUB_WORKSPACE/source" \
+            "$GITHUB_WORKSPACE/pipeline/scripts/openclaw-ci/checker-comparison/input" \
+            "$COMPARISON_OUTPUT"
+      - name: Run frozen 38-project comparison
+        timeout-minutes: 95
+        run: |
+          python3 pipeline/scripts/openclaw-ci/checker-comparison/hosted.py run \
+            "$GITHUB_WORKSPACE/source" \
+            "$GITHUB_WORKSPACE/pipeline/scripts/openclaw-ci/checker-comparison/input" \
+            "$COMPARISON_OUTPUT"
+      - name: Preserve complete or partial comparison evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: openclaw-checker-matrix-${{ github.run_id }}-attempt${{ github.run_attempt }}
+          path: |
+            ${{ env.COMPARISON_OUTPUT }}/receipt.json.gz
+            ${{ env.COMPARISON_OUTPUT }}/run-status.json
+            ${{ env.COMPARISON_OUTPUT }}/executions.jsonl.gz
+            ${{ env.COMPARISON_OUTPUT }}/receipt.recovery.json
+            ${{ env.COMPARISON_OUTPUT }}/executions.recovery.jsonl
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
   linux-x64:
-    if: github.repository == 'openclaw/bun' && (github.event_name != 'workflow_dispatch' || inputs.platform != 'darwin-arm64')
+    if: github.repository == 'openclaw/bun' && (github.event_name != 'workflow_dispatch' || inputs.mode != 'comparison') && (github.event_name != 'workflow_dispatch' || inputs.platform != 'darwin-arm64')
     runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 115
     env:
@@ -165,7 +226,7 @@ jobs:
           retention-days: 7
 
   darwin-arm64:
-    if: github.repository == 'openclaw/bun' && (github.event_name != 'workflow_dispatch' || inputs.platform != 'linux-x64')
+    if: github.repository == 'openclaw/bun' && (github.event_name != 'workflow_dispatch' || inputs.mode != 'comparison') && (github.event_name != 'workflow_dispatch' || inputs.platform != 'linux-x64')
     runs-on: macos-15
     timeout-minutes: 115
     env:
