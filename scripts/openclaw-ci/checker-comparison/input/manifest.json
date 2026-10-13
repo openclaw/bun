@@ -1,0 +1,473 @@
+{
+  "source": "06af34cba25d549736807a334ca8028a1f6e9662",
+  "sourceInventorySha256": "c669073dc6baef7717181aaf2eb9c15a1c4f94c4322230679d78114f2a9ec8fc",
+  "lockfileSha256": "8264a0415a502b477c0f4be03de7f3a2021de6d4a9bd2a79aad33fa2cd788c9d",
+  "runnerSha256": "1d68b4ab7ef2705b0cecc8f77743f6c499b18c7039484d0c814f8981ffec1900",
+  "bun": {
+    "source": "9f96744fa671d072371f53542cc869332407602f",
+    "productSource": "dd64ee2300fc54051063d717fd27ac8d94bca9b2",
+    "run": 38423920966,
+    "artifactId": null,
+    "zipSha256": null,
+    "archiveSha256": null,
+    "binarySha256": null,
+    "version": null,
+    "revision": null,
+    "typescript": "7.0.2"
+  },
+  "native": {
+    "version": "7.1.0-dev.20260922.1",
+    "hostedRun": 38360194174,
+    "binarySha256": "ade0aa4724ed7164fb4644255e94d4f98cbcd9f53dbb3973f19aea130fceb51d",
+    "hostedBaseline": {
+      "source": "06af34cba25d549736807a334ca8028a1f6e9662",
+      "version": "7.1.0-dev.20260922.1",
+      "binding": "version-only",
+      "run": 38360194174,
+      "rows": [
+        {
+          "config": "tsconfig.core.json",
+          "configSha256": "79b9ed5d075d7640692b0f0de944633ca3fc96c2422c8c0176691f328aa12828",
+          "job": 115172957123
+        },
+        {
+          "config": "tsconfig.ui.json",
+          "configSha256": "be2cc8322329c7cfe20d78914184b37819ba93312471e970c1260c8cf8e43e96",
+          "job": 115172957123
+        },
+        {
+          "config": "test/tsconfig/tsconfig.core.test.agents-root.json",
+          "configSha256": "4bd202be865cdb6798f122ed3f0fdcabc0de00906e1cac6b8290329044f760d5",
+          "job": 115172957121
+        },
+        {
+          "config": "test/tsconfig/tsconfig.core.test.agents-other.json",
+          "configSha256": "f5bbb2181e905473d0a182025023da2279ab71f089f4887d628e749acb8977bb",
+          "job": 115172957151
+        },
+        {
+          "config": "test/tsconfig/tsconfig.core.test.agents-tools.json",
+          "configSha256": "d2c95b45bf5f5db83c6b3a42831c2f44393833a50661ee8e8d47306d58fd7571",
+          "job": 115172957067
+        },
+        {
+          "config": "test/tsconfig/tsconfig.core.test.gateway-root.json",
+          "configSha256": "5b3c40b5f49af616a1ebda4fefcfcdae135275cb1af90b65f29ff2e5d404a74a",
+          "job": 115172957141
+        },
+        {
+          "config": "test/tsconfig/tsconfig.core.test.gateway-server.json",
+          "configSha256": "c7c513939826474661d573d8f84ed428918683c45b94ed55706a13f29a993c51",
+          "job": 115172957175
+        },
+        {
+          "config": "test/tsconfig/tsconfig.core.test.gateway-other.json",
+          "configSha256": "0eb6abab9a42d2542c52404e3d99f1003b7f9e10da5a3f2081b54ff2988f4367",
+          "job": 115172957121
+        },
+        {
+          "config": "test/tsconfig/tsconfig.core.test.infra.json",
+          "configSha256": "012ff819e9477ecb5f0bc20be2f5c1888b0b98559a3d132d5fabcb8010bfcf3d",
+          "job": 115172957151
+        },
+        {
+          "config": "test/tsconfig/tsconfig.core.test.state-logging.json",
+          "configSha256": "61936002a29a43c775db4184b8e0c8470af7ca83e5b22dd2c12059638f2231ba",
+          "job": 115172957067
+        },
+        {
+          "config": "test/tsconfig/tsconfig.core.test.commands.json",
+          "configSha256": "130765195d575b65a561e31f153373bdf8d10caa03be3b7eacecca61e9da2c02",
+          "job": 115172957141
+        },
+        {
+          "config": "test/tsconfig/tsconfig.core.test.plugins-platform.json",
+          "configSha256": "8ac96620213101c51571c1801bb1b8e184382a59db222490bf9f7d84085df9e3",
+          "job": 115172957175
+        },
+        {
+          "config": "test/tsconfig/tsconfig.core.test.config-cli.json",
+          "configSha256": "5c22518f53360b2517f422c1a1a3ee2afbf3cf6ad1d735b5ce3537b0dccbbdd6",
+          "job": 115172957121
+        },
+        {
+          "config": "test/tsconfig/tsconfig.core.test.messaging.json",
+          "configSha256": "2b2c757ca212e859c5c16d00a824e5484ab94918dbcfd71066b249116bae6e6d",
+          "job": 115172957151
+        },
+        {
+          "config": "test/tsconfig/tsconfig.core.test.services.json",
+          "configSha256": "a47e2822cf08bfd27ba507b14d7893283ca2d8103853258991f32d2c7ac0d428",
+          "job": 115172957067
+        },
+        {
+          "config": "test/tsconfig/tsconfig.core.test.other.json",
+          "configSha256": "914550d870ee510030f2832668a593c12fbe729ceca8702fbd899563a335b5be",
+          "job": 115172957141
+        },
+        {
+          "config": "test/tsconfig/tsconfig.core.test.ui-pages.json",
+          "configSha256": "09faa05bcae195c9dc64978c1a2f15435cf18bc28bfe386abb48b39afb2eb65d",
+          "job": 115172957175
+        },
+        {
+          "config": "test/tsconfig/tsconfig.core.test.ui-e2e.json",
+          "configSha256": "1c725eb0857ee1b9be21788a5271fd48e9df222b2d3b0261aa0a14ce448160a2",
+          "job": 115172957121
+        },
+        {
+          "config": "test/tsconfig/tsconfig.core.test.ui-other.json",
+          "configSha256": "8e064bcff14e325d12d6bd66ee1f1a41828f58d3f84217d97b5d9eadf27f5789",
+          "job": 115172957151
+        },
+        {
+          "config": "test/tsconfig/tsconfig.test.packages.json",
+          "configSha256": "05f7fc1d4fd4d35f82982b133a0a569e9407fb7b26c1d8636afd6d34b5d65517",
+          "job": 115172957067
+        },
+        {
+          "config": "test/tsconfig/tsconfig.core.test.plugin-sdk.json",
+          "configSha256": "7557e96c6e3b1733c944551f1c3350490a1bde18c331c7c5ca33ff6bb7380edc",
+          "job": 115172957141
+        },
+        {
+          "config": "test/tsconfig/tsconfig.core.test.commands-doctor.json",
+          "configSha256": "963bc38d61cb8fe4c5a86a3e1471f9c1983929f4a5853a8918a75f1926c1de67",
+          "job": 115172957175
+        },
+        {
+          "config": "test/tsconfig/tsconfig.core.test.cli-update.json",
+          "configSha256": "605b2edf32fed5e2da64fe638bb1e491256d59a0ee350b16c0022f6f1696e526",
+          "job": 115172957121
+        },
+        {
+          "config": "test/tsconfig/tsconfig.core.test.gateway-methods.json",
+          "configSha256": "b4799a05e4dc221b9e3df74bf05e4cc81e90c7eef80729932b475af281e50344",
+          "job": 115172957151
+        },
+        {
+          "config": "test/tsconfig/tsconfig.core.test.ui-chat.json",
+          "configSha256": "a2329a8bd43ffd6c60dcd4563af9bc007a4550c648d9947c97edc19a9e0d1e29",
+          "job": 115172957067
+        },
+        {
+          "config": "test/tsconfig/tsconfig.core.test.agents-sessions.json",
+          "configSha256": "c5397eb52174dced1646a495d9072ca490066948fa478186a4014609d0badae1",
+          "job": 115172957141
+        },
+        {
+          "config": "test/tsconfig/tsconfig.core.test.services-cron.json",
+          "configSha256": "20381fd8966ca9376704680efa6aff57e4596ea8a9d10434fdb95d0233ad8bbb",
+          "job": 115172957175
+        },
+        {
+          "config": "test/tsconfig/tsconfig.core.test.ui-app.json",
+          "configSha256": "d8c89fe08de8ffe1ffdd3e48d26425d3ff41b2015cae0ffe5d9650173cddfad7",
+          "job": 115172957121
+        },
+        {
+          "config": "test/tsconfig/tsconfig.core.test.ui-components.json",
+          "configSha256": "0541b2d6597479c487ee2cce502bfd86e48ef741b9281e572b7ff0e1d5dcb726",
+          "job": 115172957151
+        },
+        {
+          "config": "test/tsconfig/tsconfig.core.test.ui-e2e-chat.json",
+          "configSha256": "f64cc29b5a842068d37a8a3736b1918aa7d194f81981a734b6d62ca54c6ded2e",
+          "job": 115172957067
+        },
+        {
+          "config": "tsconfig.extensions.json",
+          "configSha256": "54560e22ba0e1a051693db7242720e3316e697161db3d5c35acd37e9ef496ebc",
+          "job": 115172957123
+        },
+        {
+          "config": "test/tsconfig/tsconfig.extensions.test.json",
+          "configSha256": "b032aa889d4ab5512e57f26871a5839a38ae326b18e765dce2dcec3b4fd80d49",
+          "job": 115172957172
+        },
+        {
+          "config": "tsconfig.scripts.json",
+          "configSha256": "51a739d226dee9e008ccd0099315b837277b8684dbb28c7a97597cc2aa4cdcc4",
+          "job": 115172957172
+        },
+        {
+          "config": "test/tsconfig/tsconfig.test.root.tooling.json",
+          "configSha256": "57a7120e649c6bad6fc7532d87f731cfcd5e8e50f3b03114371478502c9587e6",
+          "job": 115172957151
+        },
+        {
+          "config": "test/tsconfig/tsconfig.test.root.scripts.json",
+          "configSha256": "d19943b8c70e657504e0cd96fc03796f6df7897dbeb4a616f9f0dccfdd4f6a1b",
+          "job": 115172957067
+        },
+        {
+          "config": "test/tsconfig/tsconfig.test.root.e2e.json",
+          "configSha256": "da1244c5ced0ae81b7af1d10df69f766f825851e3d99f1838c2c58607f147a7a",
+          "job": 115172957141
+        },
+        {
+          "config": "test/tsconfig/tsconfig.test.root.other.json",
+          "configSha256": "66bcc8ee446f88f5e04de35b5d82eea33484ab70107eef183bd6c35fb527e48b",
+          "job": 115172957175
+        }
+      ]
+    }
+  },
+  "canonicalGraphs": 34,
+  "graphs": [
+    {
+      "name": "core",
+      "config": "tsconfig.core.json",
+      "configSha256": "79b9ed5d075d7640692b0f0de944633ca3fc96c2422c8c0176691f328aa12828"
+    },
+    {
+      "name": "ui",
+      "config": "tsconfig.ui.json",
+      "configSha256": "be2cc8322329c7cfe20d78914184b37819ba93312471e970c1260c8cf8e43e96"
+    },
+    {
+      "name": "core-test-agents-root",
+      "config": "test/tsconfig/tsconfig.core.test.agents-root.json",
+      "configSha256": "4bd202be865cdb6798f122ed3f0fdcabc0de00906e1cac6b8290329044f760d5"
+    },
+    {
+      "name": "core-test-agents-other",
+      "config": "test/tsconfig/tsconfig.core.test.agents-other.json",
+      "configSha256": "f5bbb2181e905473d0a182025023da2279ab71f089f4887d628e749acb8977bb"
+    },
+    {
+      "name": "core-test-agents-tools",
+      "config": "test/tsconfig/tsconfig.core.test.agents-tools.json",
+      "configSha256": "d2c95b45bf5f5db83c6b3a42831c2f44393833a50661ee8e8d47306d58fd7571"
+    },
+    {
+      "name": "core-test-gateway-root",
+      "config": "test/tsconfig/tsconfig.core.test.gateway-root.json",
+      "configSha256": "5b3c40b5f49af616a1ebda4fefcfcdae135275cb1af90b65f29ff2e5d404a74a"
+    },
+    {
+      "name": "core-test-gateway-server",
+      "config": "test/tsconfig/tsconfig.core.test.gateway-server.json",
+      "configSha256": "c7c513939826474661d573d8f84ed428918683c45b94ed55706a13f29a993c51"
+    },
+    {
+      "name": "core-test-gateway-other",
+      "config": "test/tsconfig/tsconfig.core.test.gateway-other.json",
+      "configSha256": "0eb6abab9a42d2542c52404e3d99f1003b7f9e10da5a3f2081b54ff2988f4367"
+    },
+    {
+      "name": "core-test-infra",
+      "config": "test/tsconfig/tsconfig.core.test.infra.json",
+      "configSha256": "012ff819e9477ecb5f0bc20be2f5c1888b0b98559a3d132d5fabcb8010bfcf3d"
+    },
+    {
+      "name": "core-test-state-logging",
+      "config": "test/tsconfig/tsconfig.core.test.state-logging.json",
+      "configSha256": "61936002a29a43c775db4184b8e0c8470af7ca83e5b22dd2c12059638f2231ba"
+    },
+    {
+      "name": "core-test-commands",
+      "config": "test/tsconfig/tsconfig.core.test.commands.json",
+      "configSha256": "130765195d575b65a561e31f153373bdf8d10caa03be3b7eacecca61e9da2c02"
+    },
+    {
+      "name": "core-test-plugins-platform",
+      "config": "test/tsconfig/tsconfig.core.test.plugins-platform.json",
+      "configSha256": "8ac96620213101c51571c1801bb1b8e184382a59db222490bf9f7d84085df9e3"
+    },
+    {
+      "name": "core-test-config-cli",
+      "config": "test/tsconfig/tsconfig.core.test.config-cli.json",
+      "configSha256": "5c22518f53360b2517f422c1a1a3ee2afbf3cf6ad1d735b5ce3537b0dccbbdd6"
+    },
+    {
+      "name": "core-test-messaging",
+      "config": "test/tsconfig/tsconfig.core.test.messaging.json",
+      "configSha256": "2b2c757ca212e859c5c16d00a824e5484ab94918dbcfd71066b249116bae6e6d"
+    },
+    {
+      "name": "core-test-services",
+      "config": "test/tsconfig/tsconfig.core.test.services.json",
+      "configSha256": "a47e2822cf08bfd27ba507b14d7893283ca2d8103853258991f32d2c7ac0d428"
+    },
+    {
+      "name": "core-test-other",
+      "config": "test/tsconfig/tsconfig.core.test.other.json",
+      "configSha256": "914550d870ee510030f2832668a593c12fbe729ceca8702fbd899563a335b5be"
+    },
+    {
+      "name": "core-test-ui-pages",
+      "config": "test/tsconfig/tsconfig.core.test.ui-pages.json",
+      "configSha256": "09faa05bcae195c9dc64978c1a2f15435cf18bc28bfe386abb48b39afb2eb65d"
+    },
+    {
+      "name": "core-test-ui-e2e",
+      "config": "test/tsconfig/tsconfig.core.test.ui-e2e.json",
+      "configSha256": "1c725eb0857ee1b9be21788a5271fd48e9df222b2d3b0261aa0a14ce448160a2"
+    },
+    {
+      "name": "core-test-ui-other",
+      "config": "test/tsconfig/tsconfig.core.test.ui-other.json",
+      "configSha256": "8e064bcff14e325d12d6bd66ee1f1a41828f58d3f84217d97b5d9eadf27f5789"
+    },
+    {
+      "name": "core-test-packages",
+      "config": "test/tsconfig/tsconfig.test.packages.json",
+      "configSha256": "05f7fc1d4fd4d35f82982b133a0a569e9407fb7b26c1d8636afd6d34b5d65517"
+    },
+    {
+      "name": "core-test-plugin-sdk",
+      "config": "test/tsconfig/tsconfig.core.test.plugin-sdk.json",
+      "configSha256": "7557e96c6e3b1733c944551f1c3350490a1bde18c331c7c5ca33ff6bb7380edc"
+    },
+    {
+      "name": "core-test-commands-doctor",
+      "config": "test/tsconfig/tsconfig.core.test.commands-doctor.json",
+      "configSha256": "963bc38d61cb8fe4c5a86a3e1471f9c1983929f4a5853a8918a75f1926c1de67"
+    },
+    {
+      "name": "core-test-cli-update",
+      "config": "test/tsconfig/tsconfig.core.test.cli-update.json",
+      "configSha256": "605b2edf32fed5e2da64fe638bb1e491256d59a0ee350b16c0022f6f1696e526"
+    },
+    {
+      "name": "core-test-gateway-methods",
+      "config": "test/tsconfig/tsconfig.core.test.gateway-methods.json",
+      "configSha256": "b4799a05e4dc221b9e3df74bf05e4cc81e90c7eef80729932b475af281e50344"
+    },
+    {
+      "name": "core-test-ui-chat",
+      "config": "test/tsconfig/tsconfig.core.test.ui-chat.json",
+      "configSha256": "a2329a8bd43ffd6c60dcd4563af9bc007a4550c648d9947c97edc19a9e0d1e29"
+    },
+    {
+      "name": "core-test-agents-sessions",
+      "config": "test/tsconfig/tsconfig.core.test.agents-sessions.json",
+      "configSha256": "c5397eb52174dced1646a495d9072ca490066948fa478186a4014609d0badae1"
+    },
+    {
+      "name": "core-test-services-cron",
+      "config": "test/tsconfig/tsconfig.core.test.services-cron.json",
+      "configSha256": "20381fd8966ca9376704680efa6aff57e4596ea8a9d10434fdb95d0233ad8bbb"
+    },
+    {
+      "name": "core-test-ui-app",
+      "config": "test/tsconfig/tsconfig.core.test.ui-app.json",
+      "configSha256": "d8c89fe08de8ffe1ffdd3e48d26425d3ff41b2015cae0ffe5d9650173cddfad7"
+    },
+    {
+      "name": "core-test-ui-components",
+      "config": "test/tsconfig/tsconfig.core.test.ui-components.json",
+      "configSha256": "0541b2d6597479c487ee2cce502bfd86e48ef741b9281e572b7ff0e1d5dcb726"
+    },
+    {
+      "name": "core-test-ui-e2e-chat",
+      "config": "test/tsconfig/tsconfig.core.test.ui-e2e-chat.json",
+      "configSha256": "f64cc29b5a842068d37a8a3736b1918aa7d194f81981a734b6d62ca54c6ded2e"
+    },
+    {
+      "name": "extensions",
+      "config": "tsconfig.extensions.json",
+      "configSha256": "54560e22ba0e1a051693db7242720e3316e697161db3d5c35acd37e9ef496ebc"
+    },
+    {
+      "name": "extensions-test",
+      "config": "test/tsconfig/tsconfig.extensions.test.json",
+      "configSha256": "b032aa889d4ab5512e57f26871a5839a38ae326b18e765dce2dcec3b4fd80d49"
+    },
+    {
+      "name": "scripts",
+      "config": "tsconfig.scripts.json",
+      "configSha256": "51a739d226dee9e008ccd0099315b837277b8684dbb28c7a97597cc2aa4cdcc4"
+    },
+    {
+      "name": "test-root-tooling",
+      "config": "test/tsconfig/tsconfig.test.root.tooling.json",
+      "configSha256": "57a7120e649c6bad6fc7532d87f731cfcd5e8e50f3b03114371478502c9587e6"
+    },
+    {
+      "name": "test-root-scripts",
+      "config": "test/tsconfig/tsconfig.test.root.scripts.json",
+      "configSha256": "d19943b8c70e657504e0cd96fc03796f6df7897dbeb4a616f9f0dccfdd4f6a1b"
+    },
+    {
+      "name": "test-root-e2e",
+      "config": "test/tsconfig/tsconfig.test.root.e2e.json",
+      "configSha256": "da1244c5ced0ae81b7af1d10df69f766f825851e3d99f1838c2c58607f147a7a"
+    },
+    {
+      "name": "test-root-other",
+      "config": "test/tsconfig/tsconfig.test.root.other.json",
+      "configSha256": "66bcc8ee446f88f5e04de35b5d82eea33484ab70107eef183bd6c35fb527e48b"
+    },
+    {
+      "name": "extensions-projectrefs",
+      "config": "tsconfig.extensions.projects.json",
+      "configSha256": "01e35b7e7da0b78937034e20fa1b8b92eac25906ba3eb0fb9c273a3ff26ffa2a",
+      "build": true
+    }
+  ],
+  "budgetSeconds": 5400,
+  "rowTimeoutSeconds": 300,
+  "semanticProbes": {
+    "cases": [
+      "99-W1",
+      "99-W2",
+      "99-W3"
+    ],
+    "sha256": "c35b9c75f1b516367921593dc02bb570be1fbb7451bc48110924b3d815d0de6b",
+    "source": "https://github.com/oven-sh/bun/blob/95a66b9103f0dc2ac8393790a163c3b1eff2ad54/test/cli/check/differential-cases.json",
+    "issues": [
+      45075,
+      45073,
+      45077
+    ]
+  },
+  "buildReferences": [
+    {
+      "name": "extensions",
+      "config": "tsconfig.extensions.json",
+      "configSha256": "54560e22ba0e1a051693db7242720e3316e697161db3d5c35acd37e9ef496ebc"
+    },
+    {
+      "name": "extensions-test",
+      "config": "test/tsconfig/tsconfig.extensions.test.json",
+      "configSha256": "b032aa889d4ab5512e57f26871a5839a38ae326b18e765dce2dcec3b4fd80d49"
+    }
+  ],
+  "upstream": {
+    "source": "95a66b9103f0dc2ac8393790a163c3b1eff2ad54",
+    "url": "https://buildkite.com/organizations/bun/pipelines/bun/builds/125031/jobs/01a13406-99bb-4ad7-a5ac-143e21202aa1/artifacts/01a1340c-64fa-4841-a275-eb0778f9cb99",
+    "archiveSha256": "092fd77219ea8b98489b489cfda38be2413901440a2929e8af5a1097a96a6905",
+    "binarySha256": "2bdac3f00794a657bbf8c43232a8ba6b021620e3b01817bdf5aa0d0f95e1cf3c"
+  },
+  "oracle": {
+    "version": "7.0.2",
+    "url": "https://registry.npmjs.org/@typescript/typescript-linux-x64/-/typescript-linux-x64-7.0.2.tgz",
+    "integrity": "sha512-EYdf2cNg7rgCWJnxCdJ+F3V39O8ihb37eHAu1LK8oAFizgTQbPOK7zHHXbPt8rX24COqODXeI3sIf0fCXG7H/A==",
+    "archiveSha256": "7ecad6f67377e831856367ab062ef394f21506a611405bf8ac0ff039348637d3",
+    "binarySha256": "4f2de678286401759b3fb4475bafe35b8f32b4b3a07d92642bbf37eadc9b34a4"
+  },
+  "diagnosticExitCodes": {
+    "bun": 1,
+    "upstream": 1,
+    "native": 2,
+    "oracle": 1
+  },
+  "order": "strict fresh controls; three canonical semantic probes; all38 fresh Bun graphs and matching native inventories; native reference build; official comparisons",
+  "resumeReceipt": null,
+  "receiptSchema": 3,
+  "maxNewRows": 38,
+  "sourceTree": "4535f56738665cacc2ddacd4f5e303d0a62a7ad2",
+  "nativeReferenceTimeoutSeconds": 600,
+  "executionPolicy": {
+    "profile": "constrained-ci-four-cpu",
+    "ci": "true",
+    "localCheck": "0",
+    "bun": "default configured workers; no --threads override",
+    "native": "frozen source canonical CI helper",
+    "inheritedOverrides": "preserved and recorded; mismatching profile rejected",
+    "memory": "known positive effective capacity below 24 GiB",
+    "historicalUpstream": "95a snapshot at explicit --threads 1"
+  }
+}
