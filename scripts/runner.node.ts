@@ -949,6 +949,12 @@ async function runTests(): Promise<TestResult[]> {
     }
   }
 
+  // The fork's checker oracle is installed by the ordinary test dependency phase.
+  if (!failedResults.length && process.env.OPENCLAW_CI_CHECKER_ORACLE === "1") {
+    const { verifyCheckerOracle } = await import("./openclaw-ci/tests.ts");
+    process.env.TSC = verifyCheckerOracle();
+  }
+
   const isNapiAddonTest = (t: string) => /napi[\\/]node-napi-tests[\\/].*[\\/]do\.test\.ts$/.test(t);
   const napiAddonDirs = [...new Set(tests.filter(isNapiAddonTest).map(t => dirname(join(testsPath, t))))];
   let napiPrebuild: Promise<{ ok: boolean; error: SpawnResult["error"]; output: string; seconds: number }> | null =
@@ -1590,6 +1596,7 @@ async function runTests(): Promise<TestResult[]> {
       exitCode: r.exitCode,
       signalCode: r.signalCode,
       duration: r.duration,
+      tests: r.tests.map(({ test, status }) => ({ test, status })),
       stdoutPreview: r.stdoutPreview?.slice?.(-4000),
     }));
     writeFileSync(cliOptions["results-json"], JSON.stringify(all, null, 2));
@@ -2168,7 +2175,9 @@ async function spawnBunTest(
   const isReallyTest = isTestStrict(testPath) || absPath.includes("vendor");
   const args = opts.args ?? [];
 
-  const testArgs = ["test", ...args, `--timeout=${perTestTimeout}`, "--reporter=dots"];
+  const needsCheckerResults = process.env.OPENCLAW_CI_CHECKER_ORACLE === "1";
+  const testArgs = ["test", ...args, `--timeout=${perTestTimeout}`];
+  if (!needsCheckerResults) testArgs.push("--reporter=dots");
 
   // This will be set if a JUnit file is generated
   let junitFilePath: string | null = null;
@@ -2193,6 +2202,8 @@ async function spawnBunTest(
   const env: SpawnEnv = {
     GITHUB_ACTIONS: "true", // always true so annotations are parsed
     ...opts.env,
+    // The checker gate needs every test status, including passes, regardless of agent detection.
+    ...(needsCheckerResults ? { AGENT: "0" } : {}),
   };
   if ((basename(execPath).includes("asan") || !isCI) && shouldValidateExceptions(relative(cwd, absPath))) {
     env.BUN_JSC_validateExceptionChecks = "1";
