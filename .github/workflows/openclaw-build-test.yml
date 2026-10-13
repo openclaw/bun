@@ -25,9 +25,9 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "Build Bun, qualify an existing artifact, or benchmark a qualified artifact"
+        description: "Build Bun, qualify or benchmark an artifact, or diagnose native references"
         type: choice
-        options: [native, comparison, benchmark]
+        options: [native, comparison, benchmark, reference-diagnostic]
         default: native
       benchmark_receipt_run_id:
         description: "Completed comparison workflow run ID (benchmark mode only)"
@@ -113,6 +113,57 @@ jobs:
             ${{ env.COMPARISON_OUTPUT }}/executions.jsonl.gz
             ${{ env.COMPARISON_OUTPUT }}/receipt.recovery.json
             ${{ env.COMPARISON_OUTPUT }}/executions.recovery.jsonl
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  reference-diagnostic:
+    if: github.repository == 'openclaw/bun' && github.event_name == 'workflow_dispatch' && inputs.mode == 'reference-diagnostic'
+    runs-on: blacksmith-16vcpu-ubuntu-2404
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read
+    env:
+      DIAGNOSTIC_OUTPUT: /work/crabbox/openclaw-reference-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Checkout frozen diagnostic carrier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: pipeline
+          persist-credentials: false
+      - name: Checkout original reference-timeout source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: openclaw/openclaw
+          ref: aed6c05cc43d898daf4c82bf6cb64222e78bde7c
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Create diagnostic work directory
+        run: sudo install -d -o "$(id -u)" -g "$(id -g)" -m 700 "$DIAGNOSTIC_OUTPUT"
+      - name: Prepare verified archives and transport records
+        timeout-minutes: 20
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 pipeline/scripts/openclaw-ci/checker-comparison/hosted.py prepare \
+            "$GITHUB_WORKSPACE/source" \
+            "$GITHUB_WORKSPACE/pipeline/scripts/openclaw-ci/checker-comparison/input" \
+            "$DIAGNOSTIC_OUTPUT"
+      - name: Diagnose native reference build
+        timeout-minutes: 30
+        run: |
+          python3 pipeline/scripts/openclaw-ci/checker-comparison/native-reference-hosted.py \
+            "$GITHUB_WORKSPACE/source" "$DIAGNOSTIC_OUTPUT"
+      - name: Preserve reference diagnostic and failure status
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: openclaw-reference-diagnostic-${{ github.run_id }}-attempt${{ github.run_attempt }}
+          path: |
+            ${{ env.DIAGNOSTIC_OUTPUT }}/native-reference.json
+            ${{ env.DIAGNOSTIC_OUTPUT }}/run-status.json
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
