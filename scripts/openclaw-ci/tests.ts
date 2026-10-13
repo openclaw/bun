@@ -175,21 +175,35 @@ function summary(text: string) {
 
 export function verifyCheckerOracle(): string {
   const fromTests = createRequire(resolve("test/package.json"));
-  const packagePath = fromTests.resolve("typescript7/package.json");
-  const { version } = JSON.parse(readFileSync(packagePath, "utf8"));
-  if (version !== "7.0.2") throw new Error(`Expected TypeScript 7.0.2 oracle, got ${version}`);
-  const platformPackage = `@typescript/typescript-${process.platform}-${process.arch}`;
-  const nativePackage = createRequire(packagePath).resolve(`${platformPackage}/package.json`);
-  const binary = resolve(dirname(nativePackage), "lib", process.platform === "win32" ? "tsc.exe" : "tsc");
-  const result = spawnSync(binary, ["--version"], { encoding: "utf8", timeout: 10_000 });
-  if (result.error) throw result.error;
-  if (result.status !== 0 || result.stdout.trim() !== "Version 7.0.2" || result.stderr.trim()) {
-    throw new Error(`Native TypeScript oracle failed: ${result.stdout}\n${result.stderr}`);
-  }
-  const oracle = { version, platformPackage, sha256: createHash("sha256").update(readFileSync(binary)).digest("hex") };
-  writeFileSync("build/openclaw-ci/checker-oracle.json", JSON.stringify(oracle, null, 2) + "\n");
-  summary(`Native checker oracle: ${JSON.stringify(oracle)}\n`);
-  return binary;
+  const oracles = [
+    ["typescript7", "7.0.2"],
+    ["typescript7-post4913", "7.1.0-dev.20260922.1"],
+  ] as const;
+  const verified = oracles.map(([alias, expectedVersion]) => {
+    const packagePath = fromTests.resolve(`${alias}/package.json`);
+    const platformPackage = `@typescript/typescript-${process.platform}-${process.arch}`;
+    const nativePackage = createRequire(packagePath).resolve(`${platformPackage}/package.json`);
+    for (const path of [packagePath, nativePackage]) {
+      const { version } = JSON.parse(readFileSync(path, "utf8"));
+      if (version !== expectedVersion) throw new Error(`Expected ${alias} ${expectedVersion} oracle, got ${version}`);
+    }
+    const binary = resolve(dirname(nativePackage), "lib", process.platform === "win32" ? "tsc.exe" : "tsc");
+    const result = spawnSync(binary, ["--version"], { encoding: "utf8", timeout: 10_000 });
+    if (result.error) throw result.error;
+    if (result.status !== 0 || result.stdout.trim() !== `Version ${expectedVersion}` || result.stderr.trim()) {
+      throw new Error(`Native TypeScript oracle ${alias} failed: ${result.stdout}\n${result.stderr}`);
+    }
+    return {
+      alias,
+      version: expectedVersion,
+      platformPackage,
+      binary,
+      sha256: createHash("sha256").update(readFileSync(binary)).digest("hex"),
+    };
+  });
+  writeFileSync("build/openclaw-ci/checker-oracle.json", JSON.stringify(verified, null, 2) + "\n");
+  summary(`Native checker oracles: ${JSON.stringify(verified)}\n`);
+  return verified[0].binary;
 }
 
 function reportDiskUsage(stage: "before" | "after") {

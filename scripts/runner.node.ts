@@ -2175,7 +2175,9 @@ async function spawnBunTest(
   const isReallyTest = isTestStrict(testPath) || absPath.includes("vendor");
   const args = opts.args ?? [];
 
-  const testArgs = ["test", ...args, `--timeout=${perTestTimeout}`, "--reporter=dots"];
+  const needsCheckerResults = process.env.OPENCLAW_CI_CHECKER_ORACLE === "1";
+  const testArgs = ["test", ...args, `--timeout=${perTestTimeout}`];
+  if (!needsCheckerResults) testArgs.push("--reporter=dots");
 
   // This will be set if a JUnit file is generated
   let junitFilePath: string | null = null;
@@ -2200,6 +2202,8 @@ async function spawnBunTest(
   const env: SpawnEnv = {
     GITHUB_ACTIONS: "true", // always true so annotations are parsed
     ...opts.env,
+    // The checker gate needs every test status, including passes, regardless of agent detection.
+    ...(needsCheckerResults ? { AGENT: "0" } : {}),
   };
   if ((basename(execPath).includes("asan") || !isCI) && shouldValidateExceptions(relative(cwd, absPath))) {
     env.BUN_JSC_validateExceptionChecks = "1";
@@ -2364,9 +2368,8 @@ function parseTestStdout(stdout: string, testPath?: string): TestOutput {
         continue;
       }
 
-      const eol = string.lastIndexOf(" [") || undefined;
-      const test = string.substring(1 + emoji.length, eol);
-      const duration = eol ? string.substring(eol + 2, string.lastIndexOf("]")) : undefined;
+      const duration = / \[(\d+\.\d+m?s)\]$/.exec(string);
+      const test = string.substring(1 + emoji.length, duration?.index);
 
       tests.push({
         url: testPath === undefined ? undefined : getFileUrl(testPath),
@@ -2374,7 +2377,7 @@ function parseTestStdout(stdout: string, testPath?: string): TestOutput {
         test,
         status: text,
         errors: testErrors,
-        duration: parseDuration(duration),
+        duration: parseDuration(duration?.[1]),
       });
 
       for (let error of testErrors) {
