@@ -70,7 +70,7 @@ function policyEnvironment(env) {
 function configuredBunWorkers(hardware, env) {
   // Mirrors Linux bun_core::get_thread_count and its decimal u16 parser.
   for (const key of ["UV_THREADPOOL_SIZE", "GOMAXPROCS"]) {
-    const value = env[key]?.replace(/^[\t-\r ]+|[\t-\r ]+$/g, "");
+    const value = env[key]?.replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/g, "");
     if (!value || !/^\+?[0-9](?:[0-9_]*[0-9])?$/.test(value)) continue;
     const number = Number(value.replaceAll("_", ""));
     if (number >= 2 && number <= 65535) return Math.min(number, 1024);
@@ -556,6 +556,8 @@ async function main() {
     const resolved = isBun ? { args: rawArgs, env: ciEnv } : applyLocalTsgoPolicy(rawArgs, nativeEnv, hostResources);
     const { args, env } = resolved;
     const resourcesBefore = resourceContract();
+    if (JSON.stringify(resourcesBefore) !== JSON.stringify(resources))
+      throw new Error("Host resource constraints changed before compiler start");
     const bin = executables[candidate];
     const buffers = [[], []];
     let bytes = 0,
@@ -595,10 +597,15 @@ async function main() {
       error = caught.message;
       if (hasUnjoinedWork(caught)) fatal = caught;
     }
-    const resourcesAfter = resourceContract();
+    let resourcesAfter = null,
+      resourceError = null;
+    try {
+      resourcesAfter = resourceContract();
+    } catch (caught) {
+      resourceError = caught.message;
+    }
     const resourceContractStable =
-      JSON.stringify(resourcesBefore) === JSON.stringify(resources) &&
-      JSON.stringify(resourcesAfter) === JSON.stringify(resources);
+      resourceError === null && JSON.stringify(resourcesAfter) === JSON.stringify(resources);
     const stdout = Buffer.concat(buffers[0]).toString("utf8"),
       stderr = Buffer.concat(buffers[1]).toString("utf8");
     const parsed = phase === "inventory" ? { diagnostics: [], unparsed: [] } : parseDiagnostics(stdout, neutral);
@@ -636,11 +643,12 @@ async function main() {
       resourceContractStable,
       resourcesBefore,
       resourcesAfter,
+      resourceError,
       cwd: neutral,
       executableSha256: fileHash(bin),
       code,
       validOutput,
-      error: overflow ? "output-overflow" : error,
+      error: overflow ? "output-overflow" : (error ?? resourceError),
       diagnostics: parsed.diagnostics,
       unparsed: parsed.unparsed,
       summary,
@@ -652,7 +660,8 @@ async function main() {
     executions.push(result);
     fs.appendFileSync(path.join(output, "executions.jsonl"), JSON.stringify(result) + "\n");
     if (fatal) throw fatal;
-    if (!resourceContractStable) throw new Error("Host resource constraints changed; no further compiler starts");
+    if (!resourceContractStable)
+      throw new Error(resourceError ?? "Host resource constraints changed; no further compiler starts");
     if (interrupted) throw new Error("Interrupted; compiler joined; no further rows start");
     return result;
   }

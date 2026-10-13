@@ -15,12 +15,12 @@ import urllib.request
 import zipfile
 
 SOURCE = "06af34cba25d549736807a334ca8028a1f6e9662"
-MANIFEST = "f4fec747acdee2de5cac9cfa4381757b4c2113a7b6913f836ca4b0e24a4c09dd"
+MANIFEST = "3cccaafe306f1b285152faa0211ad06ddb31e29e49171ce3d6faa866e40327a3"
 NODE_ARCHIVE = "d804845d34eddc21dc1092b519d643ef40b1f58ec5dec5c22b1f4bd8fabde6c9"
 NODE_BINARY = "b2959781cc5a74c357ffa02367efa8a0330cbb1c9cb347732fdfaaaca381cbcd"
 RECORDS = {
-    "runner.mjs": "91a8c8a6c7b11c0c2571159c4539d1fd37859c33",
-    "manifest.json": "6e7f22532b9c85d3a118a96ee4fe7ab136158924",
+    "runner.mjs": "0e8531f52f27b0770188bf9a5f12b26d3b1e66c6",
+    "manifest.json": "41a9679ee03a3ce2d7c0c12341d5e6965e2c89c0",
     "resume-receipt.json": "6a8e69d3c4b62c44dade149e006671fa8ad936fc",
     "semantic-cases.json": "d252c21f7ec0c1bc71d9245776d0603184a74576",
     "binary.archive": "",

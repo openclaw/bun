@@ -25,8 +25,8 @@ const DRIVER_PATH = "tools/checker-compare.mts";
 // Exact 06af hosted matrix transports for the final upstream candidate. A completed matching matrix
 // receipt is still mandatory; different batches require new reviewed bindings.
 const MATRIX_TRANSPORT_BLOBS = {
-  "tools/bun-checker-matrix-input/runner.mjs": "91a8c8a6c7b11c0c2571159c4539d1fd37859c33",
-  "tools/bun-checker-matrix-input/manifest.json": "6e7f22532b9c85d3a118a96ee4fe7ab136158924",
+  "tools/bun-checker-matrix-input/runner.mjs": "0e8531f52f27b0770188bf9a5f12b26d3b1e66c6",
+  "tools/bun-checker-matrix-input/manifest.json": "41a9679ee03a3ce2d7c0c12341d5e6965e2c89c0",
   "tools/bun-checker-matrix-input/binary.archive": "",
   "tools/bun-checker-matrix-input/upstream.archive": "f164058004a813f329fe73afbd6a0a98bbe5c479",
   "tools/bun-checker-matrix-input/oracle.archive": "52ce00e26b2eeb223f32621b1bfb0302ce959dcb",
@@ -83,6 +83,9 @@ type Result = {
   cacheMode: string;
   checkedFiles: number | null;
   resourceContractStable: boolean;
+  resourcesBefore: ReturnType<typeof resourceContract>;
+  resourcesAfter: ReturnType<typeof resourceContract> | null;
+  resourceError: string | null;
   policyEnvironment: Record<string, string | undefined>;
 };
 const sha256 = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
@@ -114,7 +117,7 @@ function policyEnvironment(env: NodeJS.ProcessEnv) {
 function configuredBunWorkers(hardware: number, env: NodeJS.ProcessEnv) {
   // Mirrors Linux bun_core::get_thread_count and its decimal u16 parser.
   for (const key of ["UV_THREADPOOL_SIZE", "GOMAXPROCS"]) {
-    const value = env[key]?.replace(/^[\t-\r ]+|[\t-\r ]+$/g, "");
+    const value = env[key]?.replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/g, "");
     if (!value || !/^\+?[0-9](?:[0-9_]*[0-9])?$/.test(value)) continue;
     const number = Number(value.replaceAll("_", ""));
     if (number >= 2 && number <= 65535) return Math.min(number, 1024);
@@ -918,6 +921,8 @@ async function main() {
     const cwd = neutral;
     const before = candidate.name === "bun" ? null : cacheBefore(cache, expectedCache);
     const resourcesBefore = resourceContract();
+    if (JSON.stringify(resourcesBefore) !== JSON.stringify(host.resourceContract))
+      throw new Error("Host resource constraints changed before compiler start");
     const sampler = createTsgoResourceSampler({ ticksPerSecond: ticks });
     const buffers: Buffer[][] = [[], []];
     let bytes = 0;
@@ -960,9 +965,15 @@ async function main() {
       clearInterval(interval);
     }
     const wallMs = performance.now() - began;
+    let resourcesAfter: ReturnType<typeof resourceContract> | null = null;
+    let resourceError: string | null = null;
+    try {
+      resourcesAfter = resourceContract();
+    } catch (caught) {
+      resourceError = caught instanceof Error ? caught.message : String(caught);
+    }
     const resourceContractStable =
-      JSON.stringify(resourcesBefore) === JSON.stringify(host.resourceContract) &&
-      JSON.stringify(resourcesBefore) === JSON.stringify(resourceContract());
+      resourceError === null && JSON.stringify(resourcesAfter) === JSON.stringify(host.resourceContract);
     const stdout = Buffer.concat(buffers[0]!).toString("utf8");
     const stderr = Buffer.concat(buffers[1]!).toString("utf8");
     const parsed = state === "inventory" ? { diagnostics: [], unparsed: [] } : parseDiagnostics(stdout, repo, cwd);
@@ -1014,7 +1025,7 @@ async function main() {
       state,
       repetition,
       exitCode: code,
-      error: overflow ? "output-overflow" : error,
+      error: overflow ? "output-overflow" : (error ?? resourceError),
       validOutput,
       diagnostics: parsed.diagnostics,
       inventory,
@@ -1040,6 +1051,9 @@ async function main() {
               : "reused incremental build-info",
       checkedFiles: Number.isNaN(checkedFiles) ? null : checkedFiles,
       resourceContractStable,
+      resourcesBefore,
+      resourcesAfter,
+      resourceError,
     };
     fs.writeFileSync(path.join(runDir, row.stdoutFile), stdout);
     fs.writeFileSync(path.join(runDir, row.stderrFile), stderr);
@@ -1050,6 +1064,8 @@ async function main() {
     );
     // A recorded failure cannot admit another measurement while children remain.
     if (unjoined) throw unjoined;
+    if (!resourceContractStable)
+      throw new Error(resourceError ?? "Host resource constraints changed; no further compiler starts");
     if (interrupted) throw new Error("Comparison interrupted; no further compiler started");
     return row;
   };

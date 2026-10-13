@@ -191,6 +191,8 @@ test("Bun worker derivation follows the source grammar and override order", () =
     [{ UV_THREADPOOL_SIZE: "_4", GOMAXPROCS: "3" }, 3],
     [{ UV_THREADPOOL_SIZE: "4_", GOMAXPROCS: "3" }, 3],
     [{ UV_THREADPOOL_SIZE: "\u00a04", GOMAXPROCS: "3" }, 3],
+    [{ UV_THREADPOOL_SIZE: "\v4", GOMAXPROCS: "3" }, 3],
+    [{ UV_THREADPOOL_SIZE: "4\v", GOMAXPROCS: "3" }, 3],
   ];
   for (const api of [policyApi, runnerContext.policyApi])
     for (const [env, expected] of cases) {
@@ -292,4 +294,195 @@ test("one matrix argument owner covers controls, probes, checks and inventories"
       assert.equal(native.args.includes("--singleThreaded"), false, "the canonical helper owns thread flags");
       assert.equal(ctx.prepare("upstream", graph, phase).args.includes("--threads"), true);
     }
+});
+
+test("matrix resource failures preserve completed streams and reject before new starts", async () => {
+  const start = runnerSource.indexOf("  async function run(candidate, graph, phase)");
+  const end = runnerSource.indexOf("  async function nativeInventory(", start);
+  assert.ok(start >= 0 && end > start);
+  for (const failure of ["before-change", "after-error", "after-change", "none"]) {
+    const admitted = { cpu: 4 },
+      written = new Map(),
+      executions = [];
+    let reads = 0,
+      spawns = 0;
+    const ctx = vm.createContext({
+      path,
+      Buffer,
+      Date,
+      repo: "/source",
+      neutral: "/neutral",
+      output: "/proof",
+      deadline: Date.now() + 60_000,
+      ciEnv: {},
+      nativeEnv: {},
+      hostResources: {},
+      manifest: { nativeReferenceTimeoutSeconds: 600, rowTimeoutSeconds: 300 },
+      executables: { bun: "/binary" },
+      resources: admitted,
+      executions,
+      resourceContract() {
+        reads++;
+        if (reads === 1 && failure === "before-change") return { cpu: 3 };
+        if (reads === 2 && failure === "after-error") throw new Error("snapshot unreadable");
+        if (reads === 2 && failure === "after-change") return { cpu: 3 };
+        return admitted;
+      },
+      async runManagedCommand(options) {
+        spawns++;
+        const stream = text => ({
+          on(event, callback) {
+            callback(Buffer.from(text));
+          },
+        });
+        options.onReady({ stdout: stream("complete diagnostic stream"), stderr: stream("complete summary") });
+        return 0;
+      },
+      hasUnjoinedWork: () => false,
+      fileHash: () => "hash",
+      policyEnvironment: env => env,
+      parseDiagnostics: () => ({ diagnostics: [], unparsed: [] }),
+      bunSummary: () => ({ valid: true, checkedFiles: 68 }),
+      fs: {
+        writeFileSync: (file, text) => written.set(file, text),
+        appendFileSync: (file, text) => written.set(file, text),
+      },
+    });
+    vm.runInContext(runnerSource.slice(start, end) + "globalThis.runProbe = run;", ctx);
+    let error;
+    try {
+      await ctx.runProbe("bun", { name: "core", config: "core.json", configSha256: "hash" }, "check");
+    } catch (caught) {
+      error = caught;
+    }
+    assert.equal(spawns, failure === "before-change" ? 0 : 1, failure);
+    if (failure === "before-change") {
+      assert.equal(executions.length, 0);
+    } else {
+      assert.equal(executions.length, 1);
+      const result = executions[0];
+      assert.equal(written.get(path.join("/proof", result.stdoutFile)), "complete diagnostic stream");
+      assert.equal(written.get(path.join("/proof", result.stderrFile)), "complete summary");
+      assert.equal(result.code, 0);
+      assert.equal(result.validOutput, failure === "none");
+      if (failure === "after-error") assert.equal(result.resourceError, "snapshot unreadable");
+    }
+    assert.equal(Boolean(error), failure !== "none");
+  }
+});
+
+test("comparator resource failures retain completed rows and prevent unsafe starts", async () => {
+  const start = source.indexOf("  const run = async (");
+  const end = source.indexOf("  let completed = false;", start);
+  assert.ok(start >= 0 && end > start);
+  for (const failure of ["before-change", "after-error", "after-change", "none"]) {
+    const admitted = { cpu: 4 },
+      written = new Map(),
+      results = [];
+    let reads = 0,
+      spawns = 0;
+    const ctx = vm.createContext({
+      path,
+      Buffer,
+      performance,
+      Error,
+      repo: "/source",
+      neutral: "/neutral",
+      runDir: "/proof",
+      results,
+      controls: [],
+      ticks: 100,
+      deadline: performance.now() + 60_000,
+      ciEnv: {},
+      nativeEnv: {},
+      hostResources: {},
+      host: { resourceContract: admitted },
+      setInterval: () => 1,
+      clearInterval() {},
+      console: { log() {} },
+      resourceContract() {
+        reads++;
+        if (reads === 1 && failure === "before-change") return { cpu: 3 };
+        if (reads === 2 && failure === "after-error") throw new Error("snapshot unreadable");
+        if (reads === 2 && failure === "after-change") return { cpu: 3 };
+        return admitted;
+      },
+      createTsgoResourceSampler: () => ({ sample() {}, result: () => ({}) }),
+      async runManagedCommand(options) {
+        spawns++;
+        const stream = text => ({
+          on(event, callback) {
+            callback(Buffer.from(text));
+          },
+        });
+        options.onReady({
+          pid: 1234,
+          stdout: stream("complete diagnostic stream"),
+          stderr: stream("✓ No type errors in 68 files [1s]"),
+        });
+        return 0;
+      },
+      hasUnjoinedWork: () => false,
+      readHash: () => "hash",
+      applyLocalTsgoPolicy: (args, env) => ({ args, env }),
+      policyEnvironment: env => env,
+      parseDiagnostics: () => ({ diagnostics: [], unparsed: [] }),
+      matchesBunSummary: () => true,
+      fs: {
+        mkdirSync() {},
+        writeFileSync: (file, text) => written.set(file, text),
+        appendFileSync: (file, text) => written.set(file, text),
+      },
+    });
+    vm.runInContext(stripTypeScriptTypes(source.slice(start, end)) + "globalThis.runProbe = run;", ctx);
+    let error;
+    try {
+      await ctx.runProbe({ name: "bun", bin: "/binary" }, { name: "core", config: "core.json" }, "first", 0, "/cache");
+    } catch (caught) {
+      error = caught;
+    }
+    assert.equal(spawns, failure === "before-change" ? 0 : 1, failure);
+    if (failure === "before-change") assert.equal(results.length, 0);
+    else {
+      assert.equal(results.length, 1);
+      const result = results[0];
+      assert.equal(written.get(path.join("/proof", result.stdoutFile)), "complete diagnostic stream");
+      assert.equal(written.get(path.join("/proof", result.stderrFile)), "✓ No type errors in 68 files [1s]");
+      assert.equal(result.exitCode, 0);
+      assert.equal(result.validOutput, failure === "none");
+      if (failure === "after-error") assert.equal(result.resourceError, "snapshot unreadable");
+    }
+    assert.equal(Boolean(error), failure !== "none");
+  }
+});
+
+test("workflow dispatch selects exactly its intended workload", () => {
+  const workflow = fs.readFileSync(
+    new URL("../../../.github/workflows/openclaw-build-test.yml", import.meta.url),
+    "utf8",
+  );
+  const jobs = ["comparison", "benchmark", "linux-x64", "darwin-arm64"];
+  const expressions = jobs.map(job => {
+    const block = workflow.slice(workflow.indexOf("  " + job + ":"));
+    const expression = /^    if: (.*)$/m.exec(block)?.[1];
+    assert.ok(expression, job);
+    return [job, expression];
+  });
+  const admitted = (event, mode, platform = "both", repository = "openclaw/bun") =>
+    expressions
+      .filter(([, expression]) =>
+        vm.runInNewContext(expression, {
+          github: { event_name: event, repository },
+          inputs: { mode, platform },
+        }),
+      )
+      .map(([job]) => job);
+  assert.deepEqual(admitted("workflow_dispatch", "comparison"), ["comparison"]);
+  assert.deepEqual(admitted("workflow_dispatch", "benchmark"), ["benchmark"]);
+  assert.deepEqual(admitted("workflow_dispatch", "native"), ["linux-x64", "darwin-arm64"]);
+  assert.deepEqual(admitted("workflow_dispatch", "native", "linux-x64"), ["linux-x64"]);
+  assert.deepEqual(admitted("workflow_dispatch", "native", "darwin-arm64"), ["darwin-arm64"]);
+  assert.deepEqual(admitted("pull_request", undefined), ["linux-x64", "darwin-arm64"]);
+  assert.deepEqual(admitted("schedule", undefined), ["linux-x64", "darwin-arm64"]);
+  assert.deepEqual(admitted("workflow_dispatch", "benchmark", "both", "another/repo"), []);
 });
