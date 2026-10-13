@@ -1590,6 +1590,7 @@ async function runTests(): Promise<TestResult[]> {
       exitCode: r.exitCode,
       signalCode: r.signalCode,
       duration: r.duration,
+      tests: r.tests.map(({ test, status }) => ({ test, status })),
       stdoutPreview: r.stdoutPreview?.slice?.(-4000),
     }));
     writeFileSync(cliOptions["results-json"], JSON.stringify(all, null, 2));

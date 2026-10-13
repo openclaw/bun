@@ -1,5 +1,7 @@
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
+import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statfsSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { basename, dirname, resolve } from "node:path";
 
@@ -171,6 +173,25 @@ function summary(text: string) {
   console.log(text);
 }
 
+function verifyCheckerOracle(): string {
+  const fromTests = createRequire(resolve("test/package.json"));
+  const packagePath = fromTests.resolve("typescript7/package.json");
+  const { version } = JSON.parse(readFileSync(packagePath, "utf8"));
+  if (version !== "7.0.2") throw new Error(`Expected TypeScript 7.0.2 oracle, got ${version}`);
+  const platformPackage = `@typescript/typescript-${process.platform}-${process.arch}`;
+  const nativePackage = createRequire(packagePath).resolve(`${platformPackage}/package.json`);
+  const binary = resolve(dirname(nativePackage), "lib", process.platform === "win32" ? "tsc.exe" : "tsc");
+  const result = spawnSync(binary, ["--version"], { encoding: "utf8", timeout: 10_000 });
+  if (result.error) throw result.error;
+  if (result.status !== 0 || result.stdout.trim() !== "Version 7.0.2" || result.stderr.trim()) {
+    throw new Error(`Native TypeScript oracle failed: ${result.stdout}\n${result.stderr}`);
+  }
+  const oracle = { version, platformPackage, sha256: createHash("sha256").update(readFileSync(binary)).digest("hex") };
+  writeFileSync("build/openclaw-ci/checker-oracle.json", JSON.stringify(oracle, null, 2) + "\n");
+  summary(`Native checker oracle: ${JSON.stringify(oracle)}\n`);
+  return binary;
+}
+
 function reportDiskUsage(stage: "before" | "after") {
   if (process.platform === "win32") return;
   const filesystem = statfsSync(".");
@@ -233,7 +254,7 @@ function reportDiskUsage(stage: "before" | "after") {
 
 export function assertSelectedTestResults(
   selected: readonly string[],
-  results: readonly { testPath: string; ok: boolean }[],
+  results: readonly { testPath: string; ok: boolean; tests?: readonly { status: string }[] }[],
   platform: string = process.platform,
 ): void {
   // The runner reports native paths; selections come from Git with forward slashes.
@@ -244,6 +265,16 @@ export function assertSelectedTestResults(
   );
   for (const test of selected) {
     if (!passed.has(test)) throw new Error(`Selected test did not pass (or was skipped by expectations): ${test}`);
+    if (checkerRegressions.includes(test)) {
+      // This frozen corpus has 45 generated tests and four tests in each saved-case partition.
+      const expected = test === "test/cli/check/differential.test.ts" ? 45 : 4;
+      const result = results.find(result => result.testPath.replaceAll("\\", "/") === test);
+      const tests = result?.tests ?? [];
+      if (tests.length !== expected || tests.some(test => test.status !== "pass")) {
+        throw new Error(`Differential coverage incomplete for ${test}: expected ${expected} passing tests`);
+      }
+      summary(`Differential coverage: ${test}: ${tests.length} passed, none skipped\n`);
+    }
   }
 }
 
@@ -269,6 +300,8 @@ if (import.meta.main) {
   } else if (command === "test") {
     const selected: string[] = JSON.parse(readFileSync(selectionPath, "utf8"));
     if (!selected.length) throw new Error("Refusing an empty test selection");
+    // The differential tests skip themselves when their native oracle is missing.
+    const oracle = checkerRegressions.some(test => selected.includes(test)) ? verifyCheckerOracle() : undefined;
     reportDiskUsage("before");
     // CI invokes this script with the built executable; the upstream runner uses it for every test.
     const result = spawnSync(
@@ -283,7 +316,7 @@ if (import.meta.main) {
         resultsPath,
         ...selected.flatMap(test => ["--include", test.replace(/^test\//, "")]),
       ],
-      { stdio: "inherit" },
+      { stdio: "inherit", env: oracle ? { ...process.env, TSC: oracle } : process.env },
     );
     const netTest = "test/js/node/net/node-net.test.ts";
     let direct: SpawnSyncReturns<string> | undefined;
@@ -315,7 +348,7 @@ if (import.meta.main) {
     reportDiskUsage("after");
     if (result.error) throw result.error;
     if (result.status !== 0) process.exit(result.status ?? 1);
-    const results: { testPath: string; ok: boolean }[] = JSON.parse(readFileSync(resultsPath, "utf8"));
+    const results = JSON.parse(readFileSync(resultsPath, "utf8"));
     assertSelectedTestResults(selected, results);
     if (direct?.error) throw direct.error;
     if (direct && direct.status !== 0) process.exit(direct.status ?? 1);
