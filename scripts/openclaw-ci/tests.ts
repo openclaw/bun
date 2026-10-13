@@ -86,6 +86,14 @@ const sourcePositionSensitive = [
   "test/js/node/vm/vm-sourceUrl.test.ts",
 ];
 
+const checkerRegressions = [
+  "test/cli/check/differential.test.ts",
+  "test/cli/check/differential-cases-1.test.ts",
+  "test/cli/check/differential-cases-2.test.ts",
+  "test/cli/check/differential-cases-3.test.ts",
+  "test/cli/check/differential-cases-4.test.ts",
+];
+
 // Runtime implementations span JS, Rust and C++; keep their shared boundaries explicit.
 const sourceSuites: [RegExp, string[]][] = [
   [/child_process|subprocess|spawn/i, ["child_process"]],
@@ -110,6 +118,9 @@ export function selectTests(changed: string[], tracked: string[], nightly: boole
     ...(nightly ? broader : []),
   ]);
   const tests = tracked.filter(isTest);
+  if (changed.some(path => path.startsWith("src/sema/") || path.startsWith("test/cli/check/"))) {
+    checkerRegressions.forEach(test => selected.add(test));
+  }
   for (const path of changed) {
     if (path === "scripts/build/deps/webkit.ts" || path === "scripts/build/deps/webkit-artifacts.json") {
       [...smoke, ...broader, ...webkitSensitive].forEach(test => selected.add(test));
