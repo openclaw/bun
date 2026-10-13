@@ -173,7 +173,7 @@ function summary(text: string) {
   console.log(text);
 }
 
-function verifyCheckerOracle(): string {
+export function verifyCheckerOracle(): string {
   const fromTests = createRequire(resolve("test/package.json"));
   const packagePath = fromTests.resolve("typescript7/package.json");
   const { version } = JSON.parse(readFileSync(packagePath, "utf8"));
@@ -301,7 +301,7 @@ if (import.meta.main) {
     const selected: string[] = JSON.parse(readFileSync(selectionPath, "utf8"));
     if (!selected.length) throw new Error("Refusing an empty test selection");
     // The differential tests skip themselves when their native oracle is missing.
-    const oracle = checkerRegressions.some(test => selected.includes(test)) ? verifyCheckerOracle() : undefined;
+    const needsOracle = checkerRegressions.some(test => selected.includes(test));
     reportDiskUsage("before");
     // CI invokes this script with the built executable; the upstream runner uses it for every test.
     const result = spawnSync(
@@ -316,7 +316,7 @@ if (import.meta.main) {
         resultsPath,
         ...selected.flatMap(test => ["--include", test.replace(/^test\//, "")]),
       ],
-      { stdio: "inherit", env: oracle ? { ...process.env, TSC: oracle } : process.env },
+      { stdio: "inherit", env: needsOracle ? { ...process.env, OPENCLAW_CI_CHECKER_ORACLE: "1" } : process.env },
     );
     const netTest = "test/js/node/net/node-net.test.ts";
     let direct: SpawnSyncReturns<string> | undefined;

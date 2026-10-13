@@ -949,6 +949,12 @@ async function runTests(): Promise<TestResult[]> {
     }
   }
 
+  // The fork's checker oracle is installed by the ordinary test dependency phase.
+  if (!failedResults.length && process.env.OPENCLAW_CI_CHECKER_ORACLE === "1") {
+    const { verifyCheckerOracle } = await import("./openclaw-ci/tests.ts");
+    process.env.TSC = verifyCheckerOracle();
+  }
+
   const isNapiAddonTest = (t: string) => /napi[\\/]node-napi-tests[\\/].*[\\/]do\.test\.ts$/.test(t);
   const napiAddonDirs = [...new Set(tests.filter(isNapiAddonTest).map(t => dirname(join(testsPath, t))))];
   let napiPrebuild: Promise<{ ok: boolean; error: SpawnResult["error"]; output: string; seconds: number }> | null =
