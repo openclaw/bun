@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Use native 16 KiB signing pages for ARM64 standalone executables, reducing code-signature metadata for large bundles.
+
 - Keep Worker loader errors cloneable by preserving the underlying error instead of attaching the native ErrorEvent as their cause.
 
 - Add native macOS AOT standalone compilation with `--compile-aot`, including split chunks and explicit Worker entrypoints.

@@ -1924,6 +1924,57 @@ test("a standalone executable does not run a synchronous full GC after loading i
   expect(exitCode).toBe(0);
 });
 
+for (const aot of [false, true]) {
+  test.skipIf(process.platform !== "darwin" || process.arch !== "arm64")(
+    `compile/ARM64 signature uses native pages${aot ? " with AOT" : ""}`,
+    async () => {
+      using dir = tempDir("compile-native-signature", { "entry.js": 'console.log("signed");' });
+      const outfile = join(String(dir), "signed-executable");
+      await using build = Bun.spawn({
+        cmd: [bunExe(), "build", "--compile", ...(aot ? ["--compile-aot"] : []), "entry.js", "--outfile", outfile],
+        cwd: String(dir),
+        env: bunEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [, buildError, buildCode] = await Promise.all([
+        build.stdout.text(), build.stderr.text(), build.exited,
+      ]);
+      if (aot)
+        expect(buildError).toMatch(/^AOT: compiled 1 modules into \d+ bytes\n$/);
+      else
+        expect(buildError).toBe("");
+      expect(buildCode).toBe(0);
+      const bytes = Buffer.from(await Bun.file(outfile).arrayBuffer());
+      let command = 32;
+      let signature = 0;
+      for (let i = 0; i < bytes.readUInt32LE(16); i++) {
+        if (bytes.readUInt32LE(command) === 0x1d) signature = bytes.readUInt32LE(command + 8);
+        command += bytes.readUInt32LE(command + 4);
+      }
+      expect(signature).toBeGreaterThan(0);
+      expect(bytes.readUInt32BE(signature)).toBe(0xfade0cc0);
+      const directory = signature + bytes.readUInt32BE(signature + 16);
+      expect(bytes.readUInt32BE(directory)).toBe(0xfade0c02);
+      expect(bytes[directory + 39]).toBe(14);
+      const pageSize = 1 << bytes[directory + 39];
+      const codeLimit = bytes.readUInt32BE(directory + 32);
+      const slots = bytes.readUInt32BE(directory + 28);
+      expect(slots).toBe(Math.ceil(codeLimit / pageSize));
+      const hashes = directory + bytes.readUInt32BE(directory + 16);
+      for (const page of [0, slots - 1]) {
+        const content = bytes.subarray(page * pageSize, Math.min((page + 1) * pageSize, codeLimit));
+        const digest = new Bun.CryptoHasher("sha256").update(content).digest();
+        expect(bytes.subarray(hashes + page * 32, hashes + (page + 1) * 32)).toEqual(digest);
+      }
+      await using run = Bun.spawn({ cmd: [outfile], env: bunEnv, stdout: "pipe", stderr: "pipe" });
+      const [stdout, stderr, exitCode] = await Promise.all([run.stdout.text(), run.stderr.text(), run.exited]);
+      expect({ stdout, stderr, exitCode }).toEqual({ stdout: "signed\n", stderr: "", exitCode: 0 });
+    },
+    60_000,
+  );
+}
+
 test.skipIf(process.platform !== "darwin")(
   "compile/AOT covers split modules, Workers and interpreted disk imports",
   async () => {

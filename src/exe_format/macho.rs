@@ -656,7 +656,8 @@ impl MachoSigner {
     }
 
     const IDENTIFIER: &'static [u8] = b"a.out\x00";
-    const SIGNATURE_PAGE_SIZE: usize = 1 << 12;
+    // This signer is ARM64-only; match the kernel's 16 KiB validation pages.
+    const SIGNATURE_PAGE_SIZE: usize = 1 << 14;
     const SIGNATURE_HASH_SIZE: usize = 32; // SHA256 = 32 bytes
 
     /// Compute the exact number of bytes that `sign()` will write at `sig_off`
@@ -728,7 +729,7 @@ impl MachoSigner {
         code_dir.code_limit = (self.sig_off as u32).swap_bytes();
         code_dir.hash_size = HASH_SIZE as u8;
         code_dir.hash_type = SEC_CODE_SIGNATURE_HASH_SHA256;
-        code_dir.page_size = 12; // log2(4096)
+        code_dir.page_size = Self::SIGNATURE_PAGE_SIZE.trailing_zeros() as u8;
 
         // Get text segment info
         let text_base = align_size(self.text_seg.fileoff, PAGE_SIZE as u64);
