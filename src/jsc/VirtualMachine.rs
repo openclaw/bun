@@ -4123,6 +4123,11 @@ impl ResolveMode {
     }
 }
 
+enum SpecifierOrigin {
+    Authored,
+    Resolved,
+}
+
 /// Output slot for module resolution: the resolved path and query string.
 #[derive(Default)]
 pub struct ResolveFunctionResult {
@@ -5601,7 +5606,7 @@ impl VirtualMachine {
                         Some(&mut resolved_query),
                         mode,
                         !is_file_url && split_query,
-                        false,
+                        SpecifierOrigin::Resolved,
                         global_cache,
                     )?;
                     if let Some(query) = query_string {
@@ -5630,7 +5635,7 @@ impl VirtualMachine {
                     None,
                     mode,
                     false,
-                    false,
+                    SpecifierOrigin::Resolved,
                     global.bun_vm().transpiler.resolver.opts.global_cache,
                 )?;
                 if let Some(query) = query_string {
@@ -5646,7 +5651,7 @@ impl VirtualMachine {
             query_string,
             mode,
             split_query,
-            true,
+            SpecifierOrigin::Authored,
             global.bun_vm().transpiler.resolver.opts.global_cache,
         )
     }
@@ -5658,7 +5663,7 @@ impl VirtualMachine {
         query_string: Option<&mut bun_core::String>,
         mode: ResolveMode,
         split_query: bool,
-        authored_specifier: bool,
+        specifier_origin: SpecifierOrigin,
         global_cache: bun_resolver::GlobalCache,
     ) -> JsResult<Result<bun_core::String, JSValue>> {
         let mut result = ResolveFunctionResult::default();
@@ -5690,7 +5695,7 @@ impl VirtualMachine {
         let mut decoded_specifier = None;
         let mut encoded_suffix = None;
         let authored = original_specifier_utf8.slice();
-        if authored_specifier
+        if matches!(specifier_origin, SpecifierOrigin::Authored)
             && !source.eq_ascii(MAIN_FILE_NAME)
             && !source.starts_with_ascii(bun_js_parser::Macro::NAMESPACE_WITH_COLON)
             && mode.is_esm()
@@ -5818,9 +5823,9 @@ impl VirtualMachine {
 
         // (One letter is a Windows drive.)
         if has_plugins
-            && ModuleLoader::plugin_namespace_and_path(&specifier_utf8)
+            && ModuleLoader::plugin_namespace_and_path(specifier_utf8)
                 .is_some_and(|(namespace, _)| namespace.len() > 1)
-            && global.has_on_load(&specifier_utf8)?
+            && global.has_on_load(specifier_utf8)?
         {
             return Ok(Ok(specifier.clone()));
         }
