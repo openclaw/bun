@@ -17,7 +17,7 @@ The OpenClaw fork reports missing runtime imports without downloading npm packag
 
 Module namespaces have a null prototype. `require(esm)` adds an own enumerable `__esModule` marker only for modules with a default export and no explicit marker, without modifying the imported namespace. CommonJS namespaces preserve explicit markers and expose the original exports as `module.exports`.
 
-Relative and absolute ESM specifiers decode URL escapes, including imports inside `require(esm)`. Encoded `?` and `#` are filename characters; literal `?` and `#` introduce a query or fragment. Encoded `/` and `\` are rejected with `ERR_INVALID_MODULE_SPECIFIER`. CommonJS `require()` paths remain literal.
+Relative and URL-rooted absolute ESM specifiers decode URL escapes, including imports inside `require(esm)`. Encoded `?` and `#` are filename characters; literal `?` and `#` introduce a query or fragment. Encoded `/` and `\` are rejected with `ERR_INVALID_MODULE_SPECIFIER`. CommonJS `require()` paths and Bun's raw Windows drive-letter and UNC path extensions remain literal.
 
 ## Built-in Node.js modules
 

@@ -1098,6 +1098,32 @@ describe("ESM specifier percent-encoding", () => {
     expect({ stdout, stderr, exitCode }).toEqual({ stdout: "literal\n", stderr: "", exitCode: 0 });
   });
 
+  it.concurrent("keeps raw drive-letter and UNC paths literal", async () => {
+    const specifiers = [
+      "C:\\__bun_missing_encoded_specifier__\\100%\\entry.mjs",
+      "C:/__bun_missing_encoded_specifier__/100%/entry.mjs",
+      "\\\\__bun_missing_encoded_specifier__\\share100%\\entry.mjs",
+    ];
+    using dir = tempDir("esm-drive-literal", {
+      "driver.mjs": `
+        import assert from 'node:assert/strict';
+        for (const specifier of ${JSON.stringify(specifiers)}) {
+          await assert.rejects(import(specifier), { code: 'ERR_MODULE_NOT_FOUND' });
+        }
+        console.log('ok');
+      `,
+    });
+    await using proc = Bun.spawn({
+      cmd: [bunExe(), "driver.mjs"],
+      cwd: String(dir),
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect({ stdout, stderr, exitCode }).toEqual({ stdout: "ok\n", stderr: "", exitCode: 0 });
+  });
+
   it.concurrent("keeps plugin-resolved filesystem paths literal", async () => {
     using dir = tempDir("esm-specifier-plugin", {
       "literal%20.mjs": "export default 'literal';",

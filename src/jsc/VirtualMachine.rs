@@ -4123,6 +4123,7 @@ impl ResolveMode {
     }
 }
 
+#[derive(Clone, Copy)]
 enum SpecifierOrigin {
     Authored,
     Resolved,
@@ -5695,6 +5696,7 @@ impl VirtualMachine {
         let mut decoded_specifier = None;
         let mut encoded_suffix = None;
         let authored = original_specifier_utf8.slice();
+        // Raw Windows drive and UNC paths are Bun's literal-path extensions.
         if matches!(specifier_origin, SpecifierOrigin::Authored)
             && !source.eq_ascii(MAIN_FILE_NAME)
             && !source.starts_with_ascii(bun_js_parser::Macro::NAMESPACE_WITH_COLON)
@@ -5703,7 +5705,7 @@ impl VirtualMachine {
             && split_query
             && (authored.starts_with(b"./")
                 || authored.starts_with(b"../")
-                || bun_paths::is_absolute(authored))
+                || authored.starts_with(b"/"))
             && bun_core::strings::index_of_any(authored, b"%#").is_some()
         {
             // Split URL syntax before decoding: %3F and %23 belong to the filename.
