@@ -69,6 +69,8 @@ On macOS, `fs.copyFile` and `fs.cp` accept regular-file `/dev/fd` sources withou
 
 ### [`node:http`](https://nodejs.org/api/http.html)
 
+`ServerResponse.writableFinished` stays false while a standalone response has output queued on its assigned socket.
+
 `net`, `http`, and `https` servers validate listen ports synchronously with `ERR_SOCKET_BAD_PORT`. Bind failures such as `EADDRINUSE` emit an asynchronous `error` event.
 
 `server.close()` followed by `server.closeAllConnections()` also disconnects clients that connect without sending a request on Linux.

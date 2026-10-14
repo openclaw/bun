@@ -2407,3 +2407,45 @@ describe("backpressure", () => {
     expect(totalBytes).toBe(totalSize + smallPayloadSize);
   }, 30_000);
 });
+
+it.each([true, false])(
+  "keeps a standalone response unfinished until the final socket write completes (assigned: %s)",
+  async assignedInitially => {
+    const pending: Array<(error?: Error | null) => void> = [];
+    class BufferedSocket extends net.Socket {
+      _write(_chunk: Buffer, _encoding: BufferEncoding, callback: (error?: Error | null) => void) {
+        pending.push(callback);
+      }
+    }
+    const socket = new BufferedSocket();
+    const request = new http.IncomingMessage(socket);
+    request.method = "POST";
+    const response = new http.ServerResponse(request);
+    if (assignedInitially) response.assignSocket(socket);
+    const events: Array<[string, boolean]> = [];
+    response.on("finish", () => events.push(["finish", response.writableFinished]));
+    try {
+      response.end("final reply", () => events.push(["callback", response.writableFinished]));
+      expect(response.writableEnded).toBe(true);
+      if (!assignedInitially) {
+        expect(response.writableFinished).toBe(false);
+        expect(response.outputSize).toBeGreaterThan(0);
+        response.assignSocket(socket);
+      }
+      expect(pending).toHaveLength(1);
+      expect(socket.writableLength).toBeGreaterThan(0);
+      expect(response.writableFinished).toBe(false);
+      await new Promise<void>(resolve => setImmediate(resolve));
+      expect(events).toEqual([]);
+      const finished = once(response, "finish");
+      pending.shift()!();
+      await finished;
+      expect(response.writableFinished).toBe(true);
+      expect(events.filter(([event]) => event === "callback")).toEqual([["callback", true]]);
+      expect(events.filter(([event]) => event === "finish")).toEqual([["finish", true]]);
+    } finally {
+      response.destroy();
+      socket.destroy();
+    }
+  },
+);
