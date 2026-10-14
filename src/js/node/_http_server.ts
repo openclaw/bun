@@ -1843,6 +1843,7 @@ function getNodeHTTPServerSocket() {
     #resetSupported;
     #closeError: Error | undefined = undefined;
     declare encrypted: boolean;
+    declare isServer?: boolean;
     declare resetAndClosing: boolean;
     declare _writableState: { emitClose: boolean; decodeStrings: boolean };
     declare _readableState: { emitClose: boolean };
