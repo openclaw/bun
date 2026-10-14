@@ -10,10 +10,7 @@ use bun_paths::{self, MAX_PATH_BYTES, Platform};
 
 /// Create a JS string from a `[T]` slice (T = u8 | u16).
 ///
-/// In practice every JS entry point converts to a UTF-8 slice first and
-/// instantiates with `T = u8`, so the `u16` arm is never reached at runtime — but it must still
-/// type-check. Dispatch on `T::IS_U16` and route the cold u16 arm through
-/// a UTF-16 `BunString` clone + `to_js` so the generic body unifies.
+/// Preserve UTF-16 code units for wide inputs, including unpaired surrogates.
 #[inline]
 fn create_js_string_t<T: PathCharCwd>(global: &JSGlobalObject, s: &[T]) -> JsResult<JSValue> {
     if T::IS_U16 {
@@ -27,14 +24,36 @@ fn create_js_string_t<T: PathCharCwd>(global: &JSGlobalObject, s: &[T]) -> JsRes
     }
 }
 
+/// Borrow wide strings and widen Latin-1 when an argument list mixes widths.
+enum PathUtf16<'a> {
+    Borrowed(&'a [u16]),
+    Owned(SmallVec<[u16; 32]>),
+}
+
+impl<'a> PathUtf16<'a> {
+    fn of(value: &'a bun_core::String) -> Self {
+        if value.is_empty() {
+            Self::Borrowed(&[])
+        } else if value.is_utf16() {
+            Self::Borrowed(value.utf16())
+        } else {
+            Self::Owned(value.latin1().iter().map(|&c| u16::from(c)).collect())
+        }
+    }
+
+    fn slice(&self) -> &[u16] {
+        match self {
+            Self::Borrowed(value) => value,
+            Self::Owned(value) => value.as_slice(),
+        }
+    }
+}
+
 /// Pooled path scratch carved from the per-VM [`RarePathBuf`].
 ///
 /// JS is single-threaded, so re-using the lazily-allocated tier across calls is
-/// sound. When the request exceeds the largest tier (32 × `MAX_PATH_BYTES`) —
-/// or when `T = u16`, since the pool is byte-typed — we spill to a one-shot
-/// zeroed heap slab instead (`T: Pod`, so the zero-fill is the cost of handing
-/// out a safe `&mut [T]`; consumers are write-before-read so the zeros are
-/// never observed).
+/// sound. Both widths borrow the aligned pool; requests exceeding its largest
+/// tier spill to a one-shot zeroed heap slab.
 enum PathScratch<'a, T: PathCharCwd> {
     Pooled(&'a mut [T]),
     Spill(Box<[T]>),
@@ -46,15 +65,13 @@ impl<'a, T: PathCharCwd> PathScratch<'a, T> {
 
     #[inline]
     fn new(pool: &'a mut RarePathBuf, len: usize) -> Self {
-        if !T::IS_U16 && len <= Self::POOL_MAX {
-            // SAFETY-adjacent: `!IS_U16` ⇒ `T == u8`; `cast_slice_mut::<u8, u8>`
-            // is the bytemuck identity cast — never panics, no alignment hazard.
-            let bytes = &mut pool.get(len)[..len];
+        let byte_len = len * core::mem::size_of::<T>();
+        if byte_len <= Self::POOL_MAX {
+            // The pool has u16 alignment, which covers both supported widths.
+            let bytes = &mut pool.get(byte_len)[..byte_len];
             Self::Pooled(bytemuck::cast_slice_mut::<u8, T>(bytes))
         } else {
-            // `T: Pod` ⇒ `T: Zeroable + Copy`. Spill is rare (u8 only when
-            // >128 KB) or path-sized (u16), so the zero-fill is negligible and
-            // buys a safe `&mut [T]` in `slice()`.
+            // `T: Pod` permits zero-initializing a spill beyond the pooled tiers.
             Self::Spill(vec![<T as bytemuck::Zeroable>::zeroed(); len].into_boxed_slice())
         }
     }
@@ -109,9 +126,6 @@ fn eql_ignore_case_t<T: PathCharCwd>(a: &[T], b: &[T]) -> bool {
         let b8: &[u8] = bytemuck::cast_slice::<T, u8>(b);
         return strings::eql_case_insensitive_ascii(a8, b8, true);
     }
-    // In practice the only callers instantiate with `T == u8`; provide a sound
-    // u16 compare so
-    // the generic body type-checks and behaves correctly if ever exercised.
     if a.len() != b.len() {
         return false;
     }
@@ -571,16 +585,25 @@ pub(crate) fn basename(
         return Ok(path_ptr);
     }
 
-    let path_slice = path_str.to_utf8();
-
     let suffix_str = match suffix_ptr {
         Some(suffix_ptr) => Some(suffix_ptr.to_js_string_view(global_object)?),
         None => None,
     };
-    let suffix_slice = suffix_str
+    let suffix_str = suffix_str
         .as_ref()
-        .filter(|s| !s.is_empty() && s.length() <= path_str.length())
-        .map(|s| s.to_utf8());
+        .filter(|s| !s.is_empty() && s.length() <= path_str.length());
+    if path_str.is_utf16() || suffix_str.is_some_and(|s| s.is_utf16()) {
+        let path16 = PathUtf16::of(&path_str);
+        let suffix16 = suffix_str.map(|s| PathUtf16::of(s));
+        return basename_js_t::<u16>(
+            global_object,
+            is_windows,
+            path16.slice(),
+            suffix16.as_ref().map(PathUtf16::slice),
+        );
+    }
+    let suffix_slice = suffix_str.map(|s| s.to_utf8());
+    let path_slice = path_str.to_utf8();
     basename_js_t::<u8>(
         global_object,
         is_windows,
@@ -787,6 +810,9 @@ fn dirname(
         return bun_core::String::static_(CHAR_STR_DOT).to_js(global_object);
     }
 
+    if path_str.is_utf16() {
+        return dirname_js_t::<u16>(global_object, is_windows, path_str.utf16());
+    }
     let path_slice = path_str.to_utf8();
     dirname_js_t::<u8>(global_object, is_windows, path_slice.slice())
 }
@@ -1030,6 +1056,9 @@ fn extname(
         return Ok(path_ptr);
     }
 
+    if path_str.is_utf16() {
+        return extname_js_t::<u16>(global_object, is_windows, path_str.utf16());
+    }
     let path_slice = path_str.to_utf8();
     extname_js_t::<u8>(global_object, is_windows, path_slice.slice())
 }
@@ -1196,67 +1225,47 @@ fn format(global_object: &JSGlobalObject, is_windows: bool, args: &[JSValue]) ->
         Default::default(),
     )?;
 
-    let mut root: &[u8] = b"";
-    let root_slice = if let Some(js_value) = path_object_ptr.get_truthy(global_object, "root")? {
-        Some(js_value.to_utf8(global_object)?)
-    } else {
-        None
+    let field = |key: &str| -> JsResult<bun_core::String> {
+        match path_object_ptr.get_truthy(global_object, key)? {
+            Some(value) => value.to_bun_string(global_object),
+            None => Ok(bun_core::String::EMPTY),
+        }
     };
-    if let Some(ref slice) = root_slice {
-        root = slice.slice();
-    }
-
-    let mut dir: &[u8] = b"";
-    let dir_slice = if let Some(js_value) = path_object_ptr.get_truthy(global_object, "dir")? {
-        Some(js_value.to_utf8(global_object)?)
-    } else {
-        None
-    };
-    if let Some(ref slice) = dir_slice {
-        dir = slice.slice();
-    }
-
-    let mut base: &[u8] = b"";
-    let base_slice = if let Some(js_value) = path_object_ptr.get_truthy(global_object, "base")? {
-        Some(js_value.to_utf8(global_object)?)
-    } else {
-        None
-    };
-    if let Some(ref slice) = base_slice {
-        base = slice.slice();
-    }
-
-    let mut _name: &[u8] = b"";
-    let _name_slice = if let Some(js_value) = path_object_ptr.get_truthy(global_object, "name")? {
-        Some(js_value.to_utf8(global_object)?)
-    } else {
-        None
-    };
-    if let Some(ref slice) = _name_slice {
-        _name = slice.slice();
-    }
-
-    let mut ext: &[u8] = b"";
-    let ext_slice = if let Some(js_value) = path_object_ptr.get_truthy(global_object, "ext")? {
-        Some(js_value.to_utf8(global_object)?)
-    } else {
-        None
-    };
-    if let Some(ref slice) = ext_slice {
-        ext = slice.slice();
-    }
-
+    // Later getters can collect earlier temporary strings; retain each field.
+    let fields = [
+        field("root")?,
+        field("dir")?,
+        field("base")?,
+        field("name")?,
+        field("ext")?,
+    ];
     let pool = &mut global_object.bun_vm().as_mut().rare_data().path_buf;
+    if fields.iter().any(|value| value.is_utf16()) {
+        let wide = fields.each_ref().map(PathUtf16::of);
+        return format_js_t::<u16>(
+            global_object,
+            pool,
+            is_windows,
+            &PathParsed {
+                root: wide[0].slice(),
+                dir: wide[1].slice(),
+                base: wide[2].slice(),
+                name: wide[3].slice(),
+                ext: wide[4].slice(),
+            },
+        );
+    }
+    let bytes = fields.each_ref().map(|value| value.to_utf8());
     format_js_t::<u8>(
         global_object,
         pool,
         is_windows,
         &PathParsed {
-            root,
-            dir,
-            base,
-            ext,
-            name: _name,
+            root: bytes[0].slice(),
+            dir: bytes[1].slice(),
+            base: bytes[2].slice(),
+            name: bytes[3].slice(),
+            ext: bytes[4].slice(),
         },
     )
 }
@@ -1547,6 +1556,12 @@ pub(crate) fn join(
             continue;
         }
         views.push(path_str);
+    }
+    if views.iter().any(|view| view.is_utf16()) {
+        let wide: SmallVec<[PathUtf16<'_>; 8]> = views.iter().map(|v| PathUtf16::of(v)).collect();
+        let paths: SmallVec<[&[u16]; 8]> = wide.iter().map(PathUtf16::slice).collect();
+        let pool = &mut global_object.bun_vm().as_mut().rare_data().path_buf;
+        return join_js_t::<u16>(global_object, pool, is_windows, &paths);
     }
     let owned: SmallVec<[Utf8Bytes<'_>; 8]> = views.iter().map(JSStringView::to_utf8).collect();
     let paths: SmallVec<[&[u8]; 8]> = owned.iter().map(Utf8Bytes::slice).collect();
@@ -1982,8 +1997,11 @@ fn normalize(
         return bun_core::String::static_(CHAR_STR_DOT).to_js(global_object);
     }
 
-    let path_slice = path_str.to_utf8();
     let pool = &mut global_object.bun_vm().as_mut().rare_data().path_buf;
+    if path_str.is_utf16() {
+        return normalize_js_t::<u16>(global_object, pool, is_windows, path_str.utf16());
+    }
+    let path_slice = path_str.to_utf8();
     normalize_js_t::<u8>(global_object, pool, is_windows, path_slice.slice())
 }
 
@@ -2351,6 +2369,9 @@ pub(crate) fn parse(
         return PathParsed::<u8>::default().to_js_object(global_object);
     }
 
+    if path_str.is_utf16() {
+        return parse_js_t::<u16>(global_object, is_windows, path_str.utf16());
+    }
     let path_slice = path_str.to_utf8();
     parse_js_t::<u8>(global_object, is_windows, path_slice.slice())
 }
@@ -2781,9 +2802,20 @@ fn relative(
         return Ok(from_ptr);
     }
 
+    let pool = &mut global_object.bun_vm().as_mut().rare_data().path_buf;
+    if from_str.is_utf16() || to_str.is_utf16() {
+        let from16 = PathUtf16::of(&from_str);
+        let to16 = PathUtf16::of(&to_str);
+        return relative_js_t::<u16>(
+            global_object,
+            pool,
+            is_windows,
+            from16.slice(),
+            to16.slice(),
+        );
+    }
     let from_slice = from_str.to_utf8();
     let to_slice_ = to_str.to_utf8();
-    let pool = &mut global_object.bun_vm().as_mut().rare_data().path_buf;
     relative_js_t::<u8>(
         global_object,
         pool,
@@ -3392,11 +3424,15 @@ fn js_string_to_wtf8(
     value: JSValue,
 ) -> JsResult<Utf8Bytes<'static>> {
     let view = value.to_js_string_view(global_object)?;
-    if view.is_8bit() {
-        return Ok(view.to_utf8().into_owned());
+    Ok(path_string_to_wtf8(&view).into_owned())
+}
+
+fn path_string_to_wtf8(value: &bun_core::String) -> Utf8Bytes<'_> {
+    if value.is_8bit() {
+        return value.to_utf8();
     }
 
-    let units = view.utf16();
+    let units = value.utf16();
     let mut bytes = Vec::with_capacity(units.len() * 3);
     let mut index = 0;
     while index < units.len() {
@@ -3406,7 +3442,7 @@ fn js_string_to_wtf8(
         let encoded_len = strings::encode_wtf8_rune(&mut encoded, codepoint);
         bytes.extend_from_slice(&encoded[..encoded_len]);
     }
-    Ok(Utf8Bytes::Owned(bytes))
+    Utf8Bytes::Owned(bytes)
 }
 
 fn path_cwd_to_wtf8(global_object: &JSGlobalObject, posix: bool) -> JsResult<Utf8Bytes<'static>> {
@@ -3516,7 +3552,8 @@ fn resolve(
         views.push(path_str);
     }
 
-    let owned: SmallVec<[Utf8Bytes<'_>; 8]> = views.iter().map(JSStringView::to_utf8).collect();
+    let owned: SmallVec<[Utf8Bytes<'_>; 8]> =
+        views.iter().map(|view| path_string_to_wtf8(view)).collect();
     let paths: SmallVec<[&[u8]; 8]> = owned.iter().rev().map(Utf8Bytes::slice).collect();
 
     let current_directory_arg =
@@ -3685,8 +3722,11 @@ fn to_namespaced_path(
         return Ok(path_ptr);
     }
 
-    let path_slice = path_str.to_utf8();
     let pool = &mut global_object.bun_vm().as_mut().rare_data().path_buf;
+    if path_str.is_utf16() {
+        return to_namespaced_path_js_t::<u16>(global_object, pool, is_windows, path_str.utf16());
+    }
+    let path_slice = path_str.to_utf8();
     to_namespaced_path_js_t::<u8>(global_object, pool, is_windows, path_slice.slice())
 }
 

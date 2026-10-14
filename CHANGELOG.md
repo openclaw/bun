@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve unpaired UTF-16 surrogates throughout `node:path` operations on both path variants. Adapts [oven-sh/bun#34596](https://github.com/oven-sh/bun/pull/34596); thanks @robobun!
+
 - Count uncaught errors during isolated test-file cleanup against the outgoing file and include them in JUnit; handled cleanup callbacks continue running. Adapts the file-error reporting pattern from [oven-sh/bun#44435](https://github.com/oven-sh/bun/pull/44435); thanks @robobun!
 
 - Drain queued Worker stdout and stderr before emitting `exit`, preserving output when a synchronous worker exit races the parent's stdio setup.

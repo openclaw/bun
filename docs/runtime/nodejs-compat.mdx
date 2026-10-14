@@ -93,6 +93,8 @@ Upgrade requests emit `upgrade` while an earlier response on the connection is s
 
 🟢 Fully implemented. `matchesGlob()` uses `Bun.Glob` semantics rather than minimatch (`*` matches dotfiles, no extglobs). `path.win32` differs from Node in a few edge cases involving device paths and reserved names.
 
+Both `posix` and `win32` preserve unpaired UTF-16 surrogates in path strings, matching Node.js.
+
 ### [`node:punycode`](https://nodejs.org/api/punycode.html)
 
 🟢 Fully implemented. 100% of Node.js's test suite passes. _Deprecated by Node.js_.
