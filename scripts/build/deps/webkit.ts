@@ -408,8 +408,8 @@ export const webkit: Dependency = {
         args.CMAKE_SYSTEM_PROCESSOR = cfg.arm64 ? "aarch64" : "x86_64";
       }
       spec.preBuild = {
+        commandPrefix: cfg.jsRuntime,
         command: [
-          cfg.jsRuntime,
           helper,
           JSON.stringify({
             source: srcDir,

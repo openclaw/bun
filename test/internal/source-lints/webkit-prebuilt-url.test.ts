@@ -100,7 +100,8 @@ describe("WebKit artifact manifest", () => {
       ["icui18n", "icuuc", "icudata"].map(lib => `${args.ICU_ROOT}/lib/lib${lib}.a`),
     );
     expect(spec.preBuild!.inputs!.some(input => input.endsWith("icu/source.json"))).toBe(true);
-    const recipe = JSON.parse(spec.preBuild!.command[2]!);
+    expect(spec.preBuild!.commandPrefix).toBe(cfg.jsRuntime);
+    const recipe = JSON.parse(spec.preBuild!.command[1]!);
     expect(recipe.flags).toContain(`--sysroot=${cfg.sysroot}`);
     expect(recipe.target).toBe(cfg.crossTarget);
     expect(recipe.cross).toBe(!cfg.canRunOnHost);
@@ -116,8 +117,28 @@ describe("WebKit artifact manifest", () => {
       host: { ...cfg.host, os: "linux", arch: cfg.arch },
     });
     if (spec.kind !== "nested-cmake") throw new Error("expected local cmake build");
-    expect(JSON.parse(spec.preBuild!.command[2]!).cross).toBe(true);
+    expect(JSON.parse(spec.preBuild!.command[1]!).cross).toBe(true);
     expect(spec.args!.CMAKE_SYSTEM_NAME).toBe("Linux");
+  });
+
+  test("local ICU keeps Node's runtime flags outside argv quoting", () => {
+    using source = tempDir("webkit-local-source", { "CMakeLists.txt": "" });
+    using build = tempDir("webkit-local-build", {});
+    const cfg = resolveLinuxRelease({
+      webkit: "local",
+      buildDir: String(build),
+    });
+    cfg.jsRuntime = '"/fake/node runtime/node" --experimental-strip-types';
+    const ninja = new Ninja({ buildDir: cfg.buildDir });
+    registerDepRules(ninja, cfg);
+    const dependencies = new Map();
+    dependencies.set("zstd", { outputs: ["/fake/zstd.ref"] });
+    resolveDep(ninja, cfg, { ...webkit, source: () => ({ kind: "local", path: String(source) }) }, dependencies);
+    const command = ninja
+      .toString()
+      .split("\n")
+      .find(line => line.startsWith("  cmd = ") && line.includes("icu-linux.ts"));
+    expect(command).toStartWith(`  cmd = ${cfg.jsRuntime} `);
   });
 
   test("missing variants permit graph construction but fail the dependency edge", () => {

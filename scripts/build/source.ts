@@ -369,6 +369,8 @@ export interface NestedCmakeBuild {
 export interface PreBuildSpec {
   /** Command argv. First element is the executable. */
   command: string[];
+  /** Shell-ready interpreter prefix; command then contains the script and its arguments. */
+  commandPrefix?: string;
   /** Working directory (absolute). */
   cwd: string;
   /** Additional scripts/data that invalidate the pre-build outputs. */
@@ -1312,7 +1314,7 @@ function emitNestedCmake(
       vars: {
         name,
         cwd: spec.preBuild.cwd,
-        cmd: quoteArgs(spec.preBuild.command, hostWin),
+        cmd: `${spec.preBuild.commandPrefix === undefined ? "" : spec.preBuild.commandPrefix + " "}${quoteArgs(spec.preBuild.command, hostWin)}`,
       },
     });
     n.phony(`prebuild-${name}`, preBuildOutputs);
