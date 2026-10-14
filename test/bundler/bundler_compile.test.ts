@@ -1974,7 +1974,7 @@ for (const aot of [false, true]) {
   );
 }
 
-test.skipIf(process.platform !== "darwin")(
+test.skipIf(process.platform !== "darwin" && process.platform !== "linux")(
   "compile/AOT covers split modules, Workers and interpreted disk imports",
   async () => {
     using dir = tempDir("compile-aot-graph", {
@@ -1984,6 +1984,8 @@ test.skipIf(process.platform !== "darwin")(
       import { readFileSync } from "node:fs";
       import { createRequire } from "node:module";
       import { Worker as NodeWorker } from "node:worker_threads";
+      if (process.platform === "linux" && /^\\S+\\s+rwx/m.test(readFileSync("/proc/self/maps", "utf8")))
+        throw new Error("AOT executable reserved writable executable memory");
       const require = createRequire(import.meta.url);
       function loadDefault(path) { return require(path).default; }
       for (let i = 0; i < 6; i++) {
@@ -2043,12 +2045,15 @@ test.skipIf(process.platform !== "darwin")(
       const result = Bun.spawnSync({
         cmd: [join(cwd, "app")],
         cwd,
-        env: { ...bunEnv, BUN_AOT_DISABLE: disabled ? "1" : undefined },
+        env: { ...bunEnv, BUN_AOT_DISABLE: disabled ? "1" : undefined, BUN_AOT_STATS: "1" },
         stdout: "pipe",
         stderr: "pipe",
       });
       const compiled = !disabled;
       expect(result.stdout.toString()).toBe(`12 21 8 ${compiled} ${compiled} false function\n27:${compiled}\n`);
+      if (compiled) {
+        expect(result.stderr.toString()).toMatch(/AOT: mapped [1-9]\d* code bytes, [1-9]\d* image functions, JIT off/);
+      }
       expect(result.exitCode).toBe(0);
     }
     const thrown = Bun.spawnSync({

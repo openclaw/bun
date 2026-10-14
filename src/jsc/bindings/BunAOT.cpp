@@ -5,13 +5,19 @@
 #include <JavaScriptCore/CachedTypes.h>
 #include <JavaScriptCore/Completion.h>
 #include <JavaScriptCore/CodeCache.h>
+#include <JavaScriptCore/ExecutableAllocator.h>
 #include <JavaScriptCore/ParserError.h>
 #include <JavaScriptCore/SourceCodeKey.h>
+#if OS(DARWIN) || OS(LINUX)
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 #if OS(DARWIN)
 #include <mach-o/dyld.h>
 #include <mach-o/getsect.h>
-#include <fcntl.h>
-#include <unistd.h>
+#elif OS(LINUX)
+#include <link.h>
+#include <limits>
 #endif
 
 extern "C" bool Bun__standaloneAOTImage(const uint8_t**, size_t*);
@@ -48,6 +54,10 @@ void configureAOT()
             JSC::Options::machExceptionHandlerSandboxPolicy = JSC::Options::SandboxPolicy::Allow;
 #endif
         JSC::Options::useJIT() = false;
+#if OS(LINUX)
+        // useJIT alone does not prevent an unused RWX pool reservation.
+        JSC::ExecutableAllocator::disableJIT();
+#endif
         JSC::Options::useAOT() = !aotDisabled();
         if (aotDisabled())
             JSC::Options::useImmutableIntrinsics() = false;
@@ -60,7 +70,8 @@ void registerAOT()
     size_t size = 0;
     if (!Bun__standaloneAOTImage(&bytes, &size) || aotDisabled())
         return;
-#if ENABLE(AOT) && OS(DARWIN)
+#if ENABLE(AOT) && (OS(DARWIN) || OS(LINUX))
+#if OS(DARWIN)
     const segment_command_64* segment = nullptr;
     auto* header = reinterpret_cast<const mach_header_64*>(_dyld_get_image_header(0));
     auto* command = reinterpret_cast<const load_command*>(header + 1);
@@ -80,7 +91,44 @@ void registerAOT()
         exit(1);
     }
     int fd = open(_dyld_get_image_name(0), O_RDONLY | O_CLOEXEC);
-    auto use = JSC::useAOTFile({ bytes, size }, fd, segment->fileoff + reinterpret_cast<uintptr_t>(bytes) - start);
+    int64_t offset = segment->fileoff + reinterpret_cast<uintptr_t>(bytes) - start;
+#else
+    struct ImageLocation {
+        uintptr_t address;
+        size_t size;
+        int64_t offset { -1 };
+    } location { reinterpret_cast<uintptr_t>(bytes), size };
+    dl_iterate_phdr([](dl_phdr_info* info, size_t, void* context) {
+        auto& image = *static_cast<ImageLocation*>(context);
+        for (ElfW(Half) i = 0; i < info->dlpi_phnum; ++i) {
+            const auto& segment = info->dlpi_phdr[i];
+            if (segment.p_type != PT_LOAD)
+                continue;
+            uintptr_t start = info->dlpi_addr + segment.p_vaddr;
+            if (image.address < start || image.address - start > segment.p_filesz)
+                continue;
+            uint64_t displacement = image.address - start;
+            constexpr uint64_t maxOffset = std::numeric_limits<int64_t>::max();
+            if (image.size > segment.p_filesz - displacement || displacement > maxOffset || segment.p_offset > maxOffset - displacement)
+                continue;
+            image.offset = segment.p_offset + displacement;
+            return 1;
+        }
+        return 0;
+    }, &location);
+    if (location.offset < 0) {
+        fprintf(stderr, "AOT image is outside the executable segment\n");
+        exit(1);
+    }
+    // The proc handle still names the loaded executable after a rename or unlink.
+    int fd = open("/proc/self/exe", O_RDONLY | O_CLOEXEC);
+    int64_t offset = location.offset;
+#endif
+    if (fd < 0) {
+        fprintf(stderr, "Cannot open AOT executable: %s\n", strerror(errno));
+        exit(1);
+    }
+    auto use = JSC::useAOTFile({ bytes, size }, fd, offset);
     if (fd >= 0)
         close(fd);
     if (use.imageRejectionReason || use.programDataRejectionReason) {
@@ -90,7 +138,7 @@ void registerAOT()
     if (getenv("BUN_AOT_STATS"))
         fprintf(stderr, "AOT: mapped %zu code bytes, %u image functions, JIT off\n", use.codeSizeInBytes, JSC::AOT::ProgramData::get()->numberOfFunctions);
 #else
-    fprintf(stderr, "AOT executable mapping is only implemented on macOS\n");
+    fprintf(stderr, "AOT executable mapping is not implemented on this platform\n");
     exit(1);
 #endif
 }
