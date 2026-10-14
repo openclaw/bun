@@ -810,6 +810,52 @@ print("adapter production gate: ten cases passed")
   assert.match(result.stdout, /ten cases passed/);
 });
 
+test("production adapter exposes only task-owned Corepack pnpm shims", () => {
+  const python = String.raw`
+import importlib.util,json,os,shutil,subprocess,sys,tempfile
+from pathlib import Path
+sys.path.insert(0,str(Path(sys.argv[1]).parent))
+spec=importlib.util.spec_from_file_location("adapter",sys.argv[1]);adapter=importlib.util.module_from_spec(spec);spec.loader.exec_module(adapter)
+with tempfile.TemporaryDirectory(prefix="production-pnpm-",dir=os.environ.get("BUN_PRODUCTION_TEST_TMP")) as directory:
+    root=Path(directory).resolve();source=root/"source";source.mkdir();tools=root/"tools";tools.mkdir()
+    corepack=tools/"corepack"
+    corepack.write_text("#!"+sys.executable+"\nimport os,pathlib,sys\nassert sys.argv[1:3]==['enable','--install-directory'] and sys.argv[4:]==['pnpm']\nbin_dir=pathlib.Path(sys.argv[3]);assert bin_dir.is_dir()\nfor name in ('pnpm','pnpx'): (bin_dir/name).symlink_to(os.environ['FIXTURE_DIST'])\n")
+    corepack.chmod(0o755)
+    def fixture(name):
+        output=root/name;dist=output/"runtime/node-v24.16.0-linux-x64/lib/node_modules/corepack/dist/pnpm.js";dist.parent.mkdir(parents=True)
+        dist.write_text("#!"+sys.executable+"\nimport os,subprocess,sys\nif sys.argv[1:]==['--version']: print(os.environ['FIXTURE_VERSION'])\nelif sys.argv[1:]==['tsgo:prod']: print(subprocess.check_output(['pnpm','tsgo:core'],text=True).strip())\nelif sys.argv[1:]==['tsgo:core']: print('nested-pnpm-ok')\nelse: raise SystemExit(1)\n")
+        dist.chmod(0o755)
+        return output,dict(PATH=str(tools),FIXTURE_DIST=str(dist),FIXTURE_VERSION="12.9.0")
+    output,env=fixture("valid");dependency={"pnpm":"12.9.0"};original=dict(env)
+    assert shutil.which("pnpm",path=env["PATH"]) is None
+    assert adapter.prepare_production_pnpm(source,output,env,dependency,"timing") is env
+    assert not (output/"production-bin").exists() and dependency=={"pnpm":"12.9.0"}
+    prepared=adapter.prepare_production_pnpm(source,output,env,dependency,"production")
+    assert env==original and prepared["PATH"].split(os.pathsep)[1:]==[env["PATH"]]
+    assert subprocess.check_output(["pnpm","tsgo:prod"],cwd=source,env=prepared,text=True).strip()=="nested-pnpm-ok"
+    binding=json.loads((output/"dependency-receipt.json").read_text())["productionPnpm"]
+    assert binding["version"]=="12.9.0" and binding["corepackVersion"]=="0.35.0"
+    assert binding["executable"]==env["FIXTURE_DIST"] and binding["sha256"]==adapter.hosted.sha(Path(env["FIXTURE_DIST"]))
+    for case in ("wrong-version","foreign-runtime"):
+        output,env=fixture(case)
+        if case=="wrong-version":env["FIXTURE_VERSION"]="12.8.0"
+        else:env["FIXTURE_DIST"]=binding["executable"]
+        try:adapter.prepare_production_pnpm(source,output,env,{},"production")
+        except RuntimeError:pass
+        else:raise AssertionError(case)
+        assert not (output/"dependency-receipt.json").exists()
+print("production pnpm: timing untouched, owned nested launcher valid, wrong version/runtime rejected")
+`;
+  const result = spawnSync(
+    "python3",
+    ["-c", python, new URL("./checker-benchmark-hosted.py", import.meta.url).pathname],
+    { encoding: "utf8", timeout: 10_000, env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" } },
+  );
+  assert.equal(result.error, undefined);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /timing untouched, owned nested launcher valid/);
+});
+
 test("whole production samples preserve lock ownership, exact caches and failures", async () => {
   for (const failure of ["none", "missing-completion", "cache-change", "timeout", "resource-after"]) {
     const files = new Map();

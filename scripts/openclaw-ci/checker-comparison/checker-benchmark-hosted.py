@@ -41,6 +41,26 @@ def write_status(output, status):
     temporary.replace(output / "benchmark-status.json")
 
 
+def prepare_production_pnpm(source, output, env, dependency, phase):
+    if phase != "production":
+        return env
+    # The canonical scripts invoke pnpm recursively; corepack pnpm install alone
+    # does not expose that executable. Keep its shims inside this task's runtime.
+    bin_dir = output / "production-bin"
+    bin_dir.mkdir()
+    subprocess.run(["corepack", "enable", "--install-directory", str(bin_dir), "pnpm"], cwd=source, env=env, check=True, timeout=30)
+    env = dict(env, PATH=str(bin_dir) + os.pathsep + env["PATH"])
+    launcher = bin_dir / "pnpm"
+    resolved = launcher.resolve(strict=True)
+    hosted.require(shutil.which("pnpm", path=env["PATH"]) == str(launcher) and launcher.is_symlink(), "production pnpm launcher differs")
+    hosted.require(resolved.is_file() and resolved.is_relative_to(output / "runtime/node-v24.16.0-linux-x64"), "production pnpm escapes the pinned runtime")
+    version = subprocess.check_output(["pnpm", "--version"], cwd=source, env=env, text=True, timeout=30).strip()
+    hosted.require(version == "12.9.0", "production pnpm version differs")
+    dependency["productionPnpm"] = {"launcher": str(launcher), "executable": str(resolved), "sha256": hosted.sha(resolved), "version": version, "corepackVersion": "0.35.0"}
+    (output / "dependency-receipt.json").write_text(json.dumps(dependency, indent=2) + "\n")
+    return env
+
+
 def run(source, output, receipt, receipt_sha256, status, parent_deadline, phase="timing"):
     hosted.require(output.is_relative_to(Path("/work/crabbox")) and not output.is_relative_to(source), "output must be a separate task-owned work root")
     hosted.require(subprocess.check_output(["stat", "-f", "-c", "%T", str(output)], text=True).strip() != "tmpfs", "output is tmpfs")
@@ -57,6 +77,7 @@ def run(source, output, receipt, receipt_sha256, status, parent_deadline, phase=
     # owns source verification once its eighth transport is committed below.
     prepared_manifest, env, _dependency = hosted.prepare_dependencies(source, output)
     hosted.require(prepared_manifest == manifest, "prepared manifest differs")
+    env = prepare_production_pnpm(source, output, env, _dependency, phase)
     archive = output / "final-bun.tar.gz"
     shutil.copyfile(source / hosted.PREFIX / "binary.archive", archive)
     hosted.require(hosted.sha(archive) == manifest["bun"]["archiveSha256"], "external Bun archive differs")
