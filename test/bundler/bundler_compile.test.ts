@@ -1971,7 +1971,6 @@ for (const aot of [false, true]) {
       const [stdout, stderr, exitCode] = await Promise.all([run.stdout.text(), run.stderr.text(), run.exited]);
       expect({ stdout, stderr, exitCode }).toEqual({ stdout: "signed\n", stderr: "", exitCode: 0 });
     },
-    60_000,
   );
 }
 
