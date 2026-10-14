@@ -3,7 +3,10 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, statfsSync, writeF
 import { homedir } from "node:os";
 import { basename, dirname, resolve } from "node:path";
 
+export const forkRegressions = ["test/bundler/transpiler/runtime-transpiler.test.ts", "test/js/node/fs/dir.test.ts"];
+
 export const smoke = [
+  ...forkRegressions,
   "test/js/node/child_process/child-process-exec.test.ts",
   "test/js/node/child_process/child-process-stdio.test.js",
   "test/js/node/net/node-net-server.test.ts",
@@ -35,6 +38,7 @@ export const broader = [
 ];
 
 export const darwinSmoke = [
+  ...forkRegressions,
   "test/js/node/watch/fs.watch.test.ts",
   "test/js/node/watch/fs.watch.close-exit.test.ts",
   "test/js/node/watch/fs.watch.events-cb-race.test.ts",
