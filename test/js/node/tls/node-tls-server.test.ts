@@ -1411,6 +1411,7 @@ it("SNICallback runs even when the requested servername matches the bind hostnam
 });
 
 it("setSecureContext() clears omitted options instead of keeping stale values", async () => {
+  const defaultCA = (createServer({ ...COMMON_CERT }) as any).ca;
   const server: Server = createServer({
     ...COMMON_CERT,
     ca: [COMMON_CERT.cert],
@@ -1421,7 +1422,8 @@ it("setSecureContext() clears omitted options instead of keeping stale values", 
   // Replacing the context without ca/ciphers must clear them (Node resets
   // omitted fields), not silently keep the previous call's values.
   server.setSecureContext({ ...COMMON_CERT });
-  expect((server as any).ca).toBeUndefined();
+  // A preceding test may have installed a process-wide default CA override.
+  expect((server as any).ca).toEqual(defaultCA);
   expect((server as any).ciphers).toBeUndefined();
   expect((server as any).cert).toBe(COMMON_CERT.cert);
   expect((server as any).key).toBe(COMMON_CERT.key);

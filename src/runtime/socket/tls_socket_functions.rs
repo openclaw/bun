@@ -6,7 +6,8 @@ use bun_core::{EncodedSlice, String as BunString, strings};
 use bun_jsc::JsClass as _;
 use bun_jsc::bun_string_jsc;
 use bun_jsc::{
-    self as jsc, CallFrame, EncodedSliceJsc as _, JSGlobalObject, JSValue, JsResult, StringJsc as _,
+    self as jsc, CallFrame, EncodedSliceJsc as _, HostReturn as _, JSGlobalObject, JSValue,
+    JsResult, StringJsc as _,
 };
 
 use crate::api::bun_x509 as X509;
@@ -390,6 +391,10 @@ pub(super) fn get_tls_version(
     let Some(ssl_ptr) = this.socket.get().ssl() else {
         return Ok(JSValue::NULL);
     };
+    tls_version_to_js(ssl_ptr, global)
+}
+
+fn tls_version_to_js(ssl_ptr: *mut boringssl::SSL, global: &JSGlobalObject) -> JsResult<JSValue> {
     let version = ffi::SSL_get_version(boringssl::SSL::opaque_ref(ssl_ptr));
     if version.is_null() {
         return Ok(JSValue::NULL);
@@ -453,6 +458,14 @@ pub(super) fn get_peer_certificate(
     let Some(ssl_ptr) = this.socket.get().ssl() else {
         return Ok(JSValue::UNDEFINED);
     };
+    peer_certificate_to_js(ssl_ptr, global, abbreviated)
+}
+
+fn peer_certificate_to_js(
+    ssl_ptr: *mut boringssl::SSL,
+    global: &JSGlobalObject,
+    abbreviated: bool,
+) -> JsResult<JSValue> {
     let is_server_ssl = ffi::SSL_is_server(boringssl::SSL::opaque_ref(ssl_ptr)) != 0;
 
     if abbreviated {
@@ -782,6 +795,10 @@ pub(super) fn get_cipher(
     let Some(ssl_ptr) = this.socket.get().ssl() else {
         return Ok(JSValue::UNDEFINED);
     };
+    cipher_to_js(ssl_ptr, global)
+}
+
+fn cipher_to_js(ssl_ptr: *mut boringssl::SSL, global: &JSGlobalObject) -> JsResult<JSValue> {
     let cipher = ffi::SSL_get_current_cipher(boringssl::SSL::opaque_ref(ssl_ptr));
     let result = JSValue::create_empty_object(global, 0);
 
@@ -1409,4 +1426,46 @@ fn get_ssl_exception(global: &JSGlobalObject, default_message: &[u8]) -> JSValue
     exception.ensure_still_alive();
 
     exception
+}
+
+// The C++ HTTP socket binding supplies a live SSL handle or null after closure.
+
+/// # Safety
+/// `ssl` is null or the live SSL handle borrowed from the C++ HTTP socket.
+#[unsafe(no_mangle)]
+unsafe extern "C" fn Bun__NodeHTTPServerSocket__getPeerCertificate(
+    ssl: *mut boringssl::SSL,
+    global: &JSGlobalObject,
+    abbreviated: bool,
+) -> JSValue {
+    if ssl.is_null() {
+        return JSValue::UNDEFINED;
+    }
+    peer_certificate_to_js(ssl, global, abbreviated).or_pending_exception()
+}
+
+/// # Safety
+/// `ssl` is null or the live SSL handle borrowed from the C++ HTTP socket.
+#[unsafe(no_mangle)]
+unsafe extern "C" fn Bun__NodeHTTPServerSocket__getCipher(
+    ssl: *mut boringssl::SSL,
+    global: &JSGlobalObject,
+) -> JSValue {
+    if ssl.is_null() {
+        return JSValue::UNDEFINED;
+    }
+    cipher_to_js(ssl, global).or_pending_exception()
+}
+
+/// # Safety
+/// `ssl` is null or the live SSL handle borrowed from the C++ HTTP socket.
+#[unsafe(no_mangle)]
+unsafe extern "C" fn Bun__NodeHTTPServerSocket__getTLSVersion(
+    ssl: *mut boringssl::SSL,
+    global: &JSGlobalObject,
+) -> JSValue {
+    if ssl.is_null() {
+        return JSValue::NULL;
+    }
+    tls_version_to_js(ssl, global).or_pending_exception()
 }

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Expose TLS socket identity and peer certificate, cipher and protocol methods on native HTTPS request sockets. Ports [oven-sh/bun#37255](https://github.com/oven-sh/bun/pull/37255); thanks @robobun!
+
 - Keep standalone HTTP responses unfinished until their buffered final socket write completes.
 
 - Preserve unpaired UTF-16 surrogates throughout `node:path` operations on both path variants. Adapts [oven-sh/bun#34596](https://github.com/oven-sh/bun/pull/34596); thanks @robobun!
