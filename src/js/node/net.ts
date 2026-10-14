@@ -551,6 +551,7 @@ function onClientHandshake(self, socket, success, verifyError) {
   self._securePending = false;
   self._secureEstablished = true;
   self[kVerifyError] = verifyError ?? null;
+  self.servername = self.servername || false;
   self.alpnProtocol = socket.alpnProtocol;
   // Node has no try/catch around these emits; a listener throw reaches
   // InternalCallbackScope as uncaughtException. reportError mirrors that
@@ -1226,7 +1227,7 @@ const ServerHandlers = {
     self._securePending = false;
     self.secureConnecting = false;
     self._secureEstablished = !!success;
-    self.servername = socket.getServername();
+    self.servername = socket.getServername() ?? false;
     self.alpnProtocol = socket.alpnProtocol;
     self[kVerifyError] = verifyError ?? null;
     // The native verifier reports a non-OK code when there is no peer certificate,
