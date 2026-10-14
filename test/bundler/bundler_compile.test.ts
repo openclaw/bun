@@ -1984,8 +1984,12 @@ test.skipIf(process.platform !== "darwin" && process.platform !== "linux")(
       import { readFileSync } from "node:fs";
       import { createRequire } from "node:module";
       import { Worker as NodeWorker } from "node:worker_threads";
-      if (process.platform === "linux" && /^\\S+\\s+rwx/m.test(readFileSync("/proc/self/maps", "utf8")))
-        throw new Error("AOT executable reserved writable executable memory");
+      if (process.platform === "linux") {
+        const maps = readFileSync("/proc/self/maps", "utf8");
+        // Rosetta's translator reserves RWX memory even for a plain native C program.
+        if (!maps.includes("/[rosetta]") && /^\\S+\\s+rwx/m.test(maps))
+          throw new Error("AOT executable reserved writable executable memory");
+      }
       const require = createRequire(import.meta.url);
       function loadDefault(path) { return require(path).default; }
       for (let i = 0; i < 6; i++) {
