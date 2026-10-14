@@ -73,14 +73,15 @@ test("static imports preserve fragments and query loaders", async () => {
   expect(exitCode).toBe(0);
 });
 
-test("relative imports prefer an existing literal # path before fragment fallback", async () => {
+test("relative imports encode literal # filenames and preserve fragments", async () => {
   using dir = tempDir("import-fragment-literal-path", {
     "report#2.mjs": "export const value = 'literal';",
     "plain.mjs": "export const value = 'fragment'; export const url = import.meta.url;",
     "entry.mjs": `
-      const literal = await import('./report#2.mjs');
+      const literal = await import('./report%232.mjs');
+      const rawHash = await import('./report#2.mjs').then(() => 'loaded', error => error.code);
       const fragment = await import('./plain.mjs#two');
-      console.log(JSON.stringify({ literal: literal.value, fragment: fragment.value, url: fragment.url }));
+      console.log(JSON.stringify({ literal: literal.value, rawHash, fragment: fragment.value, url: fragment.url }));
     `,
   });
   await using proc = Bun.spawn({
@@ -95,6 +96,7 @@ test("relative imports prefer an existing literal # path before fragment fallbac
   expect(stderr).toBe("");
   expect(JSON.parse(stdout)).toEqual({
     literal: "literal",
+    rawHash: "ERR_MODULE_NOT_FOUND",
     fragment: "fragment",
     url: Bun.pathToFileURL(path.join(String(dir), "plain.mjs")).href + "#two",
   });

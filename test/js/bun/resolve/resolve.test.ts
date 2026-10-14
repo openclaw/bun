@@ -920,6 +920,235 @@ describe("wildcard exports with @ in matched subpath", () => {
   });
 });
 
+describe("ESM specifier percent-encoding", () => {
+  for (const mode of ["static", "dynamic", "require(esm)"]) {
+    it.concurrent(`decodes relative and absolute paths through ${mode}`, async () => {
+      using dir = tempDir("esm-specifier-percent", {
+        "space # percent% helper.mjs": "export default 'decoded';",
+        "space%20%23%20percent%25%20helper.mjs": "export default 'literal';",
+        "literal%20.mjs": "export default 'once';",
+        "literal .mjs": "export default 'twice';",
+        "café.mjs": "export default 'unicode';",
+        "plain.mjs": "export default {};",
+        "driver.mjs": `
+          import assert from 'node:assert/strict';
+          import { writeFileSync } from 'node:fs';
+          import { createRequire } from 'node:module';
+          import { pathToFileURL } from 'node:url';
+          const mode = ${JSON.stringify(mode)};
+          const require = createRequire(import.meta.url);
+          let id = 0;
+          async function load(specifier) {
+            if (mode === 'dynamic') return import(specifier);
+            const entry = './entry-' + id++ + '.mjs';
+            writeFileSync(new URL(entry, import.meta.url), 'export { default } from ' + JSON.stringify(specifier));
+            return mode === 'static' ? import(entry) : require(entry);
+          }
+          for (const prefix of ['./', new URL('.', import.meta.url).pathname]) {
+            assert.equal((await load(prefix + 'space%20%23%20percent%25%20helper.mjs')).default, 'decoded');
+            assert.equal((await load(prefix + 'literal%2520.mjs')).default, 'once');
+            assert.equal((await load(prefix + 'caf%C3%A9.mjs')).default, 'unicode');
+            assert.equal((await load(prefix + 'space%20%23%20percent%25%20helper.mjs?query=%2F#%5C')).default, 'decoded');
+            const plain = (await load(prefix + 'plain.mjs')).default;
+            assert.equal((await load(prefix + 'plain.mjs?query=1')).default === plain, false);
+            assert.equal((await load(prefix + 'plain.mjs#fragment')).default === plain, false);
+          }
+          const target = new URL('./literal%2520.mjs', import.meta.url);
+          assert.equal((await import(target.href)).default, 'once');
+          console.log('ok');
+        `,
+      });
+      await using proc = Bun.spawn({
+        cmd: [bunExe(), "driver.mjs"],
+        cwd: String(dir),
+        env: bunEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      expect({ stdout, stderr, exitCode }).toEqual({ stdout: "ok\n", stderr: "", exitCode: 0 });
+    });
+
+    // Windows cannot create a filename containing '?'.
+    it.concurrent.skipIf(isWindows)(`preserves encoded question marks through ${mode}`, async () => {
+      using dir = tempDir("esm-specifier-question", {
+        "question?mark.mjs": "export { default } from './child%20file.mjs';",
+        "question.mjs": "export default 'query';",
+        "child file.mjs": "export default {};",
+        "driver.mjs": `
+          import assert from 'node:assert/strict';
+          import { writeFileSync } from 'node:fs';
+          import { createRequire } from 'node:module';
+          const require = createRequire(import.meta.url);
+          const mode = ${JSON.stringify(mode)};
+          let id = 0;
+          async function load(specifier) {
+            if (mode === 'dynamic') return import(specifier);
+            const entry = './entry-' + id++ + '.mjs';
+            writeFileSync(new URL(entry, import.meta.url), 'export { default } from ' + JSON.stringify(specifier));
+            return mode === 'static' ? import(entry) : require(entry);
+          }
+          const expected = (await import('./child%20file.mjs')).default;
+          for (const prefix of ['./', new URL('.', import.meta.url).pathname]) {
+            assert.equal((await load(prefix + 'question%3Fmark.mjs')).default, expected);
+            assert.equal((await load(prefix + 'question%3fmark.mjs?query=1#fragment')).default, expected);
+            assert.equal((await load(prefix + 'question.mjs?mark.mjs')).default, 'query');
+          }
+          console.log('ok');
+        `,
+      });
+      await using proc = Bun.spawn({
+        cmd: [bunExe(), "driver.mjs"],
+        cwd: String(dir),
+        env: bunEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      expect({ stdout, stderr, exitCode }).toEqual({ stdout: "ok\n", stderr: "", exitCode: 0 });
+    });
+
+    it.concurrent(`rejects invalid URL path escapes through ${mode}`, async () => {
+      using dir = tempDir("esm-specifier-invalid", {
+        "sub/file.mjs": "export default 'separator';",
+        "bad%ZZ.mjs": "export default 'literal';",
+        "driver.mjs": `
+          import assert from 'node:assert/strict';
+          import { writeFileSync } from 'node:fs';
+          import { createRequire } from 'node:module';
+          import { fileURLToPath } from 'node:url';
+          const require = createRequire(import.meta.url);
+          const mode = ${JSON.stringify(mode)};
+          let id = 0;
+          async function load(specifier) {
+            if (mode === 'dynamic') return import(specifier);
+            const entry = './entry-' + id++ + '.mjs';
+            writeFileSync(new URL(entry, import.meta.url), 'export { default } from ' + JSON.stringify(specifier));
+            return mode === 'static' ? import(entry) : require(entry);
+          }
+          for (const prefix of ['./', new URL('.', import.meta.url).pathname]) {
+            for (const escape of ['%2F', '%2f', '%5C', '%5c']) {
+              await assert.rejects(load(prefix + 'sub' + escape + 'file.mjs'), error => {
+                assert.equal(error.name, 'TypeError');
+                assert.equal(error.code, 'ERR_INVALID_MODULE_SPECIFIER');
+                if (mode === 'dynamic') assert.ok(error.message.endsWith(' imported from ' + fileURLToPath(import.meta.url)));
+                return true;
+              });
+            }
+            for (const escape of ['%', '%ZZ', '%FF', '%C0%AF', '%ED%A0%80']) {
+              await assert.rejects(load(prefix + 'bad' + escape + '.mjs'), { name: 'URIError', message: 'URI malformed' });
+            }
+            await assert.rejects(load(prefix + 'sub\\\\bad%00.mjs'), { code: 'ERR_MODULE_NOT_FOUND' });
+          }
+          console.log('ok');
+        `,
+      });
+      await using proc = Bun.spawn({
+        cmd: [bunExe(), "driver.mjs"],
+        cwd: String(dir),
+        env: bunEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      expect({ stdout, stderr, exitCode }).toEqual({ stdout: "ok\n", stderr: "", exitCode: 0 });
+    });
+  }
+
+  it.concurrent("reports an encoded separator against the working-directory fallback", async () => {
+    using dir = tempDir("esm-specifier-error-base", {});
+    await using proc = Bun.spawn({
+      cmd: [
+        bunExe(),
+        "-e",
+        `
+        import assert from 'node:assert/strict';
+        import { pathToFileURL } from 'node:url';
+        const pathname = new URL('./sub%2Ffile.mjs', pathToFileURL(process.cwd() + '/')).pathname;
+        assert.throws(() => import.meta.resolveSync('./sub%2Ffile.mjs', '.'), error => {
+          assert.equal(error.name, 'TypeError');
+          assert.equal(error.code, 'ERR_INVALID_MODULE_SPECIFIER');
+          assert.ok(error.message.startsWith('Invalid module "' + pathname + '" must not include encoded '));
+          return true;
+        });
+        console.log('ok');
+      `,
+      ],
+      cwd: String(dir),
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect({ stdout, stderr, exitCode }).toEqual({ stdout: "ok\n", stderr: "", exitCode: 0 });
+  });
+
+  it.concurrent("keeps CLI entry paths literal", async () => {
+    using dir = tempDir("esm-entry-literal", {
+      "literal%20#entry.mjs": "console.log('literal');",
+    });
+    await using proc = Bun.spawn({
+      cmd: [bunExe(), "literal%20#entry.mjs"],
+      cwd: String(dir),
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect({ stdout, stderr, exitCode }).toEqual({ stdout: "literal\n", stderr: "", exitCode: 0 });
+  });
+
+  it.concurrent("keeps plugin-resolved filesystem paths literal", async () => {
+    using dir = tempDir("esm-specifier-plugin", {
+      "literal%20.mjs": "export default 'literal';",
+      "literal .mjs": "export default 'decoded';",
+      "driver.mjs": `
+        import { plugin } from 'bun';
+        plugin({
+          name: 'literal-path',
+          setup(build) {
+            build.onResolve({ filter: /^virtual$/ }, () => ({ path: import.meta.dirname + '/literal%20.mjs' }));
+          },
+        });
+        console.log((await import('virtual')).default);
+      `,
+    });
+    await using proc = Bun.spawn({
+      cmd: [bunExe(), "driver.mjs"],
+      cwd: String(dir),
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect({ stdout, stderr, exitCode }).toEqual({ stdout: "literal\n", stderr: "", exitCode: 0 });
+  });
+
+  it.concurrent("keeps CommonJS require and already-resolved paths literal", async () => {
+    using dir = tempDir("esm-specifier-require", {
+      "literal%20.cjs": "module.exports = 'literal cjs';",
+      "literal .cjs": "module.exports = 'decoded cjs';",
+      "literal%20.mjs": "export default 'literal esm';",
+      "literal .mjs": "export default 'decoded esm';",
+      "driver.cjs": `
+        const assert = require('node:assert/strict');
+        assert.equal(require('./literal%20.cjs'), 'literal cjs');
+        assert.equal(require('./literal%20.mjs').default, 'literal esm');
+        console.log('ok');
+      `,
+    });
+    await using proc = Bun.spawn({
+      cmd: [bunExe(), "driver.cjs"],
+      cwd: String(dir),
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect({ stdout, stderr, exitCode }).toEqual({ stdout: "ok\n", stderr: "", exitCode: 0 });
+  });
+});
+
 describe("package.json exports target percent-encoding", () => {
   // ESModule.finalize short-circuits when the resolved path contains no '%'.
   // These cases exercise both that branch and the decode branch to keep them in lockstep.

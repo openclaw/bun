@@ -4132,6 +4132,7 @@ pub struct ResolveFunctionResult {
     pub path: &'static [u8],
     pub(crate) query_string: &'static [u8],
     is_external: bool,
+    is_embedded: bool,
 }
 
 /// Per-thread `BufferPrinter` used when printing transpiled module source.
@@ -5424,10 +5425,10 @@ impl VirtualMachine {
         }
         // Embedded modules are looked up by their exact key; normalize the suffix
         // while the resolver's standalone-module flag is still available.
-        if result
+        ret.is_embedded = result
             .flags
-            .contains(bun_resolver::ResultFlags::IS_STANDALONE_MODULE)
-        {
+            .contains(bun_resolver::ResultFlags::IS_STANDALONE_MODULE);
+        if ret.is_embedded {
             query_string = b"";
         }
         // SAFETY: PORT — `query_string` re-slices `specifier` (caller-owned;
@@ -5600,6 +5601,7 @@ impl VirtualMachine {
                         Some(&mut resolved_query),
                         mode,
                         !is_file_url && split_query,
+                        false,
                         global_cache,
                     )?;
                     if let Some(query) = query_string {
@@ -5628,6 +5630,7 @@ impl VirtualMachine {
                     None,
                     mode,
                     false,
+                    false,
                     global.bun_vm().transpiler.resolver.opts.global_cache,
                 )?;
                 if let Some(query) = query_string {
@@ -5643,6 +5646,7 @@ impl VirtualMachine {
             query_string,
             mode,
             split_query,
+            true,
             global.bun_vm().transpiler.resolver.opts.global_cache,
         )
     }
@@ -5654,6 +5658,7 @@ impl VirtualMachine {
         query_string: Option<&mut bun_core::String>,
         mode: ResolveMode,
         split_query: bool,
+        authored_specifier: bool,
         global_cache: bun_resolver::GlobalCache,
     ) -> JsResult<Result<bun_core::String, JSValue>> {
         let mut result = ResolveFunctionResult::default();
@@ -5680,7 +5685,83 @@ impl VirtualMachine {
             }
         }
 
-        let specifier_utf8 = specifier.to_utf8();
+        let original_specifier_utf8 = specifier.to_utf8();
+        let mut split_query = split_query;
+        let mut decoded_specifier = None;
+        let mut encoded_suffix = None;
+        let authored = original_specifier_utf8.slice();
+        if authored_specifier
+            && !source.eq_ascii(MAIN_FILE_NAME)
+            && !source.starts_with_ascii(bun_js_parser::Macro::NAMESPACE_WITH_COLON)
+            && mode.is_esm()
+            && mode != ResolveMode::ResolvedEsm
+            && split_query
+            && (authored.starts_with(b"./")
+                || authored.starts_with(b"../")
+                || bun_paths::is_absolute(authored))
+            && bun_core::strings::index_of_any(authored, b"%#").is_some()
+        {
+            // Split URL syntax before decoding: %3F and %23 belong to the filename.
+            let end = bun_core::strings::index_of_any(authored, b"?#").unwrap_or(authored.len());
+            let path = &authored[..end];
+            if bun_core::strings::contains(path, b"%2F")
+                || bun_core::strings::contains(path, b"%2f")
+                || bun_core::strings::contains(path, b"%5C")
+                || bun_core::strings::contains(path, b"%5c")
+            {
+                let source_url = if source.starts_with_ascii(b"file://") {
+                    source.clone()
+                } else {
+                    let source_utf8 = source.to_utf8();
+                    let source_path =
+                        crate::resolver_jsc::module_key_without_query(source_utf8.slice());
+                    let source_is_absolute = bun_paths::is_absolute(source_path);
+                    let mut base = if source_is_absolute {
+                        source_path.to_vec()
+                    } else {
+                        jsc_vm.top_level_dir().to_vec()
+                    };
+                    if (!IS_A_FILE_PATH || !source_is_absolute) && !base.ends_with(b"/") {
+                        base.push(b'/');
+                    }
+                    bun_url::file_url_from_string(&bun_core::String::borrow_utf8(&base))
+                };
+                let url = bun_url::join(&source_url, specifier);
+                let url_path = bun_url::whatwg::Parsed::from_string(&url)
+                    .map(|url| url.pathname())
+                    .unwrap_or_else(|| specifier.clone());
+                let referrer = if source.starts_with_ascii(b"file://") {
+                    bun_url::path_from_file_url(source)
+                } else {
+                    source.clone()
+                };
+                return Ok(Err(global.err(
+                    crate::ErrCode::ERR_INVALID_MODULE_SPECIFIER,
+                    format_args!("Invalid module \"{}\" must not include encoded \"/\" or \"\\\" characters imported from {}", url_path, referrer),
+                ).to_js()));
+            }
+            let decoded = bun_url::PercentEncoding::decode_alloc(path);
+            let decoded = match decoded {
+                Ok(bytes) if core::str::from_utf8(&bytes).is_ok() => bytes,
+                _ => {
+                    return Ok(Err(bun_string_jsc::error_instance(
+                        &bun_core::String::static_("URI malformed"),
+                        global,
+                        bun_string_jsc::ErrorKind::URIError,
+                    )));
+                }
+            };
+            decoded_specifier = Some(bun_core::String::clone_utf8(&decoded));
+            encoded_suffix = Some(&authored[end..]);
+            split_query = false;
+        }
+        let decoded_specifier_utf8;
+        let specifier_utf8 = if let Some(decoded) = &decoded_specifier {
+            decoded_specifier_utf8 = decoded.to_utf8();
+            &decoded_specifier_utf8
+        } else {
+            &original_specifier_utf8
+        };
         // Parse the URL before decoding so a pathname's %3F never becomes a
         // module-query delimiter. Hold its decoded storage through resolution.
         let source_is_file_url = source.starts_with_ascii(b"file://");
@@ -5696,7 +5777,10 @@ impl VirtualMachine {
         #[cfg(not(windows))]
         {
             let path = specifier_utf8.slice();
-            if bun_core::strings::contains_char(path, b'\\') && bun_paths::is_absolute(path) {
+            if bun_core::strings::contains_char(path, b'\\')
+                && !bun_core::strings::contains_char(path, 0)
+                && bun_paths::is_absolute(path)
+            {
                 let path_z = bun_core::ZBox::from_bytes(path);
                 if matches!(
                     bun_sys::exists_at_type(bun_sys::Fd::cwd(), &path_z),
@@ -5899,7 +5983,11 @@ impl VirtualMachine {
         }
 
         if let Some(query) = query_string {
-            *query = bun_core::String::clone_utf8(result.query_string);
+            *query = bun_core::String::clone_utf8(
+                encoded_suffix
+                    .filter(|_| !result.is_embedded)
+                    .unwrap_or(result.query_string),
+            );
         }
 
         Ok(Ok(bun_core::String::clone_utf8(result.path)))

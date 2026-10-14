@@ -186,6 +186,9 @@ extern "C" JSC::EncodedJSValue BunString__toErrorInstance(const BunString* str, 
     case BunErrorKind::RangeError:
         type = JSC::ErrorType::RangeError;
         break;
+    case BunErrorKind::URIError:
+        type = JSC::ErrorType::URIError;
+        break;
     }
     // Not JSC::createError(): it asserts the message is not empty, and `new Error("")` is valid.
     JSC::JSObject* result = JSC::ErrorInstance::create(globalObject->vm(), globalObject->errorStructure(type), message, JSValue(), nullptr, JSC::TypeNothing, type, true);
