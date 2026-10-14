@@ -27,8 +27,8 @@
  *   conflict) but DO forward -march/-mcpu + LTO/PGO, which WebKit never
  *   sets. Dep args go LAST in source.ts, so they override.
  *
- * - Windows local mode: ICU built from source via preBuild hook
- *   (build-icu.ps1 → msbuild) before cmake configure. Output goes in
+ * - Linux/Windows local mode: ICU built from source via preBuild hook
+ *   (icu-linux.ts or build-icu.ps1) before cmake configure. Output goes in
  *   the per-profile build dir, not shared vendor/WebKit/WebKitBuild/icu/
  *   like the old cmake — avoids debug/release mixing.
  */
@@ -139,8 +139,7 @@ function bmallocLib(cfg: Config): string {
 
 /**
  * ICU libs — prebuilt bundles them on linux/windows. macOS uses system ICU.
- * Local mode: system ICU on posix (linked via -licu* in bun.ts); built from
- * source on Windows (see icuDir/icuLibs).
+ * Local mode: pinned static ICU on Linux/Windows; system ICU on macOS.
  */
 function prebuiltIcuLibs(cfg: Config): string[] {
   if (cfg.windows) {
@@ -198,6 +197,7 @@ function webkitSrcDir(cfg: Config): string {
 export const webkit: Dependency = {
   name: "WebKit",
   versionMacro: "WEBKIT",
+  fetchDeps: cfg => (cfg.webkit === "local" && cfg.linux && cfg.abi !== "android" ? ["zstd"] : []),
 
   source: cfg => {
     if (cfg.webkit === "prebuilt") {
@@ -261,10 +261,7 @@ export const webkit: Dependency = {
     //     target nehalem.
     //   - LTO/PGO: WebKit's cmake doesn't set those itself.
     //
-    // Windows: ICU built from source via preBuild before cmake configure.
-    // WebKit's cmake finds it via ICU_ROOT. On posix, system ICU is used
-    // (macOS: Homebrew headers + system libs; Linux: libicu-dev) — cmake
-    // auto-detects.
+    // Linux/Windows build pinned ICU before configure; macOS uses the system ICU.
     const optFlags: string[] = computeCpuTargetFlags(cfg);
     // -fno-pic: match bun's own C++ (flags.ts) so JSC/WTF const-pointer
     // tables land in .rodata instead of .data.rel.ro. We link -no-pie, so
@@ -298,6 +295,11 @@ export const webkit: Dependency = {
     }
     if (cfg.freebsd && cfg.crossTarget !== undefined) {
       optFlags.push(`--target=${cfg.crossTarget}`, `--sysroot=${cfg.sysroot!}`);
+    }
+    if (cfg.linux && cfg.abi !== "android") {
+      optFlags.push("-DU_STATIC_IMPLEMENTATION=1");
+      if (cfg.crossTarget) optFlags.push(`--target=${cfg.crossTarget}`);
+      if (cfg.sysroot) optFlags.push(`--sysroot=${cfg.sysroot}`);
     }
     const optFlagStr = optFlags.join(" ");
     let cxxOptFlagStr = optFlagStr;
@@ -378,6 +380,61 @@ export const webkit: Dependency = {
       buildType: cfg.release && !cfg.lto ? "RelWithDebInfo" : cfg.buildType,
     };
 
+    if (cfg.linux && cfg.abi !== "android") {
+      const icu = icuDir(cfg);
+      const srcDir = webkitSrcDir(cfg);
+      const helper = resolve(cfg.cwd, "scripts/build/icu-linux.ts");
+      args.ICU_ROOT = icu;
+      args.ICU_INCLUDE_DIR = resolve(icu, "include");
+      // Explicit archives override stale FindICU cache entries from system ICU.
+      for (const [component, lib] of [
+        ["data", "icudata"],
+        ["i18n", "icui18n"],
+        ["uc", "icuuc"],
+      ]) {
+        args[`ICU_${component!.toUpperCase()}_LIBRARY_RELEASE`] = resolve(icu, "lib", `lib${lib}.a`);
+        args[`ICU_${component!.toUpperCase()}_LIBRARY_DEBUG`] = resolve(icu, "lib", `lib${lib}.a`);
+      }
+      args.BUN_ICU_ZSTD_SOURCE_DIR = resolve(depSourceDir(cfg, "zstd"), "lib");
+      if (cfg.sysroot) {
+        args.CMAKE_SYSROOT = cfg.sysroot;
+        args.CMAKE_FIND_ROOT_PATH_MODE_PROGRAM = "NEVER";
+        args.CMAKE_FIND_ROOT_PATH_MODE_PACKAGE = "BOTH";
+        args.CMAKE_FIND_ROOT_PATH_MODE_LIBRARY = "BOTH";
+        args.CMAKE_FIND_ROOT_PATH_MODE_INCLUDE = "BOTH";
+      }
+      if (!cfg.canRunOnHost) {
+        args.CMAKE_SYSTEM_NAME = "Linux";
+        args.CMAKE_SYSTEM_PROCESSOR = cfg.arm64 ? "aarch64" : "x86_64";
+      }
+      spec.preBuild = {
+        command: [
+          cfg.jsRuntime,
+          helper,
+          JSON.stringify({
+            source: srcDir,
+            output: icu,
+            cc: cfg.cc,
+            cxx: cfg.cxx,
+            ar: cfg.ar,
+            ranlib: cfg.ranlib ?? "llvm-ranlib",
+            flags: optFlags,
+            target: cfg.crossTarget,
+            cross: !cfg.canRunOnHost,
+            jobs: Number(process.env.CMAKE_BUILD_PARALLEL_LEVEL || 8),
+          }),
+        ],
+        cwd: cfg.cwd,
+        inputs: [
+          helper,
+          ...["source.json", "udata-decompress-hook.patch", "compress-data.ts", "keep-raw.txt"].map(file =>
+            resolve(srcDir, "icu", file),
+          ),
+        ],
+        outputs: ["icui18n", "icuuc", "icudata"].map(lib => resolve(icu, "lib", `lib${lib}.a`)),
+      };
+    }
+
     if (cfg.windows) {
       const icu = icuDir(cfg);
       const srcDir = webkitSrcDir(cfg);
@@ -447,7 +504,7 @@ export const webkit: Dependency = {
     // Windows ICU libs are NOT listed here — they're preBuild.outputs,
     // which source.ts appends to the resolved libs automatically. Listing
     // them here would make dep_build also claim to produce them (dup error).
-    // Posix uses system ICU (linked via -licu* in bun.ts). Android has no
+    // Linux ICU archives are also preBuild.outputs. Android has no
     // system ICU — link the static cross-built libs from BUN_ANDROID_ICU_ROOT.
     const libs = [...coreLibs(cfg), bmallocLib(cfg)];
     if (cfg.abi === "android") {
@@ -470,7 +527,7 @@ export const webkit: Dependency = {
       resolve(buildDir, "JavaScriptCore", "PrivateHeaders", "JavaScriptCore"),
     ];
     // Windows: ICU headers from preBuild output.
-    if (cfg.windows) includes.push(resolve(icuDir(cfg), "include"));
+    if (cfg.windows || (cfg.linux && cfg.abi !== "android")) includes.push(resolve(icuDir(cfg), "include"));
     // Android: ICU headers from BUN_ANDROID_ICU_ROOT (the NDK sysroot's
     // unicode/ headers are __INTRODUCED_IN(31)-gated and unusable at API 28).
     if (cfg.abi === "android") {

@@ -285,6 +285,8 @@ $ bun run build:local
 
 `bun run build:local` handles everything: configuring JSC, building JSC, and building Bun. On subsequent runs, JSC will incrementally rebuild if any WebKit sources changed.
 
+On Linux, local mode also builds the ICU version pinned by that WebKit checkout's `icu/source.json`. It bundles the static libraries and the lane's filtered, compressed locale data; system `libicu-dev` is not required. Install `curl`, `patch`, `make`, `zstd`, and binutils for this step. The ICU outputs are isolated per build profile. For portable glibc builds, set `LINUX_GLIBC_SYSROOT` to the Ubuntu 20.04 / GCC 13 sysroot described in `scripts/build/ci-images/spec.ts`; this sysroot is used by ICU, WebKit, and Bun. Without a sysroot, the host toolchain determines the glibc floor.
+
 The build output goes to `./build/debug-local` (instead of `./build/debug`), so you'll need to update a couple of places:
 
 - The first line in [`src/js/builtins.d.ts`](/src/js/builtins.d.ts)

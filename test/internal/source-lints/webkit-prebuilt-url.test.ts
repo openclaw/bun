@@ -86,6 +86,40 @@ function fixture(name: string, digest = "a".repeat(64)): WebKitArtifactManifest 
 }
 
 describe("WebKit artifact manifest", () => {
+  test.each(["x64", "aarch64"] as const)("local Linux %s bundles ICU and uses the configured sysroot", arch => {
+    const cfg = resolveLinuxRelease({ webkit: "local", arch });
+    const spec = webkit.build(cfg);
+    if (spec.kind !== "nested-cmake") throw new Error("expected local cmake build");
+    const args = spec.args!;
+    expect(args.CMAKE_SYSROOT).toBe(cfg.sysroot!);
+    expect(args.CMAKE_CXX_FLAGS).toContain(`--sysroot=${cfg.sysroot}`);
+    expect(args.CMAKE_CXX_FLAGS).toContain("-DU_STATIC_IMPLEMENTATION=1");
+    expect(args.ICU_INCLUDE_DIR).toBe(`${args.ICU_ROOT}/include`);
+    expect(args.ICU_UC_LIBRARY_RELEASE).toBe(`${args.ICU_ROOT}/lib/libicuuc.a`);
+    expect(spec.preBuild!.outputs).toEqual(
+      ["icui18n", "icuuc", "icudata"].map(lib => `${args.ICU_ROOT}/lib/lib${lib}.a`),
+    );
+    expect(spec.preBuild!.inputs!.some(input => input.endsWith("icu/source.json"))).toBe(true);
+    const recipe = JSON.parse(spec.preBuild!.command[2]!);
+    expect(recipe.flags).toContain(`--sysroot=${cfg.sysroot}`);
+    expect(recipe.target).toBe(cfg.crossTarget);
+    expect(recipe.cross).toBe(!cfg.canRunOnHost);
+    expect(webkit.provides(cfg).includes).toContain(args.ICU_INCLUDE_DIR);
+  });
+
+  test("same-architecture foreign libc uses host ICU tools", () => {
+    const cfg = resolveLinuxRelease({ webkit: "local" });
+    const spec = webkit.build({
+      ...cfg,
+      canRunOnHost: false,
+      crossTarget: "x86_64-unknown-linux-musl",
+      host: { ...cfg.host, os: "linux", arch: cfg.arch },
+    });
+    if (spec.kind !== "nested-cmake") throw new Error("expected local cmake build");
+    expect(JSON.parse(spec.preBuild!.command[2]!).cross).toBe(true);
+    expect(spec.args!.CMAKE_SYSTEM_NAME).toBe("Linux");
+  });
+
   test("missing variants permit graph construction but fail the dependency edge", () => {
     using dir = tempDir("webkit-unavailable", {});
     const cfg = resolveLinuxRelease({ buildType: "Debug", asan: true, buildDir: String(dir) });

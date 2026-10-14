@@ -853,7 +853,7 @@ export const defines: Flag[] = [
   },
   {
     flag: "U_STATIC_IMPLEMENTATION",
-    when: c => c.windows,
+    when: c => c.windows || (c.linux && c.webkit === "local" && c.abi !== "android"),
     desc: "ICU static linkage (without this: ABI mismatch → STATUS_STACK_BUFFER_OVERRUN)",
   },
   {

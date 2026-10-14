@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Bundle the pinned static ICU and compressed locale data in Linux local-WebKit builds; forward the configured Linux sysroot to WebKit so portable builds do not depend on the build host's ICU or glibc.
 - Load embedded AOT images on Linux using the executable's ELF file offsets, including split modules and Worker entrypoints, without reserving a writable-executable JIT pool.
 - Use native 16 KiB signing pages for ARM64 standalone executables, reducing code-signature metadata for large bundles.
 

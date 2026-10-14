@@ -371,6 +371,8 @@ export interface PreBuildSpec {
   command: string[];
   /** Working directory (absolute). */
   cwd: string;
+  /** Additional scripts/data that invalidate the pre-build outputs. */
+  inputs?: string[];
   /**
    * Output files (absolute paths). These become implicit inputs to cmake
    * configure, so configure waits on them and re-runs if they change.
@@ -510,7 +512,7 @@ export interface Dependency {
    * source stamp for header-only). Order-only on configure, implicit on
    * build. Does NOT link the other dep's libs (that's `provides.libs`).
    */
-  fetchDeps?: DepName[];
+  fetchDeps?: DepName[] | ((cfg: Config) => DepName[]);
 
   /** How to build. */
   build: (cfg: Config) => BuildSpec;
@@ -926,7 +928,8 @@ export function resolveDep(
   // On BUILD: implicit. If the cross-dep rebuilds (commit bump), its
   //   headers may have changed; our .o files track them via the inner
   //   ninja's .d files. Restat prunes downstream when nothing changed.
-  const fetchDepStamps = (dep.fetchDeps ?? []).flatMap(d => {
+  const fetchDeps = typeof dep.fetchDeps === "function" ? dep.fetchDeps(cfg) : (dep.fetchDeps ?? []);
+  const fetchDepStamps = fetchDeps.flatMap(d => {
     const r = resolved.get(d);
     assert(r, `${dep.name}: fetchDeps references '${d}' but it wasn't resolved first — fix allDeps ordering`);
     return r.outputs;
@@ -1304,7 +1307,8 @@ function emitNestedCmake(
       rule: "dep_prebuild",
       inputs: [],
       // Rebuild if source changed (the script itself is under srcDir).
-      implicitInputs: [sourceStamp],
+      implicitInputs: [sourceStamp, ...(spec.preBuild.inputs ?? [])],
+      orderOnlyInputs: fetchDepStamps,
       vars: {
         name,
         cwd: spec.preBuild.cwd,
