@@ -145,6 +145,9 @@ With the pinned OpenClaw WebKit, module resolution, loading, and evaluation pres
 
 ### [`node:child_process`](https://nodejs.org/api/child_process.html)
 
+Destroying child stdin cancels a pending write before the child exits. The write callback reports `ECANCELED`, while the stream preserves the error passed to `destroy(error)`.
+If no write is pending, destruction keeps the graceful close path so buffered short writes can flush.
+
 Child IPC dispatch calls the JavaScript `process.emit` property for `message`, `internalMessage`, and `disconnect`, so wrappers and accessors observe these events.
 
 Child stdout/stderr `ref()` and `unref()` set the pipe reference state and return the stream. Repeated calls are idempotent, so one `unref()` releases the reference after any number of `ref()` calls.
