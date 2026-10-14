@@ -4,8 +4,6 @@
 
 - Decode URL-encoded relative and absolute ESM imports, including imports inside `require(esm)`, while preserving encoded filename delimiters and rejecting encoded separators with Node-compatible errors. Adapts [oven-sh/bun#35614](https://github.com/oven-sh/bun/pull/35614); thanks @robobun!
 
-- Cancel pending child-stdin writes when the stream is destroyed, preserving Node.js cancellation and caller-error semantics before the child exits.
-
 - Expose TLS socket identity and peer certificate, cipher and protocol methods on native HTTPS request sockets. Ports [oven-sh/bun#37255](https://github.com/oven-sh/bun/pull/37255); thanks @robobun!
 
 - Keep standalone HTTP responses unfinished until their buffered final socket write completes.

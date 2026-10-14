@@ -607,13 +607,7 @@ function writeToFileSink(stream: FSStream, data: Buffer, cb: (err?: unknown) => 
   if ($isPromise(result)) {
     result.then(
       () => process.nextTick(cb, null),
-      err => {
-        if (stream.destroyed && err?.code === "ECANCELED") {
-          const { ErrnoException } = require("internal/shared");
-          err = new ErrnoException(process.binding("uv").UV_ECANCELED, "write");
-        }
-        process.nextTick(cb, err);
-      },
+      err => process.nextTick(cb, err),
     );
   } else {
     cb(null);
@@ -741,18 +735,7 @@ function writableFromFileSink(fileSink: any) {
   $assert(typeof fileSink.end === "function", "fileSink.end is not a function");
   const w = new WriteStream("", { $fastPath: fileSink });
   w.path = undefined;
-  w._destroy = destroyFileSink;
   return w;
-}
-
-function destroyFileSink(this: FSStream, err: Error | null, cb: (err?: Error | null) => void) {
-  if (this.writableFinished) {
-    close(this, err, cb);
-    return;
-  }
-  $newRustFunction("runtime/webcore/FileSink.rs", "cancel", 1)(this[kWriteStreamFastPath]);
-  this.fd = null;
-  cb(err);
 }
 
 export default {
