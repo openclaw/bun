@@ -12,7 +12,7 @@ import time
 
 import hosted
 
-DRIVER_SHA256 = "c095e68dc036f51d31c0ae05b142dfa1784a23af279c1da680e4900adc8c2b4d"
+DRIVER_SHA256 = "02de32c3ecf410682257c535f1c5c310ed08e3b5d3d705aa262841a3d263d613"
 DRIVER_PATH = "tools/checker-compare.mts"
 
 

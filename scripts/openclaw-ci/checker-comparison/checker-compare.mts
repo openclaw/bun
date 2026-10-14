@@ -760,7 +760,10 @@ type ProductionSample = {
   [key: string]: unknown;
 };
 function productionEvidence(stdout: string, stderr: string, graphs: Graph[]) {
-  if (stderr !== "") throw new Error("Production command emitted stderr");
+  // pnpm 12.9 prints each inherited-stdio script to stderr. Accept only the
+  // frozen chain's exact trace; compiler streams remain checked on every leaf.
+  const trace = Object.values(PRODUCTION_SCRIPTS).map(command => `$ ${command}\n`).join("");
+  if (stderr !== trace) throw new Error("Production command trace differs");
   const leaves: { version: number; id: string; config: string; exitCode: number; stdout: string; stderr: string }[] =
     [];
   const completions: { version: number; id: string; planned: number; completed: number; leaves: string[] }[] = [];

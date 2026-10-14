@@ -675,6 +675,16 @@ function productionOutput(graphs) {
     .join("");
 }
 const productionGraphs = ["core", "ui", "extensions"].map(name => ({ name, config: `tsconfig.${name}.json` }));
+const productionScripts = {
+  "tsgo:prod": "pnpm tsgo:core && pnpm tsgo:ui && pnpm tsgo:extensions",
+  ...Object.fromEntries(
+    productionGraphs.map(graph => [
+      `tsgo:${graph.name}`,
+      `node scripts/run-tsgo.mjs -p ${graph.config} --incremental --tsBuildInfoFile .artifacts/tsgo-cache/${graph.name}.tsbuildinfo`,
+    ]),
+  ),
+};
+const productionTrace = Object.values(productionScripts).map(command => `$ ${command}\n`).join("");
 
 test("production proof requires every wrapper completion and all three inventories", () => {
   const ctx = vm.createContext({ path });
@@ -686,7 +696,7 @@ test("production proof requires every wrapper completion and all three inventori
     ctx,
   );
   const raw = productionOutput(productionGraphs);
-  assert.equal(ctx.api.productionEvidence(raw, "", productionGraphs).leaves.length, 3);
+  assert.equal(ctx.api.productionEvidence(raw, productionTrace, productionGraphs).leaves.length, 3);
   for (const invalid of [
     productionOutput(productionGraphs.slice(0, 2)),
     raw.replace('"completed":1', '"completed":0'),
@@ -704,8 +714,16 @@ test("production proof requires every wrapper completion and all three inventori
         .join("\n"),
     raw + raw,
   ])
-    assert.throws(() => ctx.api.productionEvidence(invalid, "", productionGraphs));
-  assert.throws(() => ctx.api.productionEvidence(raw, "warning", productionGraphs));
+    assert.throws(() => ctx.api.productionEvidence(invalid, productionTrace, productionGraphs));
+  const lines = productionTrace.trimEnd().split("\n");
+  for (const invalid of [
+    "",
+    productionTrace + "warning\n",
+    lines.slice(1).join("\n") + "\n",
+    [...lines].reverse().join("\n") + "\n",
+    productionTrace.replace("tsconfig.ui.json", "tsconfig.core.json"),
+  ])
+    assert.throws(() => ctx.api.productionEvidence(raw, invalid, productionGraphs));
   const preflight = adapted.filter(row => ["preflight", "inventory"].includes(row.state));
   const complete = [
     ...preflight,
@@ -880,6 +898,7 @@ test("whole production samples preserve lock ownership, exact caches and failure
       neutral: "/neutral",
       ciEnv: { CI: "true", OPENCLAW_LOCAL_CHECK: "0" },
       productionEnv: { CI: "true", OPENCLAW_CI_STATIC_EVIDENCE: "1", OPENCLAW_TSGO_TIMEOUT_MS: "600000" },
+      PRODUCTION_SCRIPTS: productionScripts,
       production: { nativeCommands: ["bound actual native ELF"] },
       productionSamples: samples,
       warmCaches: undefined,
@@ -931,7 +950,10 @@ test("whole production samples preserve lock ownership, exact caches and failure
         const raw = productionOutput(
           failure === "missing-completion" ? productionGraphs.slice(0, 2) : productionGraphs,
         );
-        command.onReady({ stdout: { on: (_event, callback) => callback(Buffer.from(raw)) }, stderr: { on() {} } });
+        command.onReady({
+          stdout: { on: (_event, callback) => callback(Buffer.from(raw)) },
+          stderr: { on: (_event, callback) => callback(Buffer.from(productionTrace)) },
+        });
         return 0;
       },
       async run(_candidate, graph, state) {
