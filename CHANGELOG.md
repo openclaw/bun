@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep Worker loader errors cloneable by preserving the underlying error instead of attaching the native ErrorEvent as their cause.
+
 - Add native macOS AOT standalone compilation with `--compile-aot`, including split chunks and explicit Worker entrypoints.
 
 - Drain queued Worker stdout and stderr before emitting `exit`, preserving output when a synchronous worker exit races the parent's stdio setup.
