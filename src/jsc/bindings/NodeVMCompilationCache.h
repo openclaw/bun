@@ -4,6 +4,7 @@
 #include <JavaScriptCore/ParserModes.h>
 #include <JavaScriptCore/SourceCode.h>
 #include <JavaScriptCore/Weak.h>
+#include <wtf/FastMalloc.h>
 #include <wtf/HashMap.h>
 #include <wtf/HashSet.h>
 #include <wtf/Vector.h>
@@ -60,6 +61,7 @@ private:
         Snapshot,
         Full };
     struct Entry {
+        WTF_DEPRECATED_MAKE_STRUCT_FAST_ALLOCATED(Entry);
         unsigned hash;
         Identity identity;
         WTF::String source;
