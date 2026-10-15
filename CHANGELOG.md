@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Count uncaught errors during isolated test-file cleanup against the outgoing file and include them in JUnit; handled cleanup callbacks continue running. Adapts the file-error reporting pattern from [oven-sh/bun#44435](https://github.com/oven-sh/bun/pull/44435); thanks @robobun!
+
 - Drain queued Worker stdout and stderr before emitting `exit`, preserving output when a synchronous worker exit races the parent's stdio setup.
 
 - Avoid an extra tracing collection when destroying Workers while preserving native-resource finalizers and the mandatory final heap sweep.

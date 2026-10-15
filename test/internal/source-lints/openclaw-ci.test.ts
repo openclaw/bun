@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import {
   assertSelectedTestResults,
   broader,
+  forkRegressions,
   isTest,
   selectTests,
   smoke,
@@ -22,9 +23,16 @@ test("PR and nightly smoke lists exist and nightly includes every PR smoke file"
 test("both Windows architectures use the complete Windows compatibility selection", () => {
   expect(selectTests([], tracked, false, "windows")).toEqual([...windowsSmoke].sort());
   expect(selectTests([], tracked, true, "windows")).toEqual([...windowsSmoke].sort());
-  expect(windowsSmoke).toHaveLength(29);
+  expect(windowsSmoke).toHaveLength(31);
   for (const file of [...smoke, ...broader]) expect(windowsSmoke).toContain(file);
   expect(windowsSmoke).toContain("test/js/bun/resolve/import-meta.test.js");
+});
+
+test.each(["linux", "darwin", "windows"])("fork printer and Dirent regressions always run on %s", platform => {
+  for (const nightly of [false, true]) {
+    const selected = selectTests([], tracked, nightly, platform);
+    for (const path of forkRegressions) expect(selected).toContain(path);
+  }
 });
 
 test("native Windows result paths prove coverage without admitting failed or missing tests", () => {
@@ -207,7 +215,9 @@ test("the native test launcher preserves disk snapshots before and after its run
       const snapshot = JSON.parse(readFileSync(path, "utf8"));
       expect(snapshot.stage).toBe(stage);
       expect(snapshot.availableBytes).toBeGreaterThan(0);
-      expect(snapshot.availableInodes).toBeGreaterThan(0);
+      // Container filesystems can report zero inode counters while allowing file creation.
+      expect(Number.isInteger(snapshot.availableInodes)).toBe(true);
+      expect(snapshot.availableInodes).toBeGreaterThanOrEqual(0);
       expect(snapshot.directories.build).toBeGreaterThan(0);
       expect(result.stdout).toContain(`::notice title=Native test disk usage::${JSON.stringify(snapshot)}`);
     }

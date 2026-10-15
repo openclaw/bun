@@ -991,43 +991,40 @@ it("should not hang after destroy", async () => {
   }
 }, 120_000);
 
-it("should trigger error when aborted even if connection failed #13126", async () => {
-  const signal = AbortSignal.timeout(100);
-  const socket = createConnection({
-    host: "example.com",
-    port: 999,
-    signal: signal,
+describe("abort during lookup #13126", () => {
+  async function runFixture(exe: string, autoSelectFamily: boolean, alreadyAborted: boolean) {
+    await using proc = Bun.spawn({
+      cmd: [
+        exe,
+        join(import.meta.dir, "net-abort-lookup-fixture.cjs"),
+        String(autoSelectFamily),
+        String(alreadyAborted),
+      ],
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect({ stdout, stderr, exitCode }).toEqual({
+      stdout: "abort assertions passed\n",
+      stderr: "",
+      exitCode: 0,
+    });
+  }
+
+  describe.each(runtimesWithNode(24))("%s pending abort", (_, exe) => {
+    for (const autoSelectFamily of [false, true]) {
+      it(`autoSelectFamily=${autoSelectFamily}`, () => runFixture(exe, autoSelectFamily, false));
+    }
   });
-  const { promise, resolve, reject } = Promise.withResolvers();
 
-  socket.on("connect", reject);
-  socket.on("error", resolve);
-
-  // Node destroys the socket with an AbortError carrying the signal's reason as `cause`.
-  const err = (await promise) as Error & { code?: string; cause?: Error };
-  expect(err.name).toBe("AbortError");
-  expect(err.code).toBe("ABORT_ERR");
-  expect(err.cause?.name).toBe("TimeoutError");
-});
-
-it("should trigger error when aborted even if connection failed, and the signal is already aborted #13126", async () => {
-  const signal = AbortSignal.timeout(1);
-  await Bun.sleep(10);
-  const socket = createConnection({
-    host: "example.com",
-    port: 999,
-    signal: signal,
+  // Node destroys a pre-aborted Socket during construction and only guarantees
+  // reconnecting after close. Bun's immediate-connect behavior is a separate contract.
+  describe("bun already-aborted immediate connect", () => {
+    for (const autoSelectFamily of [false, true]) {
+      it(`autoSelectFamily=${autoSelectFamily}`, () => runFixture(bunExe(), autoSelectFamily, true));
+    }
   });
-  const { promise, resolve, reject } = Promise.withResolvers();
-
-  socket.on("connect", reject);
-  socket.on("error", resolve);
-
-  // Node destroys the socket with an AbortError carrying the signal's reason as `cause`.
-  const err = (await promise) as Error & { code?: string; cause?: Error };
-  expect(err.name).toBe("AbortError");
-  expect(err.code).toBe("ABORT_ERR");
-  expect(err.cause?.name).toBe("TimeoutError");
 });
 
 // Regression test for #30697: net.connect({ localPort, lookup }) on the
@@ -3690,6 +3687,54 @@ function closeWithReplacedTimers(mode, replaceBeforeImport) {
     });
   });
 }
+// The raw libc listener used by blackholePortSource is unavailable on Windows and musl.
+it.skipIf(isWindows || isMusl)("aborting a pending native connection emits one AbortError and closes", async () => {
+  await using proc = Bun.spawn({
+    cmd: [
+      bunExe(),
+      "-e",
+      `
+      ${blackholePortSource}
+      const controller = new AbortController();
+      const reason = new Error("pending connection aborted");
+      const events = [];
+      const errors = [];
+      let attempts = 0;
+      const socket = new net.Socket({ signal: controller.signal });
+      socket.on("connectionAttempt", () => attempts++);
+      socket.on("connect", () => events.push("connect"));
+      socket.on("error", error => {
+        events.push("error");
+        errors.push({ name: error.name, code: error.code, causeMatches: error.cause === reason });
+      });
+      socket.on("close", () => {
+        events.push("close");
+        filler.destroy();
+        console.log(JSON.stringify({ attempts, events, errors, destroyed: socket.destroyed }));
+      });
+      // Let connect() create its native pending handle before aborting it.
+      socket.once("connectionAttempt", () => setImmediate(() => controller.abort(reason)));
+      socket.connect({ host: "127.0.0.1", port });
+      `,
+    ],
+    env: bunEnv,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect({ stdout, stderr, exitCode }).toEqual({
+    stdout:
+      JSON.stringify({
+        attempts: 1,
+        events: ["error", "close"],
+        errors: [{ name: "AbortError", code: "ABORT_ERR", causeMatches: true }],
+        destroyed: true,
+      }) + "\n",
+    stderr: "",
+    exitCode: 0,
+  });
+});
+
 // There is nothing to half-close yet. shutdown() used to mark the native socket as one that had
 // opened, so closing it raised a connection's events ('end') and the attempt never failed.
 it.skipIf(isWindows || isMusl)("closing a handle that was shut down while connecting fails its attempt", async () => {

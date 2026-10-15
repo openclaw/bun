@@ -217,12 +217,16 @@ It reads the secrets the OpenClaw release fleet uses (`openclaw/release-workflow
 `MACOS_SIGNING_P12`, `MACOS_SIGNING_P12_PASSWORD`, `ASC_KEY_ID`,
 `ASC_ISSUER_ID` and `ASC_PRIVATE_KEY_P8`, from the `openclaw-release`
 environment when publishing (which can then require an approval) or from the
-repository. Pull requests never see them. Without them the executables stay as
-upstream links them, darwin-arm64 with an ad-hoc signature and darwin-x64
-unsigned, and the manifest says `"kind": "adhoc"` or `"none"` with
-`"notarized": false`; setting
-`vars.OPENCLAW_RELEASE_REQUIRE_SIGNING` to `true` makes a publish fail
-instead. `sign-macos.sh` runs the same way on a maintainer's Mac with the
+repository. Pull requests never see them. The `openclaw-release` environment
+sets `OPENCLAW_RELEASE_REQUIRE_SIGNING=true`: a publishing run must sign and
+notarize both darwin targets. Check the environment's variables as well as the
+repository's when auditing this requirement; an unset repository variable does
+not mean the environment guard is disabled.
+
+Dry runs without signing credentials retain upstream's ad-hoc arm64 or unsigned
+x64 executables. Their manifest records `"kind": "adhoc"` or `"none"` and
+`"notarized": false`; they do not prove a signed publication.
+`sign-macos.sh` runs the same way on a maintainer's Mac with the
 Foundation identity in the release keychain and `NOTARYTOOL_PROFILE` or the
 `NOTARYTOOL_KEY*` variables of `openclaw`'s `scripts/notarize-mac-artifact.sh`.
 
@@ -249,7 +253,8 @@ Windows x64 and ARM64 are conditional release targets. Both cross-compile on the
 ARM64 image using clang-cl, lld-link and xwin's MSVC/Windows SDK. Windows ARM64
 uses the existing upstream non-LTO lane. Native smoke tests verify source and
 engine identity, architecture, SQLite and DFG JIT startup. Both architectures run
-the same 29-file Windows compatibility selection and its dependency checks.
+the same compatibility selection from `scripts/openclaw-ci/tests.ts` and its
+dependency checks, including the fork's printer and Buffer Dirent regressions.
 
 Only a publishing run with Windows enabled enters the `release-signing` environment and grants the
 signing job `id-token: write`. `azure/login` uses the environment secrets
@@ -296,14 +301,21 @@ archive URL/SHA-256 move together. Missing variants fail closed; the build never
 falls back to an upstream archive with a different engine ABI.
 
 The separate [OpenClaw WebKit pipeline](https://github.com/openclaw/WebKit)
-builds, qualifies and publishes immutable engine releases. The current
-[ten-archive release](https://github.com/openclaw/WebKit/releases/tag/autobuild-f1e1ca1156c8cb3b468bec0e1989fbfa08899661)
-includes the non-LTO `bun-webkit-windows-arm64.tar.gz` archive, cached repeated
-stack coordinates and corrected ARM64 allocation-accounting arithmetic.
+builds, qualifies and publishes immutable engine releases. Read the exact engine
+commit and archive checksums from Bun's committed manifest, rather than an older
+release example in this document. The matrix includes the non-LTO
+`bun-webkit-windows-arm64.tar.gz` archive.
 Qualify and publish each complete matrix before adding its checksums to Bun.
 A workflow artifact is test input, not a published release pin.
 Bun must rebuild against the exact matching headers and libraries whenever the
 engine pin changes.
+
+An upstream Bun sync can require new engine APIs while the fork still needs its
+own engine APIs, such as worker heap limits. Merge and qualify the matching
+upstream WebKit revision in the OpenClaw WebKit fork first. Do not substitute a
+stock upstream engine, copy only new headers, or update only `WEBKIT_VERSION`.
+The Bun adapters, engine revision and complete archive manifest form one
+qualified candidate.
 
 ## Upstream sync and security patches
 
@@ -334,18 +346,21 @@ target as a dry run.
   vulnerability by publishing its successor and moving OpenClaw's pins; do not
   delete it, since pinned consumers would break instead of upgrading.
 
-## Decisions this pipeline leaves open
+## Publication and promotion policy
 
-1. **Where macOS signing keys may live.** `openclaw/bun` holds no signing
-   secrets, so darwin assets ship as upstream links them (arm64 ad-hoc signed,
-   x64 unsigned) and are not notarized. The options are to (a) add
-   the fleet's five secrets to an `openclaw-release` environment of this
-   repository, limited to `openclaw-v*` tags, and set
-   `OPENCLAW_RELEASE_REQUIRE_SIGNING`; (b) keep the Developer ID
-   in `openclaw/releases` and sign darwin assets there before publishing; or
-   (c) stay as linked: the Mac app re-signs, and the Tauri app's own downloads
-   carry no quarantine attribute, but anything downloaded by a browser is
-   refused by Gatekeeper. Recommended: (a).
+Daily source sync, native build qualification, signed publication and host
+promotion are separate steps. A successful daily build produces a short-lived
+workflow artifact; it does not publish a release or update a consumer.
+
+Promote only an immutable release manifest after checking its source and engine
+identity, archive and executable checksums, required signatures, native tests
+and the actual consumer. Keep the application's source fixed during a Bun-only
+upgrade. Host admission, maintenance ownership and rollback remain the
+consumer's responsibility; a green build does not authorize a restart.
+
+1. **macOS signing.** The `openclaw-release` environment owns the Foundation
+   Developer ID and notarization credentials and requires signing for publication.
+   Preserve this requirement when changing the pipeline.
 2. **WebKit publication.** Engine releases are owned by the separate OpenClaw
    WebKit pipeline. Bun consumes only its committed checksum manifest; adding a
    platform requires a qualified, published matching engine archive first.

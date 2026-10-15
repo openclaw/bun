@@ -59,7 +59,11 @@ Contracts: [GitHub token events](https://docs.github.com/en/actions/concepts/sec
   head without updating it, even after a maintainer marks it ready.
 - **Conflict:** the run fails and retains the review branch. Merge and resolve
   the reported frozen commits manually, preserving both histories, then open
-  a review PR from that branch into `main`.
+  a review PR from that branch into `main`. If resolution is prepared on a
+  separate task branch, fast-forward `automation/sync-upstream` to the reviewed
+  candidate and open the PR from that retained automation branch. Landing only
+  the task branch leaves the automation branch without matching merged-PR
+  ownership, so the next daily run still stops.
 - **Permission or PR creation failure:** the branch may exist without a PR.
   After resolving permissions, inspect its ancestry and open the missing PR
   manually. If it still exactly equals `main` with no unmerged work, an owner
@@ -91,23 +95,26 @@ workflow on `automation/sync-upstream` without a tag builds and smoke-tests ever
 release target as a dry run; the release cadence and security-patch policy are in
 [OPENCLAW_RELEASE.md](OPENCLAW_RELEASE.md#upstream-sync-and-security-patches).
 
-## October 2026 engine and namespace update
+## Paired Bun and WebKit qualification
 
-The sync through upstream Bun `9bd19c98eacc01530a4e7609bc427abffa87d77e`
-targets upstream WebKit `5718a6ec579b98362ea7276a426deedcc6281ef5`. The fork
-consumes immutable OpenClaw WebKit
-[`f1e1ca1156c8cb3b468bec0e1989fbfa08899661`](https://github.com/openclaw/WebKit/releases/tag/autobuild-f1e1ca1156c8cb3b468bec0e1989fbfa08899661)
-through the complete published manifest in
-`scripts/build/deps/webkit-artifacts.json`. Every archive is verified before
-extraction, with no upstream-artifact fallback.
+Freeze the upstream Bun commit before integration and inspect its WebKit pin.
+If upstream added engine APIs, merge that engine revision into the OpenClaw
+WebKit fork while retaining the fork's contracts. Qualify and publish the full
+engine matrix before updating Bun's adapters and
+`scripts/build/deps/webkit-artifacts.json` together. Every archive is verified
+before extraction, with no upstream-artifact fallback.
 
-The ten-archive manifest includes the non-LTO Windows ARM64 build, cached
-repeated stack coordinates, and the ARM64 register-to-memory addition fix used
-by typed-array allocation accounting.
+Review both sides of the binding contract: new upstream APIs and fork APIs
+such as worker heap limits and namespace facades. A stock upstream engine can
+omit fork APIs; old fork archives can omit new upstream APIs. Headers alone
+cannot reconcile either mismatch.
 
-This engine provides upstream's idle compiler-thread and `Atomics.wait` memory
-release. Its namespace facade API also requires the paired Bun integration from
-[#106](https://github.com/openclaw/bun/pull/106): import namespaces remain
-unmarked, while `require(esm)` gets an own marker and live exports. The manifest
-and source counterpart land together. Roll back the matched Bun source and
-engine pin together; changing only the manifest is not a compatible rollback.
+Run the original fork regression tests in release builds as well as tests for
+the imported changes. Debug or ASAN skips do not prove the printer's greater
+than 2 GiB boundary. Native platform skips, such as raw-byte filenames on
+Windows or macOS, remain explicit limits of that platform's proof.
+
+Roll back the matched Bun source and engine pin together; changing only the
+manifest is not a compatible rollback. After landing the normal merge, observe
+one live sync run reaching its documented no-op or frozen-draft result before
+calling autosync recovered.
