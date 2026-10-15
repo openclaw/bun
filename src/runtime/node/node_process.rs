@@ -380,9 +380,10 @@ mod _impl {
                             argument.eql_utf8(b"--disallow-code-generation-from-strings=strict");
                         argument.into_js(global_object)
                     })?;
-                // Inherited Node-worker options may already contain the process-wide strict flag.
-                if bun_core::code_generation_from_strings()
-                    == bun_core::CodeGenerationFromStrings::Disallowed
+                // Inherited options already contain strict; a build-time policy adds no CLI flag.
+                if !bun_core::CODE_GENERATION_FROM_STRINGS_DISALLOWED_BY_BUILD
+                    && bun_core::code_generation_from_strings()
+                        == bun_core::CodeGenerationFromStrings::Disallowed
                     && !has_strict
                 {
                     array.push(

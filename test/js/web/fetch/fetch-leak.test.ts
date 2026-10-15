@@ -48,7 +48,7 @@ describe("fetch doesn't leak", () => {
       headers["Content-Encoding"] = "deflate";
     }
 
-    const serveOptions = {
+    const serveOptions: Bun.Serve.Options<undefined> = {
       port: 0,
       idleTimeout: 0,
       fetch(req) {
@@ -62,7 +62,7 @@ describe("fetch doesn't leak", () => {
 
     using server = Bun.serve(serveOptions);
 
-    const env = {
+    const env: Record<string, string | undefined> = {
       ...bunEnv,
       SERVER: server.url.href,
       BUN_JSC_forceRAMSize: (1024 * 1024 * 64).toString(10),
@@ -124,7 +124,7 @@ describe.each(["FormData", "Blob", "Buffer", "String", "URLSearchParams", "strea
         },
       });
 
-      const rss = [];
+      const rss: number[] = [];
 
       await using process = Bun.spawn({
         cmd: [
@@ -170,7 +170,7 @@ test("do not leak", async () => {
     res.end("ok");
   });
   await once(server.listen(0, "127.0.0.1"), "listening");
-  const url = `http://127.0.0.1:${server.address().port}`;
+  const url = `http://127.0.0.1:${(server.address() as net.AddressInfo).port}`;
   // Isolate object counts from the other leak tests and join all work before disposing the server.
   const script = `
     const { heapStats } = require("bun:jsc");
@@ -1075,7 +1075,7 @@ test("fetch().arrayBuffer() of a large Content-Length body peaks at ~1x the payl
     socket.on("error", () => {});
   });
   await once(server.listen(0, "127.0.0.1"), "listening");
-  const { port } = server.address();
+  const { port } = server.address() as net.AddressInfo;
 
   try {
     await using proc = Bun.spawn({

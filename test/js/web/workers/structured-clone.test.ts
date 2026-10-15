@@ -4,6 +4,7 @@ import { bunEnv, bunExe, tls } from "harness";
 import { createPrivateKey, createPublicKey, createSecretKey, KeyObject, X509Certificate } from "node:crypto";
 import { once } from "node:events";
 import { BlockList } from "node:net";
+import type { ReadableStreamDefaultReader } from "node:stream/web";
 import { deserialize as v8Deserialize, serialize as v8Serialize } from "node:v8";
 import { MessageChannel, Worker as NodeWorker } from "node:worker_threads";
 import { deflate } from "node:zlib";
@@ -54,7 +55,7 @@ function jscSerializeRoundtripCrossProcessCold(original: any) {
     `,
     ],
     env: bunEnv,
-    stdin: serialized,
+    stdin: serialized as any,
     stdout: "pipe",
     stderr: "inherit",
   });
@@ -396,8 +397,8 @@ for (const structuredCloneFn of [structuredClone, jscSerializeRoundtrip, jscSeri
           const d = new Date(7);
           const e = new TypeError("boom");
           const cloned = structuredCloneFn({ a: { d, e }, b: [d, e], map: new Map([["d", d]]), set: new Set([e]) });
-          expect(cloned.a.d).toBe(cloned.b[0]);
-          expect(cloned.a.e).toBe(cloned.b[1]);
+          expect(cloned.a.d).toBe(cloned.b[0] as Date);
+          expect(cloned.a.e).toBe(cloned.b[1] as TypeError);
           expect(cloned.map.get("d")).toBe(cloned.a.d);
           expect(cloned.set.has(cloned.a.e)).toBe(true);
         });
@@ -623,6 +624,7 @@ for (const structuredCloneFn of [structuredClone, jscSerializeRoundtrip, jscSeri
         test("Transferring a non-transferable platform object fails", () => {
           const blob = new Blob();
           expect(() => {
+            // @ts-expect-error
             structuredCloneFn(blob, { transfer: [blob] });
           }).toThrow(DOMException);
         });
@@ -882,7 +884,7 @@ for (const structuredCloneFn of [
       const o = { x: 1 };
       const c = await structuredCloneFn([cert, o, o]);
       expect(c[0]).toBeInstanceOf(X509Certificate);
-      expect(c[0].subject).toBe(cert.subject);
+      expect((c[0] as X509Certificate).subject).toBe(cert.subject);
       expect(c[1]).toEqual({ x: 1 });
       expect(c[2]).toBe(c[1]);
     });
@@ -1285,7 +1287,7 @@ import { MessageChannel, Worker as NodeWorker } from "node:worker_threads";
 
   test("a real certificate rebuilt through record() still round-trips", () => {
     // Guards the record layout the crafted payloads assume.
-    expect(record(der)).toEqual(real);
+    expect(record(der)).toEqual<Buffer>(real);
     const cloned = deserialize(record(der));
     expect(cloned).toBeInstanceOf(X509Certificate);
     expect(cloned.fingerprint256).toBe(cert.fingerprint256);

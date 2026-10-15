@@ -79,6 +79,7 @@ class DOMWrapperWorld;
 #include "BunCommonStrings.h"
 #include "BunCPUProfiler.h"
 #include "DOMURLBaseCache.h"
+#include "NodeHTTPRequestHeaderValues.h"
 #include "NodeVMOptionNames.h"
 #include "NodeVMSourceOriginCache.h"
 #include "NodeVMCompilationCache.h"
@@ -212,6 +213,7 @@ public:
     Bun::CPUProfilerState cpuProfilerState;
 
     WebCore::DOMURLBaseCache& urlBaseCache() { return m_urlBaseCache; }
+    Bun::NodeHTTPRequestHeaderValues& nodeHTTPRequestHeaderValues() { return m_nodeHTTPRequestHeaderValues; }
     Bun::NodeVMOptionNames& nodeVMOptionNames() { return m_nodeVMOptionNames; }
     Bun::NodeVMSourceOriginCache& nodeVMSourceOriginCache() { return m_nodeVMSourceOriginCache; }
 
@@ -308,6 +310,7 @@ private:
     WebCore::HTTPHeaderIdentifiers m_httpHeaderIdentifiers;
 
     WebCore::DOMURLBaseCache m_urlBaseCache;
+    Bun::NodeHTTPRequestHeaderValues m_nodeHTTPRequestHeaderValues;
     Bun::NodeVMOptionNames m_nodeVMOptionNames;
     Bun::NodeVMSourceOriginCache m_nodeVMSourceOriginCache;
 

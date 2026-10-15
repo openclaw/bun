@@ -3,7 +3,6 @@ import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "
 import { statSync } from "fs";
 import { chmod, exists, mkdir, rm, writeFile } from "fs/promises";
 import {
-  VerdaccioRegistry,
   assertManifestsPopulated,
   bunEnv as baseEnv,
   bunExe,
@@ -15,8 +14,9 @@ import {
 } from "harness";
 import { constants as osConstants } from "os";
 import { basename, join, sep } from "path";
+import { TestRegistry } from "registry";
 
-var verdaccio = new VerdaccioRegistry();
+var verdaccio = new TestRegistry();
 
 setDefaultTimeout(1000 * 60 * 5);
 

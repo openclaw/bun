@@ -1518,13 +1518,13 @@ where
             .first()
             .copied()
             .ok_or_else(|| global.throw_not_enough_arguments("setSecureContext", 1, 0))?;
-        let Some(config) = SSLConfig::from_js(global.bun_vm_ref(), global, options)? else {
+        let Some(config) = SSLConfig::from_js(global.bun_vm_ref(), global, options, true)? else {
             return Err(global
                 .throw_invalid_arguments(format_args!("setSecureContext requires TLS options",)));
         };
         let additional_ca_config = match callframe.arguments().get(1).copied() {
             Some(value) if !value.is_empty_or_undefined_or_null() => {
-                SSLConfig::from_js(global.bun_vm_ref(), global, value)?
+                SSLConfig::from_js(global.bun_vm_ref(), global, value, true)?
             }
             _ => None,
         };

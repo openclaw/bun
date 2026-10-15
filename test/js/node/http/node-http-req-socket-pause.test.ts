@@ -159,7 +159,7 @@ async function connectTo(server: Server | SecureServer, secure = false) {
   socket.on("close", () => fail(new Error("Connection closed before the expected response")));
   socket.on("data", chunk => {
     received += chunk;
-    for (let i = 0; i < waiting.length; ) {
+    for (let i = 0; i < waiting.length;) {
       if (received.includes(waiting[i].marker)) waiting.splice(i, 1)[0].resolve();
       else i++;
     }

@@ -923,7 +923,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
         let parenthesized = p.preserve_parenthesized_call_target(*left);
         if Self::IS_TYPESCRIPT_ENABLED {
             let type_args_lo = p.lexer.start as u32;
-            if p.try_skip_type_script_type_arguments_with_backtracking() {
+            if p.try_skip_type_script_type_arguments_with_backtracking()? {
                 if parenthesized {
                     p.parenthesized_suffix_loc = p.lexer.loc();
                 }
@@ -1021,7 +1021,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
         let parenthesized = p.preserve_parenthesized_call_target(*left);
         if Self::IS_TYPESCRIPT_ENABLED {
             let type_args_lo = p.lexer.start as u32;
-            if p.try_skip_type_script_type_arguments_with_backtracking() {
+            if p.try_skip_type_script_type_arguments_with_backtracking()? {
                 if parenthesized {
                     p.parenthesized_suffix_loc = p.lexer.loc();
                 }

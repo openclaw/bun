@@ -699,7 +699,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
             // Skip over TypeScript type arguments here if there are any
             if p.lexer.token == T::TLessThan {
                 let type_args_lo = p.lexer.start as u32;
-                if p.try_skip_type_script_type_arguments_with_backtracking() {
+                if p.try_skip_type_script_type_arguments_with_backtracking()? {
                     p.ts_strip_record_to_here(crate::ts_strip::EntryKind::Blank, type_args_lo);
                 }
             }
@@ -971,7 +971,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
             // "<T>(x)"
             // "<T>(x) => {}"
             let type_params_lo = p.lexer.start as u32;
-            match p.try_skip_type_script_type_parameters_then_open_paren_with_backtracking() {
+            match p.try_skip_type_script_type_parameters_then_open_paren_with_backtracking()? {
                 SkipTypeParameterResult::DidNotSkipAnything => {}
                 result => {
                     let type_params_hi = p.lexer.start as u32;
