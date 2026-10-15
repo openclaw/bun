@@ -3,10 +3,13 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, statfsSync, writeF
 import { homedir } from "node:os";
 import { basename, dirname, resolve } from "node:path";
 
+// In 50 trials, the baseline fails about 1% versus 66–88% for the regression.
+const OWNER_EXIT_ASSERTION_FAILURE_THRESHOLD = 5;
+
 export function ownerExitStressFailed(trials: { exitCode: number | null; signal: string | null; error?: string }[]) {
   return (
-    trials.filter(trial => trial.exitCode !== 0 || trial.signal || trial.error).length > 1 ||
-    trials.some(trial => (trial.exitCode !== 0 && trial.exitCode !== 1) || trial.signal || trial.error)
+    trials.some(trial => (trial.exitCode !== 0 && trial.exitCode !== 1) || trial.signal || trial.error) ||
+    trials.filter(trial => trial.exitCode === 1).length >= OWNER_EXIT_ASSERTION_FAILURE_THRESHOLD
   );
 }
 

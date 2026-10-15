@@ -16,16 +16,24 @@ import {
 
 const tracked = execFileSync("git", ["ls-files", "-z", "test"], { encoding: "utf8" }).split("\0").filter(Boolean);
 
-test("owner-exit tolerates one assertion failure but no abnormal process exits", () => {
+test("owner-exit fails at five assertion failures in 50 trials", () => {
+  for (const [failures, expected] of [
+    [0, false],
+    [1, false],
+    [4, false],
+    [5, true],
+    [50, true],
+  ] as const) {
+    const trials = Array.from({ length: 50 }, (_, index) => ({
+      exitCode: index < failures ? 1 : 0,
+      signal: null,
+    }));
+    expect(ownerExitStressFailed(trials)).toBe(expected);
+  }
+});
+
+test("owner-exit rejects any abnormal process exit", () => {
   const pass = { exitCode: 0, signal: null };
-  expect(ownerExitStressFailed([pass])).toBe(false);
-  expect(ownerExitStressFailed([pass, { exitCode: 1, signal: null }])).toBe(false);
-  expect(
-    ownerExitStressFailed([
-      { exitCode: 1, signal: null },
-      { exitCode: 1, signal: null },
-    ]),
-  ).toBe(true);
   for (const exitCode of [null, -1073741819, 3221225477, 3221226356, 2]) {
     expect(ownerExitStressFailed([pass, { exitCode, signal: null }])).toBe(true);
   }
