@@ -287,3 +287,5 @@
 - Update the ten checksum-pinned [OpenClaw WebKit archives](https://github.com/openclaw/WebKit/releases/tag/autobuild-01f208ae7a87661e7503f514c946a37bc76ad1d1) to prevent stale VM entry storage from retaining unreachable objects and fix Linux Worker termination deadlocks during foreign-stack native calls. The storage fix builds on oven-sh/WebKit#694; thanks @robobun.
 
 - Measure CPU profile duration across the full capture, including idle time, and capture the inspector startup stack synchronously like Node.js.
+
+- Release completed `node:worker_threads` Worker listeners in Node-compatible exit order so retained Worker wrappers do not retain caller state captured by callbacks.

@@ -333,6 +333,8 @@ Valid `vm.Script` cached data is accepted when JSC runs without a JIT. Validatio
 
 Worker shutdown releases the thread's native event-name cache after destroying its VM.
 
+Worker exit removes `message` and `messageerrors` listeners before emitting `exit`, then removes all listeners after exit handlers return, matching Node.js. Retaining a completed Worker does not retain state captured only by those listeners.
+
 Queued worker stdout and stderr are delivered before the worker's `exit` event, including when a synchronous exit races the parent's stdio setup.
 
 `resourceLimits` reports resolved heap, nursery, code-range, and stack settings. With the pinned OpenClaw WebKit, managed-heap exhaustion terminates only the affected worker with `ERR_WORKER_OUT_OF_MEMORY` and exit code 1. After a full GC confirms the cap is exceeded, pending termination is delivered at an existing JavaScript safe point without waiting for repeated full collections. ArrayBuffer backing stores are excluded. `codeRangeSizeMb` is reporting-only because JSC shares its executable allocator. See [worker resource limits](/runtime/workers#node-worker-resource-limits) for defaults and limitations.
