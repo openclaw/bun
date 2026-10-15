@@ -992,6 +992,13 @@ it("should not hang after destroy", async () => {
 }, 120_000);
 
 describe("abort during lookup #13126", () => {
+  const runtimes = runtimesWithNode(24);
+  if (!runtimes.some(([name]) => name === "node")) {
+    for (const autoSelectFamily of [false, true]) {
+      it.skip(`node pending abort autoSelectFamily=${autoSelectFamily} (requires genuine Node >=24)`);
+    }
+  }
+
   async function runFixture(exe: string, autoSelectFamily: boolean, alreadyAborted: boolean) {
     await using proc = Bun.spawn({
       cmd: [
@@ -1012,9 +1019,9 @@ describe("abort during lookup #13126", () => {
     });
   }
 
-  describe.each(runtimesWithNode(24))("%s pending abort", (_, exe) => {
+  describe.each(runtimes)("%s pending abort", (_, exe) => {
     for (const autoSelectFamily of [false, true]) {
-      it(`autoSelectFamily=${autoSelectFamily}`, () => runFixture(exe, autoSelectFamily, false));
+      it.concurrent(`autoSelectFamily=${autoSelectFamily}`, () => runFixture(exe, autoSelectFamily, false));
     }
   });
 
@@ -1022,7 +1029,7 @@ describe("abort during lookup #13126", () => {
   // reconnecting after close. Bun's immediate-connect behavior is a separate contract.
   describe("bun already-aborted immediate connect", () => {
     for (const autoSelectFamily of [false, true]) {
-      it(`autoSelectFamily=${autoSelectFamily}`, () => runFixture(bunExe(), autoSelectFamily, true));
+      it.concurrent(`autoSelectFamily=${autoSelectFamily}`, () => runFixture(bunExe(), autoSelectFamily, true));
     }
   });
 });
@@ -3688,7 +3695,7 @@ function closeWithReplacedTimers(mode, replaceBeforeImport) {
   });
 }
 // The raw libc listener used by blackholePortSource is unavailable on Windows and musl.
-it.skipIf(isWindows || isMusl)("aborting a pending native connection emits one AbortError and closes", async () => {
+it.concurrent.skipIf(isWindows || isMusl)("aborting a pending native connection emits one AbortError and closes", async () => {
   await using proc = Bun.spawn({
     cmd: [
       bunExe(),

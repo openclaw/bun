@@ -193,12 +193,24 @@ export function nodeExe(): string | null {
 
 let systemNodeMajor: number | undefined;
 
-/** Major version of the system Node.js, or 0 when there is none. Spawns it one time. */
+/** Major version of genuine system Node.js, or 0 when absent or unusable. Probes once. */
 export function nodeMajorVersion(): number {
   if (systemNodeMajor === undefined) {
     const node = nodeExe();
-    const version = node ? Bun.spawnSync({ cmd: [node, "-p", "process.versions.node"], env: bunEnv }).stdout : "";
-    systemNodeMajor = parseInt(version.toString(), 10) || 0;
+    const probe = node
+      ? Bun.spawnSync({
+          cmd: [node, "-p", 'process.versions.bun ? "0" : process.versions.node'],
+          env: bunEnv,
+          stdout: "pipe",
+          stderr: "pipe",
+          timeout: 5000,
+          maxBuffer: 1024,
+        })
+      : null;
+    systemNodeMajor =
+      probe?.exitCode === 0 && !probe.exitedDueToTimeout && !probe.exitedDueToMaxBuffer
+        ? parseInt(probe.stdout.toString(), 10) || 0
+        : 0;
   }
   return systemNodeMajor;
 }
