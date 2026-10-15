@@ -291,3 +291,5 @@
 - Measure CPU profile duration across the full capture, including idle time, and capture the inspector startup stack synchronously like Node.js.
 
 - Complete missing private `node:vm` cache bytecode in the decoded execution tree, avoiding recompilation of already cached function bodies at the same 256 MiB budget.
+
+- Release completed `node:worker_threads` Worker user listeners and captured caller state while preserving internal port hooks to avoid delayed owner-exit memory release on Windows ARM64.

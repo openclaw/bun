@@ -3,6 +3,13 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, statfsSync, writeF
 import { homedir } from "node:os";
 import { basename, dirname, resolve } from "node:path";
 
+export function ownerExitStressFailed(trials: { exitCode: number | null; signal: string | null; error?: string }[]) {
+  return (
+    trials.filter(trial => trial.exitCode !== 0 || trial.signal || trial.error).length > 1 ||
+    trials.some(trial => (trial.exitCode !== 0 && trial.exitCode !== 1) || trial.signal || trial.error)
+  );
+}
+
 export const forkRegressions = ["test/bundler/transpiler/runtime-transpiler.test.ts", "test/js/node/fs/dir.test.ts"];
 
 export const smoke = [
@@ -54,6 +61,13 @@ export const darwinSmoke = [
 export const windowsSmoke = [
   ...smoke,
   ...broader,
+  "test/js/node/worker_threads/15787.test.ts",
+  "test/js/node/worker_threads/worker-async-dispose.test.ts",
+  "test/js/node/worker_threads/worker-shutdown-post-leak.test.ts",
+  "test/js/node/worker_threads/worker-top-level-await.test.ts",
+  "test/js/node/worker_threads/worker-transfer-terminate-stress.test.ts",
+  "test/js/node/worker_threads/worker_destruction.test.ts",
+  "test/js/node/worker_threads/worker_heap_snapshot_gc.test.ts",
   "test/js/bun/plugin/plugin-resolved-key.test.ts",
   "test/js/bun/plugin/plugins.test.ts",
   "test/js/bun/resolve/import-meta-resolve.test.mjs",
@@ -262,6 +276,36 @@ if (import.meta.main) {
     const selected: string[] = JSON.parse(readFileSync(selectionPath, "utf8"));
     if (!selected.length) throw new Error("Refusing an empty test selection");
     reportDiskUsage("before");
+    // Fresh processes preserve the original owner's GC sequence and expose late frees.
+    let ownerExitFailed = false;
+    if (process.platform === "win32" && process.arch === "arm64") {
+      const trials = Array.from({ length: 50 }, (_, index) => {
+        const trial = spawnSync(
+          process.execPath,
+          ["--expose-gc", "test/js/node/process/arraybuffer-accounting.fixture.mjs", "owner-exit"],
+          { encoding: "utf8", timeout: 30_000 },
+        );
+        return {
+          trial: index + 1,
+          exitCode: trial.status,
+          signal: trial.signal,
+          error: trial.error?.message,
+          stdout: trial.stdout,
+          stderr: trial.stderr,
+        };
+      });
+      const failures = trials.filter(trial => trial.exitCode !== 0 || trial.signal || trial.error).length;
+      ownerExitFailed = ownerExitStressFailed(trials);
+      writeFileSync(
+        "build/openclaw-ci/owner-exit-stress.json",
+        JSON.stringify(
+          { revision: Bun.revision, platform: process.platform, arch: process.arch, failures, trials },
+          null,
+          2,
+        ) + "\n",
+      );
+      console.log(`Owner-exit: ${failures}/50 failed`);
+    }
     // CI invokes this script with the built executable; the upstream runner uses it for every test.
     const result = spawnSync(
       "node",
@@ -305,6 +349,7 @@ if (import.meta.main) {
       if (direct.stderr) process.stderr.write(direct.stderr);
     }
     reportDiskUsage("after");
+    if (ownerExitFailed) throw new Error("Owner-exit stress exceeded the Windows ARM64 limit");
     if (result.error) throw result.error;
     if (result.status !== 0) process.exit(result.status ?? 1);
     const results: { testPath: string; ok: boolean }[] = JSON.parse(readFileSync(resultsPath, "utf8"));

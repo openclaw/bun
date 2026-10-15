@@ -8,12 +8,30 @@ import {
   broader,
   forkRegressions,
   isTest,
+  ownerExitStressFailed,
   selectTests,
   smoke,
   windowsSmoke,
 } from "../../../scripts/openclaw-ci/tests.ts";
 
 const tracked = execFileSync("git", ["ls-files", "-z", "test"], { encoding: "utf8" }).split("\0").filter(Boolean);
+
+test("owner-exit tolerates one assertion failure but no abnormal process exits", () => {
+  const pass = { exitCode: 0, signal: null };
+  expect(ownerExitStressFailed([pass])).toBe(false);
+  expect(ownerExitStressFailed([pass, { exitCode: 1, signal: null }])).toBe(false);
+  expect(
+    ownerExitStressFailed([
+      { exitCode: 1, signal: null },
+      { exitCode: 1, signal: null },
+    ]),
+  ).toBe(true);
+  for (const exitCode of [null, -1073741819, 3221225477, 3221226356, 2]) {
+    expect(ownerExitStressFailed([pass, { exitCode, signal: null }])).toBe(true);
+  }
+  expect(ownerExitStressFailed([{ exitCode: 0, signal: "SIGTERM" }])).toBe(true);
+  expect(ownerExitStressFailed([{ exitCode: 0, signal: null, error: "spawn failed" }])).toBe(true);
+});
 
 test("PR and nightly smoke lists exist and nightly includes every PR smoke file", () => {
   expect(selectTests([], tracked, false)).toEqual([...smoke].sort());
@@ -23,7 +41,10 @@ test("PR and nightly smoke lists exist and nightly includes every PR smoke file"
 test("both Windows architectures use the complete Windows compatibility selection", () => {
   expect(selectTests([], tracked, false, "windows")).toEqual([...windowsSmoke].sort());
   expect(selectTests([], tracked, true, "windows")).toEqual([...windowsSmoke].sort());
-  expect(windowsSmoke).toHaveLength(31);
+  expect(windowsSmoke).toHaveLength(38);
+  for (const file of tracked.filter(file => file.startsWith("test/js/node/worker_threads/") && isTest(file))) {
+    expect(windowsSmoke).toContain(file);
+  }
   for (const file of [...smoke, ...broader]) expect(windowsSmoke).toContain(file);
   expect(windowsSmoke).toContain("test/js/bun/resolve/import-meta.test.js");
 });

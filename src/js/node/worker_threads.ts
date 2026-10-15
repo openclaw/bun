@@ -838,6 +838,8 @@ class Worker extends EventEmitter {
   #stdout;
   #stderr;
   #asyncContextFrame;
+  #refHook;
+  #unrefHook;
 
   // this is used by terminate();
   // either is the exit code if exited, a promise resolving to the exit code, or undefined if we haven't sent .terminate() yet
@@ -1010,12 +1012,18 @@ class Worker extends EventEmitter {
     this.#publicPort.addEventListener("messageerror", inWorkerAsyncContext(this.#onMessageError));
     this.#publicPort.unref();
     const publicPort = this.#publicPort;
-    this.on("newListener", function (this: Worker, name) {
-      if (name === "message" && this.listenerCount("message") === 0) publicPort.ref();
-    });
-    this.on("removeListener", function (this: Worker, name) {
-      if (name === "message" && this.listenerCount("message") === 0) publicPort.unref();
-    });
+    this.on(
+      "newListener",
+      (this.#refHook = function (this: Worker, name) {
+        if (name === "message" && this.listenerCount("message") === 0) publicPort.ref();
+      }),
+    );
+    this.on(
+      "removeListener",
+      (this.#unrefHook = function (this: Worker, name) {
+        if (name === "message" && this.listenerCount("message") === 0) publicPort.unref();
+      }),
+    );
     // A worker may also use the Web Worker global `postMessage()` / `self.onmessage`
     // pair, which travels through the Worker object itself; surface those too.
     this.#worker.addEventListener("message", inWorkerAsyncContext(this.#onMessage));
@@ -1280,10 +1288,28 @@ class Worker extends EventEmitter {
         while ((entry = _receiveMessageOnPort(this.#publicPort)) !== undefined) {
           this.emit("message", entry.message);
         }
+        this.removeAllListeners("message");
+        // Node 24 intentionally uses the plural spelling before 'exit':
+        // https://github.com/nodejs/node/blob/v24.21.0/lib/internal/worker.js#L385-L402
+        this.removeAllListeners("messageerrors");
+        this.#publicPort.unref();
         this.#publicPort.close();
       }
       this.#onExitPromise = e.code;
       this.emit("exit", e.code);
+      // Keep the internal port hooks: removing them causes owner-exit late frees on Windows ARM64.
+      const names = this.eventNames().filter(name => name !== "removeListener");
+      names.push("removeListener");
+      for (const name of names) {
+        const listeners = this.rawListeners(name);
+        for (let i = listeners.length - 1; i >= 0; i--) {
+          const listener = listeners[i];
+          if (listener !== this.#refHook && listener !== this.#unrefHook) this.removeListener(name, listener);
+        }
+      }
+      // Like removeAllListeners(), discard listeners added by removal callbacks.
+      this._events = { __proto__: null, newListener: this.#refHook, removeListener: this.#unrefHook };
+      this._eventsCount = 2;
     } finally {
       const resolve = this.#resolveOnExit;
       this.#resolveOnExit = undefined;
