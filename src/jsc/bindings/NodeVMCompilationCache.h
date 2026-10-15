@@ -6,7 +6,7 @@
 #include <JavaScriptCore/Weak.h>
 #include <wtf/HashMap.h>
 #include <wtf/HashSet.h>
-#include <wtf/SentinelLinkedList.h>
+#include <wtf/Vector.h>
 
 namespace JSC {
 class JSGlobalObject;
@@ -53,12 +53,13 @@ public:
     JSC::UnlinkedProgramCodeBlock* getOrCompile(JSC::JSGlobalObject*, JSC::ProgramExecutable*&, JSC::SourceCode&, const Identity&, bool hasCachedData, JSC::ParserError&);
     RefPtr<JSC::CachedBytecode> bytecode(const JSC::SourceCode&, const Identity&);
     const Statistics& statistics();
+    static JSC::JSValue testPolicy(JSC::JSGlobalObject*);
 
 private:
     enum class Promotion : uint8_t { None,
         Snapshot,
         Full };
-    struct Entry : WTF::BasicRawSentinelNode<Entry> {
+    struct Entry {
         unsigned hash;
         Identity identity;
         WTF::String source;
@@ -71,19 +72,33 @@ private:
         RefPtr<JSC::CachedBytecode> bytecode;
         JSC::Weak<JSC::UnlinkedProgramCodeBlock> decoded;
         size_t bytes;
+        double rebuildCost { 0 };
+        double priority { 0 };
+        uint64_t lastAccess { 0 };
+        size_t heapIndex { 0 };
     };
     using Entries = WTF::UncheckedKeyHashMap<unsigned, std::unique_ptr<Entry>>;
     WTF::UncheckedKeyHashSet<uint64_t> m_seenSources;
     Entries m_entries;
-    WTF::SentinelLinkedList<Entry, WTF::BasicRawSentinelNode<Entry>> m_lru;
+    WTF::Vector<Entry*> m_heap;
+    double m_age { 0 };
+    uint64_t m_access { 0 };
     Statistics m_statistics;
     bool m_initialized { false };
     void initialize();
     bool admit(const JSC::SourceCode&);
     Entry* find(const JSC::SourceCode&, const Identity&);
     void remove(Entry&);
-    void insert(JSC::JSGlobalObject*, const JSC::SourceCode&, const Identity&, JSC::UnlinkedProgramCodeBlock*, Promotion, WTF::String sharedSource = {});
+    static bool precedes(const Entry&, const Entry&);
+    void swapEntries(size_t, size_t);
+    void siftUp(size_t);
+    void siftDown(size_t);
+    void touch(Entry&);
+    void append(Entry&);
+    void evictForSize(size_t);
+    void insert(JSC::JSGlobalObject*, const JSC::SourceCode&, const Identity&, JSC::UnlinkedProgramCodeBlock*, Promotion, WTF::String sharedSource = {}, double compileCost = 0);
 };
 
 JSC::JSValue createNodeVMCompilationCacheStatsForTesting(Zig::GlobalObject*);
+JSC::JSValue createNodeVMCompilationCachePolicyTest(Zig::GlobalObject*);
 }

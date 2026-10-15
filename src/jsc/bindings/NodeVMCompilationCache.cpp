@@ -13,6 +13,8 @@
 #include <JavaScriptCore/UnlinkedFunctionExecutable.h>
 #include <JavaScriptCore/WeakInlines.h>
 #include <wtf/Hasher.h>
+#include <wtf/CPUTime.h>
+#include <algorithm>
 #include <charconv>
 #include <cstdlib>
 #include <cstring>
@@ -97,8 +99,8 @@ bool NodeVMCompilationCache::admit(const SourceCode& source)
 
 NodeVMCompilationCache::~NodeVMCompilationCache()
 {
-    while (!m_lru.isEmpty())
-        remove(*m_lru.begin());
+    while (!m_heap.isEmpty())
+        remove(*m_heap[0]);
 }
 
 const NodeVMCompilationCache::Statistics& NodeVMCompilationCache::statistics()
@@ -120,9 +122,72 @@ NodeVMCompilationCache::Entry* NodeVMCompilationCache::find(const SourceCode& so
     if (!(entry.identity == identity) || entry.filename != source.provider()->sourceURL() || !sourceMatches(entry.source, source.view())
         || entry.hasImporter != importer.isCell() || (entry.hasImporter && entry.importer.get() != importer.asCell()))
         return nullptr;
-    entry.remove();
-    m_lru.append(&entry);
+    touch(entry);
     return &entry;
+}
+
+bool NodeVMCompilationCache::precedes(const Entry& a, const Entry& b)
+{
+    return a.priority < b.priority || (a.priority == b.priority && a.lastAccess < b.lastAccess);
+}
+
+void NodeVMCompilationCache::swapEntries(size_t a, size_t b)
+{
+    std::swap(m_heap[a], m_heap[b]);
+    m_heap[a]->heapIndex = a;
+    m_heap[b]->heapIndex = b;
+}
+
+void NodeVMCompilationCache::siftUp(size_t index)
+{
+    while (index) {
+        size_t parent = (index - 1) / 2;
+        if (!precedes(*m_heap[index], *m_heap[parent]))
+            break;
+        swapEntries(index, parent);
+        index = parent;
+    }
+}
+
+void NodeVMCompilationCache::siftDown(size_t index)
+{
+    for (;;) {
+        size_t child = index * 2 + 1;
+        if (child >= m_heap.size())
+            return;
+        if (child + 1 < m_heap.size() && precedes(*m_heap[child + 1], *m_heap[child]))
+            ++child;
+        if (!precedes(*m_heap[child], *m_heap[index]))
+            return;
+        swapEntries(index, child);
+        index = child;
+    }
+}
+
+void NodeVMCompilationCache::touch(Entry& entry)
+{
+    // GreedyDual ages retained work by the last budget eviction, without a history table.
+    entry.priority = m_age + entry.rebuildCost / entry.bytes;
+    entry.lastAccess = ++m_access;
+    siftDown(entry.heapIndex);
+}
+
+void NodeVMCompilationCache::append(Entry& entry)
+{
+    entry.priority = m_age + entry.rebuildCost / entry.bytes;
+    entry.lastAccess = ++m_access;
+    entry.heapIndex = m_heap.size();
+    m_heap.append(&entry);
+    siftUp(entry.heapIndex);
+}
+
+void NodeVMCompilationCache::evictForSize(size_t charge)
+{
+    while (m_statistics.bytes > m_statistics.limit - charge) {
+        m_age = m_heap[0]->priority;
+        remove(*m_heap[0]);
+        ++m_statistics.evictions;
+    }
 }
 
 void NodeVMCompilationCache::remove(Entry& entry)
@@ -130,7 +195,15 @@ void NodeVMCompilationCache::remove(Entry& entry)
     m_statistics.bytes -= entry.bytes;
     --m_statistics.entries;
     unsigned hash = entry.hash;
-    entry.remove();
+    size_t index = entry.heapIndex;
+    swapEntries(index, m_heap.size() - 1);
+    m_heap.removeLast();
+    if (index < m_heap.size()) {
+        if (index && precedes(*m_heap[index], *m_heap[(index - 1) / 2]))
+            siftUp(index);
+        else
+            siftDown(index);
+    }
     m_entries.remove(hash);
 }
 
@@ -163,7 +236,7 @@ static bool completeFunctionBytecode(VM& vm, UnlinkedProgramCodeBlock* block, co
     return true;
 }
 
-void NodeVMCompilationCache::insert(JSGlobalObject* globalObject, const SourceCode& source, const Identity& identity, UnlinkedProgramCodeBlock* block, Promotion promotion, String sharedSource)
+void NodeVMCompilationCache::insert(JSGlobalObject* globalObject, const SourceCode& source, const Identity& identity, UnlinkedProgramCodeBlock* block, Promotion promotion, String sharedSource, double compileCost)
 {
     bool fullBytecode = promotion == Promotion::Full && identity.produceCachedData;
     const String& filename = source.provider()->sourceURL();
@@ -174,6 +247,7 @@ void NodeVMCompilationCache::insert(JSGlobalObject* globalObject, const SourceCo
         return;
     RefPtr<CachedBytecode> bytes;
     bool hasUncachedFunctions = false;
+    auto encodeStart = CPUTime::forCurrentThread();
     if (fullBytecode)
         bytes = NodeVM::getBytecode(globalObject, SourceCodeType::ProgramType, source);
     else {
@@ -190,14 +264,15 @@ void NodeVMCompilationCache::insert(JSGlobalObject* globalObject, const SourceCo
     }
     if (!bytes || bytes->size() > m_statistics.limit - baseBytes)
         return;
+    double rebuildCost = std::max(1e-9, compileCost + (CPUTime::forCurrentThread() - encodeStart).seconds());
     size_t charge = baseBytes + bytes->size();
     unsigned hash = cacheHash(source, identity);
-    if (auto it = m_entries.find(hash); it != m_entries.end())
+    if (auto it = m_entries.find(hash); it != m_entries.end()) {
+        if (promotion != Promotion::None)
+            rebuildCost += it->value->rebuildCost;
         remove(*it->value);
-    while (m_statistics.bytes > m_statistics.limit - charge) {
-        remove(*m_lru.begin());
-        ++m_statistics.evictions;
     }
+    evictForSize(charge);
     auto entry = makeUnique<Entry>();
     entry->hash = hash;
     entry->identity = identity;
@@ -213,12 +288,15 @@ void NodeVMCompilationCache::insert(JSGlobalObject* globalObject, const SourceCo
     if (entry->hasImporter)
         entry->importer = Weak<JSCell>(importer.asCell());
     // Drop the encoder's update/leaf maps; cached payloads never own growing decoded graphs.
+    auto copyStart = CPUTime::forCurrentThread();
     entry->bytecode = NodeVM::createOwnedCachedBytecode(bytes->span());
+    rebuildCost += (CPUTime::forCurrentThread() - copyStart).seconds();
     // Newly generated bodies can be cleared by GC while their decoded parent survives.
     if (promotion != Promotion::Full)
         entry->decoded = Weak<UnlinkedProgramCodeBlock>(block);
     entry->bytes = charge;
-    m_lru.append(entry.get());
+    entry->rebuildCost = rebuildCost;
+    append(*entry);
     m_entries.add(hash, WTF::move(entry));
     m_statistics.bytes += charge;
     ++m_statistics.entries;
@@ -306,10 +384,12 @@ UnlinkedProgramCodeBlock* NodeVMCompilationCache::getOrCompile(JSGlobalObject* g
     }
     if (!executable)
         executable = ProgramExecutable::create(globalObject, source);
+    double compileStart = enabled ? CPUTime::forCurrentThread().seconds() : 0;
     auto* block = vm.codeCache()->getUnlinkedProgramCodeBlock(vm, executable, source, identity.codeGenerationMode, error);
     if (block && enabled) {
+        double compileCost = CPUTime::forCurrentThread().seconds() - compileStart;
         Strong<UnlinkedProgramCodeBlock> protectedBlock(vm, block);
-        insert(globalObject, source, identity, block, Promotion::None);
+        insert(globalObject, source, identity, block, Promotion::None, {}, compileCost);
     }
     return block;
 }
@@ -342,5 +422,56 @@ JSC_DEFINE_HOST_FUNCTION(nodeVMCompilationCacheStats, (JSGlobalObject * globalOb
 JSValue createNodeVMCompilationCacheStatsForTesting(Zig::GlobalObject* globalObject)
 {
     return JSFunction::create(globalObject->vm(), globalObject, 0, "nodeVMCompilationCacheStats"_s, nodeVMCompilationCacheStats, ImplementationVisibility::Public);
+}
+
+JSValue NodeVMCompilationCache::testPolicy(JSGlobalObject* globalObject)
+{
+    NodeVMCompilationCache cache;
+    cache.m_statistics.limit = 100;
+    auto add = [&](unsigned hash, size_t bytes, double cost) {
+        cache.evictForSize(bytes);
+        auto entry = makeUnique<Entry>();
+        entry->hash = hash;
+        entry->identity = {};
+        entry->hasImporter = false;
+        entry->bytes = bytes;
+        entry->rebuildCost = cost;
+        cache.append(*entry);
+        cache.m_entries.add(hash, WTF::move(entry));
+        cache.m_statistics.bytes += bytes;
+        ++cache.m_statistics.entries;
+    };
+    add(1, 40, 100);
+    add(2, 40, 10);
+    unsigned cheapVictim = cache.m_heap[0]->hash;
+    add(3, 40, 100);
+    cache.touch(*cache.m_entries.find(1)->value);
+    unsigned tieVictim = cache.m_heap[0]->hash;
+    add(4, 40, 100);
+    cache.remove(*cache.m_entries.find(1)->value);
+    add(1, 60, 200);
+    unsigned replacementVictim = cache.m_heap[0]->hash;
+    add(5, 40, 10);
+    auto& vm = globalObject->vm();
+    auto* result = constructEmptyObject(globalObject);
+    Bun::putDirectNamed(vm, result, "cheapVictim"_s, jsNumber(cheapVictim));
+    Bun::putDirectNamed(vm, result, "tieVictim"_s, jsNumber(tieVictim));
+    Bun::putDirectNamed(vm, result, "replacementVictim"_s, jsNumber(replacementVictim));
+    Bun::putDirectNamed(vm, result, "bytes"_s, jsNumber(cache.m_statistics.bytes));
+    Bun::putDirectNamed(vm, result, "entries"_s, jsNumber(cache.m_statistics.entries));
+    while (!cache.m_heap.isEmpty())
+        cache.remove(*cache.m_heap[0]);
+    Bun::putDirectNamed(vm, result, "empty"_s, jsBoolean(!cache.m_statistics.bytes && !cache.m_statistics.entries));
+    return result;
+}
+
+JSC_DEFINE_HOST_FUNCTION(nodeVMCompilationCachePolicyTest, (JSGlobalObject * globalObject, CallFrame*))
+{
+    return JSValue::encode(NodeVMCompilationCache::testPolicy(globalObject));
+}
+
+JSValue createNodeVMCompilationCachePolicyTest(Zig::GlobalObject* globalObject)
+{
+    return JSFunction::create(globalObject->vm(), globalObject, 0, "nodeVMCompilationCachePolicyTest"_s, nodeVMCompilationCachePolicyTest, ImplementationVisibility::Public);
 }
 }

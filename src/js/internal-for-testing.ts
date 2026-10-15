@@ -909,3 +909,12 @@ export const nodeVMCompilationCacheStats: () => {
   misses: number;
   evictions: number;
 } = $cpp("NodeVMCompilationCache.cpp", "createNodeVMCompilationCacheStatsForTesting");
+
+export const nodeVMCompilationCachePolicyTest: () => {
+  cheapVictim: number;
+  tieVictim: number;
+  replacementVictim: number;
+  bytes: number;
+  entries: number;
+  empty: boolean;
+} = $cpp("NodeVMCompilationCache.cpp", "createNodeVMCompilationCachePolicyTest");

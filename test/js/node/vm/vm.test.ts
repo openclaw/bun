@@ -3234,7 +3234,23 @@ describe("bounded vm compilation cache", () => {
     expect({ stdout, stderr, exitCode }).toEqual({ stdout: "ok\n", stderr: "", exitCode: 0 });
   });
 
-  test.concurrent("evicts by bytes, updates recency and keeps decoded functions alive", async () => {
+  test.concurrent("evicts cheaper byte charges first and updates priority on hits and replacements", async () => {
+    await runCacheFixture(`
+      import assert from "node:assert/strict";
+      import { nodeVMCompilationCachePolicyTest } from "bun:internal-for-testing";
+      assert.deepEqual(nodeVMCompilationCachePolicyTest(), {
+        cheapVictim: 2,
+        tieVictim: 3,
+        replacementVictim: 4,
+        bytes: 100,
+        entries: 2,
+        empty: true,
+      });
+      console.log("ok");
+    `);
+  });
+
+  test.concurrent("evicts by bytes, records hits and keeps decoded functions alive", async () => {
     await runCacheFixture(
       `
       import assert from "node:assert/strict";
@@ -3254,7 +3270,7 @@ describe("bounded vm compilation cache", () => {
       const before=stats();
       assert.equal(runInThisContext("99"),99);
       assert.equal(stats().hits,before.hits+1);
-      assert.equal(runInThisContext("0"),0);
+      assert.equal(runInThisContext("1000"),1000);
       assert.equal(stats().misses,before.misses+1);
       Bun.gc(true);
       assert.equal(retained()(),42);
