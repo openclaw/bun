@@ -75,6 +75,8 @@ On macOS, `fs.copyFile` and `fs.cp` accept regular-file `/dev/fd` sources withou
 
 ### [`node:http`](https://nodejs.org/api/http.html)
 
+`ServerResponse.cork()` retains writes until uncork or end. Response and raw socket writes share the socket Writable queue while corked or draining, preserving their order and backpressure. Response and socket cork counts match Node.js.
+
 `ServerResponse.writableFinished` stays false while a standalone response has output queued on its assigned socket.
 
 `net`, `http`, and `https` servers validate listen ports synchronously with `ERR_SOCKET_BAD_PORT`. Bind failures such as `EADDRINUSE` emit an asynchronous `error` event.
