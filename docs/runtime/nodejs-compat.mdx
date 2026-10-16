@@ -153,6 +153,8 @@ With the pinned OpenClaw WebKit, module resolution, loading, and evaluation pres
 
 ### [`node:child_process`](https://nodejs.org/api/child_process.html)
 
+IPC send callbacks settle when the peer disconnects. A send rejected by the initial native write reports its write error; sending after the disconnect event reports `ERR_IPC_CHANNEL_CLOSED`. Queued writes complete on channel close as in Node.js.
+
 Destroying child stdin cancels a pending write before the child exits. The write callback reports `ECANCELED`, while the stream preserves the error passed to `destroy(error)`.
 If no write is pending, destruction keeps the graceful close path so buffered short writes can flush.
 
