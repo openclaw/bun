@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Register the listener passed to `fs.watch()` on the returned watcher's `change` event, preserving listener order and removal. Ports [oven-sh/bun#43765](https://github.com/oven-sh/bun/pull/43765); thanks robobun.
+- Keep `os.availableParallelism()` independent of changes to the global `navigator` object and its `hardwareConcurrency` property.
 
 - Preserve `node:vm` `DONT_CONTEXTIFY` global receiver identity and private-field branding across scripts and compiled functions. Ports [oven-sh/bun#34623](https://github.com/oven-sh/bun/pull/34623); thanks robobun.
 
@@ -297,3 +297,5 @@
 - Complete missing private `node:vm` cache bytecode in the decoded execution tree, avoiding recompilation of already cached function bodies at the same 256 MiB budget.
 
 - Release completed `node:worker_threads` Worker user listeners and captured caller state while preserving internal port hooks to avoid delayed owner-exit memory release on Windows ARM64.
+
+- Register the listener passed to `fs.watch()` on the returned watcher's `change` event, preserving listener order and removal. Ports [oven-sh/bun#43765](https://github.com/oven-sh/bun/pull/43765); thanks robobun.
