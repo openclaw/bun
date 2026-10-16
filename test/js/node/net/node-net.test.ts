@@ -519,32 +519,45 @@ describe("net.Socket write", () => {
   );
 
   it("should allow reconnecting after end()", async () => {
-    const server = new Server(socket => socket.end());
-    const port = await new Promise<number>(resolve => {
-      server.once("listening", () => resolve((server.address() as import("node:net").AddressInfo).port));
-      server.listen();
+    const accepted = new Set<Socket>();
+    const server = new Server(client => {
+      accepted.add(client);
+      client.on("close", () => accepted.delete(client));
+      client.resume();
+      client.end();
     });
-
     const socket = new Socket();
-    socket.on("data", data => console.log(data.toString()));
-    socket.on("error", err => console.error(err));
+    socket.resume();
 
-    async function run() {
-      return new Promise((resolve, reject) => {
-        socket.once("connect", (...args) => {
-          socket.write("script\n", err => {
-            if (err) return reject(err);
-            socket.end(() => setTimeout(resolve, 3));
-          });
-        });
-        socket.connect(port, "127.0.0.1");
-      });
-    }
+    try {
+      const listening = once(server, "listening");
+      server.listen(0, "127.0.0.1");
+      await listening;
+      const port = (server.address() as import("node:net").AddressInfo).port;
 
-    for (let i = 0; i < 10; i++) {
-      await run();
+      for (let i = 0; i < 10; i++) {
+        // The previous connection must close before the same socket can reconnect.
+        const closed = once(socket, "close");
+        await Promise.all([
+          closed,
+          new Promise<void>((resolve, reject) => {
+            socket.once("connect", () => {
+              socket.write("script\n", err => {
+                if (err) return reject(err);
+                socket.end(resolve);
+              });
+            });
+            socket.connect(port, "127.0.0.1");
+          }),
+        ]);
+      }
+    } finally {
+      socket.destroy();
+      for (const client of accepted) client.destroy();
+      if (server.listening) {
+        await new Promise<void>((resolve, reject) => server.close(error => (error ? reject(error) : resolve())));
+      }
     }
-    server.close();
   });
 
   // Client-mode `Handlers.markInactive()` frees the per-connection Handlers
@@ -557,14 +570,37 @@ describe("net.Socket write", () => {
   it.skipIf(!isDebug && !isASAN)(
     "native handle does not retain a dangling handlers pointer after connectError (scope.exit path)",
     async () => {
+      const server = createServer();
+      const listening = once(server, "listening");
+      server.listen(0, "127.0.0.1");
+      await listening;
+      const port = (server.address() as import("node:net").AddressInfo).port;
+      await new Promise<void>((resolve, reject) => server.close(error => (error ? reject(error) : resolve())));
+
       const fixture = `
         const net = require("node:net");
+        const assert = require("node:assert/strict");
+        const port = ${port};
         const s = new net.Socket();
         let handle;
-        s.on("error", () => {});
+        let attemptFailed = false;
+        let errored = false;
+        s.on("connect", () => assert.fail("Should not have connected"));
+        s.on("error", error => {
+          assert.equal(errored, false, "Should not have errored twice");
+          errored = true;
+          assert.equal(error.message, "connect ECONNREFUSED 127.0.0.1:" + port);
+          assert.equal(error.code, "ECONNREFUSED");
+          assert.equal(error.syscall, "connect");
+          assert.equal(error.address, "127.0.0.1");
+          assert.equal(error.port, port);
+        });
         // Capture the native handle before _destroy nulls s._handle.
-        s.once("connectionAttemptFailed", () => { handle = s._handle; });
+        s.once("connectionAttemptFailed", () => { attemptFailed = true; handle = s._handle; });
         s.on("close", () => {
+          assert.equal(attemptFailed, true);
+          assert.ok(handle);
+          assert.equal(errored, true);
           // handleConnectError never reached markActive (is_active == false),
           // so the socket-level markInactive is a no-op. The Handlers were
           // freed by scope.exit() — which must also null the socket's field.
@@ -576,7 +612,7 @@ describe("net.Socket write", () => {
           }
           console.log("ok");
         });
-        s.connect(1, "127.0.0.1");
+        s.connect(port, "127.0.0.1");
       `;
       await using proc = Bun.spawn({
         cmd: [bunExe(), "-e", fixture],
@@ -678,35 +714,49 @@ describe("net.Socket write", () => {
   );
 });
 
-it("should handle connection error", done => {
-  let errored = false;
+it("should handle connection error", async () => {
+  const server = createServer();
+  const listening = once(server, "listening");
+  server.listen(0, "127.0.0.1");
+  await listening;
+  const port = (server.address() as import("node:net").AddressInfo).port;
+  await new Promise<void>((resolve, reject) => server.close(error => (error ? reject(error) : resolve())));
 
-  // @ts-ignore
-  const socket = connect(55555, "127.0.0.1", () => {
-    done(new Error("Should not have connected"));
-  });
+  const socket = new Socket();
+  const errors: NodeJS.ErrnoException[] = [];
+  const events: string[] = [];
+  let connected = false;
+  try {
+    const closed = new Promise<void>(resolve => {
+      socket.on("close", () => {
+        events.push("close");
+        resolve();
+      });
+    });
+    socket.on("error", error => {
+      errors.push(error);
+      events.push("error");
+    });
+    socket.on("connect", () => {
+      connected = true;
+      events.push("connect");
+      socket.destroy();
+    });
+    socket.connect(port, "127.0.0.1");
+    await closed;
 
-  socket.on("error", error => {
-    if (errored) {
-      return done(new Error("Should not have errored twice"));
-    }
-    errored = true;
-    expect(error).toBeDefined();
-    expect(error.message).toBe("connect ECONNREFUSED 127.0.0.1:55555");
-    expect((error as any).code).toBe("ECONNREFUSED");
-    expect((error as any).syscall).toBe("connect");
-    expect((error as any).address).toBe("127.0.0.1");
-    expect((error as any).port).toBe(55555);
-  });
-
-  socket.on("connect", () => {
-    done(new Error("Should not have connected"));
-  });
-
-  socket.on("close", () => {
-    expect(errored).toBe(true);
-    done();
-  });
+    expect(connected).toBe(false);
+    expect(events).toEqual(["error", "close"]);
+    expect(errors).toHaveLength(1);
+    const [error] = errors;
+    expect(error.message).toBe(`connect ECONNREFUSED 127.0.0.1:${port}`);
+    expect(error.code).toBe("ECONNREFUSED");
+    expect(error.syscall).toBe("connect");
+    expect(error.address).toBe("127.0.0.1");
+    expect(error.port).toBe(port);
+  } finally {
+    socket.destroy();
+  }
 });
 
 it("should handle connection error (unix)", done => {
@@ -3695,12 +3745,14 @@ function closeWithReplacedTimers(mode, replaceBeforeImport) {
   });
 }
 // The raw libc listener used by blackholePortSource is unavailable on Windows and musl.
-it.concurrent.skipIf(isWindows || isMusl)("aborting a pending native connection emits one AbortError and closes", async () => {
-  await using proc = Bun.spawn({
-    cmd: [
-      bunExe(),
-      "-e",
-      `
+it.concurrent.skipIf(isWindows || isMusl)(
+  "aborting a pending native connection emits one AbortError and closes",
+  async () => {
+    await using proc = Bun.spawn({
+      cmd: [
+        bunExe(),
+        "-e",
+        `
       ${blackholePortSource}
       const controller = new AbortController();
       const reason = new Error("pending connection aborted");
@@ -3723,24 +3775,25 @@ it.concurrent.skipIf(isWindows || isMusl)("aborting a pending native connection 
       socket.once("connectionAttempt", () => setImmediate(() => controller.abort(reason)));
       socket.connect({ host: "127.0.0.1", port });
       `,
-    ],
-    env: bunEnv,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
-  expect({ stdout, stderr, exitCode }).toEqual({
-    stdout:
-      JSON.stringify({
-        attempts: 1,
-        events: ["error", "close"],
-        errors: [{ name: "AbortError", code: "ABORT_ERR", causeMatches: true }],
-        destroyed: true,
-      }) + "\n",
-    stderr: "",
-    exitCode: 0,
-  });
-});
+      ],
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect({ stdout, stderr, exitCode }).toEqual({
+      stdout:
+        JSON.stringify({
+          attempts: 1,
+          events: ["error", "close"],
+          errors: [{ name: "AbortError", code: "ABORT_ERR", causeMatches: true }],
+          destroyed: true,
+        }) + "\n",
+      stderr: "",
+      exitCode: 0,
+    });
+  },
+);
 
 // There is nothing to half-close yet. shutdown() used to mark the native socket as one that had
 // opened, so closing it raised a connection's events ('end') and the attempt never failed.
