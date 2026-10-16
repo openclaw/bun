@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Settle child IPC send callbacks after peer disconnection, preserving immediate write errors and completing queued sends at channel close. Adapts [oven-sh/bun#43000](https://github.com/oven-sh/bun/pull/43000); thanks robobun.
+
 - Preserve `node:vm` `DONT_CONTEXTIFY` global receiver identity and private-field branding across scripts and compiled functions. Ports [oven-sh/bun#34623](https://github.com/oven-sh/bun/pull/34623); thanks robobun.
 
 - Use observed compilation and serialization cost per charged byte to retain `node:vm` compilation-cache entries at the existing 256 MiB per-VM budget.
