@@ -67,6 +67,8 @@ Recursive `fs.promises.readdir` with `withFileTypes: true` lists directory symli
 
 The `read`, `readv`, `write`, and `writev` callbacks receive the error, zero bytes, and the original buffer or buffers when an I/O operation fails.
 
+`FileHandle.close` stays bound to its handle when called through a Proxy or detached from the object. Closing it disarms garbage-collection cleanup for that handle.
+
 `readSync`, callback `read`, `FileHandle.read`, `writeSync`, and callback `write` preserve Node's overload-specific defaults for explicit `undefined` and `null`. Synchronous and callback reads coerce positional lengths to signed 32-bit integers; `FileHandle.read` defaults nullish lengths to the remaining buffer. Read positions are validated even for zero-length reads.
 
 🟢 Fully implemented. 98% of Node.js's test suite passes. `Stats` objects lack the `Temporal.Instant` getters (`atimeInstant` and friends).

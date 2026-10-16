@@ -716,7 +716,7 @@ function asyncWrap(fn: any, name: string) {
       }
     }
 
-    async close() {
+    close = async () => {
       const fd = this[kFd];
       if (fd === -1) {
         return Promise.$resolve();
@@ -749,7 +749,7 @@ function asyncWrap(fn: any, name: string) {
 
       this.emit("close");
       return this[kClosePromise];
-    }
+    };
 
     async [SymbolAsyncDispose]() {
       return this.close();
