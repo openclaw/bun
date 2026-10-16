@@ -1,6 +1,106 @@
 const { test, expect } = require("bun:test");
 const { SourceMap } = require("node:module");
-const { bunEnv, bunExe, tempDir } = require("harness");
+const { bunEnv, bunExe, runtimesWithNode, tempDir } = require("harness");
+
+function checkSourceMapPositions() {
+  const assert = require("node:assert/strict");
+  const { SourceMap } = require("node:module");
+  const named = new SourceMap({
+    version: 3,
+    file: "app.js",
+    sources: ["original.js"],
+    sourcesContent: ["function flush() {}"],
+    names: ["flush"],
+    mappings: "AAAAA",
+  });
+  assert.deepEqual(named.findEntry(0, 0), {
+    generatedLine: 0,
+    generatedColumn: 0,
+    originalSource: "original.js",
+    originalLine: 0,
+    originalColumn: 0,
+    name: "flush",
+  });
+  assert.deepEqual(named.findOrigin(1, 1), {
+    name: "flush",
+    fileName: "original.js",
+    lineNumber: 1,
+    columnNumber: 1,
+  });
+  assert.deepEqual(named.findOrigin(1, 5), {
+    name: "flush",
+    fileName: "original.js",
+    lineNumber: 1,
+    columnNumber: 5,
+  });
+  const map = new SourceMap({ version: 3, sources: ["a.ts", "b.ts"], names: [], mappings: "KAAA,IACC;AAAC,GCAE" });
+  for (const args of [
+    [-1, 0],
+    [0, 4],
+  ])
+    assert.deepEqual(map.findEntry(...args), {});
+  for (const args of [
+    [0, 0],
+    [1, 5],
+  ])
+    assert.deepEqual(map.findOrigin(...args), {});
+  assert.deepEqual(map.findEntry(0, 5), {
+    generatedLine: 0,
+    generatedColumn: 5,
+    originalSource: "a.ts",
+    originalLine: 0,
+    originalColumn: 0,
+    name: undefined,
+  });
+  assert.deepEqual(map.findEntry(99, 99), {
+    generatedLine: 1,
+    generatedColumn: 3,
+    originalSource: "b.ts",
+    originalLine: 1,
+    originalColumn: 4,
+    name: undefined,
+  });
+  assert.deepEqual(map.findOrigin(2, 4), {
+    name: undefined,
+    fileName: "b.ts",
+    lineNumber: 2,
+    columnNumber: 5,
+  });
+  assert.deepEqual(map.findOrigin(99, 99), {
+    name: undefined,
+    fileName: "b.ts",
+    lineNumber: 99,
+    columnNumber: 100,
+  });
+  assert.deepEqual(map.findEntry(1, -1), {
+    generatedLine: 0,
+    generatedColumn: 9,
+    originalSource: "a.ts",
+    originalLine: 1,
+    originalColumn: 1,
+    name: undefined,
+  });
+  assert.deepEqual(map.findOrigin(2, 0), {
+    name: undefined,
+    fileName: "a.ts",
+    lineNumber: 3,
+    columnNumber: -8,
+  });
+  console.log("ok");
+}
+
+for (const [name, exe] of runtimesWithNode(24)) {
+  test(`SourceMap position lookup agrees with Node (${name})`, async () => {
+    await using child = Bun.spawn({
+      cmd: [exe, "-e", `(${checkSourceMapPositions.toString()})()`],
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([child.stdout.text(), child.stderr.text(), child.exited]);
+    expect({ stdout, stderr, exitCode }).toEqual({ stdout: "ok\n", stderr: "", exitCode: 0 });
+  });
+}
 
 test("SourceMap class exists", () => {
   expect(SourceMap).toBeDefined();
@@ -93,13 +193,13 @@ test("SourceMap findOrigin returns origin data", () => {
     sources: ["test.js"],
     mappings: "AAAA",
   });
-  const result = sourceMap.findOrigin(0, 0);
+  const result = sourceMap.findOrigin(1, 1);
 
   expect(result).toMatchInlineSnapshot(`
     {
-      "column": 0,
+      "columnNumber": 1,
       "fileName": "test.js",
-      "line": 0,
+      "lineNumber": 1,
       "name": undefined,
     }
   `);

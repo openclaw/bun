@@ -7,7 +7,7 @@ use bstr::BStr;
 
 use bun_core::{self as bstring, strings};
 use bun_jsc::{CallFrame, JSGlobalObject, JSValue, JsResult, StringJsc as _, bun_string_jsc};
-use bun_sourcemap::{Mapping, Ordinal, ParsedSourceMap, mapping};
+use bun_sourcemap::{Mapping, ParsedSourceMap, mapping};
 
 // generate-classes.ts does not emit Rust accessors yet, so the
 // `to_js`/cached-setter helpers below forward to the codegen-emitted C++
@@ -263,16 +263,17 @@ impl JSSourceMap {
         frame: &CallFrame,
     ) -> JsResult<JSValue> {
         let [line_number, column_number] = get_line_column(global, frame)?;
-        if line_number < 0 || column_number < 0 {
-            return Ok(JSValue::create_empty_object(global, 0));
-        }
-
-        let Some(mapping) = this.sourcemap.find_mapping(
-            Ordinal::from_zero_based(line_number),
-            Ordinal::from_zero_based(column_number),
+        let Some(mapping) = this.sourcemap.find_closest_mapping(
+            line_number.saturating_sub(1),
+            column_number.saturating_sub(1),
         ) else {
             return Ok(JSValue::create_empty_object(global, 0));
         };
+        if mapping.source_index < 0 {
+            return Ok(JSValue::create_empty_object(global, 0));
+        }
+        let line_offset = line_number as f64 - mapping.generated.lines.zero_based() as f64;
+        let column_offset = column_number as f64 - mapping.generated.columns.zero_based() as f64;
         let name = this.mapping_name_to_js(global, &mapping)?;
         let source = this.source_name_to_js(global, &mapping)?;
         // SAFETY: C++ FFI; arguments are valid JSValues and a live JSGlobalObject.
@@ -282,9 +283,9 @@ impl JSSourceMap {
             Bun__createNodeModuleSourceMapOriginObject(
                 global.as_mut_ptr(),
                 name,
-                JSValue::js_number(mapping.original.lines.zero_based() as f64),
-                JSValue::js_number(mapping.original.columns.zero_based() as f64),
                 source,
+                JSValue::js_number(mapping.original.lines.zero_based() as f64 + line_offset),
+                JSValue::js_number(mapping.original.columns.zero_based() as f64 + column_offset),
             )
         })
     }
@@ -295,14 +296,10 @@ impl JSSourceMap {
         frame: &CallFrame,
     ) -> JsResult<JSValue> {
         let [line_number, column_number] = get_line_column(global, frame)?;
-        if line_number < 0 || column_number < 0 {
-            return Ok(JSValue::create_empty_object(global, 0));
-        }
-
-        let Some(mapping) = this.sourcemap.find_mapping(
-            Ordinal::from_zero_based(line_number),
-            Ordinal::from_zero_based(column_number),
-        ) else {
+        let Some(mapping) = this
+            .sourcemap
+            .find_closest_mapping(line_number, column_number)
+        else {
             return Ok(JSValue::create_empty_object(global, 0));
         };
 
@@ -367,9 +364,9 @@ unsafe extern "C" {
     fn Bun__createNodeModuleSourceMapOriginObject(
         globalObject: *mut JSGlobalObject,
         name: JSValue,
+        source: JSValue,
         line: JSValue,
         column: JSValue,
-        source: JSValue,
     ) -> JSValue;
 
     fn Bun__createNodeModuleSourceMapEntryObject(
