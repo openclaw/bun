@@ -328,7 +328,7 @@ async function withFaultProxy<T>(
 function faultEvents(socket: TLSSocket, peer: TLSSocket) {
   const events: string[] = [];
   let library: string | undefined;
-  const { promise: settled, resolve } = Promise.withResolvers<void>();
+  const { promise: settled, resolve } = Promise.withResolvers<{ events: string[]; library: string | undefined }>();
   socket.on("error", (err: NodeJS.ErrnoException & { library?: string }) => {
     events.push(`error ${err.code}`);
     library = err.library;
@@ -336,16 +336,16 @@ function faultEvents(socket: TLSSocket, peer: TLSSocket) {
   });
   socket.on("end", () => {
     events.push("end");
-    resolve();
+    resolve({ events: [...events], library });
   });
   socket.on("close", hadError => {
     events.push(`close ${hadError}`);
-    resolve();
+    resolve({ events: [...events], library });
   });
   socket.resume();
   peer.on("error", () => {});
   peer.resume();
-  return settled.then(() => ({ events: [...events], library }));
+  return settled;
 }
 
 for (const { name, connect } of tests) {

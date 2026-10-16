@@ -354,6 +354,97 @@ describe("the TLS socket is destroyed in the tick it was made", () => {
     test(`${name} over a socket that was never dialed`, async () => {
       assert.deepStrictEqual(await destroyedAtOnce(new net.Socket(), wrap), ["raw.destroyed=true", ...both]);
     });
+
+    test(`${name} over a socket that already closed`, async () => {
+      const raw = new net.Socket();
+      const rawClosed = once(raw, "close");
+      raw.destroy();
+      await rawClosed;
+      const { events, closed, observe } = lifecycleLog();
+      const socket = wrap(raw);
+      try {
+        observe("tls", socket);
+        socket.destroy();
+        await Promise.all(closed);
+        assert.deepStrictEqual(events, ["tls close hadError=false"]);
+        assert.strictEqual(raw.destroyed, true);
+      } finally {
+        socket.destroy();
+        raw.destroy();
+      }
+    });
+
+    test(`${name} over a handleless socket whose destroy is a no-op`, async () => {
+      const raw = new net.Socket();
+      const destroy = raw.destroy;
+      let destroys = 0;
+      raw.destroy = () => {
+        destroys++;
+        return raw;
+      };
+      const { events, closed, observe } = lifecycleLog();
+      const socket = wrap(raw);
+      try {
+        observe("tls", socket);
+        socket.destroy();
+        await Promise.all(closed);
+        assert.deepStrictEqual(events, ["tls close hadError=false"]);
+        assert.strictEqual(destroys, 1);
+      } finally {
+        raw.destroy = destroy;
+        socket.destroy();
+        raw.destroy();
+      }
+    });
+
+    test(`${name} waits for a native transport's delayed destroy`, async () => {
+      const peers = new Set<net.Socket>();
+      const server = net.createServer(peer => {
+        peers.add(peer);
+        peer.on("close", () => peers.delete(peer));
+        peer.on("error", () => {}).resume();
+      });
+      const raw = net.connect(await listen(server), "127.0.0.1");
+      const nativeDestroy = raw._destroy;
+      let socket: tls.TLSSocket | undefined;
+      let releaseDestroy: (() => void) | undefined;
+      try {
+        await once(raw, "connect");
+        // A queued write keeps Bun on its stream transport rather than adopting the fd.
+        raw.cork();
+        const flushed = new Promise<void>((resolve, reject) => {
+          raw.write("STARTTLS\r\n", error => (error ? reject(error) : resolve()));
+        });
+        socket = wrap(raw);
+        raw.uncork();
+        await flushed;
+        const { events, closed, observe } = lifecycleLog();
+        observe("raw", raw);
+        observe("tls", socket);
+        const started = Promise.withResolvers<void>();
+        raw._destroy = (error, callback) => {
+          releaseDestroy = () => {
+            releaseDestroy = undefined;
+            nativeDestroy.call(raw, error, callback);
+          };
+          started.resolve();
+        };
+        socket.destroy();
+        await started.promise;
+        await new Promise(resolve => setImmediate(resolve));
+        assert.deepStrictEqual(events, []);
+        releaseDestroy!();
+        await Promise.all(closed);
+        assert.deepStrictEqual(events, ["raw close", "tls close hadError=false"]);
+      } finally {
+        releaseDestroy?.();
+        raw._destroy = nativeDestroy;
+        socket?.destroy();
+        raw.destroy();
+        for (const peer of peers) peer.destroy();
+        await new Promise<void>((resolve, reject) => server.close(error => (error ? reject(error) : resolve())));
+      }
+    });
   }
 
   test("new TLSSocket(socket, { isServer }) over an accepted socket releases the connection", async () => {
@@ -402,6 +493,68 @@ test("destroy() of a TLS socket made over a socket with a write still queued clo
   } finally {
     raw.destroy();
     server.close();
+  }
+});
+
+test("an earlier raw close listener can reconnect before destroying the old TLS socket", async () => {
+  const peers = new Set<net.Socket>();
+  const errors: Error[] = [];
+  const firstAccepted = Promise.withResolvers<void>();
+  let connections = 0;
+  const server = net.createServer(peer => {
+    peers.add(peer);
+    peer.on("close", () => peers.delete(peer));
+    peer.on("error", error => errors.push(error));
+    if (++connections === 1) firstAccepted.resolve();
+    else peer.once("data", () => peer.end("second connection works"));
+    peer.resume();
+  });
+  const port = await listen(server);
+  const raw = net.connect(port, "127.0.0.1");
+  let socket: tls.TLSSocket | undefined;
+  let destroyedBeforeListener: boolean | undefined;
+  let tlsHadError: boolean | undefined;
+  try {
+    await Promise.all([once(raw, "connect"), firstAccepted.promise]);
+    raw.on("error", error => errors.push(error));
+    // Register before TLS installs its transport-close listener.
+    raw.once("close", () => {
+      destroyedBeforeListener = socket!.destroyed;
+      raw.connect(port, "127.0.0.1");
+      socket!.destroy();
+    });
+    raw.cork();
+    const flushed = new Promise<void>((resolve, reject) => {
+      raw.write("STARTTLS\r\n", error => (error ? reject(error) : resolve()));
+    });
+    socket = new tls.TLSSocket(raw, { rejectUnauthorized: false });
+    socket.on("error", error => errors.push(error));
+    const tlsClosed = new Promise<void>(resolve => {
+      socket!.once("close", hadError => {
+        tlsHadError = hadError;
+        resolve();
+      });
+    });
+    raw.uncork();
+    await flushed;
+    const reconnected = once(raw, "connect");
+    raw.destroy();
+    await Promise.all([reconnected, tlsClosed]);
+    assert.strictEqual(destroyedBeforeListener, false);
+    assert.strictEqual(tlsHadError, false);
+    const received: Buffer[] = [];
+    raw.on("data", (chunk: Buffer) => received.push(chunk));
+    const secondClosed = once(raw, "close");
+    raw.end("ping");
+    await secondClosed;
+    assert.strictEqual(Buffer.concat(received).toString(), "second connection works");
+    assert.strictEqual(connections, 2);
+    assert.deepStrictEqual(errors, []);
+  } finally {
+    socket?.destroy();
+    raw.destroy();
+    for (const peer of peers) peer.destroy();
+    await new Promise<void>((resolve, reject) => server.close(error => (error ? reject(error) : resolve())));
   }
 });
 

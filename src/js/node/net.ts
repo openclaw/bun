@@ -309,6 +309,8 @@ const kAttach = Symbol("kAttach");
 const kCloseRawConnection = Symbol("kCloseRawConnection");
 const kOnUpgradedClose = Symbol("kOnUpgradedClose");
 const kupgraded = Symbol("kupgraded");
+const kSocketCloseSerial = Symbol("kSocketCloseSerial");
+const kUpgradedParentCloseSerial = Symbol("kUpgradedParentCloseSerial");
 // On the raw handle of an adopted fd: the TLS socket that adopted it.
 const kAdoptedTLSRaw = Symbol("kAdoptedTLSRaw");
 const kAdoptedTLSTransport = Symbol("kAdoptedTLSTransport");
@@ -454,6 +456,7 @@ function endNT(self, socket, callback) {
   }
 }
 function emitCloseNT(self, hasError) {
+  self[kSocketCloseSerial]++;
   self.emit("close", hasError);
 }
 // A write that waits for 'connect' or for the TLS handle still holds its chunk in _pendingData: the native handle never had it.
@@ -523,6 +526,7 @@ function onUpgradedReadError(self, err) {
 // Whatever state the wrapped stream is in: https://github.com/nodejs/node/blob/v26.3.0/lib/internal/tls/wrap.js#L739-L741
 function linkUpgraded(self, connection: SocketInstance) {
   const isSocket = connection instanceof Socket;
+  self[kUpgradedParentCloseSerial] = isSocket && connection._handle != null ? connection[kSocketCloseSerial] : null;
   self[kupgraded] = connection;
   self[kAdoptedTLSTransport] = false;
   self._parent = isSocket ? connection : null;
@@ -597,18 +601,27 @@ function adoptServerTLS(self, connection, options) {
   self.emit(kUpgradeAttached);
 }
 // What TLSWrap.prototype.close destroys. The raw twin of an adopted fd closes with that fd instead (closeWithTLSSocket).
-function unadoptedTransport(self): SocketInstance | undefined {
-  const upgraded = self[kupgraded];
-  if (upgraded && !upgraded.destroyed && upgraded._handle?.[kAdoptedTLSRaw] !== self) return upgraded;
-}
-// The TLS owner closes its unadopted stream transport after pending writes complete.
-function transportToDestroy(self): SocketInstance | undefined {
-  return unadoptedTransport(self);
-}
-// Sessions below one that was never accepted, or is reset, carried nothing else of the application's: they go with it.
-function abortTransport(transport: SocketInstance) {
-  if (transport instanceof Socket) transport[kSessionAccepted] = false;
-  transport.destroy();
+// A close listener can reconnect the parent before destroying this old TLS socket.
+// Join only the native close generation captured when the transport was linked.
+function closeTransport(self, done) {
+  const parentCloseSerial = self[kUpgradedParentCloseSerial];
+  self[kUpgradedParentCloseSerial] = undefined;
+  if (parentCloseSerial === undefined || self[kAdoptedTLSTransport]) {
+    done();
+    return;
+  }
+  const transport = self[kupgraded];
+  const nativeParent = parentCloseSerial !== null;
+  if (nativeParent && (transport[kSocketCloseSerial] !== parentCloseSerial || transport._handle == null)) {
+    done();
+    return;
+  }
+  if (nativeParent) transport.once("close", done);
+  if (!transport.destroyed) {
+    if (transport instanceof Socket) transport[kSessionAccepted] = false;
+    transport.destroy();
+  }
+  if (!nativeParent) done();
 }
 // The wrapped socket reports nothing and closes with the TLS socket: https://github.com/nodejs/node/blob/v26.3.0/lib/internal/tls/wrap.js#L676-L688
 function closeWithTLSSocket(self, raw) {
@@ -2017,6 +2030,8 @@ function Socket(options?): void {
   this._parent = null;
   this._parentWrap = null;
   this[kupgraded] = null;
+  this[kSocketCloseSerial] = 0;
+  this[kUpgradedParentCloseSerial] = undefined;
   this[kAdoptedTLSTransport] = false;
   this[kStandaloneWrap] = false;
   this[kOnUpgradedClose] = undefined;
@@ -2357,7 +2372,7 @@ Socket.prototype.connect = function connect(...args) {
       }).catch(error => {
         if (!this.destroyed) {
           this.emit("error", error);
-          this.emit("close", true);
+          emitCloseNT(this, true);
         }
       });
     }
@@ -2509,12 +2524,7 @@ Socket.prototype._destroy = function _destroy(err, callback) {
   // Node: after 'error', before 'close'. With no error it goes first, so the stream is errored before the EOF that the native close handler pushes can emit 'end'.
   if (canceledWrite && !err) process.nextTick(cancelWriteNT, canceledWrite);
 
-  // Stream-level TLS owns its transport; an adopted fd pair closes through closeOwedRaw.
-  // https://github.com/nodejs/node/blob/v24.21.0/lib/internal/js_stream_socket.js#L253
   const upgraded = this[kupgraded];
-  if (upgraded && !this[kAdoptedTLSTransport] && !upgraded.destroyed) {
-    upgraded.destroy?.();
-  }
 
   // Close an fd adopted for synchronous writes (node closes the wrapping
   // libuv handle here). Leave stdio fds 0-2 open: process.stdout/stderr and
@@ -2557,13 +2567,8 @@ Socket.prototype._destroy = function _destroy(err, callback) {
       // ECONNRESET. `close()` does a fast shutdown (clean close) which only
       // happens to surface as RST on some platforms; `terminate()` arms
       // SO_LINGER{1,0} for a real reset on all platforms.
-      const transport = unadoptedTransport(this);
-      if (transport !== undefined) abortTransport(transport);
-      const err = this._handle.terminate();
-      setImmediate(() => {
-        $debug("emit close");
-        this.emit("close", isException);
-      });
+      closeTransport(this, () => setImmediate(emitCloseNT, this, isException));
+      const err = currentHandle.terminate();
       if (err) this.emit("error", new ErrnoException(err, "reset"));
     } else if (this._closeAfterHandlingError) {
       // Enqueue closing the socket as a microtask, so that the socket can be
@@ -2590,10 +2595,7 @@ Socket.prototype._destroy = function _destroy(err, callback) {
   } else {
     finishDestroy(callback, err, canceledWrite);
     closeOwedRaw(this, upgraded);
-    const transport = transportToDestroy(this);
-    if (transport !== undefined) abortTransport(transport);
-    if (transport instanceof Socket) transport.once("close", emitCloseNT.bind(null, this, err ? true : false));
-    else process.nextTick(emitCloseNT, this, err ? true : false);
+    closeTransport(this, () => process.nextTick(emitCloseNT, this, !!err));
   }
 
   const server = this._server;
@@ -4559,6 +4561,7 @@ function normalizeArgs(args: unknown[]): [options: Record<PropertyKey, any>, cb:
 
 // Called when creating new Socket, or when re-using a closed Socket
 function initSocketHandle(self) {
+  self[kUpgradedParentCloseSerial] = undefined;
   self._undestroy();
   self._sockname = null;
   self[kclosed] = false;
@@ -4579,24 +4582,23 @@ function onSocketHandleClosed() {}
 
 function closeSocketHandle(self, handle, isException, isCleanupPending = false) {
   $debug("closeSocketHandle", isException, isCleanupPending);
-  // Ahead of the setImmediate below: the transport's 'close' precedes this socket's.
-  const transport = transportToDestroy(self);
-  if (transport !== undefined) abortTransport(transport);
+  closeTransport(self, () => {
+    setImmediate(() => {
+      $debug("emit close", isCleanupPending);
+      emitCloseNT(self, isException);
+      if (isCleanupPending) {
+        // self._handle may have been detached or replaced since.
+        handle.onread = noop;
+        if (self._handle === handle) {
+          self._handle = null;
+          self._sockname = null;
+        }
+      }
+    });
+  });
   // The owner of a wrapped socket destroyed it: the TLS socket goes first, so the close of their fd is nothing to report.
   handle[kAdoptedTLSRaw]?.destroy();
   handle.close(onSocketHandleClosed);
-  setImmediate(() => {
-    $debug("emit close", isCleanupPending);
-    self.emit("close", isException);
-    if (isCleanupPending) {
-      // self._handle may have been detached or replaced since.
-      handle.onread = noop;
-      if (self._handle === handle) {
-        self._handle = null;
-        self._sockname = null;
-      }
-    }
-  });
 }
 
 // Reformat a native listen error to Node's "listen <CODE>: <description> <addr>"
