@@ -57,6 +57,10 @@ Relative and URL-rooted absolute ESM specifiers decode URL escapes, including im
 
 ### [`node:fs`](https://nodejs.org/api/fs.html)
 
+The listener passed to `fs.watch()` is a `change` listener on the returned `FSWatcher`, including for listener inspection, removal, and manually emitted events.
+
+`statSync()`, `stat()`, and `promises.stat()` return `undefined` for `ENOENT` or `ENOTDIR` with `throwIfNoEntry: false`. `lstat` preserves `ENOTDIR`, matching Node.js.
+
 On macOS, `fs.watch(file)` registers a kqueue watch before returning, including unlink and writes through an open descriptor. Pending file events coalesce until JavaScript delivery, with libuv's event precedence. Directory watches use FSEvents. A new watch on a replaced file observes the new inode.
 
 Recursive `fs.promises.readdir` with `withFileTypes: true` lists directory symlinks without descending into their targets. Callback and synchronous Dirent overloads, and all recursive string overloads, follow directory symlinks on Windows and POSIX.
@@ -179,6 +183,8 @@ Child construction publishes the `child_process` diagnostics channel with the ex
 🟢 Client & server are implemented. 94% of Node.js's test suite passes. The `maxDeflateDynamicTableSize`, `peerMaxConcurrentStreams` and `streamResetBurst`/`streamResetRate` options are accepted but ignored.
 
 ### [`node:module`](https://nodejs.org/api/module.html)
+
+`SourceMap.findEntry()` finds the closest preceding generated mapping using zero-based coordinates. `findOrigin()` accepts one-based coordinates and returns `fileName`, `lineNumber`, `columnNumber`, and the optional `name`, matching Node.js.
 
 Filesystem-entry cache snapshots are synchronized across worker threads during symlink fills, file-descriptor updates, and re-stats. Cached module paths remain complete when workers resolve symlinked files while filesystem routes reload.
 

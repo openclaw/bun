@@ -1477,11 +1477,11 @@ static JSC::Structure* createNodeModuleSourceMapOriginStructure(JSC::VM& vm, JSC
 
     structure = Structure::addPropertyTransition(vm, structure, vm.propertyNames->name, 0, offset);
     RELEASE_ASSERT(offset == 0);
-    structure = Structure::addPropertyTransition(vm, structure, Identifier::fromString(vm, "line"), 0, offset);
-    RELEASE_ASSERT(offset == 1);
-    structure = Structure::addPropertyTransition(vm, structure, Identifier::fromString(vm, "column"), 0, offset);
-    RELEASE_ASSERT(offset == 2);
     structure = Structure::addPropertyTransition(vm, structure, Identifier::fromString(vm, "fileName"), 0, offset);
+    RELEASE_ASSERT(offset == 1);
+    structure = Structure::addPropertyTransition(vm, structure, Identifier::fromString(vm, "lineNumber"), 0, offset);
+    RELEASE_ASSERT(offset == 2);
+    structure = Structure::addPropertyTransition(vm, structure, Identifier::fromString(vm, "columnNumber"), 0, offset);
     RELEASE_ASSERT(offset == 3);
 
     return structure;
@@ -1490,17 +1490,17 @@ static JSC::Structure* createNodeModuleSourceMapOriginStructure(JSC::VM& vm, JSC
 extern "C" JSC::EncodedJSValue Bun__createNodeModuleSourceMapOriginObject(
     JSC::JSGlobalObject* globalObject,
     JSC::EncodedJSValue encodedName,
+    JSC::EncodedJSValue encodedSource,
     JSC::EncodedJSValue encodedLine,
-    JSC::EncodedJSValue encodedColumn,
-    JSC::EncodedJSValue encodedSource)
+    JSC::EncodedJSValue encodedColumn)
 {
     auto& vm = globalObject->vm();
     auto* zigGlobalObject = defaultGlobalObject(globalObject);
     JSObject* object = JSC::constructEmptyObject(vm, zigGlobalObject->m_nodeModuleSourceMapOriginStructure.getInitializedOnMainThread(zigGlobalObject));
     object->putDirectOffset(vm, 0, JSC::JSValue::decode(encodedName));
-    object->putDirectOffset(vm, 1, JSC::JSValue::decode(encodedLine));
-    object->putDirectOffset(vm, 2, JSC::JSValue::decode(encodedColumn));
-    object->putDirectOffset(vm, 3, JSC::JSValue::decode(encodedSource));
+    object->putDirectOffset(vm, 1, JSC::JSValue::decode(encodedSource));
+    object->putDirectOffset(vm, 2, JSC::JSValue::decode(encodedLine));
+    object->putDirectOffset(vm, 3, JSC::JSValue::decode(encodedColumn));
     return JSValue::encode(object);
 }
 
