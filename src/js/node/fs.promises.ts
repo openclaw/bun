@@ -434,6 +434,7 @@ function asyncWrap(fn: any, name: string) {
       this[kClosePromise] = null;
       this[kFlag] = flag;
       if (this[kFd] !== -1) {
+        fs.trackFd(fd);
         (fileHandleRegistry ??= new FinalizationRegistry(onFileHandleCollected)).register(this, { fd, path }, this);
       }
     }
@@ -1518,6 +1519,7 @@ function asyncWrap(fn: any, name: string) {
       const flag = this[kFlag];
       this[kFd] = -1;
       fileHandleRegistry?.unregister(this);
+      fs.untrackFd(fd);
       return {
         data: { fd, flag },
         deserializeInfo: "internal/fs/promises:FileHandle",
@@ -1532,6 +1534,7 @@ function asyncWrap(fn: any, name: string) {
       this[kFd] = fd;
       this[kFlag] = flag;
       if (fd !== -1) {
+        fs.trackFd(fd);
         (fileHandleRegistry ??= new FinalizationRegistry(onFileHandleCollected)).register(
           this,
           { fd, path: undefined },

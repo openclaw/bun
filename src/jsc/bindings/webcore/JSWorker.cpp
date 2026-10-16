@@ -402,6 +402,12 @@ template<> __attribute__((minsize)) JSC::EncodedJSValue JSC_HOST_CALL_ATTRIBUTES
             }
         }
 
+        auto trackUnmanagedFds = optionsObject->getIfPropertyExists(lexicalGlobalObject, Identifier::fromString(vm, "trackUnmanagedFds"_s));
+        RETURN_IF_EXCEPTION(throwScope, {});
+        if (trackUnmanagedFds && !trackUnmanagedFds.isUndefinedOrNull()) {
+            options.trackUnmanagedFds = trackUnmanagedFds.toBoolean(lexicalGlobalObject);
+        }
+
         auto preloadModulesValue = optionsObject->getIfPropertyExists(lexicalGlobalObject, Identifier::fromString(vm, "preload"_s));
         RETURN_IF_EXCEPTION(throwScope, {});
         if (preloadModulesValue) {

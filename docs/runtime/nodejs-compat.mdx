@@ -339,6 +339,8 @@ Valid `vm.Script` cached data is accepted when JSC runs without a JIT. Validatio
 
 ### [`node:worker_threads`](https://nodejs.org/api/worker_threads.html)
 
+Worker termination and natural exit close FileHandles opened by the Worker. Raw descriptors from `fs.open()` and `fs.openSync()` close by default; `trackUnmanagedFds: false` preserves them. Parent-owned descriptors remain open. FileHandle transfer through `postMessage()` remains unsupported.
+
 Worker shutdown releases the thread's native event-name cache after destroying its VM.
 
 Worker exit removes `message` and `messageerrors` listeners before emitting `exit`, then releases user listeners after exit handlers return; unlike Node.js, Bun keeps its two internal `newListener` and `removeListener` hooks visible in `eventNames()` to avoid delayed owner-exit memory release on Windows ARM64.
