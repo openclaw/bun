@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Match Node.js `SourceMap.findOrigin()` coordinates and field names, and return the closest preceding mapping from `findEntry()`. Adapts [oven-sh/bun#35123](https://github.com/oven-sh/bun/pull/35123); thanks robobun.
+- Keep `os.availableParallelism()` independent of changes to the global `navigator` object and its `hardwareConcurrency` property.
 
 - Preserve `node:vm` `DONT_CONTEXTIFY` global receiver identity and private-field branding across scripts and compiled functions. Ports [oven-sh/bun#34623](https://github.com/oven-sh/bun/pull/34623); thanks robobun.
 

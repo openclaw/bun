@@ -89,6 +89,8 @@ Upgrade requests emit `upgrade` while an earlier response on the connection is s
 
 ### [`node:os`](https://nodejs.org/api/os.html)
 
+`availableParallelism()` uses the native CPU count even if the global `navigator` object is deleted, replaced, or redefined.
+
 🟢 Fully implemented. `userInfo()` reads `username`, `shell` and `homedir` from the environment (`USER`, `SHELL`, `HOME`) rather than the passwd database. `machine()` returns `"arm64"` instead of `"aarch64"` on Linux arm64.
 
 ### [`node:path`](https://nodejs.org/api/path.html)

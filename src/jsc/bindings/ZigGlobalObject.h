@@ -100,6 +100,8 @@ extern "C" uv_loop_t* Bun__ZigGlobalObject__uvLoop(void* /* BunVM */);
 
 namespace Zig {
 
+JSC_DECLARE_HOST_FUNCTION(functionNavigatorGetHardwareConcurrency);
+
 class JSCStackTrace;
 
 using DOMGuardedObjectSet = UncheckedKeyHashSet<WebCore::DOMGuardedObject*>;
