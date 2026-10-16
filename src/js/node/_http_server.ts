@@ -516,8 +516,13 @@ function Server(options, callback): void {
         minVersion = tlsStringToProtocolVersion(ciphers?.tls13Only ? "TLSv1.3" : minVersionOption);
         maxVersion = tlsStringToProtocolVersion(maxVersionOption);
       }
+      const optionsALPNProtocols = options.ALPNProtocols;
+      if (optionsALPNProtocols) {
+        require("node:tls").convertALPNProtocols(optionsALPNProtocols, this);
+      }
       this[tlsSymbol] = normalizeServerTls({
         serverName,
+        ALPNProtocols: this.ALPNProtocols?.length ? this.ALPNProtocols : undefined,
         key: tlsHelpers.normalizePemKeyOption(key, passphrase),
         cert,
         ca,
@@ -742,12 +747,7 @@ Server.prototype[setSecureContextSymbol] = function (options) {
     throw $ERR_INVALID_ARG_VALUE("options", options, "server is not configured for TLS");
   }
 
-  const {
-    processPfxOptions,
-    validateSecureProtocol,
-    secureProtocolToVersionRange,
-    tlsStringToProtocolVersion,
-  } = require("internal/tls");
+  const { processPfxOptions, secureProtocolToVersionRange, tlsStringToProtocolVersion } = require("internal/tls");
   // Match Node's synchronous option validation before publishing a replacement.
   require("node:tls").createSecureContext(options);
   const tlsOptions = processPfxOptions(options);
@@ -756,7 +756,6 @@ Server.prototype[setSecureContextSymbol] = function (options) {
   if (pfxExtraCAs?.length && ca != null) {
     ca = $isArray(ca) ? [...ca, ...pfxExtraCAs] : [ca, ...pfxExtraCAs];
   }
-  validateSecureProtocol(tlsOptions.secureProtocol);
   const range = secureProtocolToVersionRange(tlsOptions.secureProtocol);
   const next = {
     ...tlsOptions,

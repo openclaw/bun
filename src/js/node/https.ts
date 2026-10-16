@@ -599,10 +599,6 @@ function Server(options, requestListener): void {
     options.ALPNProtocols = ["http/1.1"];
   }
   http.Server.$call(this, options, requestListener);
-  const optionsALPNProtocols = options.ALPNProtocols;
-  if (optionsALPNProtocols) {
-    require("node:tls").convertALPNProtocols(optionsALPNProtocols, this);
-  }
   this.ALPNCallback = options.ALPNCallback;
   const blockList = options.blockList;
   if (blockList) {

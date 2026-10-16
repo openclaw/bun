@@ -1877,6 +1877,37 @@ describe("node https server", async () => {
     }
   });
 
+  it.each(["array", "buffer"])(
+    "keeps empty %s ALPN protocols disabled after setSecureContext",
+    async representation => {
+      const ALPNProtocols = representation === "array" ? [] : Buffer.alloc(0);
+      const server = createHttpsServer({ ...httpsOptions, ALPNProtocols });
+      const protocols: (string | false)[] = [];
+      let socket: ReturnType<typeof tlsConnect> | undefined;
+      try {
+        const url = await listen(server, "https");
+        for (const replaceContext of [false, true]) {
+          if (replaceContext) server.setSecureContext(httpsOptions);
+          socket = tlsConnect({
+            host: "127.0.0.1",
+            port: Number(url.port),
+            servername: "localhost",
+            ALPNProtocols: ["http/1.1"],
+            rejectUnauthorized: false,
+          });
+          await once(socket, "secureConnect");
+          protocols.push(socket.alpnProtocol);
+          socket.destroy();
+          socket = undefined;
+        }
+      } finally {
+        socket?.destroy();
+        await new Promise<void>(resolve => server.close(() => resolve()));
+      }
+      expect(protocols).toEqual([false, false]);
+    },
+  );
+
   it("setSecureContext updates a host-based listen while DNS lookup is pending", async () => {
     const replacement = {
       key: nodefs.readFileSync(path.join(import.meta.dir, "../tls/fixtures/agent1-key.pem")),
