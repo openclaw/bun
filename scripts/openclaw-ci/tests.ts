@@ -171,9 +171,23 @@ export function selectTests(changed: string[], tracked: string[], nightly: boole
 }
 
 function git(...args: string[]): string[] {
-  const result = spawnSync("git", args, { encoding: "utf8" });
+  const result = spawnSync("git", args, { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
   if (result.status !== 0) throw new Error(result.stderr || `git ${args[0]} failed`);
   return result.stdout.split("\0").filter(Boolean);
+}
+
+function upstreamParents(base: string, head: string): string[] {
+  const merges = git("rev-list", "--first-parent", "--merges", "--parents", `${base}..${head}`);
+  const parents = new Set<string>();
+  // rev-list visits the newest first-parent merge first, independent of commit timestamps.
+  for (const merge of (merges[0] ?? "").trim().split("\n").filter(Boolean)) {
+    for (const parent of merge.split(" ").slice(2)) {
+      const result = spawnSync("git", ["merge-base", "--is-ancestor", parent, base], { encoding: "utf8" });
+      if (result.status === 1) parents.add(parent);
+      else if (result.status !== 0) throw new Error(result.stderr || "git merge-base failed");
+    }
+  }
+  return [...parents];
 }
 
 function summary(text: string) {
@@ -272,9 +286,24 @@ if (import.meta.main) {
     if (process.env.GITHUB_EVENT_NAME === "pull_request" && (!base || !head)) throw new Error("Missing PR commits");
     const changed =
       base && head ? git("diff", "--no-renames", "--name-only", "--diff-filter=ACMTD", "-z", `${base}...${head}`) : [];
-    const selected = selectTests(changed, git("ls-files", "-z", "test"), !base, process.env.OPENCLAW_CI_PLATFORM);
+    const parents = base && head ? upstreamParents(base, head) : [];
+    const upstream = parents[0];
+    const differentFromUpstream = upstream
+      ? new Set(git("diff", "--no-renames", "--name-only", "-z", upstream, head!))
+      : undefined;
+    const forkDelta = differentFromUpstream ? changed.filter(path => differentFromUpstream.has(path)) : changed;
+    const selected = selectTests(
+      forkDelta,
+      git("ls-files", "-z", "test"),
+      !base || !!upstream,
+      process.env.OPENCLAW_CI_PLATFORM,
+    );
     mkdirSync(dirname(selectionPath), { recursive: true });
     writeFileSync(selectionPath, JSON.stringify(selected, null, 2) + "\n");
+    summary(
+      `## Test selection\n\nUpstream parents (newest first): ${parents.length ? parents.map(parent => `\`${parent}\``).join(", ") : "none"}.\n` +
+        `Changed files: ${changed.length}. Fork-delta files: ${forkDelta.length}. Selected tests: ${selected.length}.\n\n`,
+    );
     summary(`## Selected tests (${selected.length})\n\n${selected.map(test => `- \`${test}\``).join("\n")}\n`);
   } else if (command === "test") {
     const selected: string[] = JSON.parse(readFileSync(selectionPath, "utf8"));

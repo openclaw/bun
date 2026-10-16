@@ -21,6 +21,12 @@ exact selection in the run summary and `selected.json`. It reads the PR's
 merge-base-to-head diff locally (including renames and deletions), while the
 build and tests use GitHub's merge commit:
 
+For upstream-sync PRs, it applies the rules below only to changed paths whose
+head content differs from the newest imported upstream parent, and always adds
+the nightly coverage set. Parents already reachable from the PR base are not
+upstream imports. See [sync coverage](UPSTREAM_SYNC.md#pr-test-coverage) for the
+history rule and separate maintainer qualification of upstream changes.
+
 - Include every added or modified Bun `.test.*` or `.spec.*` file still present.
 - For changed test fixtures, walk upward to the nearest directory containing
   tests and include those files. Deleted fixtures also select their owners.

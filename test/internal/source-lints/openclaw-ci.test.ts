@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { bunEnv, bunExe, tempDir } from "harness";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, renameSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
   assertSelectedTestResults,
@@ -199,8 +199,9 @@ test("CLI diff selects owners at both ends of a moved fixture", () => {
   renameSync(join(String(dir), "test/js/old/fixture.txt"), join(String(dir), "test/js/new/fixture.txt"));
   git("add", ".");
   git("-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "after");
-  execFileSync(bunExe(), [resolve(import.meta.dir, "../../../scripts/openclaw-ci/tests.ts"), "select"], {
+  const output = execFileSync(bunExe(), [resolve(import.meta.dir, "../../../scripts/openclaw-ci/tests.ts"), "select"], {
     cwd: String(dir),
+    encoding: "utf8",
     env: {
       ...process.env,
       GITHUB_STEP_SUMMARY: "",
@@ -212,6 +213,82 @@ test("CLI diff selects owners at both ends of a moved fixture", () => {
   });
   const selected = JSON.parse(readFileSync(join(String(dir), "build/openclaw-ci/selected.json"), "utf8"));
   expect(selected).toEqual([...smoke, oldTest, newTest].sort());
+  expect(output).toContain("Upstream parents (newest first): none.");
+  expect(output).toContain(`Changed files: 2. Fork-delta files: 2. Selected tests: ${selected.length}.`);
+});
+
+test.each([false, true])("sync CLI retains resolutions and ignores a later fork-main merge: %s", mergeMain => {
+  const pure = "test/js/custom/upstream.test.ts";
+  const resolved = "test/js/custom/resolved.test.ts";
+  using dir = tempDir(
+    "openclaw-ci-sync",
+    Object.fromEntries([...smoke, ...broader, pure, resolved].map(path => [path, "original\n"])),
+  );
+  const env = {
+    ...bunEnv,
+    GIT_AUTHOR_NAME: "Test",
+    GIT_AUTHOR_EMAIL: "test@example.com",
+    GIT_COMMITTER_NAME: "Test",
+    GIT_COMMITTER_EMAIL: "test@example.com",
+  };
+  const git = (...args: string[]) =>
+    execFileSync("git", ["-c", "commit.gpgsign=false", ...args], {
+      cwd: String(dir),
+      encoding: "utf8",
+      env,
+    }).trim();
+  const write = (path: string, content: string) => writeFileSync(join(String(dir), path), content);
+  git("init", "--quiet", "--initial-branch=fork-main");
+  git("add", ".");
+  git("commit", "--quiet", "-m", "common ancestor");
+  git("checkout", "--quiet", "-b", "upstream");
+  write(pure, "upstream\n");
+  write(resolved, "upstream\n");
+  git("commit", "--quiet", "-am", "upstream changes");
+  const upstream = git("rev-parse", "HEAD");
+  git("checkout", "--quiet", "fork-main");
+  write(resolved, "fork\n");
+  git("commit", "--quiet", "-am", "fork changes");
+  let base = git("rev-parse", "HEAD");
+  git("checkout", "--quiet", "-b", "sync");
+  const merge = spawnSync("git", ["merge", "--no-ff", "--no-commit", "upstream"], {
+    cwd: String(dir),
+    encoding: "utf8",
+    env,
+  });
+  expect(merge.stdout).toContain("CONFLICT (content)");
+  expect(merge.status).toBe(1);
+  write(resolved, "resolved\n");
+  git("add", ".");
+  git("commit", "--quiet", "-m", "resolve upstream merge");
+  if (mergeMain) {
+    git("checkout", "--quiet", "fork-main");
+    write("fork-main.txt", "later main change\n");
+    git("add", ".");
+    git("commit", "--quiet", "-m", "advance fork main");
+    base = git("rev-parse", "HEAD");
+    git("checkout", "--quiet", "sync");
+    git("merge", "--quiet", "--no-ff", "-m", "merge fork main", "fork-main");
+  }
+  const output = execFileSync(bunExe(), [resolve(import.meta.dir, "../../../scripts/openclaw-ci/tests.ts"), "select"], {
+    cwd: String(dir),
+    encoding: "utf8",
+    env: {
+      ...env,
+      GITHUB_STEP_SUMMARY: join(String(dir), "summary.md"),
+      GITHUB_EVENT_NAME: "pull_request",
+      OPENCLAW_CI_PLATFORM: "linux",
+      PR_BASE_SHA: base,
+      PR_HEAD_SHA: git("rev-parse", "HEAD"),
+    },
+  });
+  const selected = JSON.parse(readFileSync(join(String(dir), "build/openclaw-ci/selected.json"), "utf8"));
+  expect(selected).toEqual([...smoke, ...broader, resolved].sort());
+  expect(output).toContain(`Upstream parents (newest first): \`${upstream}\`.`);
+  expect(output).toContain(`Changed files: 2. Fork-delta files: 1. Selected tests: ${selected.length}.`);
+  expect(readFileSync(join(String(dir), "summary.md"), "utf8")).toContain(
+    `Changed files: 2. Fork-delta files: 1. Selected tests: ${selected.length}.`,
+  );
 });
 
 test("a successful test step without a completed report cannot produce a green summary", () => {

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Select the fork-owned delta plus nightly coverage for upstream-sync PRs, excluding unchanged upstream tests while retaining conflict resolutions and WebKit pin coverage.
+
 - Retain corked HTTP response writes in the socket Writable queue, preserving raw-write ordering, backpressure, and callbacks through uncork and end. Adapts dispatcher-cork cleanup from [oven-sh/bun#35664](https://github.com/oven-sh/bun/pull/35664); thanks robobun.
 
 - Match Node.js `SourceMap.findOrigin()` coordinates and field names, and return the closest preceding mapping from `findEntry()`. Adapts [oven-sh/bun#35123](https://github.com/oven-sh/bun/pull/35123); thanks robobun.
