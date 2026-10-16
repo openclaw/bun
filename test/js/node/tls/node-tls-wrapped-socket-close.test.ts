@@ -7,7 +7,7 @@
  * The wrapped socket only closes, from TLSWrap.close(), after the 'error' of the TLS socket and before its 'close':
  * https://github.com/nodejs/node/blob/v26.3.0/lib/internal/tls/wrap.js#L676-L688
  *
- * Each test logs the events of both sockets in order. The expected logs are what Node.js v26.3.0 prints.
+ * Each test logs the events of both sockets in order. The expected logs are what Node.js v26.3.0 prints, unless noted below.
  *
  * Works with both:
  *   bun bd test test/js/node/tls/node-tls-wrapped-socket-close.test.ts
@@ -513,7 +513,7 @@ test("an earlier raw close listener can reconnect before destroying the old TLS 
   const raw = net.connect(port, "127.0.0.1");
   let socket: tls.TLSSocket | undefined;
   let destroyedBeforeListener: boolean | undefined;
-  let tlsHadError: boolean | undefined;
+  const tlsCloses: boolean[] = [];
   try {
     await Promise.all([once(raw, "connect"), firstAccepted.promise]);
     raw.on("error", error => errors.push(error));
@@ -530,8 +530,8 @@ test("an earlier raw close listener can reconnect before destroying the old TLS 
     socket = new tls.TLSSocket(raw, { rejectUnauthorized: false });
     socket.on("error", error => errors.push(error));
     const tlsClosed = new Promise<void>(resolve => {
-      socket!.once("close", hadError => {
-        tlsHadError = hadError;
+      socket!.on("close", hadError => {
+        tlsCloses.push(hadError);
         resolve();
       });
     });
@@ -539,9 +539,12 @@ test("an earlier raw close listener can reconnect before destroying the old TLS 
     await flushed;
     const reconnected = once(raw, "connect");
     raw.destroy();
-    await Promise.all([reconnected, tlsClosed]);
+    await reconnected;
     assert.strictEqual(destroyedBeforeListener, false);
-    assert.strictEqual(tlsHadError, false);
+    assert.strictEqual(socket.destroyed, true);
+    // Node 26.3 loses the old handle's close callback after reconnect.
+    // Both runtimes must leave the new connection usable.
+    if (typeof Bun !== "undefined") await tlsClosed;
     const received: Buffer[] = [];
     raw.on("data", (chunk: Buffer) => received.push(chunk));
     const secondClosed = once(raw, "close");
@@ -550,6 +553,7 @@ test("an earlier raw close listener can reconnect before destroying the old TLS 
     assert.strictEqual(Buffer.concat(received).toString(), "second connection works");
     assert.strictEqual(connections, 2);
     assert.deepStrictEqual(errors, []);
+    if (typeof Bun !== "undefined") assert.deepStrictEqual(tlsCloses, [false]);
   } finally {
     socket?.destroy();
     raw.destroy();
