@@ -46,6 +46,27 @@ if (mode.startsWith("data-missing-comma-")) {
       }),
     );
   }
+} else if (mode === "builtin-inflight-fetch-error") {
+  const sentinel = new Error("nested fetch sentinel");
+  let nested;
+  let loads = 0;
+  registerHooks({
+    load(url, context, next) {
+      if (url === "node:diagnostics_channel") {
+        if (++loads === 1)
+          nested = import(url).then(
+            () => false,
+            error => error === sentinel,
+          );
+        else throw sentinel;
+      }
+      return next(url, context);
+    },
+  });
+  const outer = await import("node:diagnostics_channel");
+  console.log(
+    JSON.stringify({ sentinel: await nested, same: outer === (await import("node:diagnostics_channel")), loads }),
+  );
 } else if (mode.startsWith("builtin-inflight-override-")) {
   const variant = mode.slice("builtin-inflight-override-".length);
   const outcome = promise =>

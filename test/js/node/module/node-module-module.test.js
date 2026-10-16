@@ -13,6 +13,7 @@ describe.concurrent("registerHooks Node 24 parity", () => {
       '{"name":"TypeError","code":"ERR_INVALID_URL","message":"Invalid URL","input":true,"formats":[null]}',
     ]),
     ["data-missing-comma-source", '{"value":42,"formats":[null]}'],
+    ["builtin-inflight-fetch-error", '{"sentinel":true,"same":true,"loads":2}'],
     // Known JSC divergence: loadModule/moduleLoadTopSettled cannot separate builtin source overrides from in-flight records.
     [
       "builtin-inflight-override-deregister",
