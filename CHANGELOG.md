@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve `node:vm` `DONT_CONTEXTIFY` global receiver identity and private-field branding across scripts and compiled functions. Ports [oven-sh/bun#34623](https://github.com/oven-sh/bun/pull/34623); thanks robobun.
+
 - Use observed compilation and serialization cost per charged byte to retain `node:vm` compilation-cache entries at the existing 256 MiB per-VM budget.
 
 - Omit TLS SNI for absent, null, or empty `tls.connect()` servernames without changing certificate hostname checks; preserve HTTPS and HTTP/2 name selection and report `false` for established sockets without SNI. Adapts [oven-sh/bun#33476](https://github.com/oven-sh/bun/pull/33476) and [oven-sh/bun#39088](https://github.com/oven-sh/bun/pull/39088); thanks @robobun!

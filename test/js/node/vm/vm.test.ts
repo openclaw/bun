@@ -1749,6 +1749,53 @@ describe("the options argument", () => {
       expect(runInNewContext("1 + 1;", {}, options as any)).toBe(2);
     }
   });
+
+  test("vm.runInNewContext() validates the context options before it copies options, like Node", () => {
+    const thrown = (options: object) => {
+      try {
+        runInNewContext("1", {}, options as any);
+      } catch (e) {
+        return { code: (e as any).code, message: (e as Error).message };
+      }
+      return "did not throw";
+    };
+    expect({
+      // An invalid contextName is rejected before a later getter runs.
+      nameBeforeGetter: thrown({
+        contextName: 5,
+        get filename() {
+          throw new Error("getter ran first");
+        },
+      }),
+      microtaskModeType: thrown({ microtaskMode: 123 }),
+      microtaskModeValue: thrown({ microtaskMode: "bogus" }),
+    }).toEqual({
+      nameBeforeGetter: {
+        code: "ERR_INVALID_ARG_TYPE",
+        message: 'The "options.contextName" property must be of type string. Received type number (5)',
+      },
+      microtaskModeType: {
+        code: "ERR_INVALID_ARG_TYPE",
+        message: 'The "options.microtaskMode" property must be of type string. Received type number (123)',
+      },
+      microtaskModeValue: {
+        code: "ERR_INVALID_ARG_VALUE",
+        message: "The property 'options.microtaskMode' must be one of: 'afterEvaluate', undefined. Received 'bogus'",
+      },
+    });
+  });
+
+  test("an undefined codeGeneration member counts as absent, like Node", () => {
+    const undefinedMembers = { strings: undefined, wasm: undefined };
+    expect({
+      runInNewContext: runInNewContext("eval('1')", {}, { contextCodeGeneration: undefinedMembers }),
+      scriptRunInNewContext: new Script("eval('1')").runInNewContext({}, { contextCodeGeneration: undefinedMembers }),
+      createContext: runInContext("eval('1')", createContext({}, { codeGeneration: undefinedMembers })),
+    }).toEqual({ runInNewContext: 1, scriptRunInNewContext: 1, createContext: 1 });
+    expect(() => createContext({}, { codeGeneration: { strings: null } } as any)).toThrow(
+      expect.objectContaining({ code: "ERR_INVALID_ARG_TYPE" }),
+    );
+  });
 });
 
 describe("a run option rejected with a vm context's global", () => {
@@ -1848,8 +1895,8 @@ describe("context options with throwing getters", () => {
   // the process, so run the matrix in a subprocess.
   test.concurrent("the getter's exception propagates to the caller", async () => {
     // Each entry point tests the context-option keys it actually reads:
-    // createContext takes codeGeneration, Script#runInNewContext takes
-    // contextCodeGeneration, and vm.runInNewContext goes through both.
+    // createContext takes codeGeneration; the runInNewContext entry points take
+    // contextCodeGeneration. The helper remaps it before creating the context.
     // A dotted key puts the throwing getter on the nested object.
     const codeGenerationKeys = (key: string) => [key, `${key}.strings`, `${key}.wasm`];
     const contextKeys = (...codeGenerationKeyNames: string[]) => [
@@ -1861,7 +1908,7 @@ describe("context options with throwing getters", () => {
     ];
     const matrix = {
       createContext: contextKeys("codeGeneration"),
-      runInNewContext: contextKeys("codeGeneration", "contextCodeGeneration"),
+      runInNewContext: contextKeys("contextCodeGeneration"),
       scriptRunInNewContext: contextKeys("contextCodeGeneration"),
     };
     const code = `
@@ -1909,6 +1956,88 @@ describe("context options with throwing getters", () => {
 });
 
 describe("DONT_CONTEXTIFY", () => {
+  // Node 24 is the oracle: the returned handle is the realm's global receiver.
+  test.each(["", '"use strict";'])("receiver identity across entry points (%s)", directive => {
+    const ctx = createContext(constants.DONT_CONTEXTIFY);
+    for (const source of [
+      "this",
+      "globalThis",
+      "(0, eval)('this')",
+      "(0, eval)('\"use strict\"; this')",
+      "Function('return this')()",
+    ]) {
+      expect(runInContext(directive + source, ctx)).toBe(ctx);
+      expect(new Script(directive + source).runInContext(ctx)).toBe(ctx);
+    }
+    expect(runInContext(directive + "this === globalThis", ctx)).toBe(true);
+    expect(compileFunction(directive + "return globalThis", [], { parsingContext: ctx })()).toBe(ctx);
+    const fn = compileFunction(directive + "return this", [], { parsingContext: ctx });
+    expect(fn.call(ctx)).toBe(ctx);
+    expect(fn()).toBe(directive ? undefined : ctx);
+    expect(createContext(ctx)).toBe(ctx);
+    expect(new Script(directive + "this").runInNewContext(ctx)).toBe(ctx);
+    expect(runInNewContext(directive + "this", ctx)).toBe(ctx);
+  });
+
+  test("a private field stamped on the context is readable through this and window", () => {
+    class ReturnObject {
+      constructor(object: object) {
+        return object;
+      }
+    }
+    class Brand extends ReturnObject {
+      #value = 42;
+      static read(receiver: Brand) {
+        return receiver.#value;
+      }
+    }
+    const ctx = createContext(constants.DONT_CONTEXTIFY);
+    new Brand(ctx);
+    ctx.window = runInContext("this", ctx);
+    ctx.read = function (this: Brand) {
+      return Brand.read(this);
+    };
+    for (const source of ["read.call(this)", "window.read()", '"use strict"; window.read()']) {
+      expect(runInContext(source, ctx)).toBe(42);
+      expect(new Script(source).runInContext(ctx)).toBe(42);
+    }
+    expect(compileFunction("return window.read()", [], { parsingContext: ctx })()).toBe(42);
+  });
+
+  test("shared Script and compiled functions retain each context's receiver", () => {
+    const script = new Script("[this, globalThis, marker]");
+    const contexts = [
+      createContext(constants.DONT_CONTEXTIFY),
+      createContext(constants.DONT_CONTEXTIFY),
+      createContext({}),
+    ];
+    const globals = contexts.map(ctx => runInContext("this", ctx));
+    for (let iteration = 0; iteration < 3; iteration++) {
+      contexts.forEach((ctx, index) => {
+        ctx.marker = index;
+        const result = script.runInContext(ctx);
+        expect(result[0]).toBe(globals[index]);
+        expect(result[1]).toBe(globals[index]);
+        expect(result[2]).toBe(index);
+        const fn = compileFunction("return [this, globalThis, marker]", [], { parsingContext: ctx });
+        expect(fn()[0]).toBe(globals[index]);
+        expect(fn()[1]).toBe(globals[index]);
+        expect(fn()[2]).toBe(index);
+      });
+    }
+    expect(globals[2]).not.toBe(contexts[2]);
+    expect(globals[0]).not.toBe(globals[1]);
+  });
+
+  test("declarations and new-context code generation use the real global", () => {
+    const ctx = createContext(constants.DONT_CONTEXTIFY);
+    expect(runInContext("var value = 2; function getValue() { return value; } getValue()", ctx)).toBe(2);
+    expect(ctx.value).toBe(2);
+    const restricted = createContext(constants.DONT_CONTEXTIFY, { codeGeneration: { strings: false } });
+    expect(() => runInNewContext("eval('1')", restricted)).toThrow();
+    expect(() => new Script("Function('return 1')()").runInNewContext(restricted)).toThrow();
+  });
+
   test("globalThis prototype chain stays inside the sandbox realm", () => {
     const ctx = createContext(constants.DONT_CONTEXTIFY);
     const sandboxObjectPrototype = runInContext("Object.prototype", ctx);
@@ -2988,6 +3117,37 @@ describe("bounded vm compilation cache", () => {
     const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
     expect({ stdout, stderr, exitCode }).toEqual({ stdout: "ok\n", stderr: "", exitCode: 0 });
   }
+
+  test.concurrent("DONT_CONTEXTIFY receivers stay in their own realm on compilation-cache hits", async () => {
+    await runCacheFixture(`
+      import assert from "node:assert/strict";
+      import { Script, createContext, constants, runInContext, compileFunction } from "node:vm";
+      import { nodeVMCompilationCacheStats as stats } from "bun:internal-for-testing";
+      const contexts = [createContext(constants.DONT_CONTEXTIFY), createContext(constants.DONT_CONTEXTIFY), createContext({})];
+      const globals = contexts.map(context => runInContext("this", context));
+      assert.equal(globals[0], contexts[0]);
+      assert.equal(globals[1], contexts[1]);
+      assert.notEqual(globals[2], contexts[2]);
+      const hitsBefore = stats().hits;
+      for (let repeat = 0; repeat < 4; repeat++) {
+        for (let index = 0; index < contexts.length; index++) {
+          const context = contexts[index];
+          context.marker = index;
+          const result = new Script("[this, globalThis, marker]").runInContext(context);
+          assert.equal(result[0], globals[index]);
+          assert.equal(result[1], globals[index]);
+          assert.equal(result[2], index);
+          const fn = compileFunction("return [this, globalThis, marker]", [], { parsingContext: context });
+          const fromFunction = fn();
+          assert.equal(fromFunction[0], globals[index]);
+          assert.equal(fromFunction[1], globals[index]);
+          assert.equal(fromFunction[2], index);
+        }
+      }
+      assert.ok(stats().hits > hitsBefore);
+      console.log("ok");
+    `);
+  });
 
   test.concurrent.each(["é", "λ🚀"])("shares source buffers on Script compilation-cache hits: %s", async marker => {
     await runCacheFixture(`
