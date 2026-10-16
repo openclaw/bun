@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Bind `FileHandle.close` to its handle like Node.js, preventing spurious finalizer errors and accidental descriptor closes after closing through a Proxy.
+
 - Keep `os.availableParallelism()` independent of changes to the global `navigator` object and its `hardwareConcurrency` property.
 
 - Preserve `node:vm` `DONT_CONTEXTIFY` global receiver identity and private-field branding across scripts and compiled functions. Ports [oven-sh/bun#34623](https://github.com/oven-sh/bun/pull/34623); thanks robobun.

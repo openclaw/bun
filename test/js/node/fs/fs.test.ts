@@ -12,6 +12,7 @@ import {
   isMacOS,
   isPosix,
   isWindows,
+  runtimesWithNode,
   tempDir,
   tempDirWithFiles,
   tmpdirSync,
@@ -373,6 +374,68 @@ it("fs.writev returns object", async done => {
 });
 
 describe("FileHandle", () => {
+  describe.each(runtimesWithNode(24))("close through a forwarding receiver (%s)", (_runtime, executable) => {
+    it.concurrent.each(["direct", "proxy", "get-trap", "nested-proxy", "detached", "foreign-this"])(
+      "%s closes once and disarms its finalizer",
+      async mode => {
+        using dir = tempDir("filehandle-proxy-close", { data: "data" });
+        const fixture = /* js */ `
+          const assert = require("node:assert/strict");
+          const { open } = require("node:fs/promises");
+          const { setImmediate } = require("node:timers/promises");
+          const errors = [];
+          process.on("uncaughtException", error => errors.push(error.code));
+          const collect = () => globalThis.Bun ? Bun.gc(true) : globalThis.gc();
+          (async () => {
+            for (let i = 0; i < 20; i++) {
+              const replacement = await (async () => {
+                const original = await open("data", "r");
+                const mode = ${JSON.stringify(mode)};
+                let handle = original;
+                if (mode === "proxy" || mode === "nested-proxy") handle = new Proxy(handle, {});
+                if (mode === "get-trap" || mode === "nested-proxy") {
+                  handle = new Proxy(handle, { get: (target, key, receiver) => Reflect.get(target, key, receiver) });
+                }
+                const buffer = Buffer.alloc(4);
+                assert.equal((await handle.read(buffer, 0, 4, 0)).bytesRead, 4);
+                assert.equal(buffer.toString(), "data");
+                let closes = 0;
+                original.on("close", () => closes++);
+                const close = handle.close;
+                if (mode === "detached") await close();
+                else if (mode === "foreign-this") await close.call({});
+                else await handle.close();
+                assert.equal(original.fd, -1);
+                await Promise.all([new Proxy(original, {}).close(), original.close()]);
+                assert.equal(closes, 1);
+                // A recycled descriptor must survive GC of the closed handle.
+                return open("data", "r");
+              })();
+              collect();
+              await setImmediate();
+              assert.equal((await replacement.stat()).size, 4);
+              await replacement.close();
+            }
+            for (let i = 0; i < 5; i++) {
+              collect();
+              await setImmediate();
+            }
+            console.log(JSON.stringify({ errors }));
+          })();
+        `;
+        await using proc = Bun.spawn({
+          cmd: [executable, "--expose-gc", "-e", fixture],
+          env: bunEnv,
+          cwd: String(dir),
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+        expect({ stdout, stderr, exitCode }).toEqual({ stdout: '{"errors":[]}\n', stderr: "", exitCode: 0 });
+      },
+    );
+  });
+
   it("FileHandle#read returns object", async () => {
     await using fd = await fs.promises.open(__filename);
     const buf = Buffer.alloc(10);
