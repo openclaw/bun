@@ -11,6 +11,8 @@ async function responseCorkOracle(mode: string) {
   if (mode.startsWith("standalone")) {
     const chunks: Buffer[] = [];
     const finished = Promise.withResolvers();
+    const written = Promise.withResolvers();
+    let callbacks = 0;
     const server = http.createServer();
     server.on("upgrade", (_req, socket) => {
       const req = new http.IncomingMessage(socket);
@@ -20,14 +22,17 @@ async function responseCorkOracle(mode: string) {
       res.assignSocket(socket);
       res.strictContentLength = mode === "standalone-strict";
       res.setHeader("content-length", 2);
-      let callbacks = 0;
+      const onWrite = error => {
+        assert.ifError(error);
+        if (++callbacks === 2) written.resolve();
+      };
       res.on("finish", () => {
-        finished.resolve(callbacks);
+        finished.resolve();
         socket.end();
       });
       res.cork();
-      res.write("A", () => callbacks++);
-      res.write("B", () => callbacks++);
+      res.write("A", onWrite);
+      res.write("B", onWrite);
       res.end();
     });
     await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
@@ -37,7 +42,8 @@ async function responseCorkOracle(mode: string) {
       await once(client, "connect");
       client.write("GET / HTTP/1.1\r\nHost: localhost\r\nConnection: Upgrade\r\nUpgrade: test\r\n\r\n");
       await once(client, "close");
-      assert.equal(await finished.promise, 2);
+      await Promise.all([finished.promise, written.promise]);
+      assert.equal(callbacks, 2);
       assert.match(Buffer.concat(chunks).toString(), /^HTTP\/1\.1 200 OK\r\n/);
       assert.ok(Buffer.concat(chunks).toString().endsWith("\r\n\r\nAB"));
     } finally {
