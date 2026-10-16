@@ -970,6 +970,7 @@ impl<'a> Converter<'a, '_> {
             ExprKind::Dot { obj, name, chain } => self.dot(obj, name, chain, loc)?,
             ExprKind::Index { obj, index, chain } => JsExpr::init(
                 E::Index {
+                    open_bracket_loc: Loc::EMPTY,
                     target: self.expr(obj)?,
                     index: self.expr(index)?,
                     optional_chain: Self::chain(chain),
@@ -1114,6 +1115,7 @@ impl<'a> Converter<'a, '_> {
             let ref_ = self.ref_of_name(Named::Private, name.name());
             return Ok(JsExpr::init(
                 E::Index {
+                    open_bracket_loc: Loc::EMPTY,
                     target,
                     index: JsExpr::init(E::PrivateIdentifier { ref_ }, name_loc),
                     optional_chain,
@@ -1156,6 +1158,7 @@ impl<'a> Converter<'a, '_> {
             });
         }
         Ok(E::Template {
+            head_loc: Loc::EMPTY,
             tag,
             parts: leak(parts),
             head: contents(0),
