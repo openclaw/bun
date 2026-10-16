@@ -110,6 +110,27 @@ async function responseCorkOracle(mode: string) {
     await immediate();
   };
   async function handle(res) {
+    if (mode === "informational-pressure") {
+      res.setHeader("content-length", 2);
+      const written = Promise.withResolvers();
+      let callbacks = 0;
+      res.cork();
+      res.writeEarlyHints({ link: `</${"a".repeat(8 * 1024 * 1024)}>; rel=preload` }, error => {
+        if (error) written.reject(error);
+        else {
+          callbacks++;
+          written.resolve();
+        }
+      });
+      res.uncork();
+      res.end("AB");
+      await barrier();
+      assert.equal(callbacks, 0);
+      client.resume();
+      await written.promise;
+      assert.equal(callbacks, 1);
+      return;
+    }
     if (mode.startsWith("strict-")) {
       res.strictContentLength = true;
       const contentLength = ["4"];
@@ -420,6 +441,7 @@ async function responseCorkOracle(mode: string) {
     server.listen(0, "127.0.0.1");
     await once(server, "listening");
     client = net.connect(server.address().port, "127.0.0.1");
+    if (mode === "informational-pressure") client.pause();
     const closed = new Promise((resolve, reject) => {
       client.on("data", chunk => chunks.push(chunk));
       client.on("error", error => {
@@ -511,6 +533,7 @@ describe.each(corkRuntimes)("response cork Node oracle (%s)", (_runtime, executa
     "native-queued",
     "standalone",
     "standalone-strict",
+    "informational-pressure",
   ]) {
     test.concurrent(mode, async () => {
       await using child = Bun.spawn({

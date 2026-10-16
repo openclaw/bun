@@ -1709,8 +1709,10 @@ function executeResponseSocketWrite(operation, callback) {
     if (kind === "raw") handle.writeInformational(chunk, encoding);
     else if (kind === "continue") handle.writeContinue();
     else ServerResponsePrototypeFlushHeaders.$call(response, kResponseSocketWrite);
-    if (handle.bufferedAmount > 0) handle.onwritable = callback;
-    else callback();
+    if (handle.bufferedAmount > 0) {
+      response[kPendingCallbacks].push(callback);
+      handle.onwritable = allowWritesToContinue.bind(response);
+    } else callback();
   }
 }
 
