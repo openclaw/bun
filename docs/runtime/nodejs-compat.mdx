@@ -59,6 +59,8 @@ Relative and URL-rooted absolute ESM specifiers decode URL escapes, including im
 
 The listener passed to `fs.watch()` is a `change` listener on the returned `FSWatcher`, including for listener inspection, removal, and manually emitted events.
 
+`statSync()`, `stat()`, and `promises.stat()` return `undefined` for `ENOENT` or `ENOTDIR` with `throwIfNoEntry: false`. `lstat` preserves `ENOTDIR`, matching Node.js.
+
 On macOS, `fs.watch(file)` registers a kqueue watch before returning, including unlink and writes through an open descriptor. Pending file events coalesce until JavaScript delivery, with libuv's event precedence. Directory watches use FSEvents. A new watch on a replaced file observes the new inode.
 
 Recursive `fs.promises.readdir` with `withFileTypes: true` lists directory symlinks without descending into their targets. Callback and synchronous Dirent overloads, and all recursive string overloads, follow directory symlinks on Windows and POSIX.
