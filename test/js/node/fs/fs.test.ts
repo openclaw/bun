@@ -12,6 +12,7 @@ import {
   isMacOS,
   isPosix,
   isWindows,
+  runtimesWithNode,
   tempDir,
   tempDirWithFiles,
   tmpdirSync,
@@ -373,6 +374,68 @@ it("fs.writev returns object", async done => {
 });
 
 describe("FileHandle", () => {
+  describe.each(runtimesWithNode(24))("close through a forwarding receiver (%s)", (_runtime, executable) => {
+    it.concurrent.each(["direct", "proxy", "get-trap", "nested-proxy", "detached", "foreign-this"])(
+      "%s closes once and disarms its finalizer",
+      async mode => {
+        using dir = tempDir("filehandle-proxy-close", { data: "data" });
+        const fixture = /* js */ `
+          const assert = require("node:assert/strict");
+          const { open } = require("node:fs/promises");
+          const { setImmediate } = require("node:timers/promises");
+          const errors = [];
+          process.on("uncaughtException", error => errors.push(error.code));
+          const collect = () => globalThis.Bun ? Bun.gc(true) : globalThis.gc();
+          (async () => {
+            for (let i = 0; i < 20; i++) {
+              const replacement = await (async () => {
+                const original = await open("data", "r");
+                const mode = ${JSON.stringify(mode)};
+                let handle = original;
+                if (mode === "proxy" || mode === "nested-proxy") handle = new Proxy(handle, {});
+                if (mode === "get-trap" || mode === "nested-proxy") {
+                  handle = new Proxy(handle, { get: (target, key, receiver) => Reflect.get(target, key, receiver) });
+                }
+                const buffer = Buffer.alloc(4);
+                assert.equal((await handle.read(buffer, 0, 4, 0)).bytesRead, 4);
+                assert.equal(buffer.toString(), "data");
+                let closes = 0;
+                original.on("close", () => closes++);
+                const close = handle.close;
+                if (mode === "detached") await close();
+                else if (mode === "foreign-this") await close.call({});
+                else await handle.close();
+                assert.equal(original.fd, -1);
+                await Promise.all([new Proxy(original, {}).close(), original.close()]);
+                assert.equal(closes, 1);
+                // A recycled descriptor must survive GC of the closed handle.
+                return open("data", "r");
+              })();
+              collect();
+              await setImmediate();
+              assert.equal((await replacement.stat()).size, 4);
+              await replacement.close();
+            }
+            for (let i = 0; i < 5; i++) {
+              collect();
+              await setImmediate();
+            }
+            console.log(JSON.stringify({ errors }));
+          })();
+        `;
+        await using proc = Bun.spawn({
+          cmd: [executable, "--expose-gc", "-e", fixture],
+          env: bunEnv,
+          cwd: String(dir),
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+        expect({ stdout, stderr, exitCode }).toEqual({ stdout: '{"errors":[]}\n', stderr: "", exitCode: 0 });
+      },
+    );
+  });
+
   it("FileHandle#read returns object", async () => {
     await using fd = await fs.promises.open(__filename);
     const buf = Buffer.alloc(10);
@@ -1665,6 +1728,81 @@ it("promises.readdir on a large folder withFileTypes", async () => {
     }
   }
   rmSync(huge, { force: true, recursive: true });
+});
+
+// A path that goes through a regular file fails with ENOTDIR on POSIX (Windows reports ENOENT for it,
+// which the ENOENT tests below cover). Node's stat() treats ENOTDIR like ENOENT for throwIfNoEntry: false;
+// its lstat() does not.
+describe.skipIf(isWindows)("throwIfNoEntry: false with ENOTDIR", () => {
+  it("matches the Node stat and lstat oracle", async () => {
+    using dir = tempDir("stat-noentry-oracle", {});
+    await using proc = Bun.spawn({
+      cmd: [bunExe(), join(import.meta.dir, "fixtures", "stat-noentry-oracle.mjs"), String(dir)],
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect({ stdout, stderr, exitCode }).toEqual({ stdout: "stat oracle passed\n", stderr: "", exitCode: 0 });
+  });
+
+  const enotdir = expect.objectContaining({ code: "ENOTDIR" });
+  const callback = (fn: (...args: any[]) => void, ...args: unknown[]) => {
+    const { promise, resolve } = Promise.withResolvers<[unknown, unknown]>();
+    fn(...args, (err: unknown, stats: unknown) => resolve([err, stats]));
+    return promise;
+  };
+
+  it("stat reports a file in the middle of the path as no entry", async () => {
+    using dir = tempDir("fs-stat-enotdir", { "file.txt": "not a directory" });
+    const under = join(String(dir), "file.txt", "child");
+    const options = { throwIfNoEntry: false };
+
+    expect(statSync(under, options)).toBeUndefined();
+    expect(statSync(under, { ...options, bigint: true })).toBeUndefined();
+    expect(await promises.stat(under, options)).toBeUndefined();
+    expect(await promises.stat(under, { ...options, bigint: true })).toBeUndefined();
+    expect(await callback(fs.stat, under, options)).toEqual([null, undefined]);
+
+    expect(() => statSync(under)).toThrow(expect.objectContaining({ code: "ENOTDIR", syscall: "stat", path: under }));
+    expect(() => statSync(under, { throwIfNoEntry: true })).toThrow(enotdir);
+    await expect(promises.stat(under)).rejects.toMatchObject({ code: "ENOTDIR", syscall: "stat", path: under });
+    expect(await callback(fs.stat, under)).toEqual([enotdir, undefined]);
+  });
+
+  it("stat reports a file with a trailing slash as no entry", async () => {
+    using dir = tempDir("fs-stat-enotdir", { "file.txt": "not a directory" });
+    const trailingSlash = join(String(dir), "file.txt") + "/";
+
+    expect(statSync(trailingSlash, { throwIfNoEntry: false })).toBeUndefined();
+    expect(await promises.stat(trailingSlash, { throwIfNoEntry: false })).toBeUndefined();
+    expect(() => statSync(trailingSlash)).toThrow(enotdir);
+  });
+
+  it("lstat still throws ENOTDIR", async () => {
+    using dir = tempDir("fs-lstat-enotdir", { "file.txt": "not a directory" });
+    const under = join(String(dir), "file.txt", "child");
+    const trailingSlash = join(String(dir), "file.txt") + "/";
+    const options = { throwIfNoEntry: false };
+
+    expect(() => lstatSync(under, options)).toThrow(
+      expect.objectContaining({ code: "ENOTDIR", syscall: "lstat", path: under }),
+    );
+    expect(() => lstatSync(trailingSlash, options)).toThrow(enotdir);
+    await expect(promises.lstat(under, options)).rejects.toMatchObject({ code: "ENOTDIR", syscall: "lstat" });
+    expect(await callback(fs.lstat, under, options)).toEqual([enotdir, undefined]);
+  });
+
+  it("stat still throws errors other than ENOENT and ENOTDIR", async () => {
+    using dir = tempDir("fs-stat-eloop", {});
+    const loop = join(String(dir), "loop");
+    symlinkSync("loop", loop);
+    const options = { throwIfNoEntry: false };
+
+    expect(() => statSync(loop, options)).toThrow(expect.objectContaining({ code: "ELOOP" }));
+    await expect(promises.stat(loop, options)).rejects.toMatchObject({ code: "ELOOP" });
+    expect(await callback(fs.stat, loop, options)).toEqual([expect.objectContaining({ code: "ELOOP" }), undefined]);
+  });
 });
 
 it("statSync throwIfNoEntry", () => {
