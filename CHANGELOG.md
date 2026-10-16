@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Register the listener passed to `fs.watch()` on the returned watcher's `change` event, preserving listener order and removal. Ports [oven-sh/bun#43765](https://github.com/oven-sh/bun/pull/43765); thanks robobun.
+
 - Preserve `node:vm` `DONT_CONTEXTIFY` global receiver identity and private-field branding across scripts and compiled functions. Ports [oven-sh/bun#34623](https://github.com/oven-sh/bun/pull/34623); thanks robobun.
 
 - Use observed compilation and serialization cost per charged byte to retain `node:vm` compilation-cache entries at the existing 256 MiB per-VM budget.
