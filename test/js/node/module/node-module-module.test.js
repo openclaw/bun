@@ -225,14 +225,18 @@ describe.concurrent("registerHooks Node 24 parity", () => {
   test.todo("static import attributes reach resolve and load hooks");
 });
 
-test("registerHooks builtin overrides belong to the requiring ModuleGraph", async () => {
-  using dir = tempDir("hooks-builtin-graph", {
-    "entry.mjs": 'export const value = require("node:zlib"); export const again = () => require("node:zlib");',
-    "main.mjs": `
+test.each(["commonjs", "module"])(
+  "registerHooks %s builtin overrides belong to the requiring ModuleGraph",
+  async format => {
+    const read = format === "module" ? 'require("node:zlib").default' : 'require("node:zlib")';
+    const source = format === "module" ? "export default w73BuiltinTag;" : "module.exports = w73BuiltinTag;";
+    using dir = tempDir("hooks-builtin-graph", {
+      "entry.mjs": `export const value = ${read}; export const again = () => ${read};`,
+      "main.mjs": `
       import { registerHooks } from "node:module";
       const hook = registerHooks({ load(url, context, next) {
         return url === "node:zlib"
-          ? { format: "commonjs", source: "module.exports = w73BuiltinTag;", shortCircuit: true }
+          ? { format: ${JSON.stringify(format)}, source: ${JSON.stringify(source)}, shortCircuit: true }
           : next(url, context);
       }});
       const first = new Bun.ModuleGraph({ globals: { w73BuiltinTag: 42 } });
@@ -246,17 +250,18 @@ test("registerHooks builtin overrides belong to the requiring ModuleGraph", asyn
         first.dispose(); second.dispose(); hook.deregister();
       }
     `,
-  });
-  await using proc = Bun.spawn({
-    cmd: [bunExe(), path.join(String(dir), "main.mjs")],
-    env: bunEnv,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
-  expect({ stdout: stdout.trim(), stderr }).toEqual({ stdout: "[42,43,42,43]", stderr: "" });
-  expect(exitCode).toBe(0);
-});
+    });
+    await using proc = Bun.spawn({
+      cmd: [bunExe(), path.join(String(dir), "main.mjs")],
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect({ stdout: stdout.trim(), stderr }).toEqual({ stdout: "[42,43,42,43]", stderr: "" });
+    expect(exitCode).toBe(0);
+  },
+);
 
 describe.concurrent("node-module-module", () => {
   test("builtinModules exists", () => {

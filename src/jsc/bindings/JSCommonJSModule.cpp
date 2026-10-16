@@ -1600,7 +1600,6 @@ JSC_DEFINE_HOST_FUNCTION(jsFunctionRequireNativeModule, (JSGlobalObject * lexica
         if (res.result.value.isCommonJSModule) {
             auto* module = JSCommonJSModule::create(globalObject, jsString(vm, specifier), constructEmptyObject(globalObject), false, thisObject);
             RETURN_IF_EXCEPTION(throwScope, {});
-            module->setModuleGraph(vm, thisObject->moduleGraph());
             // Builtin overrides persist like Node's module cache, without appearing in require.cache.
             overrides->set(globalObject, specifierValue, module);
             RETURN_IF_EXCEPTION(throwScope, {});
@@ -1623,7 +1622,6 @@ JSC_DEFINE_HOST_FUNCTION(jsFunctionRequireNativeModule, (JSGlobalObject * lexica
         RETURN_IF_EXCEPTION(throwScope, {});
         auto* module = JSCommonJSModule::create(globalObject, jsString(vm, specifier), constructEmptyObject(globalObject), false, thisObject);
         RETURN_IF_EXCEPTION(throwScope, {});
-        module->setModuleGraph(vm, graph);
         auto* requireESM = globalObject->requireESMFromHijackedExtension();
         MarkedArgumentBuffer args;
         args.append(specifierValue);
