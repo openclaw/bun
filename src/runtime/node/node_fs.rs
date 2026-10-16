@@ -980,7 +980,7 @@ mod _async_tasks {
             // SAFETY: caller guarantees `this` is the live Box-leaked allocation;
             // reclaim ownership (paired with the Box::leak in create()).
             let mut task = unsafe { bun_core::heap::take(this) };
-            if task.req.result == uv::UV_ECANCELED as isize {
+            if task.req.result.int() == i64::from(uv::UV_ECANCELED) {
                 if let Some(fd) = task.args.closed_fd() {
                     VirtualMachine::get().as_mut().track_managed_fd(fd);
                 }
