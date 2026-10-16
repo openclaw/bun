@@ -1171,9 +1171,12 @@ mod _async_tasks {
     impl FsReturn for FD {
         #[inline]
         fn fs_to_js(self, global: &JSGlobalObject) -> JsResult<JSValue> {
-            // Only `ret::Open` is `FD`: every fs.open/openSync flavor returns its fd here.
-            global.bun_vm().as_mut().track_unmanaged_fd(self);
-            Ok(crate::node::types::FdJsc::to_js(self, global))
+            let value = crate::node::types::FdJsc::to_js(self, global);
+            // Windows converts native handles to CRT fds here; close parses that JS-visible fd.
+            if let Some(fd) = crate::node::types::FdJsc::from_js(value) {
+                global.bun_vm().as_mut().track_unmanaged_fd(fd);
+            }
+            Ok(value)
         }
         #[inline]
         fn discard(self) {
