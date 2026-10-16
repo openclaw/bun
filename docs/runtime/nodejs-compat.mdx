@@ -67,6 +67,8 @@ Recursive `fs.promises.readdir` with `withFileTypes: true` lists directory symli
 
 The `read`, `readv`, `write`, and `writev` callbacks receive the error, zero bytes, and the original buffer or buffers when an I/O operation fails.
 
+`FileHandle.close` stays bound to its handle when called through a Proxy or detached from the object. Closing it disarms garbage-collection cleanup for that handle.
+
 `readSync`, callback `read`, `FileHandle.read`, `writeSync`, and callback `write` preserve Node's overload-specific defaults for explicit `undefined` and `null`. Synchronous and callback reads coerce positional lengths to signed 32-bit integers; `FileHandle.read` defaults nullish lengths to the remaining buffer. Read positions are validated even for zero-length reads.
 
 🟢 Fully implemented. 98% of Node.js's test suite passes. `Stats` objects lack the `Temporal.Instant` getters (`atimeInstant` and friends).
@@ -152,6 +154,8 @@ With the pinned OpenClaw WebKit, module resolution, loading, and evaluation pres
 🟡 `createHook()` emits `init` for `TickObject`, `WORKER`, `Timeout`, and `Immediate`, and `destroy` for workers and timers. The `before`, `after`, `promiseResolve`, and other resource events are not implemented. `executionAsyncId()` and `triggerAsyncId()` return `0`. Node.js [strongly discourages](https://nodejs.org/docs/latest/api/async_hooks.html#async-hooks) these APIs in favor of `AsyncLocalStorage`.
 
 ### [`node:child_process`](https://nodejs.org/api/child_process.html)
+
+IPC send callbacks settle when the peer disconnects. A send rejected by the initial native write reports its write error; sending after the disconnect event reports `ERR_IPC_CHANNEL_CLOSED`. Queued writes complete on channel close as in Node.js.
 
 Destroying child stdin cancels a pending write before the child exits. The write callback reports `ECANCELED`, while the stream preserves the error passed to `destroy(error)`.
 If no write is pending, destruction keeps the graceful close path so buffered short writes can flush.
@@ -342,6 +346,8 @@ Valid `vm.Script` cached data is accepted when JSC runs without a JIT. Validatio
 🟡 Partially implemented. `WASI` supports `args`, `env`, `preopens`, `wasiImport` and `start()`, and `bun ./program.wasm` runs a WASI command directly. Missing `getImportObject()` (use `wasiImport`), `initialize()` and the `sock_accept` import. Bun ignores the `version`, `returnOnExit`, `stdin`, `stdout` and `stderr` options, so `proc_exit` exits the Bun process.
 
 ### [`node:worker_threads`](https://nodejs.org/api/worker_threads.html)
+
+Worker termination and natural exit close FileHandles opened by the Worker. Raw descriptors from `fs.open()` and `fs.openSync()` close by default; `trackUnmanagedFds: false` preserves them. Parent-owned descriptors remain open. FileHandle transfer through `postMessage()` remains unsupported.
 
 Worker shutdown releases the thread's native event-name cache after destroying its VM.
 

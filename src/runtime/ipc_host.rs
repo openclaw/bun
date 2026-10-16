@@ -116,7 +116,7 @@ pub(crate) fn do_send(
     let connected = ipc.as_ref().is_some_and(|i| i.is_connected());
     if !connected {
         let msg = match from {
-            FromEnum::Process => "process.send() can only be used if the IPC channel is open.",
+            FromEnum::Process => "Channel closed",
             FromEnum::Subprocess => "Subprocess.send() can only be used if an IPC channel is open.",
             FromEnum::SubprocessExited => {
                 "Subprocess.send() cannot be used after the process has exited."
@@ -279,11 +279,23 @@ pub(crate) fn do_send(
     let status =
         ipc_data.serialize_and_send(global_object, message, is_internal, callback, zig_handle);
 
-    if status != SerializeAndSendResult::Failure {
+    if let SerializeAndSendResult::WriteFailure(error) = &status {
+        close_detached(global_object, pause_target)?;
+        let code = error
+            .get_error_code_tag_name()
+            .map_or("UNKNOWN", |(code, _)| code);
+        let mut system_error: bun_jsc::SystemError = error.to_system_error().into();
+        system_error.message = bun_core::String::clone_utf8(format!("write {code}").as_bytes());
+        let error = system_error.to_error_instance(global_object);
+        do_send_err(global_object, callback, error, from)?;
+        return Ok(JSValue::TRUE);
+    }
+
+    if !matches!(status, SerializeAndSendResult::Failure) {
         call_handle_method(global_object, pause_target, "pause")?;
     }
 
-    if status == SerializeAndSendResult::Failure {
+    if matches!(status, SerializeAndSendResult::Failure) {
         close_detached(global_object, pause_target)?;
         // The serializer rejected the message (cyclic JSON, uncloneable value): that is the error.
         if global_object.has_exception() {
@@ -299,7 +311,7 @@ pub(crate) fn do_send(
     }
 
     // in the success or backoff case, serializeAndSend will handle calling the callback
-    Ok(if status == SerializeAndSendResult::Success {
+    Ok(if matches!(status, SerializeAndSendResult::Success) {
         JSValue::TRUE
     } else {
         JSValue::FALSE

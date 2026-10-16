@@ -166,8 +166,8 @@ pub(crate) enum IsInternal {
     External,
 }
 
-#[derive(Copy, Clone, Eq, PartialEq)]
 pub(crate) enum SerializeAndSendResult {
+    WriteFailure(bun_sys::Error),
     Success,
     Failure,
     Backoff,
@@ -1183,13 +1183,21 @@ impl SendQueue {
                 log!("SendQueue#_onAfterIPCClosed");
                 if !sq.close_event_sent.replace(true) {
                     let global = sq.get_global_this();
+                    let mut behind_handle = false;
                     if let Some(item) = sq.waiting_for_ack.with_mut(|w| w.take()) {
+                        behind_handle = true;
                         item.complete(&global);
                     }
-                    // on_write_complete already dequeued everything fully written; the rest was never delivered.
+                    // As node: a submitted write calls back with null even if the close cancels it, a send parked behind an unacked handle never does. https://github.com/nodejs/node/blob/v26.3.0/lib/internal/child_process.js#L818-L874
                     for item in sq.queue.with_mut(std::mem::take) {
-                        item.abort_unsent(&global);
+                        if behind_handle {
+                            item.abort_unsent(&global);
+                        } else {
+                            behind_handle = item.handle.is_some();
+                            item.complete(&global);
+                        }
                     }
+                    // The callbacks are queued first on purpose: ChildProcess queues 'disconnect' and 'close' from this call, and they must not run after 'close'.
                     if let Some(owner) = sq.owner.get() {
                         owner.handle_ipc_close();
                     }
@@ -1457,6 +1465,14 @@ impl SendQueue {
     }
 
     fn continue_send(&self, global: &JSGlobalObject, reason: ContinueSendReason) {
+        let _ = self.try_continue_send(global, reason);
+    }
+
+    fn try_continue_send(
+        &self,
+        global: &JSGlobalObject,
+        reason: ContinueSendReason,
+    ) -> Option<bun_sys::Error> {
         log!(
             "IPC continueSend: {}",
             match reason {
@@ -1468,7 +1484,7 @@ impl SendQueue {
 
         if self.write_in_progress.get() {
             self.update_ref(global);
-            return; // write in progress
+            return None; // write in progress
         }
 
         enum Next {
@@ -1511,16 +1527,18 @@ impl SendQueue {
             Next::EmptyItem(itm) => {
                 itm.complete(global); // call the callback & deinit
                 log!("IPC call continueSend() from empty item");
-                self.continue_send(global, reason);
+                return self.try_continue_send(global, reason);
             }
             Next::Send(fd) => {
                 debug_assert!(!self.write_in_progress.get());
                 self.write_in_progress.set(true);
-                self.write(fd);
+                let error = self.write(fd);
                 // the write is queued. this._onWriteComplete() will be called when the write completes.
                 self.update_ref(global);
+                return error;
             }
         }
+        None
     }
 
     fn on_write_complete(&self, n: i32) {
@@ -1626,6 +1644,7 @@ impl SendQueue {
     ) -> SerializeAndSendResult {
         log!("SendQueue#serializeAndSend");
         let indicate_backoff = self.waiting_for_ack.get().is_some() && !self.queue.get().is_empty();
+        let immediate = self.queue.get().is_empty() && self.waiting_for_ack.get().is_none();
         let mode = self.mode;
         let mut payload = StreamBuffer::default();
         let payload_length = match serialize(mode, &mut payload, global, value, is_internal) {
@@ -1640,7 +1659,18 @@ impl SendQueue {
             return SerializeAndSendResult::Failure;
         }
         log!("IPC call continueSend() from serializeAndSend");
-        self.continue_send(global, ContinueSendReason::NewMessageAppended);
+        if let Some(error) = self.try_continue_send(global, ContinueSendReason::NewMessageAppended)
+        {
+            if immediate {
+                // The native write rejected this send synchronously; do_send reports its error.
+                self.queue.with_mut(|queue| {
+                    if let Some(item) = queue.first_mut() {
+                        item.callbacks = CallbackList::None;
+                    }
+                });
+                return SerializeAndSendResult::WriteFailure(error);
+            }
+        }
 
         if indicate_backoff {
             return SerializeAndSendResult::Backoff;
@@ -1691,10 +1721,10 @@ impl SendQueue {
     /// call _onWriteComplete later.
     ///
     /// The outbound bytes are read from `queue[0]` *inside* this method.
-    fn write(&self, fd: Option<Fd>) {
+    fn write(&self, fd: Option<Fd>) -> Option<bun_sys::Error> {
         let Some(socket) = self.get_socket() else {
             self.on_write_complete(-1);
-            return;
+            return Some(bun_sys::Error::new(bun_sys::E::EPIPE, bun_sys::Tag::write));
         };
         #[cfg(windows)]
         {
@@ -1740,7 +1770,7 @@ impl SendQueue {
                     |req: *mut WindowsWrite, rc| SendQueue::windows_on_write_complete(req, rc),
                 )
             };
-            if result.to_error(bun_sys::Tag::write).is_some() {
+            if let Some(error) = result.to_error(bun_sys::Tag::write) {
                 WindowsWrite::destroy(write_req);
                 self.windows.with_mut(|w| w.windows_write = None);
                 // SAFETY: pipe is live (socket == .open); pairs with the
@@ -1750,24 +1780,29 @@ impl SendQueue {
                 if self.windows.get().try_close_after_write {
                     self.close_socket(CloseReason::Normal, CloseFrom::User);
                 }
-                return;
+                return Some(error);
             }
             // write request is queued. it will call _onWriteComplete when it completes.
         }
         #[cfg(not(windows))]
         {
-            let n: i32 = self.queue.with_mut(|queue| {
+            let (n, error) = self.queue.with_mut(|queue| {
                 let first = &queue[0];
                 let data = &first.data.list[first.data.cursor..];
                 log!("SendQueue#write len {}", data.len());
                 if let Some(fd_unwrapped) = fd {
-                    socket.write_fd(data, fd_unwrapped.native())
+                    // Node submits handle writes asynchronously; their close completion reports null.
+                    (socket.write_fd(data, fd_unwrapped.native()), 0)
                 } else {
-                    socket.write(data)
+                    socket.write_check_error(data)
                 }
             });
-            self.on_write_complete(n);
+            self.on_write_complete(if error != 0 { -1 } else { n });
+            if error != 0 {
+                return Some(bun_sys::Error::from_code_int(error, bun_sys::Tag::write));
+            }
         }
+        None
     }
 
     #[cfg(windows)]

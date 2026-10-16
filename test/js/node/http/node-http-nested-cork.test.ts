@@ -8,6 +8,46 @@ async function responseCorkOracle(mode: string) {
   const { once } = require("node:events");
   const { setImmediate: immediate } = require("node:timers/promises");
   const { pipeline } = require("node:stream/promises");
+  if (mode.startsWith("standalone")) {
+    const chunks: Buffer[] = [];
+    const finished = Promise.withResolvers();
+    const server = http.createServer();
+    server.on("upgrade", (_req, socket) => {
+      const req = new http.IncomingMessage(socket);
+      req.httpVersionMajor = 1;
+      req.httpVersionMinor = 1;
+      const res = new http.ServerResponse(req);
+      res.assignSocket(socket);
+      res.strictContentLength = mode === "standalone-strict";
+      res.setHeader("content-length", 2);
+      let callbacks = 0;
+      res.on("finish", () => {
+        finished.resolve(callbacks);
+        socket.end();
+      });
+      res.cork();
+      res.write("A", () => callbacks++);
+      res.write("B", () => callbacks++);
+      res.end();
+    });
+    await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+    const client = net.connect(server.address().port, "127.0.0.1");
+    client.on("data", chunk => chunks.push(chunk));
+    try {
+      await once(client, "connect");
+      client.write("GET / HTTP/1.1\r\nHost: localhost\r\nConnection: Upgrade\r\nUpgrade: test\r\n\r\n");
+      await once(client, "close");
+      assert.equal(await finished.promise, 2);
+      assert.match(Buffer.concat(chunks).toString(), /^HTTP\/1\.1 200 OK\r\n/);
+      assert.ok(Buffer.concat(chunks).toString().endsWith("\r\n\r\nAB"));
+    } finally {
+      client.destroy();
+      server.closeAllConnections();
+      await new Promise(resolve => server.close(resolve));
+    }
+    console.log("ok");
+    return;
+  }
   const chunks: Buffer[] = [];
   const discardsResponse =
     mode === "destroy" || mode === "destroy-no-error" || mode === "strict-end" || mode === "strict-first-write";
@@ -463,6 +503,8 @@ describe.each(corkRuntimes)("response cork Node oracle (%s)", (_runtime, executa
     "reassigned-no-body",
     "native-raw-drain",
     "native-queued",
+    "standalone",
+    "standalone-strict",
   ]) {
     test.concurrent(mode, async () => {
       await using child = Bun.spawn({

@@ -106,6 +106,9 @@ pub struct WebWorker {
     /// Created by `node:worker_threads`' `Worker` (as opposed to the Web `Worker`
     /// constructor): loads `node:worker_threads` before preloads and the entry point.
     is_node_worker: bool,
+    /// node:worker_threads `trackUnmanagedFds`.
+    track_unmanaged_fds: bool,
+
     /// Borrowed from the proxy's `WorkerOptions` (alive as long as the proxy).
     argv_ptr: *const WTFStringImpl,
     argv_len: usize,
@@ -362,6 +365,7 @@ impl WebWorker {
         default_unref: bool,
         eval_mode: bool,
         is_node_worker: bool,
+        track_unmanaged_fds: bool,
         argv_ptr: *const WTFStringImpl,
         argv_len: usize,
         inherit_exec_argv: bool,
@@ -591,6 +595,8 @@ impl WebWorker {
             mini,
             eval_mode,
             is_node_worker,
+            track_unmanaged_fds: track_unmanaged_fds || parent_ref.track_unmanaged_fds,
+
             argv_ptr,
             argv_len,
             exec_argv_ptr,
@@ -985,6 +991,8 @@ impl WebWorker {
                 vm_ref.cpu_profiler_config = Some(config);
                 crate::bun_cpu_profiler::start_cpu_profiler(vm_ref.jsc_vm_mut());
             }
+            vm_ref.exit_fds = Some(Vec::new());
+            vm_ref.track_unmanaged_fds = self.track_unmanaged_fds;
         }
 
         // Publish now (rather than at the end of startVM) so that:

@@ -638,8 +638,9 @@ mod _async_tasks {
     pub(crate) type UVFSRequest<R, A, const F: NodeFSFunctionEnum> = AsyncFSTask<R, A, F>;
 
     #[cfg(windows)]
-    pub(crate) struct UVFSRequest<R, A, const F: NodeFSFunctionEnum> {
+    pub(crate) struct UVFSRequest<R: FsReturn, A: FsArgument, const F: NodeFSFunctionEnum> {
         pub(crate) completion: FsCompletion,
+
         pub args: ThreadIsolated<A>,
         pub(crate) global_object: bun_ptr::BackRef<JSGlobalObject>,
         pub(crate) req: uv::fs_t,
@@ -979,6 +980,11 @@ mod _async_tasks {
             // SAFETY: caller guarantees `this` is the live Box-leaked allocation;
             // reclaim ownership (paired with the Box::leak in create()).
             let mut task = unsafe { bun_core::heap::take(this) };
+            if task.req.result.int() == i64::from(uv::UV_ECANCELED) {
+                if let Some(fd) = task.args.closed_fd() {
+                    VirtualMachine::get().as_mut().track_managed_fd(fd);
+                }
+            }
             // A result nobody took (the request's context stopped: released unrun).
             if let Ok(result) = core::mem::replace(&mut task.result, Err(sys::Error::default())) {
                 result.discard();
@@ -1013,6 +1019,22 @@ mod _async_tasks {
         }
         fn signal(&self) -> Option<&AbortSignal> {
             None
+        }
+        /// The fd this call closes; re-tracked if the job is handed back unrun.
+        fn closed_fd(&self) -> Option<FD> {
+            None
+        }
+    }
+
+    // SAFETY: `Close` is a bare fd.
+    unsafe impl ThreadIsolatedArg for args::Close {}
+    impl FsArgument for args::Close {
+        #[inline]
+        fn from_js(ctx: &JSGlobalObject, arguments: &mut ArgumentsSlice) -> JsResult<Self> {
+            args::Close::from_js(ctx, arguments)
+        }
+        fn closed_fd(&self) -> Option<FD> {
+            self.was_tracked.then_some(self.fd)
         }
     }
 
@@ -1064,7 +1086,6 @@ mod _async_tasks {
         args::Futimes,
         args::FdataSync,
         args::Fsync,
-        args::Close,
     );
     // `ReadFile`/`WriteFile` carry an `AbortSignal` field — opt them in so the
     // `const _ = assert!(…::HAVE_ABORT_SIGNAL)` invariants in `async_` hold and
@@ -1150,7 +1171,12 @@ mod _async_tasks {
     impl FsReturn for FD {
         #[inline]
         fn fs_to_js(self, global: &JSGlobalObject) -> JsResult<JSValue> {
-            Ok(crate::node::types::FdJsc::to_js(self, global))
+            let value = crate::node::types::FdJsc::to_js(self, global);
+            // Windows converts native handles to CRT fds here; close parses that JS-visible fd.
+            if let Some(fd) = crate::node::types::FdJsc::from_js(value) {
+                global.bun_vm().as_mut().track_unmanaged_fd(fd);
+            }
+            Ok(value)
         }
         #[inline]
         fn discard(self) {
@@ -1224,13 +1250,21 @@ mod _async_tasks {
 
     /// One `fs.promises.*` operation on the work pool. The arguments' JS-backed
     /// buffers are pinned and rooted (`ThreadIsolated`) and read under the job's ticket.
-    pub(crate) struct AsyncFSTask<R: FsReturn, A, const F: NodeFSFunctionEnum> {
+    pub(crate) struct AsyncFSTask<R: FsReturn, A: FsArgument, const F: NodeFSFunctionEnum> {
         pub args: ThreadIsolated<A>,
         pub(crate) result: Maybe<R>,
+        /// The pool half executed (its completion may still be released unrun).
+        ran: bool,
     }
-    impl<R: FsReturn, A, const F: NodeFSFunctionEnum> Drop for AsyncFSTask<R, A, F> {
-        /// A job whose context stopped is dropped with its result untaken.
+
+    impl<R: FsReturn, A: FsArgument, const F: NodeFSFunctionEnum> Drop for AsyncFSTask<R, A, F> {
         fn drop(&mut self) {
+            if !self.ran {
+                if let Some(fd) = self.args.closed_fd() {
+                    VirtualMachine::get().as_mut().track_managed_fd(fd);
+                }
+            }
+            // A job whose context stopped is dropped with its result untaken.
             if let Ok(result) = core::mem::replace(&mut self.result, Err(sys::Error::default())) {
                 result.discard();
             }
@@ -1238,10 +1272,7 @@ mod _async_tasks {
     }
     // SAFETY: results are plain data / owned buffers / WTF strings built off
     // thread for hand-off (`ret::*`); `ThreadIsolated<A>` is Send by its contract.
-    unsafe impl<R: FsReturn, A: ThreadIsolatedArg, const F: NodeFSFunctionEnum> Send
-        for AsyncFSTask<R, A, F>
-    {
-    }
+    unsafe impl<R: FsReturn, A: FsArgument, const F: NodeFSFunctionEnum> Send for AsyncFSTask<R, A, F> {}
 
     /// How an async fs operation reports its result: a promise, or the `node:fs` callback, called from the completion.
     #[derive(bun_jsc::JsAffine)]
@@ -1372,6 +1403,7 @@ mod _async_tasks {
         ) -> Option<bun_jsc::Completion<Self>> {
             let mut node_fs = NodeFS::default();
             this.result = NodeFS::dispatch::<R, A, F>(&mut node_fs, &this.args, Flavor::Async);
+            this.ran = true;
             Some(done)
         }
 
@@ -1440,6 +1472,7 @@ mod _async_tasks {
                     // Sentinel — overwritten by `run` before any read. `Maybe<R>`
                     // may be niche-optimised; never construct an all-zero `Result`.
                     result: Err(sys::Error::default()),
+                    ran: false,
                 },
                 AsyncFSJs {
                     completion,
@@ -3603,6 +3636,7 @@ pub(crate) mod args {
 
     pub(crate) struct Close {
         pub(crate) fd: FD,
+        pub(crate) was_tracked: bool,
     }
     impl Close {
         pub(crate) fn from_js(
@@ -3610,7 +3644,9 @@ pub(crate) mod args {
             arguments: &mut ArgumentsSlice,
         ) -> JsResult<Close> {
             let fd = FD::from_js_required(ctx, arguments)?;
-            Ok(Close { fd })
+            // Before the close runs, as Node does, so a reuse of the number is tracked fresh.
+            let was_tracked = ctx.bun_vm().as_mut().untrack_fd(fd);
+            Ok(Close { fd, was_tracked })
         }
     }
 

@@ -68,6 +68,7 @@ export const windowsSmoke = [
   "test/js/node/worker_threads/worker-async-dispose.test.ts",
   "test/js/node/worker_threads/worker-shutdown-post-leak.test.ts",
   "test/js/node/worker_threads/worker-top-level-await.test.ts",
+  "test/js/node/worker_threads/worker-track-unmanaged-fds.test.ts",
   "test/js/node/worker_threads/worker-transfer-terminate-stress.test.ts",
   "test/js/node/worker_threads/worker_destruction.test.ts",
   "test/js/node/worker_threads/worker_heap_snapshot_gc.test.ts",

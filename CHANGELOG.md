@@ -5,6 +5,9 @@
 - Retain corked HTTP response writes in the socket Writable queue, preserving raw-write ordering, backpressure, and callbacks through uncork and end. Adapts dispatcher-cork cleanup from [oven-sh/bun#35664](https://github.com/oven-sh/bun/pull/35664); thanks robobun.
 
 - Match Node.js `SourceMap.findOrigin()` coordinates and field names, and return the closest preceding mapping from `findEntry()`. Adapts [oven-sh/bun#35123](https://github.com/oven-sh/bun/pull/35123); thanks robobun.
+
+- Bind `FileHandle.close` to its handle like Node.js, preventing spurious finalizer errors and accidental descriptor closes after closing through a Proxy.
+
 - Keep `os.availableParallelism()` independent of changes to the global `navigator` object and its `hardwareConcurrency` property.
 
 - Preserve `node:vm` `DONT_CONTEXTIFY` global receiver identity and private-field branding across scripts and compiled functions. Ports [oven-sh/bun#34623](https://github.com/oven-sh/bun/pull/34623); thanks robobun.
@@ -304,3 +307,7 @@
 - Register the listener passed to `fs.watch()` on the returned watcher's `change` event, preserving listener order and removal. Ports [oven-sh/bun#43765](https://github.com/oven-sh/bun/pull/43765); thanks robobun.
 
 - Return `undefined` for `stat` paths through regular files with `throwIfNoEntry: false`, while preserving `lstat` errors. Ports [oven-sh/bun#39339](https://github.com/oven-sh/bun/pull/39339); thanks robobun.
+
+- Close Worker-owned FileHandles and tracked fs descriptors on termination or natural exit, after pending filesystem work returns. Adapts [oven-sh/bun#34260](https://github.com/oven-sh/bun/pull/34260); thanks robobun.
+
+- Settle child IPC send callbacks after peer disconnection, preserving immediate write errors and completing queued sends at channel close. Adapts [oven-sh/bun#43000](https://github.com/oven-sh/bun/pull/43000); thanks robobun.

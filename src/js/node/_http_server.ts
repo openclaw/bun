@@ -1618,7 +1618,8 @@ function shouldQueueResponseWrite(response) {
   return !!(
     socket &&
     (hasResponseSocketWork(socket) || (response[kCorked] && willBeChunked(response))) &&
-    isNodeHTTPServerSocket(socket)
+    isNodeHTTPServerSocket(socket) &&
+    response[kHandle]
   );
 }
 

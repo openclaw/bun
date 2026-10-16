@@ -179,7 +179,7 @@ pub(crate) fn send_helper_primary(global: &JSGlobalObject, frame: &CallFrame) ->
     Ok(match success {
         SerializeAndSendResult::Success => JSValue::TRUE,
         SerializeAndSendResult::Backoff => JSValue::FALSE,
-        SerializeAndSendResult::Failure => JSValue::NULL,
+        SerializeAndSendResult::Failure | SerializeAndSendResult::WriteFailure(_) => JSValue::NULL,
     })
 }
 
