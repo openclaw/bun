@@ -12,6 +12,9 @@ if (childMode) {
   const order = [];
   const disconnected = once(process, "disconnect");
   process.on("disconnect", () => order.push("disconnect"));
+  const handle = mode === "handle" ? net.createServer() : undefined;
+  if (handle) await new Promise(resolve => handle.listen(0, "127.0.0.1", resolve));
+  process.send({ oracleReady: true });
   if (mode === "closed") await disconnected;
   else {
     const deadline = Date.now() + 5000;
@@ -19,8 +22,6 @@ if (childMode) {
       assert.ok(Date.now() < deadline, "parent did not disconnect");
     }
   }
-  const handle = mode === "handle" ? net.createServer() : undefined;
-  if (handle) await new Promise(resolve => handle.listen(0, "127.0.0.1", resolve));
   const synchronous = [];
   const error = await new Promise(resolve => {
     const returned = process.send({ synthetic: true }, handle, error => {
@@ -58,7 +59,10 @@ if (childMode) {
   const exited = once(child, "exit");
   const stdoutEnded = once(child.stdout, "end");
   const stderrEnded = once(child.stderr, "end");
+  assert.deepEqual(await once(child, "message"), [{ oracleReady: true }, undefined]);
+  const disconnected = once(child, "disconnect");
   child.disconnect();
+  await disconnected;
   fs.writeFileSync(marker, "closed");
   const [[code, signal]] = await Promise.all([exited, stdoutEnded, stderrEnded]);
   assert.deepEqual(

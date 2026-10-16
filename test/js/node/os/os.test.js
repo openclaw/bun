@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { realpathSync } from "fs";
-import { isWindows } from "harness";
+import { bunEnv, isWindows, runtimesWithNode } from "harness";
 import { isIPv4, isIPv6 } from "node:net";
 import * as os from "node:os";
 
@@ -248,6 +248,51 @@ it("devNull", () => {
 
 it("availableParallelism", () => {
   expect(os.availableParallelism()).toBeGreaterThan(0);
+});
+
+describe.each(runtimesWithNode(24))("availableParallelism with mutable navigator (%s)", (_name, exe) => {
+  for (const beforeImport of [false, true]) {
+    for (const mutation of ["delete", "replace", "getter", "hardwareConcurrency"]) {
+      it(`${mutation}, ${beforeImport ? "before" : "after"} importing node:os`, async () => {
+        await using child = Bun.spawn({
+          cmd: [
+            exe,
+            "--input-type=module",
+            "-e",
+            `
+            import assert from "node:assert/strict";
+            const beforeImport = ${beforeImport};
+            const mutation = ${JSON.stringify(mutation)};
+            let os = beforeImport ? undefined : await import("node:os");
+            const expected = os?.availableParallelism();
+            let reads = 0;
+            const fail = () => { reads++; throw new Error("navigator read"); };
+            if (mutation === "delete") delete globalThis.navigator;
+            else Object.defineProperty(globalThis, "navigator", {
+              configurable: true,
+              ...(mutation === "getter" ? { get: fail } : {
+                value: mutation === "hardwareConcurrency" ? { get hardwareConcurrency() { return fail(); } }
+                  : { mediaDevices: { getUserMedia: async () => ({}) } },
+              }),
+            });
+            os ??= await import("node:os");
+            const actual = os.availableParallelism();
+            assert(Number.isInteger(actual) && actual > 0);
+            if (expected !== undefined) assert.equal(actual, expected);
+            assert.equal(os.availableParallelism(), actual);
+            assert.equal(reads, 0);
+            console.log("ok");
+          `,
+          ],
+          env: bunEnv,
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        const [stdout, stderr, exitCode] = await Promise.all([child.stdout.text(), child.stderr.text(), child.exited]);
+        expect({ stdout, stderr, exitCode }).toEqual({ stdout: "ok\n", stderr: "", exitCode: 0 });
+      });
+    }
+  }
 });
 
 it("loadavg", () => {
