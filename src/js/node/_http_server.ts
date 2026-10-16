@@ -1944,8 +1944,8 @@ function getNodeHTTPServerSocket() {
     // Node's connectionListener sets socket._paused when it stops reading a
     // connection whose pipelined responses have buffered past the high water mark.
     _paused = false;
-    #pendingCallback = null;
-    #pendingResponseCallback = null;
+    #pendingCallback: ((error?: Error) => void) | null = null;
+    #pendingResponseCallback: ((error?: Error) => void) | null = null;
     #pendingAbortMessage;
     #closeHandled = false;
     #resetSupported;
@@ -3915,7 +3915,7 @@ ServerResponse.prototype.writeContinue = function (cb) {
 
 // This end method is actually on the OutgoingMessage prototype in Node.js
 // But we don't want it for the fetch() response version.
-ServerResponse.prototype.end = function (chunk, encoding, callback, token = undefined, operation = undefined) {
+ServerResponse.prototype.end = function (chunk, encoding, callback, token = undefined, operation: any = undefined) {
   const handle = this[kHandle];
   const fromSocket = token === kResponseSocketWrite;
 
@@ -4134,7 +4134,7 @@ Object.defineProperty(ServerResponse.prototype, "writable", {
   set(_value) {},
 });
 
-ServerResponse.prototype.write = function (chunk, encoding, callback, token = undefined, operation = undefined) {
+ServerResponse.prototype.write = function (chunk, encoding, callback, token = undefined, operation: any = undefined) {
   const handle = this[kHandle];
   const fromSocket = token === kResponseSocketWrite;
 
