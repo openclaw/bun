@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Return `undefined` for `stat` paths through regular files with `throwIfNoEntry: false`, while preserving `lstat` errors. Ports [oven-sh/bun#39339](https://github.com/oven-sh/bun/pull/39339); thanks robobun.
+- Keep `os.availableParallelism()` independent of changes to the global `navigator` object and its `hardwareConcurrency` property.
 
 - Preserve `node:vm` `DONT_CONTEXTIFY` global receiver identity and private-field branding across scripts and compiled functions. Ports [oven-sh/bun#34623](https://github.com/oven-sh/bun/pull/34623); thanks robobun.
 
@@ -297,3 +297,5 @@
 - Complete missing private `node:vm` cache bytecode in the decoded execution tree, avoiding recompilation of already cached function bodies at the same 256 MiB budget.
 
 - Release completed `node:worker_threads` Worker user listeners and captured caller state while preserving internal port hooks to avoid delayed owner-exit memory release on Windows ARM64.
+
+- Return `undefined` for `stat` paths through regular files with `throwIfNoEntry: false`, while preserving `lstat` errors. Ports [oven-sh/bun#39339](https://github.com/oven-sh/bun/pull/39339); thanks robobun.

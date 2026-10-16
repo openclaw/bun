@@ -1,5 +1,10 @@
 // Hardcoded module "node:os"
 const ObjectHasOwn = Object.hasOwn;
+const getAvailableParallelism = $newCppFunction(
+  "ZigGlobalObject.cpp",
+  "Zig::functionNavigatorGetHardwareConcurrency",
+  0,
+);
 
 var tmpdir = function () {
   var env = Bun.env;
@@ -92,7 +97,7 @@ function lazyCpus({ cpus, hostCpuCount }) {
 function bound(binding) {
   return {
     availableParallelism: function () {
-      return navigator.hardwareConcurrency;
+      return getAvailableParallelism();
     },
     arch: function () {
       return process.arch;
