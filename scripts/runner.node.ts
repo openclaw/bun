@@ -765,6 +765,7 @@ async function runTests(): Promise<TestResult[]> {
     title: string,
     fn: (index: number) => Promise<TestResult>,
     concurrent = parallelism > 1,
+    firstResult?: TestResult,
   ): Promise<TestResult | undefined> => {
     const index = ++i;
 
@@ -778,11 +779,13 @@ async function runTests(): Promise<TestResult[]> {
       let grouptitle = `${getAnsi("gray")}[${index}/${total}]${getAnsi("reset")} ${title}`;
       if (attempt > 1) grouptitle += ` ${getAnsi("gray")}[attempt #${attempt}]${getAnsi("reset")}`;
 
+      // A grouped execution already consumed the first attempt, including on a crash or missing report.
+      const runAttempt = () => (attempt === 1 && firstResult ? Promise.resolve(firstResult) : fn(index));
       if (concurrent) {
         console.log(grouptitle);
-        result = await fn(index);
+        result = await runAttempt();
       } else {
-        result = await startGroup(grouptitle, () => fn(index));
+        result = await startGroup(grouptitle, runAttempt);
       }
 
       const { ok, stdoutPreview, error } = result;
@@ -933,7 +936,7 @@ async function runTests(): Promise<TestResult[]> {
       }
     }
 
-    const runOneTest = async (testPath: string, concurrent: boolean) => {
+    const runOneTest = async (testPath: string, concurrent: boolean, firstResult?: TestResult) => {
       await awaitNapiPrebuild(testPath);
       const absoluteTestPath = join(testsPath, testPath);
       const title = relative(cwd, absoluteTestPath).replaceAll(sep, "/");
@@ -1052,6 +1055,7 @@ async function runTests(): Promise<TestResult[]> {
             };
           },
           concurrent,
+          firstResult,
         );
       } else {
         return runTest(
@@ -1063,6 +1067,7 @@ async function runTests(): Promise<TestResult[]> {
               stderr: concurrent ? () => {} : pipeTestStdout(process.stderr),
             }),
           concurrent,
+          firstResult,
         );
       }
     };
@@ -1088,17 +1093,15 @@ async function runTests(): Promise<TestResult[]> {
       }
       if (isAsan) env.BUN_FEATURE_FLAG_NO_ORPHANS = "1";
 
-      const byPath = new Map(bucketFiles.map(t => [join("test", t).replaceAll("\\", "/"), t]));
-      const norm = (p: string) =>
-        byPath.get(
-          p
-            .trim()
-            .replace(/:$/, "")
-            .replace(/ \(\d+s\)$/, "")
-            .replaceAll("\\", "/"),
-        );
+      // An aborted process must not reuse a previous invocation's report.
+      rmSync(junitPath, { force: true });
 
-      const { ok, stdout, crashes } = await startGroup(`${range} ${label}`, () =>
+      const {
+        ok,
+        error: processError,
+        stdout,
+        crashes,
+      } = await startGroup(`${range} ${label}`, () =>
         spawnBun(execPath, {
           args: [
             "test",
@@ -1123,107 +1126,52 @@ async function runTests(): Promise<TestResult[]> {
       );
       if (crashes) process.stderr.write(crashes);
 
-      let suites = new Map<string, JunitFileSuite>(); // repo-relative path -> { failures, seconds, cases: [{name, message}] }
+      let suites = new Map<string, JunitFileSuite>();
+      let reportError: string | undefined;
       try {
         suites = parseJunitFileSuites(readFileSync(junitPath, "utf-8"));
-      } catch {}
+        const expected = new Set(bucketFiles.map(t => join("test", t).replaceAll("\\", "/")));
+        if ([...suites.keys()].some(file => !expected.has(file))) throw new Error("unexpected file suite");
+      } catch (error) {
+        reportError = `invalid parallel JUnit report: ${error}`;
+      }
       if (suites.size && isBuildkite) uploadArtifactsToBuildkite(junitPath);
       else rmSync(junitPath, { force: true });
 
-      const failed = new Set<string>(); // ran and failed (or hung) — a solo pass is a parallel-mode flake
-      const incomplete = new Set<string>(); // never finished/started — re-run quietly
-      let evidence = suites.size > 0;
-      if (!ok && suites.size) {
-        for (const t of bucketFiles) {
+      // File-level success cannot explain a failing process, such as an unhandled error after tests.
+      const unexplainedFailure =
+        !ok &&
+        bucketFiles.every(t => {
           const suite = suites.get(join("test", t).replaceAll("\\", "/"));
-          if (suite === undefined) incomplete.add(t);
-          else if (suite.failures > 0) failed.add(t);
-        }
-      } else if (!ok) {
-        let list: "running" | "not-started" | null = null; // while inside an interrupt report list
-        for (const line of stripAnsi(stdout).split(/\r?\n/)) {
-          if (line.startsWith("Interrupted while still running:")) {
-            list = "running";
-            continue;
-          }
-          if (/^\d+ file\(s\) had not started:$/.test(line)) {
-            list = "not-started";
-            continue;
-          }
-          if (list && /^ {2}\S/.test(line)) {
-            const testPath = norm(line);
-            if (testPath) (list === "running" ? failed : incomplete).add(testPath);
-            continue;
-          }
-          list = null;
-          const ended = /^✗ (.+?) \((worker crashed|aborted:|no live workers)/.exec(line);
-          // The groups of the pattern are not optional, and testPath is only set when it matched.
-          const testPath = ended && norm(ended[1]!);
-          if (testPath) (ended![2] === "worker crashed" ? failed : incomplete).add(testPath);
-        }
-        evidence = failed.size + incomplete.size > 0;
-      }
-      const rerun = !ok && !evidence ? [...bucketFiles] : [...failed, ...incomplete];
-      const rerunSet = new Set(rerun);
-
-      for (const t of bucketFiles) {
-        if (rerunSet.has(t)) continue;
-        const title = join("test", t).replaceAll("\\", "/");
-        const seconds = suites.get(title)?.seconds;
-        const timing = seconds === undefined ? "" : ` ${getAnsi("gray")}(${seconds.toFixed(2)}s)${getAnsi("reset")}`;
-        console.log(`${getAnsi("gray")}[${++i}/${total}]${getAnsi("reset")} ${title}${timing}`);
-        okResults.push({
-          testPath: title,
-          ok: true,
-          status: "pass",
-          tests: [],
-          errors: [],
-          stdout: "",
-          stdoutPreview: "",
+          return suite !== undefined && suite.failures === 0 && suite.cases.length === 0;
         });
-      }
       for (const t of bucketFiles) {
-        if (!failed.has(t)) continue;
         const title = join("test", t).replaceAll("\\", "/");
         const suite = suites.get(title);
-        if (!suite?.cases.length) continue;
-        startGroup(
-          `${title} - ${suite.failures} failing in the parallel batch ${getAnsi("gray")}(${suite.seconds.toFixed(2)}s)${getAnsi("reset")}`,
-          () => {
-            for (const { name, message } of suite.cases) {
-              console.log(`${getAnsi("red")}✗${getAnsi("reset")} ${name}`);
-              if (message) console.log(message.replace(/^/gm, "    "));
-            }
-          },
-        );
-      }
-      if (rerun.length) {
-        console.log(
-          `${getAnsi("yellow")}parallel bucket: retrying ${failed.size} failed and ${rerun.length - failed.size} unfinished file(s) one at a time${getAnsi("reset")}`,
-        );
-        for (const testPath of rerun) {
-          const result = await runOneTest(testPath, false);
-          if (result?.ok && failed.has(testPath) && isBuildkite) {
-            const title = join("test", testPath).replaceAll("\\", "/");
-            const cases = suites.get(title)?.cases ?? [];
-            const first = cases[0];
-            const firstError = first ? `${first.name} — ${first.message.split("\n")[0]}` : "";
-            const reason = firstError
-              ? escapeHtml(firstError.length > 100 ? `${firstError.slice(0, 97)}…` : firstError)
-              : "failed in the parallel batch";
-            const detail = cases.length
-              ? `\n\n\`\`\`terminal\n${cases.map(({ name, message }) => `✗ ${name}\n${message}`).join("\n\n")}\n\`\`\`\n\n`
-              : "";
-            const unlisted = !isKnownFlakyTest(title);
-            reportAnnotationToBuildkite({
-              context: unlisted ? "flaky-new" : "flaky",
-              label: title,
-              style: "warning",
-              priority: unlisted ? 4 : 3,
-              content: `<details><summary><a href="${getFileUrl(title)}"><code>${title}</code></a> - ${reason} <i>(in the parallel batch on ${getBuildLabel()}; passed alone)</i>${unlisted ? " <b>(not in test/flaky-tests.txt)</b>" : ""}</summary>${detail}</details>`,
-            });
-          }
-        }
+        const error =
+          !ok && isAlwaysFailure(processError)
+            ? processError
+            : (reportError ??
+              (suite === undefined
+                ? "parallel JUnit report is missing this file"
+                : suite.failures > 0 || suite.cases.length > 0
+                  ? "failed in the parallel batch"
+                  : unexplainedFailure
+                    ? (processError ?? "parallel batch process failed")
+                    : undefined));
+        const passed = error === undefined;
+        const details = suite?.cases.map(({ name, message }) => `✗ ${name}\n${message}`).join("\n\n") ?? "";
+        await runOneTest(t, false, {
+          testPath: title,
+          ok: passed,
+          status: passed ? "pass" : "fail",
+          error,
+          tests: [],
+          errors: [],
+          stdout: passed ? "" : stdout,
+          stdoutPreview: passed ? "" : [reportError, details, stdout.slice(-8192), crashes].filter(Boolean).join("\n"),
+          duration: suite === undefined ? undefined : suite.seconds * 1000,
+        });
       }
     };
 

@@ -784,22 +784,75 @@ export function parseJunitFileSuites(xml: string): Map<string, JunitFileSuite> {
   const attribute = (attributes: string, name: string) => new RegExp(`\\s${name}="([^"]*)"`).exec(attributes)?.[1];
   const keyOf = (file: string) => unescapeXml(file).replaceAll("\\", "/");
   const files = new Map<string, JunitFileSuite>();
-  for (const match of xml.matchAll(/<testsuite\b([^>]*)>/g)) {
-    const attributes = match[1]!;
-    const file = attribute(attributes, "file");
-    if (!file || attribute(attributes, "name") !== file) continue;
-    files.set(keyOf(file), {
-      failures: Number(attribute(attributes, "failures") ?? 0),
-      seconds: Number(attribute(attributes, "time") ?? 0),
-      cases: [],
-    });
+  if (!xml.trim()) return files;
+  const document = xml.replace(/^\s*<\?xml[^?]*\?>/, "");
+  const stack: string[] = [];
+  const parents: Record<string, (string | undefined)[]> = {
+    testsuites: [undefined],
+    testsuite: ["testsuites", "testsuite"],
+    testcase: ["testsuite"],
+    failure: ["testcase"],
+    skipped: ["testcase"],
+    properties: ["testsuite"],
+    property: ["properties"],
+  };
+  let end = 0,
+    root = false;
+  const invalid = () => {
+    throw new Error("invalid native JUnit report");
+  };
+  // Only direct children own a file: a describe may itself be named after that file.
+  for (const match of document.matchAll(/<(\/?)([a-z]+)((?:\s+[\w-]+="[^"<]*")*\s*)(\/?)>/g)) {
+    const [, closing, tag, attributes, selfClosing] = match;
+    const text = document.slice(end, match.index);
+    if (text.includes("<") || (text.trim() && stack.at(-1) !== "failure")) invalid();
+    end = match.index! + match[0].length;
+    if (closing) {
+      if (attributes!.trim() || selfClosing || stack.pop() !== tag) invalid();
+      continue;
+    }
+    const names = [...attributes!.matchAll(/\s([\w-]+)="[^"]*"/g)].map(match => match[1]);
+    if (
+      new Set(names).size !== names.length ||
+      !parents[tag!]?.includes(stack.at(-1)) ||
+      (tag === "properties" && stack.length !== 2)
+    )
+      invalid();
+    if (!stack.length) {
+      if (root || tag !== "testsuites") invalid();
+      root = true;
+    }
+    if (tag === "testsuite" && stack.length === 1) {
+      const file = attribute(attributes!, "file");
+      const tests = attribute(attributes!, "tests");
+      const failures = attribute(attributes!, "failures");
+      const seconds = attribute(attributes!, "time");
+      if (
+        !file ||
+        attribute(attributes!, "name") !== file ||
+        tests === undefined ||
+        !/^\d+$/.test(tests) ||
+        !Number.isSafeInteger(Number(tests)) ||
+        failures === undefined ||
+        !/^\d+$/.test(failures) ||
+        !Number.isSafeInteger(Number(failures)) ||
+        seconds === undefined ||
+        !/^(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(seconds) ||
+        !Number.isFinite(Number(seconds)) ||
+        files.has(keyOf(file))
+      )
+        invalid();
+      files.set(keyOf(file!), { failures: Number(failures), seconds: Number(seconds), cases: [] });
+    }
+    if (!selfClosing) stack.push(tag!);
   }
+  if (!root || stack.length || document.slice(end).trim()) invalid();
   for (const match of xml.matchAll(/<testcase\b([^>]*)>\s*<failure\b([^>]*)>/g)) {
     const caseAttributes = match[1]!;
     const failureAttributes = match[2]!;
     const file = attribute(caseAttributes, "file");
     const entry = file && files.get(keyOf(file));
-    if (!entry) continue;
+    if (!entry) throw new Error("JUnit failure has no file suite");
     entry.cases.push({
       name: unescapeXml(attribute(caseAttributes, "name") ?? "(unnamed)"),
       message: unescapeXml(attribute(failureAttributes, "message") ?? ""),
