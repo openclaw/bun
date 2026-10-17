@@ -83,6 +83,7 @@ class DOMWrapperWorld;
 #include "NodeVMOptionNames.h"
 #include "NodeVMSourceOriginCache.h"
 #include "NodeVMCompilationCache.h"
+#include "NodeVMSourceBuffer.h"
 namespace Zig {
 class GlobalObject;
 }
@@ -316,6 +317,7 @@ private:
 
 public:
     Bun::NodeVMCompilationCache nodeVMCompilationCache;
+    Bun::NodeVMSourceBufferPool nodeVMSourceBuffers;
 
 private:
     SentinelLinkedList<JSVMClientDataClient, BasicRawSentinelNode<JSVMClientDataClient>> m_clients;

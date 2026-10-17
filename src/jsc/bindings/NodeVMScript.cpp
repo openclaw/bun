@@ -140,7 +140,7 @@ constructScript(JSGlobalObject* globalObject, CallFrame* callFrame, JSValue newT
 
     RefPtr fetcher(NodeVMScriptFetcher::create(vm, importer, jsUndefined()));
 
-    SourceCode source = makeSource(sourceString, JSC::SourceOrigin(sourceOriginURL(vm, options.filename), *fetcher), JSC::SourceTaintedOrigin::Untainted, options.filename, providerStartPosition(options.lineOffset, options.columnOffset));
+    SourceCode source(NodeVMSourceProvider::create(WebCore::clientData(vm)->nodeVMSourceBuffers, sourceString, JSC::SourceOrigin(sourceOriginURL(vm, options.filename), *fetcher), JSC::SourceTaintedOrigin::Untainted, options.filename, providerStartPosition(options.lineOffset, options.columnOffset)));
 
     NodeVMScript* script = NodeVMScript::create(vm, globalObject, structure, WTF::move(source), WTF::move(options));
     RETURN_IF_EXCEPTION(scope, {});
@@ -222,8 +222,10 @@ JSC::UnlinkedProgramCodeBlock* NodeVMScript::unlinkedCodeBlockFor(JSGlobalObject
         if (block)
             cache.observeCompilation(globalObject, m_source, identity, m_options.hasCachedData, block);
     }
-    if (block)
+    if (block) {
+        static_cast<NodeVMSourceProvider*>(m_source.provider())->shareSourceMap(WebCore::clientData(vm)->nodeVMSourceBuffers, block);
         m_unlinkedCodeBlock.set(vm, this, block);
+    }
     return block;
 }
 

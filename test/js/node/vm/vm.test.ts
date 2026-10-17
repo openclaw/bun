@@ -3160,15 +3160,15 @@ describe("bounded vm compilation cache", () => {
       assert.equal(first()[0], "first");
       assert.equal(second()[0], "second");
       assert.match(second()[1], /shared.js:12:/);
-      assert.equal(shared(first, compile("filename", { filename: "other.js" })), false);
+      assert.equal(shared(first, compile("filename", { filename: "other.js" })), true);
       const offset = compile("offset", { lineOffset: 20 });
-      assert.equal(shared(first, offset), false);
+      assert.equal(shared(first, offset), true);
       assert.match(offset()[1], /shared.js:22:/);
       const beforeData = stats();
       const cachedData = scripts[0].createCachedData();
       const accepted = new Script(Buffer.from(text).toString(), { ...options, cachedData });
       assert.equal(accepted.cachedDataRejected, false);
-      assert.equal(shared(first, accepted.runInNewContext({ value: "data" })), false);
+      assert.equal(shared(first, accepted.runInNewContext({ value: "data" })), true);
       assert.equal(stats().hits, beforeData.hits);
       scripts.length = 0;
       Bun.gc(true);
@@ -3203,7 +3203,7 @@ describe("bounded vm compilation cache", () => {
       assert.equal(second()[0], "second");
       assert.match(second()[1], /shared-fn.js:12:/);
       const other = compile("other", { filename: "other-fn.js", lineOffset: 20 });
-      assert.equal(shared(first, other), false);
+      assert.equal(shared(first, other), true);
       assert.match(other()[1], /other-fn.js:22:/);
       Bun.gc(true);
       assert.equal(shared(first, compile("after-gc")), true);
@@ -3234,7 +3234,7 @@ describe("bounded vm compilation cache", () => {
       const before = stats();
       const rebuilt = compile();
       assert.equal(stats().misses, before.misses + 1);
-      assert.equal(shared(first, rebuilt), false);
+      assert.equal(shared(first, rebuilt), true);
       assert.equal(rebuilt(), 42);
       console.log("ok");
     `,

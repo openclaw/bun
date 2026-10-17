@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Share identical `node:vm` script and compiled-function source buffers and source-map URI strings through a bounded per-VM weak index, including after compilation-cache eviction.
+
 - Sync oven-sh/bun through `f2405c382d43b89d91a2e7c90d9c5f53505a1e71`, including native lint/format commands, while reconciling fork TLS, worker, module-resolution, CLI and parser fixes. Pin the qualified WebKit release `f8521bb45429b3e1df6bc6d9b98b8df4376a89c5`.
 
 - Avoid quadratic Worker file-descriptor tracking when many descriptors are open, while preserving automatic cleanup at Worker exit.

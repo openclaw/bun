@@ -1,5 +1,6 @@
 #pragma once
 
+#include "NodeVMSourceBuffer.h"
 #include <JavaScriptCore/CachedBytecode.h>
 #include <JavaScriptCore/ParserModes.h>
 #include <JavaScriptCore/SourceCode.h>
@@ -67,6 +68,7 @@ private:
         Identity identity;
         JSC::SourceTaintedness taintedness;
         JSC::SourceProvenance provenance;
+        RefPtr<NodeVMSourceBuffer> sourceLease;
         WTF::String source;
         WTF::String filename;
         JSC::Weak<JSC::JSCell> importer;
@@ -101,7 +103,7 @@ private:
     void touch(Entry&);
     void append(Entry&);
     void evictForSize(size_t);
-    void insert(JSC::JSGlobalObject*, const JSC::SourceCode&, const Identity&, JSC::UnlinkedProgramCodeBlock*, Promotion, WTF::String sharedSource = {}, double compileCost = 0);
+    void insert(JSC::JSGlobalObject*, const JSC::SourceCode&, const Identity&, JSC::UnlinkedProgramCodeBlock*, Promotion, double compileCost = 0);
 };
 
 JSC::JSValue createNodeVMCompilationCacheStatsForTesting(Zig::GlobalObject*);
