@@ -42,25 +42,34 @@ test.skipIf(isWindows || !!unsupported)(
       const copiesOfStubs: number[] = [];
       const stubs: number[] = [];
       const entries = new Set<number>();
+      const pollAtPrologueStubs: number[] = [];
+      const pollAtPrologueTargets = new Set<number>();
       for (const line of readFileSync(mapPath, "utf8").split("\n")) {
         const fields = line.split("\t");
         if (fields[0] === "F") functions.push({ start: Number(fields[2]), end: Number(fields[2]) + Number(fields[3]) });
         else if (fields[0] === "C") copiesOfStubs.push(Number(fields[1]));
-        else if (fields[0] === "T") stubs.push(Number(fields[1]));
-        else if (fields[0] === "U") entries.add(Number(fields[1]));
+        else if (fields[0] === "T") {
+          stubs.push(Number(fields[1]));
+          if (fields[2] === "PollAtPrologue") pollAtPrologueStubs.push(Number(fields[1]));
+        } else if (fields[0] === "U") entries.add(Number(fields[1]));
       }
       for (const { start } of functions) entries.add(start);
       for (const copy of copiesOfStubs.length ? copiesOfStubs : [0]) for (const stub of stubs) entries.add(copy + stub);
+      for (const copy of copiesOfStubs.length ? copiesOfStubs : [0])
+        for (const stub of pollAtPrologueStubs) pollAtPrologueTargets.add(copy + stub);
       const starts = new Set(functions.map(({ start }) => start));
+      // Prologue polls rewrite their return address rather than attributing it to the calling function.
+      const isCallTarget = (target: number) => entries.has(target) && !pollAtPrologueTargets.has(target);
 
       // The bytes are taken for a call only where they lead to the start of a function, a stub or an outlined body.
       const endsInCall =
         process.arch === "x64"
-          ? ({ start, end }: { start: number; end: number }) => end - 5 >= start && code[end - 5] === 0xe8 && entries.has(end + code.readInt32LE(end - 4))
+          ? ({ start, end }: { start: number; end: number }) =>
+              end - 5 >= start && code[end - 5] === 0xe8 && isCallTarget(end + code.readInt32LE(end - 4))
           : ({ start, end }: { start: number; end: number }) => {
               if (end - 4 < start) return false;
               const word = code.readUInt32LE(end - 4);
-              return word >>> 26 === 0x25 && entries.has(end - 4 + ((word << 6) >> 6) * 4);
+              return word >>> 26 === 0x25 && isCallTarget(end - 4 + ((word << 6) >> 6) * 4);
             };
       expect(functions.length).toBeGreaterThan(32);
       expect(stubs.length).toBeGreaterThan(100);
