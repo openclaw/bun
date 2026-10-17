@@ -97,3 +97,55 @@ test.each([
   expect(result.stderr).toContain(reason);
   expect(result.stderr).not.toContain("required in");
 });
+
+test("compiled ordinary Proxy literals check fields and preserve getter order", async () => {
+  using dir = tempDir("ordinary-proxy-literal", {
+    "tsconfig.json": tsconfig,
+    "main.ts": `
+declare const console: { log(...values: unknown[]): void };
+type State = { count: number; name: string; list: number[] };
+class Component<S> {
+  state!: S;
+  setState(part: Partial<S>): void { this.state = Object.assign({}, this.state, part); }
+  put(value: unknown): void { this.state = value as S; }
+}
+class Counter extends Component<State> {
+  constructor() { super(); this.state = { count: 0, name: "n", list: [] }; }
+  count(): number { return this.state.count; }
+  label(): string { return this.state.name + this.state.list.length; }
+}
+const counter = new Counter();
+const reads: string[] = [];
+let invalid = false;
+counter.put(new Proxy({ count: 3, name: "p", list: [] }, {
+  get(object: any, key) {
+    reads.push(String(key));
+    return invalid && key === "count" ? "wrong" : object[key];
+  },
+}));
+console.log(counter.count(), counter.label());
+console.log(reads.join());
+reads.length = 0;
+invalid = true;
+try {
+  counter.count();
+  throw new Error("invalid field accepted");
+} catch (error) {
+  if (!(error instanceof TypeError) || !String(error).includes("expected number")) throw error;
+  console.log("invalid number rejected");
+}
+console.log(reads.join());
+`,
+  });
+  using output = tempDir("ordinary-proxy-literal-output", {});
+  const executable = join(String(output), "program");
+  const built = await run([bunExe(), "build", "--compile", "--aot", "main.ts", "--outfile", executable], String(dir));
+  expect(built.exitCode).toBe(0);
+  unlinkSync(join(String(dir), "main.ts"));
+  const result = await run([executable], String(output), { ...bunEnv, BUN_JSC_crashIfInterpreterIsUsed: "1" });
+  expect(result).toEqual({
+    stdout: "3 p0\ncount,name,list\ninvalid number rejected\ncount\n",
+    stderr: "",
+    exitCode: 0,
+  });
+}, 60_000);

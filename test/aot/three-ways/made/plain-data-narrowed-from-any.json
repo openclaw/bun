@@ -4,7 +4,7 @@
  "a_member_is_missing": "alone: THROWN: TypeError: expected State, got { count } (bun --aot: https://bun.com/docs/bundler/executables#ahead-of-time-com\nTHROWN: TypeError: expected State, got { count } (bun --aot: https://bun.com/docs/bundler/executables#ahead-of-time-com",
  "a_null_prototype": "all agree",
  "a_predicate": "all agree",
- "a_proxy": "alone: THROWN: TypeError: expected State, got native ProxyObject (bun --aot: https://bun.com/docs/bundler/executables#ahead-of",
+ "a_proxy": "all agree",
  "an_array": "alone: THROWN: TypeError: expected State, got Array (bun --aot: https://bun.com/docs/bundler/executables#ahead-of-time-compila",
  "an_instance": "all agree",
  "an_optional_one_comes_later": "all agree",
