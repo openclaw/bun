@@ -411,7 +411,7 @@
     log(file, step, kind, type, value, action);
   }
 
-  function log(file, step, kind, type, value, action) {
+  function log(file, step, kind, type, value, action, why) {
     const got = classOf(value, type);
     const id = kind === step.otherKind ? step.otherId : step.id;
     const count = (apply(mapGet, counts, [id + " " + got]) ?? 0) + 1;
@@ -419,7 +419,7 @@
     let power = count;
     while (power % 10 === 0) power /= 10;
     if (power !== 1) return;
-    const from = callers(), reason = action === "would-throw" || action === "threw" ? reasonOf(type, value, "", 0) : undefined;
+    const from = callers(), reason = why !== undefined ? why : action === "would-throw" || action === "threw" ? reasonOf(type, value, "", 0) : undefined;
     if (isJSON) return writeJSON(id, kind, file, step, step.on, type, got, action, count, from, reason);
     write("[aot] type-error " + id + " " + kind + " " + file + ":" + step.line + ":" + step.col + " (" + step.fn + "): " + (step.on !== undefined ? "on " + step.on + "; " : "") + "expected " + type.t + ", got " + got + "; " + action + "; count " + count + (reason !== undefined ? "; reason " + reason : "") + (step.callId !== undefined ? "; call " + step.callId : "") + (from ? "; from " + from : ""));
   }
@@ -619,10 +619,11 @@
     let key = "";
     for (let i = 0; i < steps.length; i++) {
       const step = steps[i];
+      if (step.what === "ArrayElementRead") continue;
       if (step.to === undefined || step.unsure !== undefined || step.after !== undefined || step.what === "IteratorOpen") return;
       key += (step.what === "Coerce" ? "as " : "") + typeKey(step.to) + (step.result === undefined ? "" : ">" + typeKey(step.result)) + ";";
     }
-    return key;
+    return key || undefined;
   }
 
   return isEnforcing ? function check(value, id, now, requestsKey) {
@@ -652,13 +653,21 @@
     return list;
   } : judge;
 
-  function judge(value, id, now) {
+  function judge(value, id, now, blockedArrayElement) {
     if (now !== generation) {
       generation = now;
       groups.length = 0;
       apply(mapClear, shapes, []);
     }
     const group = groupOf(id), steps = group.steps, file = group.file;
+    if (blockedArrayElement) {
+      // The native descriptor check reports the receiver before JavaScript performs the read.
+      for (let i = 0; i < steps.length; i++) {
+        const step = steps[i];
+        if (step.what === "ArrayElementRead") log(file, step, step.kind, step.to, value, "would-throw", "the array or its prototype chain has accessors or a Proxy, which are not run for an array of a declared element type");
+      }
+      return;
+    }
     hasInspectedMembers = false;
     inspectedCount = 0;
     if (group.silent || steps.length === 0) return 4;
@@ -693,6 +702,7 @@
     if (group.step) held = typeof value === "bigint" ? value + toBigInt(group.step) : value + group.step;
     for (let i = 0; i < steps.length; i++) {
       const step = steps[i], type = step.to;
+      if (step.what === "ArrayElementRead") continue;
       if (type === undefined) {
         if (step.unsure === undefined && (!isEnforcing || step.kind === "made")) rule(file, step, value, id);
         continue;

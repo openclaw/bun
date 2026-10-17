@@ -2257,7 +2257,8 @@ impl<'c, 'p, 's> FileBuild<'c, 'p, 's> {
     fn object_literal(&mut self, fx: &mut Fx, e: ExprId, props: Span<PropId>) -> V {
         let made = self.make_object_literal(fx, e, props);
         let has_fixed_layout = matches!(fx.b.func.op(made), Some(Op::New(_) | Op::NewWith { .. }));
-        if fx.is_typed && !has_fixed_layout && props.iter().any(|p| matches!(self.hir(fx.file)[p].kind, PropKind::Getter | PropKind::Setter)) {
+        // A literal deliberately kept ordinary still introduces objects of its own type.
+        if fx.is_typed && !has_fixed_layout && (props.iter().any(|p| matches!(self.hir(fx.file)[p].kind, PropKind::Getter | PropKind::Setter)) || self.is_explicitly_dynamic(fx, e)) {
             let own = self.c.type_of_expr(fx.file, e);
             self.c.record_object_without_layout(own);
         }
