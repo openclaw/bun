@@ -1,3 +1,4 @@
+import { $ } from "bun";
 import { expect, test } from "bun:test";
 import { bunEnv, bunExe, tempDir } from "harness";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -13,7 +14,7 @@ import {
   windowsSmoke,
 } from "../../../scripts/openclaw-ci/tests.ts";
 
-const tracked = execFileSync("git", ["ls-files", "-z", "test"], { encoding: "utf8" }).split("\0").filter(Boolean);
+const tracked = (await $`git ls-files -z test`.text()).split("\0").filter(Boolean);
 
 test("PR and nightly smoke lists exist and nightly includes every PR smoke file", () => {
   expect(selectTests([], tracked, false)).toEqual([...smoke].sort());
@@ -244,4 +245,62 @@ test.each([
   expect(existsSync(join(String(dir), "build/openclaw-ci/results.json"))).toBe(true);
   if (process.platform !== "win32") expect(result.stderr).toContain("Could not write disk snapshot artifact");
   expect(result.status).toBe(exitCode);
+});
+
+test.each([
+  { args: [], buildkite: "true", expected: [], succeeds: true },
+  {
+    args: ["--junit-prefix", "qualification-junit-"],
+    buildkite: "false",
+    expected: ["--junit", "--junit-temp-dir", "qualification-junit-"],
+    succeeds: true,
+  },
+  { args: ["--junit-prefix"], buildkite: "false", succeeds: false },
+  { args: ["--junit-prefix", "../reports"], buildkite: "false", succeeds: false },
+  { args: ["--junit-prefix", "/reports"], buildkite: "false", succeeds: false },
+  { args: ["--junit-prefix", ""], buildkite: "false", succeeds: false },
+  { args: ["--junit-prefix", "reports", "extra"], buildkite: "false", succeeds: false },
+  { args: ["--junit", "reports"], buildkite: "false", succeeds: false },
+  { args: ["--junit-prefix", "reports"], buildkite: "true", succeeds: false },
+])("native runner JUnit forwarding %#", ({ args, buildkite, expected, succeeds }) => {
+  using dir = tempDir("openclaw-ci-junit", {
+    "build/openclaw-ci/selected.json": JSON.stringify(["test/fixture.test.ts"]),
+    "scripts/runner.node.ts": `const fs = require("node:fs");
+      fs.writeFileSync("argv.json", JSON.stringify(process.argv.slice(2)));
+      fs.writeFileSync("build/openclaw-ci/results.json", JSON.stringify([{ testPath: "test/fixture.test.ts", ok: true }]));`,
+  });
+  const result = spawnSync(
+    bunExe(),
+    [resolve(import.meta.dir, "../../../scripts/openclaw-ci/tests.ts"), "test", ...args],
+    {
+      cwd: String(dir),
+      encoding: "utf8",
+      env: {
+        ...bunEnv,
+        BUILDKITE: buildkite,
+        HOME: String(dir),
+        RUNNER_TEMP: String(dir),
+        BUN_BUILD_CACHE_DIR: String(dir),
+      },
+    },
+  );
+  expect(result.status).toBe(succeeds ? 0 : 1);
+  expect(existsSync(join(String(dir), "argv.json"))).toBe(succeeds);
+  if (succeeds) {
+    expect(JSON.parse(readFileSync(join(String(dir), "argv.json"), "utf8"))).toEqual([
+      "--exec-path",
+      bunExe(),
+      "--vendor=false",
+      "--retries=0",
+      "--results-json",
+      "build/openclaw-ci/results.json",
+      ...expected!,
+      "--include",
+      "fixture.test.ts",
+    ]);
+  } else {
+    expect(result.stderr).toContain(
+      buildkite === "true" ? "does not permit Buildkite uploads" : "Usage: tests.ts test",
+    );
+  }
 });

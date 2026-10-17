@@ -1,3 +1,4 @@
+import { $ } from "bun";
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statfsSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -152,10 +153,8 @@ export function selectTests(changed: string[], tracked: string[], nightly: boole
   return [...selected].sort();
 }
 
-function git(...args: string[]): string[] {
-  const result = spawnSync("git", args, { encoding: "utf8" });
-  if (result.status !== 0) throw new Error(result.stderr || `git ${args[0]} failed`);
-  return result.stdout.split("\0").filter(Boolean);
+async function git(...args: string[]): Promise<string[]> {
+  return (await $`git ${args}`.text()).split("\0").filter(Boolean);
 }
 
 function summary(text: string) {
@@ -244,7 +243,7 @@ if (import.meta.main) {
   const selectionPath = "build/openclaw-ci/selected.json";
   const resultsPath = "build/openclaw-ci/results.json";
   if (command === "select-windows") {
-    const selected = selectTests([], git("ls-files", "-z", "test"), false, "windows");
+    const selected = selectTests([], await git("ls-files", "-z", "test"), false, "windows");
     mkdirSync(dirname(selectionPath), { recursive: true });
     writeFileSync(selectionPath, JSON.stringify(selected, null, 2) + "\n");
     summary(`Windows compatibility selection: ${selected.length} files\n`);
@@ -253,14 +252,30 @@ if (import.meta.main) {
     const head = process.env.PR_HEAD_SHA;
     if (process.env.GITHUB_EVENT_NAME === "pull_request" && (!base || !head)) throw new Error("Missing PR commits");
     const changed =
-      base && head ? git("diff", "--no-renames", "--name-only", "--diff-filter=ACMTD", "-z", `${base}...${head}`) : [];
-    const selected = selectTests(changed, git("ls-files", "-z", "test"), !base, process.env.OPENCLAW_CI_PLATFORM);
+      base && head
+        ? await git("diff", "--no-renames", "--name-only", "--diff-filter=ACMTD", "-z", `${base}...${head}`)
+        : [];
+    const selected = selectTests(changed, await git("ls-files", "-z", "test"), !base, process.env.OPENCLAW_CI_PLATFORM);
     mkdirSync(dirname(selectionPath), { recursive: true });
     writeFileSync(selectionPath, JSON.stringify(selected, null, 2) + "\n");
     summary(`## Selected tests (${selected.length})\n\n${selected.map(test => `- \`${test}\``).join("\n")}\n`);
   } else if (command === "test") {
     const selected: string[] = JSON.parse(readFileSync(selectionPath, "utf8"));
     if (!selected.length) throw new Error("Refusing an empty test selection");
+    const reporting = process.argv.slice(3);
+    const junitArgs: string[] = [];
+    if (reporting.length) {
+      if (
+        reporting.length !== 2 ||
+        reporting[0] !== "--junit-prefix" ||
+        !/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(reporting[1]!)
+      ) {
+        throw new Error("Usage: tests.ts test [--junit-prefix <filename-prefix>]");
+      }
+      // The native runner uploads by default only on Buildkite; this opt-in keeps reports local.
+      if (process.env.BUILDKITE === "true") throw new Error("Local JUnit reporting does not permit Buildkite uploads");
+      junitArgs.push("--junit", "--junit-temp-dir", reporting[1]!);
+    }
     reportDiskUsage("before");
     // CI invokes this script with the built executable; the upstream runner uses it for every test.
     const result = spawnSync(
@@ -273,6 +288,7 @@ if (import.meta.main) {
         "--retries=0",
         "--results-json",
         resultsPath,
+        ...junitArgs,
         ...selected.flatMap(test => ["--include", test.replace(/^test\//, "")]),
       ],
       { stdio: "inherit" },
