@@ -7,7 +7,7 @@ description: "Find what changes when your program is compiled ahead of time, fix
 
 [`--aot`](/bundler/executables#ahead-of-time-compilation) does not erase your TypeScript types. It uses them to generate machine code, so it also holds your program to them:
 
-- A value that does not match its type throws a `TypeError` at the first parameter, variable, property or return type that it reaches.
+- Type mismatches can throw a `TypeError` at a checked parameter, variable, property or return type. Values from declaration-only code can instead remain predictions, as described below.
 - `value as number` converts: if `value` is `"4"` when the program runs, the result is `4`. The same goes for `as string` and `as boolean`.
 - `{ name: "x" } as User` is not checked at the cast. If the literal lacks a property of `User`, the `TypeError` comes later, when your code reads a missing `number`, `boolean` or numeric enum property. Any other missing property reads `undefined`, as in JavaScript.
 - `x!` throws if `x` is `null` or `undefined`.
@@ -100,7 +100,7 @@ Fix `would-convert` lines first. The audit does not convert, so the value contin
 Bun type checks and analyzes the whole program before it starts, so the first start takes longer. After you save a file, Bun analyzes that file alone before it reloads, and the rest in the background.
 
 - Fix type errors first. `bun build --compile --aot` stops at a type error. The audit prints the errors and runs your program, but checks nothing until they are fixed.
-- JavaScript files, such as most packages in `node_modules`, have no types to enforce. What they return is checked where it reaches your TypeScript code, against the declared type.
+- JavaScript files, such as most packages in `node_modules`, have no types to enforce. Types supplied only by a declaration file are predictions, rather than automatic validation of package results. Even `const n: number = packageFunction()` can keep a string at runtime. A separately declared TypeScript function can enforce its own parameter or return type, but a bad package prediction alone does not throw.
 - There is no way to silence a line. If the value is right and the type is not, change the type.
 - A file that calls `eval()` directly is not audited. Bun says so.
 - Under `bun test`, when a test file or a preload can replace a module (`mock.module()`, `jest.mock()`, `vi.mock()`, `spyOn()` on a module namespace), arguments passed to imported functions are not checked in that run.
