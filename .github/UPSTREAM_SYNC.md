@@ -95,6 +95,23 @@ workflow on `automation/sync-upstream` without a tag builds and smoke-tests ever
 release target as a dry run; the release cadence and security-patch policy are in
 [OPENCLAW_RELEASE.md](OPENCLAW_RELEASE.md#upstream-sync-and-security-patches).
 
+## PR test coverage
+
+Fork CI uses the nightly coverage set plus tests selected from the fork-owned
+delta for upstream-sync PRs. It walks first-parent merges between the PR base
+and head, ignoring non-first parents already reachable from the base. The
+newest remaining parent is the upstream comparison point. A PR-changed path
+belongs to the fork delta when its head content differs from that parent.
+Conflict resolutions and fork WebKit pin changes therefore retain their
+normal selection rules; pure upstream changes do not expand the selection.
+The job summary records the upstream parents and changed, fork-delta and
+selected counts. Ordinary PR selection is unchanged.
+
+Both native jobs fetch full history, so pushed merge parents are available
+without another remote or credentials. The credential-free CI selection does
+not qualify every imported upstream change. Maintainers record that separate
+qualification in the sync PR before landing.
+
 ## Paired Bun and WebKit qualification
 
 Freeze the upstream Bun commit before integration and inspect its WebKit pin.

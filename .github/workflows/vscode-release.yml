@@ -12,6 +12,7 @@ on:
 
 jobs:
   publish:
+    if: github.repository == 'oven-sh/bun'
     name: "Publish to VS Code Marketplace"
     runs-on: ubuntu-latest
     steps:
