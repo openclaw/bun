@@ -1224,7 +1224,7 @@ impl<'c, 'p, 's> FileBuild<'c, 'p, 's> {
     }
 
     pub(crate) fn is_exported_by_namespace(&self, sym: Sym) -> bool {
-        self.files.parent_of_symbol(sym).is_some_and(|parent| self.files.decls_of(parent).iter().any(|(_, decl)| matches!(decl, Decl::Module(_))))
+        self.files.parent_of_symbol(sym).is_some_and(|parent| self.files.decls_of(parent).iter().any(|&(file, decl)| matches!(decl, Decl::Module(module) if matches!(self.hir(file)[module].name, hir::ModuleName::Ident(_)))))
     }
 
     /// The same for a variable: the property is all there is of it, within the namespace too.
