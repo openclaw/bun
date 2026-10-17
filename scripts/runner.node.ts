@@ -1232,6 +1232,7 @@ async function runTests(): Promise<TestResult[]> {
     );
     const isModified = (t: string) => modifiedTests.has(t.replaceAll("\\", "/"));
     const isBucketCandidate = (t: string) =>
+      !cliOptions.junit &&
       parallelism === 1 &&
       isTestStrict(t) &&
       !isNodeTest(t) &&
