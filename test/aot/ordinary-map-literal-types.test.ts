@@ -1,7 +1,8 @@
-import { expect, test } from "bun:test";
-import { bunEnv, bunExe, tempDir } from "harness";
+import { expect } from "bun:test";
+import { test } from "./supported";
+import { bunEnv, bunExe, tempDir, tempDirWithBunTypes } from "harness";
 import { join } from "node:path";
-import { unlinkSync } from "node:fs";
+import { readFileSync, unlinkSync } from "node:fs";
 
 const tsconfig = JSON.stringify({
   compilerOptions: {
@@ -149,3 +150,37 @@ console.log(reads.join());
     exitCode: 0,
   });
 }, 60_000);
+
+test.concurrent.each([
+  ["conversion-errors-name-nested-property", "source"],
+  ["conversion-errors-name-nested-property", "native"],
+  ["undersized-plain-object-mismatch-rejected", "source"],
+  ["undersized-plain-object-mismatch-rejected", "native"],
+] as const)("explicit any literals preserve %s in %s AOT", async (name, mode) => {
+  const fixture = join(import.meta.dir, "programs", "typed-objects", name);
+  const expected = readFileSync(fixture + ".expected.txt", "utf8");
+  using dir = tempDirWithBunTypes("ordinary-any-conversion", {
+    "main.ts": readFileSync(fixture + ".ts", "utf8"),
+    "tsconfig.json": JSON.stringify({
+      compilerOptions: {
+        target: "ESNext",
+        module: "Preserve",
+        moduleResolution: "bundler",
+        types: ["bun"],
+        noEmit: true,
+      },
+    }),
+  });
+  const cwd = String(dir);
+  let result: Awaited<ReturnType<typeof run>>;
+  if (mode === "source") {
+    result = await run([bunExe(), "run", "--aot", "main.ts"], cwd);
+  } else {
+    const executable = join(cwd, "program");
+    const built = await run([bunExe(), "build", "--compile", "--aot", "main.ts", "--outfile", executable], cwd);
+    expect({ stderr: built.stderr, exitCode: built.exitCode }).toEqual({ stderr: "", exitCode: 0 });
+    unlinkSync(join(cwd, "main.ts"));
+    result = await run([executable], cwd, { ...bunEnv, BUN_JSC_crashIfInterpreterIsUsed: "1" });
+  }
+  expect(result).toEqual({ stdout: expected, stderr: "", exitCode: 0 });
+});
