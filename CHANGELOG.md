@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Honor `BUN_FEATURE_FLAG_DISABLE_SOURCE_MAPS` on transpiler-cache hits and prevent startup crashes from cached modules without maps. Adapts empty-map validation from [oven-sh/bun#42412](https://github.com/oven-sh/bun/pull/42412); thanks @robobun.
+
 - Sync oven-sh/bun through `f2405c382d43b89d91a2e7c90d9c5f53505a1e71`, including native lint/format commands, while reconciling fork TLS, worker, module-resolution, CLI and parser fixes. Pin the qualified WebKit release `f8521bb45429b3e1df6bc6d9b98b8df4376a89c5`.
 
 - Avoid quadratic Worker file-descriptor tracking when many descriptors are open, while preserving automatic cleanup at Worker exit.

@@ -521,6 +521,11 @@ impl Entry {
             }
 
             self.sourcemap = sourcemap;
+        } else if !env_var::feature_flag::BUN_FEATURE_FLAG_DISABLE_SOURCE_MAPS::get()
+            .unwrap_or(false)
+        {
+            // Older flag-on entries used the default key. Regenerate their maps.
+            return Err(crate::CrateError::InvalidSourceMap);
         }
 
         if self.metadata.esm_record_byte_length > 0 {
@@ -897,6 +902,10 @@ impl RuntimeTranspilerCache {
 
         let mut features_hasher = Wyhash::init(SEED);
         parser_options.hash_for_runtime_transpiler(&mut features_hasher, used_jsx);
+        // Keep the default hash stable so existing source-map-enabled entries survive.
+        if env_var::feature_flag::BUN_FEATURE_FLAG_DISABLE_SOURCE_MAPS::get().unwrap_or(false) {
+            features_hasher.update(b"BUN_FEATURE_FLAG_DISABLE_SOURCE_MAPS");
+        }
         self.features_hash = Some(features_hasher.final_());
 
         self.entry = match Self::from_file(

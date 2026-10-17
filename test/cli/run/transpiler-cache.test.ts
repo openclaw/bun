@@ -11,6 +11,7 @@ import {
   statSync,
   symlinkSync,
   unlinkSync,
+  utimesSync,
   writeFileSync,
 } from "fs";
 import { bunEnv, bunExe, bunRun, isWindows, tempDir, tmpdirSync } from "harness";
@@ -784,6 +785,88 @@ test("cached module still works", () => {
   expect(third.stderr.toString() + third.stdout.toString()).toContain("parseFromSourceCode failed");
   expect(third.signalCode).toBeUndefined();
   expect(third.exitCode).toBe(1);
+});
+
+describe("source-map disable flag", () => {
+  // Metadata::encode: features_hash @ 6, sourcemap_byte_length @ 62.
+  const FEATURES_HASH_AT = 6;
+  const SOURCEMAP_BYTE_LENGTH_AT = 62;
+  const THROW_LINE = 123;
+  const source = `${("// " + "x".repeat(120) + "\n").repeat(120)}
+function boom(): never {
+  throw new Error("boom");
+}
+try { boom(); } catch (error) {
+  console.log((error as Error).stack!.split("\\n")[1].trim());
+}
+console.log("OK");
+`;
+
+  function run(disabled: boolean, entry = "boom.ts") {
+    return Bun.spawnSync({
+      cmd: [bunExe(), entry],
+      cwd: temp_dir,
+      env: { ...env, BUN_FEATURE_FLAG_DISABLE_SOURCE_MAPS: disabled ? "1" : "0" },
+    });
+  }
+
+  function expectFrame(result: ReturnType<typeof run>, disabled: boolean) {
+    expect(result.stdout.toString()).toContain(`boom.ts:${disabled ? 2 : THROW_LINE}:`);
+    expect(result.stdout.toString()).toContain("OK");
+    expect(result.exitCode).toBe(0);
+  }
+
+  function cacheEntry() {
+    const entries = readdirSync(cache_dir).filter(name => name.endsWith(".pile"));
+    expect(entries).toHaveLength(1);
+    return join(cache_dir, entries[0]);
+  }
+
+  test("does not crash on a cache hit within a fresh-cache startup", () => {
+    writeFileSync(join(temp_dir, "boom.ts"), source);
+    writeFileSync(join(temp_dir, "twin.ts"), source);
+    writeFileSync(join(temp_dir, "main.mjs"), 'await import("./boom.ts"); await import("./twin.ts");');
+    const result = run(true, "main.mjs");
+    expect(result.stdout.toString()).toContain("boom.ts:2:");
+    expect(result.stdout.toString()).toContain("twin.ts:2:");
+    expect(result.stdout.toString().match(/OK/g)).toHaveLength(2);
+    expect(result.exitCode).toBe(0);
+  });
+
+  test.each([false, true])("keeps cold and cached maps consistent (disabled: %s)", disabled => {
+    writeFileSync(join(temp_dir, "boom.ts"), source);
+    const hashes = new Map<boolean, bigint>();
+    // Toggle in both directions, then verify an actual hit for each configuration.
+    for (const flag of [disabled, !disabled, disabled]) {
+      expectFrame(run(flag), flag);
+      const entry = cacheEntry();
+      const data = readFileSync(entry);
+      const mapLength = data.readBigUInt64LE(SOURCEMAP_BYTE_LENGTH_AT);
+      expect(mapLength > 0n).toBe(!flag);
+      const hash = data.readBigUInt64LE(FEATURES_HASH_AT);
+      if (hashes.has(flag)) expect(hash).toBe(hashes.get(flag)!);
+      hashes.set(flag, hash);
+
+      // A cache miss rewrites this old timestamp; a hit leaves it untouched.
+      utimesSync(entry, 100000, 100000);
+      const mtime = statSync(entry).mtimeMs;
+      expectFrame(run(flag), flag);
+      expect(statSync(entry).mtimeMs).toBe(mtime);
+      expect(readFileSync(entry)).toEqual(data);
+    }
+    expect(hashes.get(false)).not.toBe(hashes.get(true));
+  });
+
+  test("regenerates a legacy default-key entry with no map", () => {
+    writeFileSync(join(temp_dir, "boom.ts"), source);
+    expectFrame(run(false), false);
+    const entry = cacheEntry();
+    const data = readFileSync(entry);
+    data.writeBigUInt64LE(0n, SOURCEMAP_BYTE_LENGTH_AT);
+    writeFileSync(entry, data);
+    expectFrame(run(false), false);
+    expect(readFileSync(entry).readBigUInt64LE(SOURCEMAP_BYTE_LENGTH_AT)).toBeGreaterThan(0n);
+  });
 });
 
 test("rejects a cached entry whose sourcemap section header is corrupt", () => {
