@@ -4,6 +4,8 @@ These entries describe the experimental `openclaw/aot-typed` fork.
 
 ## Unreleased
 
+- Preserve known host-property types through structural views of globalThis during typed AOT checks.
+
 - Preserve macOS POSIX file locks when resolving paths, preventing SQLite WAL locks from being dropped by canonicalization.
 
 - Keep automatic server startup on the primary AOT entrypoint; importing additional entries only evaluates their modules.

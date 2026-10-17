@@ -5663,7 +5663,16 @@ impl<'p, 's> Checker<'p, 's> {
                 continue;
             }
             let is_written = self.is_program_declared_record(from);
-            let is_declared_only = !is_written && self.is_declared_only_record(from);
+            // A structural view of globalThis also carries its declared host properties.
+            let is_declared_only = !is_written
+                && (self.is_declared_only_record(from)
+                    || matches!(
+                        self.data(from),
+                        TypeData::Anon {
+                            origin: Origin::GlobalThis,
+                            ..
+                        }
+                    ));
             let mut said_by_from = None;
             let visited: Option<Vec<u32>> = (is_large && is_written).then(|| {
                 let mut numbers = taking.clone();
