@@ -1140,9 +1140,26 @@ fn analyze_on_this_thread(
             number => format!("main.{number}.js"),
         };
         let main = bun_aot::prelude::path_of(cwd, &name);
-        let mut wrapper = bun_bundler::entry_points::ServerEntryPoint::default();
-        bun_bundler::entry_points::ServerEntryPoint::generate(&mut wrapper, false, entry_point).ok()?;
-        provided.already_read.insert(from_native(&main), wrapper.contents.into_vec().into());
+        let contents = if entry_functions.is_empty() {
+            let mut wrapper = bun_bundler::entry_points::ServerEntryPoint::default();
+            bun_bundler::entry_points::ServerEntryPoint::generate(&mut wrapper, false, entry_point)
+                .ok()?;
+            wrapper.contents.into_vec()
+        } else {
+            // Further entries are imported libraries and workers, not the executable's server entry.
+            format!(
+                "// @bun\nimport \"{}\";\n",
+                bun_core::strings::format_escapes(
+                    entry_point,
+                    bun_core::strings::QuoteEscapeFormatFlags {
+                        quote_char: b'"',
+                        ..Default::default()
+                    }
+                ),
+            )
+            .into_bytes()
+        };
+        provided.already_read.insert(from_native(&main), contents.into());
         code.push(main.clone());
         if let Some(resolved) = &mut constants.resolved {
             let to = from_native(entry_point);

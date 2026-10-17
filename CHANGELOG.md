@@ -4,6 +4,8 @@ These entries describe the experimental `openclaw/aot-typed` fork.
 
 ## Unreleased
 
+- Keep automatic server startup on the primary AOT entrypoint; importing additional entries only evaluates their modules.
+- Cover embedded Wasm SIMD bitmasks under hardened runtime without executable-memory permissions.
 - Preserve property enumeration after AOT identifier names overflow the inline cache.
 
 - Preserve incomplete Bun host namespaces, module augmentations, and inferred function names during typed AOT checks.
