@@ -2764,7 +2764,7 @@ pub mod bv2_impl {
             }
             let mut react_compiler_candidates = if analyze.is_some() { self.react_compiler_candidates() } else { Vec::new() };
             let (printed_react_compiler_outputs, react_compiler_outputs) = std::sync::mpsc::channel();
-            let keeps_function_sources = analyze.is_some() && self.transpiler.options.compile_function_source && !self.transpiler.options.preserve_source_paths;
+            let keeps_function_sources = analyze.is_some() && self.transpiler.options.compile_function_source;
             let mut function_sources_to_print = analyze.is_some().then(|| self.function_sources_to_print());
             let kinds_as_run = match &mut function_sources_to_print {
                 Some((as_run, lists)) => self.kinds_as_run(as_run.as_deref_mut(), lists),

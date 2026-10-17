@@ -373,7 +373,7 @@ impl BuildCommand {
         this_transpiler.options.typed_package = Some(bun_sema_driver::typed_packages::typed_package);
         this_transpiler.options.preserve_source_paths = runs_in_place;
         this_transpiler.options.compile_function_source =
-            ctx.bundler_options.compile_function_source;
+            !ctx.bundler_options.compile_run && ctx.bundler_options.compile_function_source.unwrap_or(!runs_in_place);
         // What is run from its sources finds out that a module is missing when it asks for it, if it ever does.
         if runs_in_place {
             this_transpiler.options.ignore_module_resolution_errors = true;

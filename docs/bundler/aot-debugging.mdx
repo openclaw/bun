@@ -228,6 +228,8 @@ In an executable, as in any bundle, the modules of your program are resolved whe
 
 By default the executable keeps the text of your functions, after TypeScript's types are removed, and `toString()` returns it. The functions of a file that calls `eval()` directly at its top level are the exception: they have no text.
 
+An executable built with `--compile-in-place` reads this text from the original files by default. Add `--compile-function-source` to keep the text in the executable instead, so `toString()` still works after those files move or disappear. The in-place default and `--no-compile-function-source` both omit the text from the executable; `toString()` can still read it from the original files while they are available.
+
 `--no-compile-function-source` leaves the text out, which makes the executable smaller and keeps your code out of it:
 
 ```ts
