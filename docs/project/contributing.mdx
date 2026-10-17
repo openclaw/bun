@@ -299,6 +299,20 @@ If you are using a JSC debug build with VSCode, run the `C/C++: Select a Configu
 
 If you make changes to Bun's [WebKit fork](https://github.com/oven-sh/WebKit), you also have to change `WEBKIT_VERSION` in `scripts/build/deps/webkit.ts` to point to your commit hash or release tag.
 
+### Typed AOT fork
+
+The `openclaw/aot-typed` branch requires the matching [OpenClaw WebKit fork](https://github.com/openclaw/WebKit). No prebuilt artifact is published for this revision. Use a clean local checkout at the pinned commit and the local release profile:
+
+```bash
+export BUN_WEBKIT_PATH=/path/to/openclaw-WebKit
+git -C "$BUN_WEBKIT_PATH" checkout 392d23b2c0fd346ed295ef92356319c649bf8787
+test "$(git -C "$BUN_WEBKIT_PATH" rev-parse HEAD)" = 392d23b2c0fd346ed295ef92356319c649bf8787
+test -z "$(git -C "$BUN_WEBKIT_PATH" status --porcelain)"
+PATH="/opt/homebrew/opt/rustup/bin:$PATH" bun run build:release:local --build-dir=build/release --webkit-version=392d23b2c0fd346ed295ef92356319c649bf8787 -j8
+```
+
+This macOS arm64 command builds Bun and WebKit in the single `build/release` directory. Use the Rust toolchain path appropriate to your system on other platforms. The local build does not verify the checkout revision itself; the checks above bind it to the pin.
+
 ## Troubleshooting
 
 ### 'span' file not found on Ubuntu

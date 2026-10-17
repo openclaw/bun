@@ -10,7 +10,8 @@ use smallvec::SmallVec;
 use std::mem::MaybeUninit;
 
 pub const MAGIC: u32 = 0x5249_5442;
-pub const VERSION: u32 = 37;
+pub const VERSION: u32 = 38;
+const HEADER_WORDS: usize = 7 + 14 * 3 + 18 + 12;
 pub const PROGRAM_LOGS_TYPE_ERRORS: u32 = 1;
 pub const NONE: u32 = u32::MAX;
 /// In the prediction of a value: the other bits number a function, which the value is expected to be a closure of, and not a type.
@@ -426,7 +427,7 @@ fn table_lengths(funcs: &[Func]) -> [u32; 4] {
             }
         }
     }
-    [words as u32, blocks as u32, values as u32, targets as u32]
+    [words, blocks, values, targets].map(checked_count)
 }
 
 const SIZES: [u32; 12] = [2, 8, 4, 20, 8, 5, 6, 7, 18, 10, 11, 3];
@@ -434,9 +435,9 @@ const SIZES: [u32; 12] = [2, 8, 4, 20, 8, 5, 6, 7, 18, 10, 11, 3];
 impl Writer {
     /// The words as a list in the pool: where it starts and how long it is.
     fn list(&mut self, words: impl IntoIterator<Item = u32>) -> [u32; 2] {
-        let start = self.words.len() as u32;
+        let start = checked_count(self.words.len());
         self.words.extend(words);
-        [start, self.words.len() as u32 - start]
+        word_span(start, self.words.len())
     }
 }
 
@@ -555,6 +556,56 @@ impl FunctionWriter<'_> {
 /// How many functions are written at a time. The number does not show in what is written.
 const FUNCTIONS_PER_SLICE: usize = 256;
 
+fn wide_words(value: u64) -> [u32; 2] {
+    [value as u32, (value >> 32) as u32]
+}
+
+fn checked_count(count: usize) -> u32 {
+    u32::try_from(count).expect("typed program exceeds 32-bit index limit")
+}
+
+fn add_count(start: u32, count: u32) -> u32 {
+    start
+        .checked_add(count)
+        .expect("typed program exceeds 32-bit index limit")
+}
+
+fn word_span(start: u32, end: usize) -> [u32; 2] {
+    [start, checked_count(end) - start]
+}
+
+fn record_count(words: usize, record_words: u32) -> u32 {
+    debug_assert_eq!(words % record_words as usize, 0);
+    checked_count(words / record_words as usize)
+}
+
+fn section_headers(number_of_bytes: usize, lengths: [usize; 13]) -> (Vec<u32>, usize) {
+    let mut header = Vec::with_capacity(14 * 3);
+    let mut offset = HEADER_WORDS * 4;
+    header.extend(wide_words(offset as u64));
+    header.push(
+        u32::try_from(number_of_bytes).expect("typed program byte section exceeds 32-bit count"),
+    );
+    offset = offset
+        .checked_add(number_of_bytes)
+        .expect("typed program size overflow");
+    offset = offset
+        .checked_add(number_of_bytes.wrapping_neg() % 4)
+        .expect("typed program size overflow");
+    for (length, size) in lengths.into_iter().zip(std::iter::once(1).chain(SIZES)) {
+        header.extend(wide_words(offset as u64));
+        header.push(record_count(length, size));
+        offset = offset
+            .checked_add(
+                length
+                    .checked_mul(4)
+                    .expect("typed program section size overflow"),
+            )
+            .expect("typed program size overflow");
+    }
+    (header, offset)
+}
+
 fn site_table(p: &Program, in_parallel: InParallel<'_>) -> Vec<u32> {
     const REASONS: [&str; 7] = ["As", "Store", "Claim", "Flow", "NonNull", "Coerce", "IteratorOpen"];
     fn text(table: &mut Vec<u32>, bytes: &[u8]) {
@@ -659,7 +710,7 @@ fn write_slices(p: &Program, func_count: usize, funcs: Vec<Slice<'_>>, site_tabl
     for declared in &p.tys.list {
         let flags = u32::from(declared.any_object) | u32::from(declared.any_function) << 1 | u32::from(declared.ints.is_some()) << 2;
         let (least, most) = declared.ints.unwrap_or((0, 0));
-        let first = w.parts.len() as u32 / SIZES[2];
+        let first = record_count(w.parts.len(), SIZES[2]);
         for part in &declared.parts {
             let (kind, index, arguments) = match part {
                 Part::Class(shape) => (0, shape.0, [0, 0]),
@@ -671,7 +722,7 @@ fn write_slices(p: &Program, func_count: usize, funcs: Vec<Slice<'_>>, site_tabl
         w.declared.extend([declared.prims, flags, least as u32, (least as u64 >> 32) as u32, most as u32, (most as u64 >> 32) as u32, first, declared.parts.len() as u32]);
     }
     for layout in &p.layouts {
-        let (fields, methods) = (w.fields.len() as u32 / SIZES[4], w.methods.len() as u32 / SIZES[5]);
+        let (fields, methods) = (record_count(w.fields.len(), SIZES[4]), record_count(w.methods.len(), SIZES[5]));
         for field in &layout.fields {
             let literals = w.list(field.literals.iter().flat_map(|literal| match *literal {
                 Literal::Str(text) => [0, text.0, 0],
@@ -729,11 +780,11 @@ fn write_slices(p: &Program, func_count: usize, funcs: Vec<Slice<'_>>, site_tabl
         for_each_mut(&mut slices, in_parallel, &|(funcs, lengths)| *lengths = table_lengths(funcs.funcs()));
         tables.join().expect("the table writer thread panicked")
     });
-    let mut before = [w.words.len() as u32, 0, 0, 0];
+    let mut before = [checked_count(w.words.len()), 0, 0, 0];
     let starts: Vec<[u32; 4]> = (slices.iter())
         .map(|(_, lengths)| {
             let behind = before;
-            before = [0, 1, 2, 3].map(|i| before[i] + lengths[i]);
+            before = [0, 1, 2, 3].map(|i| add_count(before[i], lengths[i]));
             behind
         })
         .collect();
@@ -742,7 +793,7 @@ fn write_slices(p: &Program, func_count: usize, funcs: Vec<Slice<'_>>, site_tabl
     let webassembly_modules = std::mem::take(&mut w.webassembly_modules);
     let mut list = |words: &mut dyn Iterator<Item = u32>| {
         let [start, length] = w.list(words);
-        [before[0] + start, length]
+        [add_count(before[0], start), length]
     };
     let extended_globals = list(&mut p.extended_globals.iter().map(|name| name.0));
     let prototype_property_names = list(&mut p.prototype_property_names.iter().map(|name| name.0));
@@ -755,9 +806,8 @@ fn write_slices(p: &Program, func_count: usize, funcs: Vec<Slice<'_>>, site_tabl
     let webassembly_modules = list(&mut webassembly_modules.into_iter());
 
     let bytes_of = |modules: &[crate::ir::Module]| modules.iter().map(|module| module.line_table.len() + module.printed.len()).sum::<usize>();
-    let number_of_bytes = (w.bytes.len() + bytes_of(&p.modules)) as u32;
-    let padding = &[0u8; 3][..number_of_bytes.wrapping_neg() as usize % 4];
-    const HEADER_WORDS: usize = 6 + 14 * 2 + 18 + 12;
+    let number_of_bytes = w.bytes.len() + bytes_of(&p.modules);
+    let padding = &[0u8; 3][..number_of_bytes.wrapping_neg() % 4];
     let small_tables: [&[u32]; 8] = [&w.strings, &w.declared, &w.parts, &w.shapes, &w.fields, &w.methods, &w.variables, &w.modules];
     let lengths: [usize; 13] = [
         before[0] as usize + w.words.len(),
@@ -774,14 +824,10 @@ fn write_slices(p: &Program, func_count: usize, funcs: Vec<Slice<'_>>, site_tabl
         before[2] as usize * SIZES[10] as usize,
         before[3] as usize * SIZES[11] as usize,
     ];
-    let mut header: Vec<u32> = vec![MAGIC, VERSION, 0, opcode_names_hash(), crate::builtins_generated::BUILTINS_HASH, if p.logs_type_errors { PROGRAM_LOGS_TYPE_ERRORS } else { 0 }];
-    let mut offset = HEADER_WORDS * 4;
-    header.extend([offset as u32, number_of_bytes]);
-    offset += number_of_bytes as usize + padding.len();
-    for (length, size) in lengths.into_iter().zip(std::iter::once(1).chain(SIZES)) {
-        header.extend([offset as u32, length as u32 / size]);
-        offset += length * 4;
-    }
+    let (sections, offset) = section_headers(number_of_bytes, lengths);
+    let [size_low, size_high] = wide_words(offset as u64);
+    let mut header: Vec<u32> = vec![MAGIC, VERSION, size_low, size_high, opcode_names_hash(), crate::builtins_generated::BUILTINS_HASH, if p.logs_type_errors { PROGRAM_LOGS_TYPE_ERRORS } else { 0 }];
+    header.extend(sections);
     header.extend(extended_globals);
     header.extend(prototype_property_names);
     header.extend(builtin_modules);
@@ -792,7 +838,6 @@ fn write_slices(p: &Program, func_count: usize, funcs: Vec<Slice<'_>>, site_tabl
     header.extend(sites);
     header.extend(webassembly_modules);
     header.extend(SIZES.iter().map(|words| words * 4));
-    header[2] = offset as u32;
     debug_assert_eq!(header.len(), HEADER_WORDS);
     let mut out = Vec::with_capacity(offset);
     let mut room = OutputSlice(&mut out.spare_capacity_mut()[..offset]);
@@ -850,7 +895,78 @@ fn write_slices(p: &Program, func_count: usize, funcs: Vec<Slice<'_>>, site_tabl
 
 #[cfg(test)]
 mod tests {
-    use super::line_table;
+    use super::{
+        HEADER_WORDS, SIZES, add_count, checked_count, line_table, section_headers, wide_words,
+        word_span,
+    };
+
+    #[test]
+    fn retained_index_boundaries() {
+        assert_eq!(checked_count(u32::MAX as usize), u32::MAX);
+        assert_eq!(
+            word_span(u32::MAX - 1, u32::MAX as usize),
+            [u32::MAX - 1, 1]
+        );
+        assert_eq!(add_count(u32::MAX - 1, 1), u32::MAX);
+    }
+
+    #[test]
+    #[should_panic(expected = "typed program exceeds 32-bit index limit")]
+    fn retained_table_count_does_not_wrap() {
+        checked_count(u32::MAX as usize + 1);
+    }
+
+    #[test]
+    #[should_panic(expected = "typed program exceeds 32-bit index limit")]
+    fn retained_list_end_does_not_wrap() {
+        word_span(1, u32::MAX as usize + 1);
+    }
+
+    #[test]
+    #[should_panic(expected = "typed program exceeds 32-bit index limit")]
+    fn retained_prefix_does_not_wrap() {
+        add_count(u32::MAX, 1);
+    }
+
+    #[test]
+    fn section_offsets_and_total_exceed_four_gib() {
+        let mut lengths = [0; 13];
+        lengths[0] = 1 << 30;
+        let (sections, total) = section_headers(3, lengths);
+        assert_eq!(
+            &sections[..6],
+            &[
+                HEADER_WORDS as u32 * 4,
+                0,
+                3,
+                HEADER_WORDS as u32 * 4 + 4,
+                0,
+                1 << 30
+            ]
+        );
+        assert_eq!(&sections[6..9], &[HEADER_WORDS as u32 * 4 + 4, 1, 0]);
+        assert_eq!(wide_words(total as u64), [HEADER_WORDS as u32 * 4 + 4, 1]);
+    }
+
+    #[test]
+    fn section_record_count_is_narrowed_after_division() {
+        let mut lengths = [0; 13];
+        let value_words = SIZES[10] as usize;
+        let value_count = u32::MAX as usize / value_words + 1;
+        lengths[11] = value_count * value_words;
+        let (sections, total) = section_headers(0, lengths);
+        assert_eq!(sections[12 * 3 + 2], value_count as u32);
+        assert!(total > u32::MAX as usize);
+        assert_ne!(sections[13 * 3 + 1], 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "typed program exceeds 32-bit index limit")]
+    fn section_record_count_does_not_wrap() {
+        let mut lengths = [0; 13];
+        lengths[0] = u32::MAX as usize + 1;
+        section_headers(0, lengths);
+    }
 
     #[test]
     fn line_table_ascii() {

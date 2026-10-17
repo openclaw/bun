@@ -1,9 +1,9 @@
 /**
  * WebKit commit — determines prebuilt download URL + what to checkout
  * for local mode. Override via `--webkit-version=<hash>` to test a branch.
- * From https://github.com/oven-sh/WebKit releases.
+ * This fork's revision is from https://github.com/openclaw/WebKit; use a local build.
  */
-export const WEBKIT_VERSION = "b1e30d08cb1428688c5f24109fe4f534096ee2ad";
+export const WEBKIT_VERSION = "392d23b2c0fd346ed295ef92356319c649bf8787";
 
 /**
  * WebKit (JavaScriptCore) — the JS engine, with WTF and bmalloc.
