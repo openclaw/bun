@@ -6808,6 +6808,18 @@ impl<'p, 's> Checker<'p, 's> {
         matches!(*self.data(ty), TypeData::Anon { origin: Origin::Module(module) | Origin::Namespace { module, .. }, .. } if self.files().is_type_only_star_export(module, name))
     }
 
+    /// The embedded declarations name typed intrinsics, not all of Bun's runtime members.
+    pub(super) fn is_open_host_bun_namespace(&self, ty: TypeId) -> bool {
+        let TypeData::Anon { origin: Origin::Module(module), .. } = *self.data(ty) else {
+            return false;
+        };
+        self.files().is_bun_module_declared_only_by_host()
+            && self.files().bun_intrinsics.is_some_and(|ours| {
+                let declarations = self.files().decls(self.files().canonical(module));
+                !declarations.is_empty() && declarations.iter().all(|&(file, _)| file == ours)
+            })
+    }
+
     /// `getSymbolOfDeclaration(member)`. A late bound symbol is identified by the symbol the binder
     /// gave the first of its declarations.
     pub(super) fn symbol_of_member(&mut self, file: FileId, m: MemberId) -> Sym {
