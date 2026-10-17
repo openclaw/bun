@@ -991,7 +991,7 @@ impl WebWorker {
                 vm_ref.cpu_profiler_config = Some(config);
                 crate::bun_cpu_profiler::start_cpu_profiler(vm_ref.jsc_vm_mut());
             }
-            vm_ref.exit_fds = Some(Vec::new());
+            vm_ref.exit_fds = Some(Default::default());
             vm_ref.track_unmanaged_fds = self.track_unmanaged_fds;
         }
 

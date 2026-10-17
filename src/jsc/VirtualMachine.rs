@@ -8,6 +8,7 @@ use core::ffi::{c_int, c_void};
 use core::ptr::NonNull;
 
 use bun_bundler::Transpiler;
+use bun_collections::hashbrown::HashSet;
 use bun_io as Async;
 use bun_uws as uws;
 
@@ -367,7 +368,7 @@ pub struct VirtualMachine {
     /// that leaves it are taken here, and `teardown` waits on it.
     handle: core::mem::ManuallyDrop<crate::VmHandle>,
     /// fds to close at worker exit (`Some` on worker threads only).
-    pub exit_fds: Option<Vec<bun_sys::Fd>>,
+    pub exit_fds: Option<HashSet<bun_sys::Fd, bun_wyhash::BuildHasher>>,
     /// node:worker_threads `trackUnmanagedFds`.
     pub track_unmanaged_fds: bool,
     pub pending_ipc: Option<PendingIpc>,
@@ -6248,22 +6249,14 @@ impl VirtualMachine {
     #[inline]
     pub fn track_managed_fd(&mut self, fd: bun_sys::Fd) {
         if let Some(set) = self.exit_fds.as_mut() {
-            if !set.contains(&fd) {
-                set.push(fd);
-            }
+            set.insert(fd);
         }
     }
 
     /// `fd` was closed, or transferred to another thread.
     #[inline]
     pub fn untrack_fd(&mut self, fd: bun_sys::Fd) -> bool {
-        if let Some(set) = self.exit_fds.as_mut() {
-            if let Some(i) = set.iter().position(|&f| f == fd) {
-                set.swap_remove(i);
-                return true;
-            }
-        }
-        false
+        self.exit_fds.as_mut().is_some_and(|set| set.remove(&fd))
     }
 
     /// Tracks a listening socket so watch-mode reloads can close it.
