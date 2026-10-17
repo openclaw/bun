@@ -7704,23 +7704,36 @@ impl NodeFS {
             inbuf[path_len] = 0;
             let path = ZStr::from_buf(&inbuf[..], path_len);
 
-            #[cfg(any(target_os = "linux", target_os = "android"))]
-            let flags = sys::O::PATH; // O_PATH is faster
-            #[cfg(not(any(target_os = "linux", target_os = "android")))]
-            let flags = sys::O::RDONLY | sys::O::NONBLOCK | sys::O::NOCTTY;
-
-            let fd = match sys::open(path, flags, 0) {
+            // Opening and closing the target drops this process's POSIX locks on macOS.
+            // Resolving a live SQLite SHM file must preserve them.
+            #[cfg(target_os = "macos")]
+            let buf = match Syscall::realpath(path, &mut outbuf) {
                 Err(err) if err.get_errno() == E::ENOENT && is_compiled_program_path(path.as_bytes()) => {
                     return Ok(encode_path_result(path.as_bytes(), args.encoding));
                 }
                 Err(err) => return Err(err.with_path(path)),
-                Ok(fd_) => fd_,
+                Ok(buf) => buf,
             };
-            let _close = scopeguard::guard(fd, |fd| fd.close());
+            #[cfg(not(target_os = "macos"))]
+            let buf = {
+                #[cfg(any(target_os = "linux", target_os = "android"))]
+                let flags = sys::O::PATH; // O_PATH is faster
+                #[cfg(not(any(target_os = "linux", target_os = "android")))]
+                let flags = sys::O::RDONLY | sys::O::NONBLOCK | sys::O::NOCTTY;
 
-            let buf = match Syscall::get_fd_path(fd, &mut outbuf) {
-                Err(err) => return Err(err.with_path(path)),
-                Ok(buf_) => buf_,
+                let fd = match sys::open(path, flags, 0) {
+                    Err(err) if err.get_errno() == E::ENOENT && is_compiled_program_path(path.as_bytes()) => {
+                        return Ok(encode_path_result(path.as_bytes(), args.encoding));
+                    }
+                    Err(err) => return Err(err.with_path(path)),
+                    Ok(fd_) => fd_,
+                };
+                let _close = scopeguard::guard(fd, |fd| fd.close());
+
+                match Syscall::get_fd_path(fd, &mut outbuf) {
+                    Err(err) => return Err(err.with_path(path)),
+                    Ok(buf) => buf,
+                }
             };
 
             let _ = variant;

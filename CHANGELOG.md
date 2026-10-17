@@ -4,6 +4,8 @@ These entries describe the experimental `openclaw/aot-typed` fork.
 
 ## Unreleased
 
+- Preserve macOS POSIX file locks when resolving paths, preventing SQLite WAL locks from being dropped by canonicalization.
+
 - Keep automatic server startup on the primary AOT entrypoint; importing additional entries only evaluates their modules.
 - Cover embedded Wasm SIMD bitmasks under hardened runtime without executable-memory permissions.
 - Preserve property enumeration after AOT identifier names overflow the inline cache.
