@@ -305,10 +305,10 @@ The `openclaw/aot-typed` branch requires the matching [OpenClaw WebKit fork](htt
 
 ```bash
 export BUN_WEBKIT_PATH=/path/to/openclaw-WebKit
-git -C "$BUN_WEBKIT_PATH" checkout 00cf3fff8697eb9e28e26aeb792d3c94fb008bb8
-test "$(git -C "$BUN_WEBKIT_PATH" rev-parse HEAD)" = 00cf3fff8697eb9e28e26aeb792d3c94fb008bb8
+git -C "$BUN_WEBKIT_PATH" checkout bb606ed171519074abaa981e7f6613c737f62099
+test "$(git -C "$BUN_WEBKIT_PATH" rev-parse HEAD)" = bb606ed171519074abaa981e7f6613c737f62099
 test -z "$(git -C "$BUN_WEBKIT_PATH" status --porcelain)"
-PATH="/opt/homebrew/opt/rustup/bin:$PATH" bun run build:release:local --build-dir=build/release --webkit-version=00cf3fff8697eb9e28e26aeb792d3c94fb008bb8 -j8
+PATH="/opt/homebrew/opt/rustup/bin:$PATH" bun run build:release:local --build-dir=build/release --webkit-version=bb606ed171519074abaa981e7f6613c737f62099 -j8
 ```
 
 This macOS arm64 command builds Bun and WebKit in the single `build/release` directory. Use the Rust toolchain path appropriate to your system on other platforms. The local build does not verify the checkout revision itself; the checks above bind it to the pin.

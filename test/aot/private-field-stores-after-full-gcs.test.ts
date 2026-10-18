@@ -59,7 +59,7 @@ test("what is learnt about a class with private fields may be learnt again after
   const env = { ...bunEnv, BUN_JSC_crashIfInterpreterIsUsed: "1", BUN_JSC_useAOTOperationCounters: "1", BUN_JSC_aotTypeCoverageCountsPath: path };
   expect(await run([executable], String(dir), env)).toEqual({ stdout: "600000\n", stderr: "", exitCode: 0 });
   const counts: Record<string, number> = { operationAOTTypedTryPutProperties: 0, operationAOTTypedPrivateFieldAdd: 0 };
-  for (const line of readFileSync(path + ".operations", "utf8").split("\n")) {
+  for (const line of readFileSync(path + "-vm-1.operations", "utf8").split("\n")) {
     const [count, name] = line.split("\t");
     if (name !== undefined && name in counts) counts[name] = Number(count);
   }

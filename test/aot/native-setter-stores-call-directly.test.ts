@@ -54,7 +54,7 @@ test.each(["main", "stores"])("a store that reaches a native setter looks nothin
     const path = join(String(dir), "counts" + rounds);
     const env = { ...bunEnv, BUN_JSC_crashIfInterpreterIsUsed: "1", BUN_JSC_useAOTOperationCounters: "1", BUN_JSC_aotTypeCoverageCountsPath: path };
     expect(await run([executable, String(rounds)], String(dir), env)).toEqual({ stdout: plain.stdout, stderr: "", exitCode: 0 });
-    for (const line of readFileSync(path + ".operations", "utf8").split("\n")) {
+    for (const line of readFileSync(path + "-vm-1.operations", "utf8").split("\n")) {
       const [count, name] = line.split("\t");
       if (name === "operationAOTPutByNameAndCache") return Number(count);
     }

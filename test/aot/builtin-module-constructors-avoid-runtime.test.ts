@@ -45,7 +45,7 @@ test("making an EventEmitter or a stream stops asking the run time for its prope
     const env = { ...bunEnv, BUN_JSC_crashIfInterpreterIsUsed: "1", BUN_JSC_useAOTOperationCounters: "1", BUN_JSC_aotTypeCoverageCountsPath: path };
     expect(await run([executable, String(rounds)], String(dir), env)).toEqual({ stdout: "EventEmitter,Stream,Readable,Writable,Duplex,Transform,PassThrough 0\n", stderr: "", exitCode: 0 });
     const counts: Record<string, number> = Object.fromEntries(operations.map(name => [name, 0]));
-    for (const line of readFileSync(path + ".operations", "utf8").split("\n")) {
+    for (const line of readFileSync(path + "-vm-1.operations", "utf8").split("\n")) {
       const [count, name] = line.split("\t");
       if (name !== undefined && name in counts) counts[name] = Number(count);
     }

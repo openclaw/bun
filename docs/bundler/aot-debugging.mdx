@@ -224,6 +224,21 @@ In an executable, as in any bundle, the modules of your program are resolved whe
 
 [`bun run --aot` and `bun test --aot`](/bundler/executables#try-your-code-without-building-an-executable) load your modules from their source files, as `bun run` does, so all of these hooks are asked for your own modules too.
 
+### Native entry counters in the OpenClaw fork
+
+This fork can count entries into compiled native bodies. Enable the counters when building, then choose a snapshot path when running:
+
+```bash terminal icon="terminal"
+BUN_JSC_countAOTNativeEntries=1 bun build --compile --aot app.ts --outfile app
+BUN_DESTRUCT_VM_ON_EXIT=1 BUN_JSC_aotTypeCoverageCountsPath="$PWD/counts-%p" ./app
+```
+
+The runtime replaces `%p` with the process ID and adds a VM ID to each filename. Each `.native-entries` file identifies its image and lists each body's class, compiled byte length, and entry count. Classes distinguish typed, generic typed, untyped, generic untyped, and generated adapter bodies. Count generated adapters separately when comparing specialization.
+
+Snapshots have a versioned header and a matching footer. The runtime publishes each file through a same-directory rename. A `final` snapshot comes from VM destruction; a `partial` snapshot can precede later work. Require final snapshots from every participating VM for a complete run. Forced process termination can leave only partial snapshots.
+
+These counters measure native-body entries and the distinct native bytes entered. They do not measure executed instructions or CPU time. Instrumentation adds runtime work and per-VM memory, so collect timing and memory comparisons from separate builds with the counters disabled.
+
 ## `Function.prototype.toString()`
 
 By default the executable keeps the text of your functions, after TypeScript's types are removed, and `toString()` returns it. The functions of a file that calls `eval()` directly at its top level are the exception: they have no text.

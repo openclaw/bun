@@ -39,7 +39,7 @@ test("calls on heirs of Buffer at the start do not lose plain Buffers their acce
   const env = { ...bunEnv, BUN_DESTRUCT_VM_ON_EXIT: undefined, BUN_JSC_crashIfInterpreterIsUsed: "1", BUN_JSC_useAOTOperationCounters: "1", BUN_JSC_aotTypeCoverageCountsPath: path };
   expect(await run([executable], String(dir), env)).toEqual({ stdout: plainly.stdout, stderr: "", exitCode: 0 });
   const counts: Record<string, number> = { "operationAOTTypedFindBufferAccessor:found": 0, "operationAOTTypedFindBufferAccessor:not-found": 0 };
-  for (const line of readFileSync(path + ".operations", "utf8").split("\n")) {
+  for (const line of readFileSync(path + "-vm-1.operations", "utf8").split("\n")) {
     const [count, name] = line.split("\t");
     if (name !== undefined && name in counts) counts[name] = Number(count);
   }

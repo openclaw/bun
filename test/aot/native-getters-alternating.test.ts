@@ -70,7 +70,7 @@ test("a hundred and more native getters read in turn are all remembered", async 
     const env = { ...bunEnv, ROUNDS: String(rounds), BUN_JSC_crashIfInterpreterIsUsed: "1", BUN_JSC_useAOTOperationCounters: "1", BUN_JSC_aotTypeCoverageCountsPath: path };
     expect(await run([executable], String(dir), env)).toEqual({ stdout: `136 getters of 18 kinds of native objects, read ${rounds} times: 134\n`, stderr: "", exitCode: 0 });
     let count = 0;
-    for (const line of readFileSync(path + ".operations", "utf8").split("\n")) {
+    for (const line of readFileSync(path + "-vm-1.operations", "utf8").split("\n")) {
       const [number, name] = line.split("\t");
       if (name === "operationAOTGetByNameAndCache") count = Number(number);
     }
