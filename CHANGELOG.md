@@ -4,6 +4,9 @@ These entries describe the experimental `openclaw/aot-typed` fork.
 
 ## Unreleased
 
+- Restore guarded direct calls for fresh record literals while preserving ordinary-object conversion checks.
+- Emit complete per-VM native-entry snapshots and preserve counter relocations in large AOT images.
+
 - Preserve conversion checks and prototype-backed objects for literals explicitly typed as `any`.
 
 - Preserve known host-property types through structural views of globalThis during typed AOT checks.
