@@ -1049,6 +1049,7 @@ impl<'c, 'p, 's> FileBuild<'c, 'p, 's> {
             && let Some(mut made) = self.c.generic_call_allocation(fx.file, e)
         {
             if !self.out.tys.get(operation_type).any_object {
+                made.retain_open_layouts();
                 made.is_object = false;
             }
             let allocated_as = self.c.type_of_expr(fx.file, e);

@@ -33,6 +33,7 @@ use super::OnceLock;
 #[derive(Clone, Default)]
 pub struct FreshGraph {
     pub is_object: bool,
+    pub needs_open_layout: bool,
     pub within: Vec<(Atom, FreshGraph)>,
     pub anywhere: Option<Box<FreshGraph>>,
     pub elements: Option<Box<FreshGraph>>,
@@ -44,7 +45,17 @@ impl FreshGraph {
     }
 
     fn named_contents(self) -> FreshGraph {
-        FreshGraph { is_object: false, elements: None, ..self }
+        FreshGraph { is_object: false, needs_open_layout: false, elements: None, ..self }
+    }
+
+    pub fn retain_open_layouts(&mut self) {
+        self.is_object &= self.needs_open_layout;
+        for (_, held) in &mut self.within {
+            held.retain_open_layouts();
+        }
+        for held in [&mut self.anywhere, &mut self.elements].into_iter().flatten() {
+            held.retain_open_layouts();
+        }
     }
 
     fn all_contents(self) -> FreshGraph {
@@ -57,6 +68,7 @@ impl FreshGraph {
 
     fn join(&mut self, other: FreshGraph) {
         self.is_object |= other.is_object;
+        self.needs_open_layout |= other.needs_open_layout;
         for (name, held) in other.within {
             match self.within.iter_mut().find(|known| known.0 == name) {
                 Some(known) => known.1.join(held),
@@ -3582,6 +3594,10 @@ impl<'p, 's> Checker<'p, 's> {
                     if !matches!(kind, PropKind::Init | PropKind::Shorthand | PropKind::Spread) {
                         continue;
                     }
+                    if kind == PropKind::Spread {
+                        let spread = self.type_of_expr(file, value);
+                        made.needs_open_layout |= self.is_generic(spread);
+                    }
                     let Some(held) = self.expr_allocation(file, value, looked_at) else { continue };
                     made.join(match (kind, key) {
                         (PropKind::Spread, _) => held.named_contents(),
@@ -3591,7 +3607,7 @@ impl<'p, 's> Checker<'p, 's> {
                 }
                 Some(made)
             }
-            ExprKind::New(_) if self.creates_proxy(file, e) => Some(FreshGraph::object()),
+            ExprKind::New(_) if self.creates_proxy(file, e) => Some(FreshGraph { needs_open_layout: true, ..FreshGraph::object() }),
             ExprKind::As { expr, .. } | ExprKind::Satisfies { expr, .. } | ExprKind::NonNull(expr) | ExprKind::AsConst(expr) => self.expr_allocation(file, expr, looked_at),
             ExprKind::Cond { yes, no, .. } => self.either_allocation(file, yes, no, looked_at),
             ExprKind::Binary { op: BinOp::Or | BinOp::And | BinOp::Nullish, left, right } => self.either_allocation(file, left, right, looked_at),
@@ -3943,7 +3959,7 @@ impl<'p, 's> Checker<'p, 's> {
     }
 
     pub fn record_nested_proxies(&mut self, ty: TypeId) {
-        let made = FreshGraph { is_object: true, within: Vec::new(), anywhere: Some(Box::new(FreshGraph::object())), elements: Some(Box::new(FreshGraph::object())) };
+        let made = FreshGraph { is_object: true, needs_open_layout: true, within: Vec::new(), anywhere: Some(Box::new(FreshGraph::object())), elements: Some(Box::new(FreshGraph::object())) };
         self.record_generic_function_result(&made, ty);
     }
 

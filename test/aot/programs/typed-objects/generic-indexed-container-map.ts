@@ -25,3 +25,17 @@ class SkippedMap<T> extends Array<T> {
 const skipped = new SkippedMap<typeof original>();
 skipped.push(original);
 console.log(addField({ rows: skipped }).rows.length, skipped[0] === original);
+
+type MappedRecord<Cause, Result> = { cause: Cause; result: Result; number: number };
+function records<C, R>(cause: C, result: R): { rows: MappedRecord<C, R>[] } {
+  return { rows: [0].map(() => ({ cause, result, number: 2 })) };
+}
+const useCause = (cell: MappedRecord<"poll", string>): string => cell.cause + ":" + cell.result.length + cell.number;
+const useResult = (cell: MappedRecord<string, "status">): string => cell.cause.length + ":" + cell.result + cell.number;
+const plain = records<"poll", "status">("poll", "status");
+const byCause: { rows: MappedRecord<"poll", string>[] } = plain;
+const byResult: { rows: MappedRecord<string, "status">[] } = plain;
+console.log(useCause(byCause.rows[0]!), useResult(byResult.rows[0]!), useCause(byCause.rows[0]!));
+byCause.rows[0]!.number = 7;
+byResult.rows[0]!.number += 1;
+console.log(useResult(byResult.rows[0]!), useCause(byCause.rows[0]!), plain.rows[0] === byResult.rows[0]);
