@@ -4,8 +4,9 @@ import { unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "./supported";
 
-test("far-call veneers share their caller's alignment reserve", async () => {
-  const count = 896;
+test("caller-local veneers can exceed the shared stub reserve", async () => {
+  // At 12 bytes each, these caller-local veneers alone exceed the 24 MiB shared-stub reserve.
+  const count = 1536;
   const source = ["declare const console: { log(value: number): void };", "declare const process: { argv: string[] };"];
   for (let target = 0; target < count; target++) {
     source.push(`function target${target}(x: number): number {

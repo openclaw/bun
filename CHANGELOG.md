@@ -4,6 +4,7 @@ These entries describe the experimental `openclaw/aot-typed` fork.
 
 ## Unreleased
 
+- Use final branch-distance validation for large typed AOT images and cover caller-local veneers larger than the shared-stub reserve.
 - Preserve checked argument types when declared imports return an argument during typed AOT compilation.
 
 - Finish typed AOT analysis of arrays filled from their own elements, including mutually dependent arrays.
