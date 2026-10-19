@@ -122,7 +122,7 @@ pub use aot::{ClassFacts, MethodStore, ReplacedMethods};
 pub use aot::ImportedCode;
 pub use aot::{AotCheck, AotCheckKind};
 pub use aot::{CommonJsExports, ExportsReference};
-pub use aot::Identity;
+pub use aot::{Identity, SourceSearchTrace};
 pub use aot::given;
 pub use aot::{NotInt32Reason, FlowNode, FlowSource, Int32Verdict, NumberFlow, CodeOwner, expected_int32};
 pub use aot::{Answer, BuiltIn, Candidate, TruncatedSearch, KindsDeclared, Literal, SearchBarrier, Membership, FlowNotes, DataOrigin, Place, Question, Reach, Share, UntypedReason};

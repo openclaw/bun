@@ -5403,15 +5403,21 @@ fn check_named_files(
                 }
             }
             let mut finished = loop {
-                let gave_up = match program.find_external_data(threads.min(MAX_SEARCHERS), 0, planned_searches.load(Ordering::Relaxed), &at_once) {
+                let trace = bun_sema::check::SourceSearchTrace::new(std::ptr::from_ref(program).addr());
+                let _attempt_trace = trace.span(0, "search_attempt", None, b"", None);
+                let gave_up = match program.find_external_data(threads.min(MAX_SEARCHERS), 0, planned_searches.load(Ordering::Relaxed), trace, &at_once) {
                     Ok(finished) => break finished,
                     Err(gave_up) => gave_up,
                 };
                 let modules = &program.files.modules;
                 let (directory, name) = invalidation_key(&program.files, &modules[gave_up.typed_side.idx()]);
+                let (mut affected, mut newly_untyped) = (0, 0);
                 for module in modules.iter().filter(|module| invalidation_key(&program.files, module).0 == directory) {
+                    affected += 1;
+                    newly_untyped += usize::from(!module.is_untyped());
                     module.is_forced_untyped.store(true, Ordering::Relaxed);
                 }
+                trace.fallback(gave_up.typed_side.0, modules[gave_up.typed_side.idx()].file_name(), directory, gave_up.name.as_bytes(), gave_up.place.as_bytes(), affected, newly_untyped);
                 let name = match is_package_dir(&program.files, directory) {
                     true => name.to_vec(),
                     false => displayed_path(name).into_owned(),

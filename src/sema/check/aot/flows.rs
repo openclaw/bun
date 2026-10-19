@@ -32,6 +32,7 @@ use crate::check::{Checker, ContextFlags, Program};
 use crate::check::relate::Relation;
 use crate::check::task::Finished;
 use super::identity::Identity;
+use super::source_trace::Trace;
 use super::rows;
 use super::type_caches::{NestedPairs, TypeCaches, is_published};
 use super::callees::Callee;
@@ -1268,6 +1269,7 @@ pub struct SearchBarrier {
 }
 
 pub(super) struct Search {
+    trace: Trace,
     searchers: usize,
     barrier: Barrier,
     total_found: [AtomicUsize; 3],
@@ -1288,8 +1290,9 @@ pub(super) struct Search {
 }
 
 impl Search {
-    fn new(searchers: usize) -> Search {
+    fn new(searchers: usize, trace: Trace) -> Search {
         Search {
+            trace,
             searchers,
             barrier: Barrier::new(searchers),
             total_found: Default::default(),
@@ -1321,7 +1324,7 @@ impl Search {
             given: first.given,
             left: first.left,
             names: first.names,
-            ..Search::new(parties)
+            ..Search::new(parties, first.trace)
         }
     }
 
@@ -1388,12 +1391,12 @@ impl<'s> Program<'s> {
         SearchBarrier { barrier: Barrier::new(parties), search }
     }
 
-    pub fn find_external_data(&self, searchers: usize, step: u32, is_searched_again: bool, at_once: &dyn Fn(usize, &(dyn Fn(usize) + Sync))) -> Result<Vec<Finished<'s>>, TruncatedSearch> {
+    pub fn find_external_data(&self, searchers: usize, step: u32, is_searched_again: bool, trace: Trace, at_once: &dyn Fn(usize, &(dyn Fn(usize) + Sync))) -> Result<Vec<Finished<'s>>, TruncatedSearch> {
         if self.aot.storage.given.get().is_some() {
             return Ok(Vec::new());
         }
         self.aot.storage.is_search_under_way.store(is_searched_again, Ordering::Relaxed);
-        let search = Search { is_continuation: is_searched_again, seen_by_other_declarations: self.checker().importers_with_other_declarations(), ..Search::new(searchers.max(1)) };
+        let search = Search { is_continuation: is_searched_again, seen_by_other_declarations: self.checker().importers_with_other_declarations(), ..Search::new(searchers.max(1), trace) };
         search.given.write().continued_by_pairs = is_searched_again;
         let finished: Vec<Guarded<Option<Finished<'s>>>> = (0..search.searchers).map(|_| Guarded::new(None)).collect();
         const TABLES: usize = 9;
@@ -3151,7 +3154,7 @@ impl<'p, 's> Checker<'p, 's> {
         assert!(!program.aot.storage.is_search_under_way.load(Ordering::Relaxed), "what the program is given is asked for while the search for it is under way");
         // By a checker of its own, outside the plan: what it finds out on the way is dropped with it. So the task that happens to make the search is left as every other task is: with nothing looked at out of its order, and
         // nothing remembered from while no type was tainted.
-        let search = Search { seen_by_other_declarations: self.importers_with_other_declarations(), ..Search::new(1) };
+        let search = Search { seen_by_other_declarations: self.importers_with_other_declarations(), ..Search::new(1, Trace::new(std::ptr::from_ref(program).addr())) };
         let mut searcher = program.checker();
         searcher.begin_task(0, 0, true);
         (searcher.stack_base, searcher.stack_limit) = (self.stack_base, self.stack_limit);
@@ -3384,7 +3387,7 @@ impl<'p, 's> Checker<'p, 's> {
         self.aot = Default::default();
     }
 
-    fn visit_external_sources(&mut self, search: &Search, share: &Share<'_>, held_to: &mut Vec<TypeId>, despecialized: &mut Vec<TypeId>, looked_at: &mut Vec<InspectedCast>, written_unions: &mut Vec<WrittenUnion>) -> bool {
+    fn visit_external_sources(&mut self, search: &Search, index: usize, share: &Share<'_>, held_to: &mut Vec<TypeId>, despecialized: &mut Vec<TypeId>, looked_at: &mut Vec<InspectedCast>, written_unions: &mut Vec<WrittenUnion>) -> bool {
         let count = self.files().modules.len() as u32;
         let all = move || (0..count).map(FileId);
         let weights: Vec<u64> = all().map(|file| self.hir(file).exprs.len() as u64 + 1).collect();
@@ -3409,6 +3412,7 @@ impl<'p, 's> Checker<'p, 's> {
         self.aot.flows.checked_sources = made_of.iter().map(|made| made.1).collect();
         let texts: Vec<FileId> = made_of.iter().map(|made| made.1).collect();
         for text in own(&texts) {
+            let _file_trace = search.trace.span(index, "allocated", Some(text.0), self.files().module(text).file_name(), None);
             self.add_types_allocated_in(text, despecialized);
         }
         // So the text is gone through like that of a typed file.
@@ -3416,6 +3420,7 @@ impl<'p, 's> Checker<'p, 's> {
         // A type is written where its alias is: also in a module that is imported for its types alone, which is no module of the program's graph.
         let written: Vec<FileId> = all().filter(|&file| self.hir(file).kind != FileKind::Declaration && !self.is_untyped_file(file)).collect();
         for file in own(&files) {
+            let _file_trace = search.trace.span(index, "external_targets", Some(file.0), self.files().module(file).file_name(), None);
             self.add_external_data_target_types(file, held_to);
         }
         // Untyped code of the program is outside as well: it calls what it imports with what it has made, and stores to what it is handed.
@@ -3424,6 +3429,7 @@ impl<'p, 's> Checker<'p, 's> {
         let seen_by_other_declarations = &search.seen_by_other_declarations;
         for file in own(&files) {
             if let Some(&at) = seen_by_other_declarations.get(&file) {
+                let _file_trace = search.trace.span(index, "other_declarations", Some(file.0), self.files().module(file).file_name(), None);
                 let module = self.files().file_symbol(file);
                 let value = self.files().module_value(module);
                 let of_module = self.type_of_symbol(value);
@@ -3431,13 +3437,16 @@ impl<'p, 's> Checker<'p, 's> {
             }
         }
         for file in own(&untyped) {
+            let _file_trace = search.trace.span(index, "reexports", Some(file.0), self.files().module(file).file_name(), None);
             self.add_arguments_to_reexports(file, &mut crossed, held_to);
         }
         if !untyped.is_empty() {
             for file in own(&untyped).into_iter().chain(own(&files)) {
+                let _file_trace = search.trace.span(index, "import_boundary", Some(file.0), self.files().module(file).file_name(), None);
                 self.add_types_imported_across_boundary(file, &mut imported, &mut gotten, &mut crossed, held_to);
             }
             for file in own(&files) {
+                let _file_trace = search.trace.span(index, "javascript_arguments", Some(file.0), self.files().module(file).file_name(), None);
                 self.add_types_passed_to_javascript(file, &mut handed_over, &mut crossed, held_to);
             }
         }
@@ -3454,10 +3463,12 @@ impl<'p, 's> Checker<'p, 's> {
             }
         }
         for file in own(&files) {
-            self.add_inspected_casts(file, looked_at);
+            let _file_trace = search.trace.span(index, "casts", Some(file.0), self.files().module(file).file_name(), None);
+            self.add_inspected_casts(file, looked_at, &search.trace, index);
         }
         for file in own(&written) {
-            self.add_declared_unions(file, written_unions);
+            let _file_trace = search.trace.span(index, "unions", Some(file.0), self.files().module(file).file_name(), None);
+            self.add_declared_unions(file, written_unions, &search.trace, index);
         }
         let is_last = search.barrier.wait();
         let goes_on = search.gave_up.lock().is_none();
@@ -3549,10 +3560,11 @@ impl<'p, 's> Checker<'p, 's> {
     }
 
     fn search_from_sources(&mut self, search: &Search, index: usize, share: &Share<'_>, own_pairs: &FxHashMap<Identity, Vec<TypeId>>) {
+        let _search_trace = search.trace.span(index, "source_search", None, b"", None);
         let (mut held_to, mut despecialized, mut looked_at, mut written_unions) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
         let goes_on = search.seen_before.is_some();
         let mut turn = 0;
-        if !goes_on && !self.visit_external_sources(search, share, &mut held_to, &mut despecialized, &mut looked_at, &mut written_unions) {
+        if !goes_on && !self.visit_external_sources(search, index, share, &mut held_to, &mut despecialized, &mut looked_at, &mut written_unions) {
             return;
         }
         let (mut is_left_taken, mut arrays_before, mut arrays_found, mut arrays_not_said_yet): (bool, Vec<(Identity, Vec<Identity>)>, Vec<Identity>, Vec<Identity>) = (!goes_on, Vec::new(), Vec::new(), Vec::new());
@@ -3576,6 +3588,8 @@ impl<'p, 's> Checker<'p, 's> {
         self.add_targets_of_found_types(search, own_pairs, &kept_targets, &mut followed, &mut tracked_as_plain, &mut held_to, &mut despecialized);
         loop {
             while search.has_any_found(held_to.len() + despecialized.len() + usize::from(turn == 0), &mut turn) {
+                search.trace.counts(index, turn, held_to.len(), despecialized.len(), looked_at.len(), written_unions.len());
+                let _turn_trace = search.trace.span(index, "propagate", None, b"", Some(turn as u32));
                 if !is_left_taken {
                     is_left_taken = true;
                     self.take_remaining_work(search, index, share, &mut looked_at, &mut written_unions, &mut arrays_before);
@@ -3746,12 +3760,13 @@ impl<'p, 's> Checker<'p, 's> {
     }
 
     /// A place of `A | B` holds anything as soon as `A` is tainted, a literal there that no discriminant singles out is made plain, and what is narrowed to `B` is expected to be laid out as a `B`. `taking`: `accepts_external_data`, as far as asked.
-    fn add_declared_unions(&mut self, file: FileId, out: &mut Vec<WrittenUnion>) {
+    fn add_declared_unions(&mut self, file: FileId, out: &mut Vec<WrittenUnion>, trace: &Trace, worker: usize) {
         let hir = self.hir(file);
         for (index, node) in hir.types.iter().enumerate() {
             if !matches!(node.kind, TypeNodeKind::Union(_)) {
                 continue;
             }
+            let _query_trace = trace.span(worker, "union", Some(file.0), self.files().module(file).file_name(), Some(index as u32));
             let union = self.type_from_node(file, TypeNodeId(index as u32));
             let mut members = Vec::new();
             for member in self.parts(union).to_vec() {
@@ -3802,7 +3817,7 @@ impl<'p, 's> Checker<'p, 's> {
     /// ON: the type after `as`, or the annotation, where the operand is of one of the types (`base as Derived`: no assignability tells that), or where nothing is known of the operand and it is known for data (`data_origin`): `load(path) as Settings`
     /// with a `load` of a package that yields `any`, `const s: Settings = loose` with a `loose` that holds what was parsed, the value of a JSON module. Not what goes through an `any` of the program's own, `(x: unknown) => x as T`: only a flow tells
     /// what gets there.
-    fn add_inspected_casts(&mut self, file: FileId, out: &mut Vec<InspectedCast>) {
+    fn add_inspected_casts(&mut self, file: FileId, out: &mut Vec<InspectedCast>, trace: &Trace, worker: usize) {
         let hir = self.hir(file);
         let casts = self.file_exprs_by_kind(file).of(ExprTag::As).iter().filter_map(|&cast| match hir[cast].kind {
             ExprKind::As { expr, ty } => Some((ty, expr)),
@@ -3811,6 +3826,7 @@ impl<'p, 's> Checker<'p, 's> {
         let annotated = hir.var_decls.iter().filter(|declaration| declaration.ty.is_some() && declaration.init.is_some()).map(|declaration| (declaration.ty, declaration.init));
         let written: Vec<(TypeNodeId, ExprId)> = casts.chain(annotated).collect();
         for (written, value) in written {
+            let _query_trace = trace.span(worker, "cast", Some(file.0), self.files().module(file).file_name(), Some(written.0));
             let target = self.type_from_node(file, written);
             let target = self.reduced(target);
             if !self.may_hold_objects(target) {
