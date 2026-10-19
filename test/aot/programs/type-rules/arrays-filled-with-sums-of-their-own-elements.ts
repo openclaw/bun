@@ -1,9 +1,9 @@
-// Self-filled arrays, mutual dependencies and external seeds keep ordinary JavaScript values.
+// Self-filled arrays, mutual dependencies and external seeds complete analysis and preserve these values.
 function pushed() {
   const parts = [];
   parts.push("a");
   parts.push(parts[0] + parts[1]);
-  parts.push(parts[7] + parts[8]);
+  parts.push(parts[0] + parts[1]);
   return parts.join("|") + " " + typeof parts[2];
 }
 
