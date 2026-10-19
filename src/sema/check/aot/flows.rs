@@ -816,6 +816,7 @@ pub(super) struct State {
     pub(super) truncated: FxHashSet<(TypeId, TypeId, u8)>,
     pub(super) provably_related: FxHashMap<(TypeId, TypeId, u8), bool>,
     derived_types: FxHashMap<(TypeId, DerivedTypeKind), TypeId>,
+    flow_records: FxHashMap<FlowRecordKey, TypeId>,
     pub(super) literal_contextual_types: FxHashMap<(FileId, ExprId), Option<TypeId>>,
     pub(super) unknown_count: usize,
     /// `root_of`, as far as it has been asked. Arrays, functions and the classes of the engine are in it from the first time on.
@@ -1099,6 +1100,14 @@ enum DerivedTypeKind {
     Union,
     Either,
     AnythingAs,
+    FlowIntersection,
+}
+
+#[derive(PartialEq, Eq, Hash)]
+struct FlowRecordKey {
+    fields: Vec<(Atom, PropFlags, TypeId, TypeId)>,
+    indexes: Vec<crate::types::IndexInfo>,
+    declared_only: bool,
 }
 
 /// What type arguments are applied to.
@@ -2719,6 +2728,71 @@ impl<'p, 's> Checker<'p, 's> {
         let both = self.intersection(&[source, target]);
         let both = self.layout_defining_type(both);
         matches!(self.data(both), TypeData::Intersection(_)).then_some(both)
+    }
+
+    /// A Flow narrowing must retain the primitive constraints of every older alias. Unlike an explicit cast, it needs a distinct
+    /// record when layout canonicalization would widen the intersection back to one of its operands.
+    pub fn intersection_for_flow_cast(&mut self, source: TypeId, target: TypeId) -> Option<TypeId> {
+        let not_known_before = self.aot.flows.unknown_count;
+        if self.is_coercion_result_type(source) || self.is_coercion_result_type(target) {
+            return None;
+        }
+        let have_fixed_layout = self.declares_properties(source) && self.declares_properties(target) && !self.is_instance_type(source) && !self.is_instance_type(target);
+        if !have_fixed_layout || self.is_allocated_subtype(target, source) || self.is_allocated_subtype(source, target) || self.aot.flows.unknown_count != not_known_before {
+            return None;
+        }
+        let both = self.intersection(&[source, target]);
+        let both = self.reduced(both);
+        if !matches!(self.data(both), TypeData::Intersection(_)) {
+            return None;
+        }
+        let record = self.cached_derived_type(both, DerivedTypeKind::FlowIntersection, Self::compute_flow_intersection_record);
+        (self.aot.flows.unknown_count == not_known_before && !record.is_never()).then_some(record)
+    }
+
+    fn compute_flow_intersection_record(&mut self, intersection: TypeId) -> TypeId {
+        let is_result_cacheable = !self.results_are_provisional();
+        let careful_before = (self.stack_half_used_count(), self.aot.flows.unknown_count);
+        let Some(properties) = self.members(intersection) else { return TypeId::NEVER };
+        let Some(structured) = self.structured_members(intersection) else { return TypeId::NEVER };
+        // This record owns data fields, not callable or declaration-dependent member contracts.
+        let unsupported = PropFlags::PRIVATE | PropFlags::PROTECTED | PropFlags::METHOD | PropFlags::ACCESSOR | PropFlags::WRITE_ONLY | PropFlags::ABSTRACT;
+        if !structured.shape().call.is_empty() || !structured.shape().construct.is_empty() || properties.shape().props.iter().any(|prop| prop.flags.intersects(unsupported) || self.is_private_name(prop.name)) {
+            return TypeId::NEVER;
+        }
+        let mut shape = Shape::new_in(self.arena);
+        let mut key = FlowRecordKey {
+            fields: Vec::with_capacity(properties.shape().props.len()),
+            indexes: Vec::with_capacity(structured.shape().index.len()),
+            declared_only: self.is_declared_only_record(intersection),
+        };
+        for prop in properties.shape().props.iter() {
+            let ty = self.type_of_prop(prop, properties.mapper);
+            // type_of_prop has already applied these transformations; the remaining flags still describe the property contract.
+            let flags = prop.flags & !(PropFlags::WIDEN | PropFlags::REGULAR);
+            key.fields.push((prop.name, flags, prop.name_type, ty));
+            shape.props.push(Prop { name: prop.name, flags, source: PropSource::Type(ty), mapper: MapperId::IDENTITY, name_type: prop.name_type });
+        }
+        self.sort_by_name(&mut shape);
+        key.fields.sort_unstable_by_key(|field| field.0.0);
+        for info in structured.shape().index.iter() {
+            let mut info = *info;
+            info.key = self.instantiate(info.key, structured.mapper);
+            info.value = self.instantiate(info.value, structured.mapper);
+            key.indexes.push(info);
+            shape.index.push(info);
+        }
+        let can_cache = is_result_cacheable && careful_before == (self.stack_half_used_count(), self.aot.flows.unknown_count);
+        if can_cache && let Some(&record) = self.aot.flows.flow_records.get(&key) {
+            return record;
+        }
+        // Keep declaration-only provenance, as union_as_record does, without marking this as a coercion result.
+        (shape.created_from, shape.spread_rank) = (Some((TypeId::NEVER, intersection)), u32::MAX - 1);
+        let record = self.synth(shape);
+        if can_cache {
+            self.aot.flows.flow_records.insert(key, record);
+        }
+        record
     }
 
     /// A value is cast to `target`, with `as`, with `!` or by entering a place whose type is written down. `sources`: what it is looked at

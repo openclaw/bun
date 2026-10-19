@@ -4,6 +4,7 @@ These entries describe the experimental `openclaw/aot-typed` fork.
 
 ## Unreleased
 
+- Preserve native object identity across overlapping flow-narrowed unions by retaining and deduplicating their intersection layouts.
 - Fix typed-fact validation crashes when mutable captured strings enter a loop, and cover native compilation with sources hidden and JIT disabled.
 - Keep ordinary nested generic records compatible across typed views while preserving open layouts for generic spreads and Proxy allocations.
 - Pin WebKit's typed Proxy-array handling and ARM64 pre-frame outlining repair.

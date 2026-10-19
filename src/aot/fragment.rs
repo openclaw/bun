@@ -330,6 +330,8 @@ pub struct Body {
     pub parts: Vec<ModulePart>,
     /// Without those of `parts`.
     pub mentions: ReferencedIds,
+    /// Layouts that Flow conversions may create without an IR operation naming them.
+    pub transition_layouts: Vec<LayoutId>,
 }
 
 pub struct Function {
@@ -849,7 +851,7 @@ impl ListWriter<'_> {
 
 fn function_list_len(function: &Function) -> usize {
     let header_len = function.func.as_ref().map_or(0, |func| 2 + func.captures.len() + func.params.len());
-    let body_len = function.body.as_ref().map_or(0, |body| body.mentions.all.len() + body.classes_as_values.len() + body.declares.len());
+    let body_len = function.body.as_ref().map_or(0, |body| body.mentions.all.len() + body.transition_layouts.len() + body.classes_as_values.len() + body.declares.len());
     header_len + body_len
 }
 
@@ -884,7 +886,7 @@ fn outline_function(function: &Function, fragment: u32, index: u32, fragment_fil
         outline.class_id = if body.class.is_none() { u32::MAX } else { ids.layouts[body.class.idx()] };
         outline.ends[Outline::STRS] = lists.extend(body.mentions.strs().map(|id| id.0), &ids.strs);
         outline.ends[Outline::TYS] = lists.extend(body.mentions.tys().map(|id| id.0), &ids.tys);
-        outline.ends[Outline::LAYOUTS] = lists.extend(body.mentions.layouts().map(|id| id.0), &ids.layouts);
+        outline.ends[Outline::LAYOUTS] = lists.extend(body.mentions.layouts().chain(body.transition_layouts.iter().copied()).map(|id| id.0), &ids.layouts);
         outline.ends[Outline::GLOBALS] = lists.extend(body.mentions.globals().map(|id| id.0), &ids.globals);
         outline.ends[Outline::CALLED] = lists.extend(body.mentions.called().map(|id| id.0), &ids.funcs);
         outline.ends[Outline::VALUES] = lists.extend(body.mentions.values().map(|id| id.0), &ids.funcs);

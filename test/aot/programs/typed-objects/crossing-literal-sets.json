@@ -1,0 +1,5 @@
+{
+  "build": [
+    "--aot-type-errors=throw"
+  ]
+}
