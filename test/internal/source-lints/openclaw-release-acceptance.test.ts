@@ -2,7 +2,7 @@ import { test } from "bun:test";
 import { bunEnv, bunExe, tempDir } from "harness";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { selectTests, windowsSmoke } from "../../../scripts/openclaw-ci/tests.ts";
@@ -85,11 +85,24 @@ test("Windows fixed selection includes all clone suites and keeps inherited cove
 });
 test("private environment strips tokens and closes temp aliases", () =>
   fixture(root => {
-    const env = privateEnvironment(root, root);
-    assert.equal(env.GH_TOKEN, undefined);
-    assert.equal(env.SSH_AUTH_SOCK, undefined);
-    assert.equal(env.CI, "true");
-    for (const key of ["TMP", "TEMP", "TMPDIR", "HOME", "OPENCLAW_STATE_DIR"]) assert(inside(root, env[key]));
+    const sentinels = {
+      GH_TOKEN: "synthetic-token",
+      SSH_AUTH_SOCK: "synthetic-agent",
+      NODE_OPTIONS: "--import=synthetic-caller",
+      BUN_OPTIONS: "--preload=synthetic-caller",
+    };
+    const saved = Object.fromEntries(Object.keys(sentinels).map(key => [key, process.env[key]]));
+    try {
+      Object.assign(process.env, sentinels);
+      const env = privateEnvironment(root, root);
+      for (const key of Object.keys(sentinels)) assert.equal(env[key], undefined, key);
+      assert.equal(env.CI, "true");
+      for (const key of ["TMP", "TEMP", "TMPDIR", "HOME", "OPENCLAW_STATE_DIR"]) assert(inside(root, env[key]));
+    } finally {
+      for (const [key, value] of Object.entries(saved))
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+    }
   }));
 test("private path check rejects a symlink to a different temp root", () =>
   fixture(root =>
@@ -362,3 +375,53 @@ test("publication retains final-artifact acceptance and signing dependencies", (
   assert(acceptance.run.includes('--consumer-commit "$ACCEPTANCE_REF"'));
   assert(acceptance.run.includes('--archive "dist/$TRIPLET.zip"'));
 });
+
+for (const runtime of ["node", "bun"])
+  for (const group of ["sync", "async"]) {
+    test(
+      "private descendant API contracts: " + runtime + ":" + group,
+      () =>
+        fixture(root => {
+          // Unit CI has no OpenClaw checkout. Local acceptance supplies the exact real
+          // consumer; the unit resolver tests only the wrapper's API contract.
+          const consumer = process.env.LAND175276_CONSUMER ?? join(root, "consumer");
+          if (!process.env.LAND175276_CONSUMER) {
+            mkdirSync(join(consumer, "scripts"), { recursive: true });
+            mkdirSync(join(consumer, "src/infra"), { recursive: true });
+            writeFileSync(join(consumer, "package.json"), '{"type":"module"}');
+            writeFileSync(join(consumer, "scripts/tsx.mjs"), "");
+            writeFileSync(
+              join(consumer, "src/infra/update-managed-service-handoff-lease.ts"),
+              'import {join} from "node:path";export const resolveManagedUpdateLeaseDatabasePath=()=>join(process.env.OPENCLAW_STATE_DIR,"unit-resolver.sqlite");',
+            );
+          }
+          const env = privateEnvironment(root, consumer);
+          const preload = new URL("../../../scripts/openclaw-release/private-preflight.mjs", import.meta.url).href;
+          env.NODE_OPTIONS = "--import=" + preload;
+          env.BUN_OPTIONS = "--preload=" + preload;
+          const node = spawnSync("node", ["-p", "process.execPath"], { env, encoding: "utf8" });
+          assert.equal(node.status, 0, node.stderr);
+          env.CONTRACT_NODE = node.stdout.trim();
+          env.CONTRACT_FORK = join(root, "fork.cjs");
+          writeFileSync(
+            env.CONTRACT_FORK,
+            'console.log(JSON.stringify({pid:process.pid,cwd:process.cwd(),marker:process.env.CONTRACT_MARKER}));console.error("child-stderr");',
+          );
+          const run = spawnSync(
+            runtime === "node" ? env.CONTRACT_NODE : bunExe(),
+            [fileURLToPath(new URL("./fixtures/private-preflight-contract.mjs", import.meta.url)), group],
+            { cwd: root, env, encoding: "utf8", timeout: 90000, maxBuffer: 4 * 1024 * 1024 },
+          );
+          assert.equal(run.error, undefined);
+          const report = JSON.parse(run.stdout.trim());
+          assert.deepEqual(
+            report.results.filter(result => !result.ok),
+            [],
+            run.stdout + "\n" + run.stderr,
+          );
+          assert.equal(run.status, 0, run.stderr);
+          assert(readdirSync(join(root, "preflights")).length > 10);
+        }),
+      100000,
+    );
+  }

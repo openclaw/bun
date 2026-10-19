@@ -4,6 +4,7 @@ import { existsSync, realpathSync, writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { promisify } from "node:util";
 
 const root = realpathSync(process.env.LAND175276_ROOT);
 const source = realpathSync(process.env.LAND175276_CONSUMER);
@@ -71,11 +72,12 @@ const privateKeys = [
 const inherited = Object.fromEntries(privateKeys.map(key => [key, process.env[key]]));
 const preload = pathToFileURL(fileURLToPath(import.meta.url)).href;
 function childOptions(options = {}) {
-  const env = {
-    ...inherited,
-    ...(options.env ?? process.env),
-    LAND175276_CONSUMER: source,
-  };
+  const prepared = { ...options };
+  const env = { ...inherited };
+  // Node includes enumerable prototype keys in options.env as well as own keys.
+  const supplied = prepared.env || process.env;
+  for (const key in supplied) env[key] = supplied[key];
+  env.LAND175276_CONSUMER = source;
   env.LAND175276_ROOT ??= root;
   assertPrivate(realpathSync(env.LAND175276_ROOT));
   for (const [key, flag] of [
@@ -84,16 +86,70 @@ function childOptions(options = {}) {
   ]) {
     if (!env[key]?.includes(flag + preload)) env[key] = ((env[key] ?? "") + " " + flag + preload).trim();
   }
-  return { ...options, env };
+  return { ...prepared, env };
 }
-for (const name of ["spawn", "spawnSync", "exec", "execSync", "execFile", "execFileSync", "fork"]) {
+// Match the individual Node overloads; null/undefined argv does not consume the
+// third argument. Leave invalid argv/options to the native API's own validator.
+function argvOptions(args, callbacks, nullableOptions) {
+  const argv = args[1];
+  let index;
+  if (argv == null || Array.isArray(argv)) index = 2;
+  else if (typeof argv === "object") index = 1;
+  else if (callbacks && typeof argv === "function") return [args[0], [], childOptions(), argv];
+  else return args;
+  const options = args[index];
+  if (callbacks && typeof options === "function") {
+    args[index] = childOptions();
+    args[index + 1] = options;
+    args.length = index + 2;
+  } else if (
+    options === undefined ||
+    (nullableOptions && options === null) ||
+    (options !== null && typeof options === "object" && !Array.isArray(options))
+  )
+    args[index] = childOptions(options ?? {});
+  return args;
+}
+function shellOptions(args) {
+  if (typeof args[1] === "function") return [args[0], childOptions(), args[1]];
+  args[1] = childOptions(args[1] ?? {});
+  return args;
+}
+for (const [name, prepare] of [
+  ["spawn", args => argvOptions(args, false, false)],
+  ["spawnSync", args => argvOptions(args, false, false)],
+  ["fork", args => argvOptions(args, false, true)],
+  ["execFile", args => argvOptions(args, true, true)],
+  ["execFileSync", args => argvOptions(args, true, true)],
+  ["exec", shellOptions],
+  ["execSync", shellOptions],
+]) {
   const original = childProcess[name];
-  childProcess[name] = function (...args) {
-    const index = Array.isArray(args[1]) ? 2 : 1;
-    if (typeof args[index] === "function") args.splice(index, 0, childOptions());
-    else args[index] = childOptions(args[index]);
-    return Reflect.apply(original, this, args);
+  const wrapped = function (...args) {
+    return Reflect.apply(original, this, prepare(args));
   };
+  if (name === "exec" || name === "execFile") {
+    // The native custom closure calls the original function. Recreate its small
+    // result/child/error contract around this wrapper so fresh envs stay gated.
+    Object.defineProperty(wrapped, promisify.custom, {
+      value: function (...args) {
+        let resolve, reject;
+        const promise = new Promise((yes, no) => {
+          resolve = yes;
+          reject = no;
+        });
+        promise.child = wrapped(...args, (error, stdout, stderr) => {
+          if (error !== null) {
+            error.stdout = stdout;
+            error.stderr = stderr;
+            reject(error);
+          } else resolve({ stdout, stderr });
+        });
+        return promise;
+      },
+    });
+  }
+  childProcess[name] = wrapped;
 }
 syncBuiltinESMExports();
 if (globalThis.Bun) {
