@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import cp from "node:child_process";
-import { mkdirSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join, sep } from "node:path";
 import { promisify } from "node:util";
 
@@ -97,6 +97,44 @@ if (process.argv[2] === "sync") {
     const value = cp.spawnSync(node, ["-e", "setInterval(()=>{},1000)"], options({ timeout: 2000 }));
     assert.equal(value.error?.code, "ETIMEDOUT");
     assert(value.signal);
+  });
+  await check("execFileSync:function-argv-retains-preflight", () => {
+    const before = new Set(readdirSync(join(root, "preflights")));
+    let callbacks = 0;
+    const value = cp.execFileSync(node, () => callbacks++);
+    assert.equal(value.toString(), "");
+    assert.equal(callbacks, 0);
+    const added = readdirSync(join(root, "preflights")).filter(file => !before.has(file));
+    assert.equal(added.length, 1, "valid function argv must retain the child resolver gate");
+    const receipt = JSON.parse(readFileSync(join(root, "preflights", added[0])));
+    assert.notEqual(receipt.pid, process.pid);
+    assert.equal(receipt.source, realpathSync(process.env.LAND175276_CONSUMER));
+    assert(receipt.resolved.startsWith(root + sep));
+  });
+  await check("execFileSync:function-options-rejected-before-spawn", () => {
+    const script = join(root, "invalid-options-child.cjs");
+    const markerFile = join(root, "invalid-options-child-ran");
+    writeFileSync(
+      script,
+      'require("node:fs").writeFileSync(' + JSON.stringify(markerFile) + ", String(process.pid));",
+    );
+    const before = readdirSync(join(root, "preflights")).sort();
+    let error;
+    try {
+      try {
+        cp.execFileSync(node, [script], function callback() {});
+      } catch (caught) {
+        error = caught;
+      }
+      // Check the side effect and resolver receipts even when no exception was thrown.
+      assert.equal(existsSync(markerFile), false, "invalid options must not execute the child");
+      assert.deepEqual(readdirSync(join(root, "preflights")).sort(), before);
+      assert(error instanceof TypeError);
+      assert.equal(error.code, "ERR_INVALID_ARG_TYPE");
+    } finally {
+      rmSync(script, { force: true });
+      rmSync(markerFile, { force: true });
+    }
   });
   await check("validation", () => {
     for (const api of ["spawn", "spawnSync", "fork"]) {

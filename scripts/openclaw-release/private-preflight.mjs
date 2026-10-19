@@ -90,15 +90,16 @@ function childOptions(options = {}) {
 }
 // Match the individual Node overloads; null/undefined argv does not consume the
 // third argument. Leave invalid argv/options to the native API's own validator.
-function argvOptions(args, callbacks, nullableOptions) {
+function argvOptions(args, callbackMode, nullableOptions) {
   const argv = args[1];
   let index;
   if (argv == null || Array.isArray(argv)) index = 2;
   else if (typeof argv === "object") index = 1;
-  else if (callbacks && typeof argv === "function") return [args[0], [], childOptions(), argv];
+  else if (callbackMode && typeof argv === "function") return [args[0], [], childOptions(), argv];
   else return args;
   const options = args[index];
-  if (callbacks && typeof options === "function") {
+  // execFileSync accepts a function in the argv slot, but not as options.
+  if (callbackMode === "async" && typeof options === "function") {
     args[index] = childOptions();
     args[index + 1] = options;
     args.length = index + 2;
@@ -119,8 +120,8 @@ for (const [name, prepare] of [
   ["spawn", args => argvOptions(args, false, false)],
   ["spawnSync", args => argvOptions(args, false, false)],
   ["fork", args => argvOptions(args, false, true)],
-  ["execFile", args => argvOptions(args, true, true)],
-  ["execFileSync", args => argvOptions(args, true, true)],
+  ["execFile", args => argvOptions(args, "async", true)],
+  ["execFileSync", args => argvOptions(args, "sync", true)],
   ["exec", shellOptions],
   ["execSync", shellOptions],
 ]) {
