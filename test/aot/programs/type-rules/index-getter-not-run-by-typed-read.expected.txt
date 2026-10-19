@@ -37,3 +37,7 @@
 2 unknown[], the read is in a function that is called: pushes onto itself: THROWS TypeError: Cannot read array element: the array or its prototype chain has accessors or a Proxy, which are not run for an array of a declared element type
 2 any[]: a getter that stores a field: THROWS TypeError: Cannot read array element: the array or its prototype chain has accessors or a Proxy, which are not run for an array of a declared element type
 2 a getter on Array.prototype behind a hole: THROWS TypeError: Cannot change '1' of Array.prototype: built-ins are locked in a program compiled with --aot
+iteration for-of: TypeError reads 0
+iteration destructure: TypeError reads 0
+iteration after-open: TypeError reads 0
+iteration Iterable: returned 3 reads 1
