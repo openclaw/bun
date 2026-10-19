@@ -10,6 +10,7 @@
 
 use super::{ByExpression, ByFile};
 use super::captures::Receiver;
+use super::callees::Callee;
 use super::rows;
 use super::int32_fields::CodeOwner;
 use crate::atom::Atom;
@@ -3649,6 +3650,18 @@ impl<'p, 's> Checker<'p, 's> {
                 made
             }
             ExprKind::Call(call) => {
+                if (self.is_library_call(file, e, b"Array", &[b"map"]) || self.is_library_call(file, e, b"ReadonlyArray", &[b"map"]))
+                    && self.resolved_signature(file, e).sig.and_then(|sig| self.sig_decl(sig)).is_some_and(|(declared_in, ..)| self.files.module(declared_in).is_lib)
+                    && let Some(callback) = self.hir(file).ids(self.hir(file)[call].args).next()
+                {
+                    let callback = self.result_callees_of(file, callback, 0);
+                    if !callback.is_predicted && !callback.may_be_nullish
+                        && let Callee::One(of, func) = callback.callee
+                        && let Some(elements) = self.function_allocation(of, func, looked_at)
+                    {
+                        return Some(FreshGraph { elements: Some(Box::new(elements)), ..FreshGraph::default() });
+                    }
+                }
                 if let Some(handed_back) = self.returned_argument_of(file, e) {
                     let mut made = self.expr_allocation(file, handed_back, looked_at)?;
                     let hir = self.hir(file);

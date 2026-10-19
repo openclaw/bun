@@ -2067,11 +2067,13 @@ impl<'p, 's> Checker<'p, 's> {
             return;
         }
         let is_module = matches!(self.data(allocated_as), TypeData::Anon { origin: Origin::Module(..), .. });
-        if !made.is_object || self.built_in_for_type(allocated_as).is_some() || self.is_instance_type(allocated_as) || !self.declares_properties(allocated_as) || is_module {
+        if self.built_in_for_type(allocated_as).is_some() || self.is_instance_type(allocated_as) || !self.declares_properties(allocated_as) || is_module {
             return;
         }
-        let view = self.layout_defining_type(allocated_as);
-        out.push(view);
+        if made.is_object {
+            let view = self.layout_defining_type(allocated_as);
+            out.push(view);
+        }
         for (name, held) in &made.within {
             if let Some(of_field) = self.type_of_property(allocated_as, *name) {
                 self.add_allocated_types(held, of_field, out);

@@ -1045,10 +1045,12 @@ impl<'c, 'p, 's> FileBuild<'c, 'p, 's> {
         let operation_type = self.ty(fx, value);
         if fx.is_typed
             && operation_type.is_some()
-            && self.out.tys.get(operation_type).any_object
             && matches!(fx.b.func.op(value), Some(Op::CallDirect { .. } | Op::Call { .. } | Op::CallMethod { .. }))
-            && let Some(made) = self.c.generic_call_allocation(fx.file, e)
+            && let Some(mut made) = self.c.generic_call_allocation(fx.file, e)
         {
+            if !self.out.tys.get(operation_type).any_object {
+                made.is_object = false;
+            }
             let allocated_as = self.c.type_of_expr(fx.file, e);
             self.c.record_generic_function_result(&made, allocated_as);
             if let Some(sink) = fx.sink
