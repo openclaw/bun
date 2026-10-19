@@ -4,6 +4,7 @@ These entries describe the experimental `openclaw/aot-typed` fork.
 
 ## Unreleased
 
+- Pin WebKit's typed Proxy-array handling and ARM64 pre-frame outlining repair.
 - Preserve nested generic Array.map result fields in typed AOT code without opening the enclosing object's fixed layout.
 - Match native AOT Proxy-array admission and iteration in source execution without caching a Proxy's target type by Structure.
 - Fix false temporal-dead-zone errors in typed AOT builds when a build plugin remaps an import to a different runtime module.
