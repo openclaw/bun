@@ -1437,7 +1437,10 @@ impl<'s> Program<'s> {
             searcher.aot.flows.is_searching_from_sources = true;
             searcher.aot.flows.is_boundary_bounded = true;
             searcher.search_from_sources(&search, index, &Share::Rest { index, of: search.searchers, is_taken: &[] }, &FxHashMap::default());
-            let mut found = searcher.end_task();
+            let mut found = {
+                let _finish_trace = search.trace.span(index, "finish_task", None, b"", None);
+                searcher.end_task()
+            };
             found.diagnostics.retain(|(owner, _)| owner.is_some());
             *finished[index].lock() = Some(found);
         });

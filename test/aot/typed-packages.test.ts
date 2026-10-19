@@ -125,7 +125,7 @@ describe.skipIf(!!unsupported)("compile/aot/typed-packages", () => {
       expect(walked.filter(name => open.includes(name))).toEqual([]);
     }), 600_000);
 
-  test("a boundary-limit retry skips discarded cast and union scans on every worker", async () => {
+  test("a boundary-limit retry skips discarded analysis and finalization on every worker", async () => {
     const keys = Array.from({ length: 256 }, (_, i) => `"k${i}"`).join(" | ");
     using folder = tempDir("aot-boundary-retry-tail", {
       "tsconfig.json": JSON.stringify({
@@ -171,7 +171,7 @@ export type Unused = Permutation<"a" | "b" | "c" | "d" | "e"> | { done: true };`
       expect({ signal: checked.signal, exitCode: checked.exitCode }).toEqual({ signal: null, exitCode: 0 });
       expect(normalizeBunSnapshot(checked.stdout, cwd).split(/\r?\n/)).toEqual(expectedWarnings);
       expect(checked.stderr).toContain("No type errors in 6 files");
-      const events: { event: string; attempt: number; phase?: string; path_hex?: string }[] = readFileSync(
+      const events: { event: string; attempt: number; phase?: string; path_hex?: string; worker?: number }[] = readFileSync(
         trace,
         "utf8",
       )
@@ -181,6 +181,9 @@ export type Unused = Permutation<"a" | "b" | "c" | "d" | "e"> | { done: true };`
       expect(events.some(event => event.event === "trace_limit")).toBe(false);
       const failed = new Set(events.filter(event => event.event === "fallback").map(event => event.attempt));
       expect(failed.size).toBe(2);
+      const finalized = events.filter(event => event.event === "end" && event.phase === "finish_task" && !failed.has(event.attempt));
+      expect(finalized.map(event => event.worker).sort((a, b) => Number(a) - Number(b))).toEqual(Array.from({ length: threads }, (_, i) => i));
+      expect(events.filter(event => failed.has(event.attempt) && event.phase === "finish_task")).toEqual([]);
       expect(
         events.filter(
           event => failed.has(event.attempt) && ["casts", "cast", "unions", "union"].includes(event.phase ?? ""),
