@@ -196,7 +196,7 @@ method-replaced-by-assignment: 2 layouts, 0 given, 1 open, places 13 of 22, read
 methods-and-super: 3 layouts, 0 given, 1 open, places 38 of 58, reads 11 of 54
 methods-reassigned-by-some-subclasses: 8 layouts, 0 given, 1 open, places 53 of 79, reads 7 of 16
 methods-reassigned-on-instances: 12 layouts, 0 given, 1 open, places 66 of 120, reads 41 of 77
-methods-through-interfaces: 8 layouts, 0 given, 4 open, places 90 of 105, reads 36 of 63
+methods-through-interfaces: 8 layouts, 0 given, 6 open, places 90 of 105, reads 36 of 63
 missing-property-reads: 3 layouts, 0 given, 2 open, places 62 of 79, reads 32 of 83
 mixed-objects-through-one-interface: 3 layouts, 5 given, 5 open, places 79 of 124, reads 7 of 44
 module-namespace-via-any: 2 layouts, 0 given, 1 open, places 15 of 51, reads 3 of 13
