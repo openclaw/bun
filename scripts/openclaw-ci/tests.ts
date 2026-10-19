@@ -1,3 +1,4 @@
+import { nativeRegressions } from "../openclaw-release/acceptance.mjs";
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statfsSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -63,6 +64,7 @@ export const darwinSmoke = [
 // The same Windows compatibility selection runs on x64 and ARM64.
 export const windowsSmoke = [
   ...smoke,
+  ...nativeRegressions,
   ...broader,
   "test/js/node/worker_threads/15787.test.ts",
   "test/js/node/worker_threads/worker-async-dispose.test.ts",
