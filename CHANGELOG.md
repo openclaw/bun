@@ -4,6 +4,7 @@ These entries describe the experimental `openclaw/aot-typed` fork.
 
 ## Unreleased
 
+- Report final canonical body sizes for folded AOT map aliases.
 - Use final branch-distance validation for large typed AOT images and cover caller-local veneers larger than the shared-stub reserve.
 - Preserve checked argument types when declared imports return an argument during typed AOT compilation.
 
