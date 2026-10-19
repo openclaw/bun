@@ -79,6 +79,8 @@ const ENGINE_CLASSES: [&[u8]; 23] = [
 
 /// A type in whose own type arguments one declaration is applied more often than this, one application within the other, is not laid out.
 const MAX_NESTED_APPLICATIONS: u32 = 8;
+const MAX_FAMILY_SIZE: u64 = 4096;
+const MIN_DEPTH_OF_LARGE_FAMILY: u32 = 4;
 const PRIMITIVES: [TypeId; 5] = [TypeId::STRING, TypeId::NUMBER, TypeId::BOOLEAN, TypeId::BIGINT, TypeId::SYMBOL];
 
 const MAX_INSTANTIATIONS_INSPECTED: u32 = 8;
@@ -1947,11 +1949,13 @@ impl<'p, 's> Checker<'p, 's> {
     }
 
     fn compute_is_nested_too_deeply(&mut self, ty: TypeId) -> bool {
-        if self.nesting_bound(ty) <= MAX_NESTED_APPLICATIONS {
+        let depth = self.nesting_bound(ty);
+        if depth <= MIN_DEPTH_OF_LARGE_FAMILY {
             return false;
         }
         self.collect_applications(ty);
-        self.aot.flows.applications[&ty].iter().any(|&(_, times)| times > MAX_NESTED_APPLICATIONS)
+        let applications = &self.aot.flows.applications[&ty];
+        applications.iter().any(|&(_, times)| times > MAX_NESTED_APPLICATIONS) || (applications.len() as u64).checked_pow(depth).is_none_or(|family| family > MAX_FAMILY_SIZE)
     }
 
     fn generic_form(&mut self, ty: TypeId) -> Option<TypeId> {

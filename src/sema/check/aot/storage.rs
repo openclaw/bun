@@ -173,6 +173,7 @@ pub(super) enum Query {
     Claim(FileId, ExprId),
     ArgumentUse(FileId, ParamId),
     FlowCoverage(Sym),
+    FilledWithExternalData(FileId, SymbolId),
 }
 
 struct InFlight {
@@ -206,6 +207,7 @@ pub(super) struct State {
     lets_base: usize,
     lets_known_plain: FxHashSet<Sym>,
     container_mutations: FxHashMap<FileId, Rc<FxHashMap<SymbolId, Vec<ExprId>>>>,
+    filled_with_external_data: FxHashMap<(FileId, SymbolId), bool>,
     /// By function whose result is inferred: see `fn_result_type`.
     results: FxHashMap<(FileId, FnId), (TypeId, bool)>,
     /// See `Checker::solve`. Outermost first.
@@ -258,6 +260,7 @@ struct SavedState {
     flow_coverage: FxHashMap<Sym, FlowCoverage>,
     stored: FxHashMap<Sym, TypeId>,
     lets_known_plain: FxHashSet<Sym>,
+    filled_with_external_data: FxHashMap<(FileId, SymbolId), bool>,
     results: FxHashMap<(FileId, FnId), (TypeId, bool)>,
     trust: super::trust::State,
     integers: super::integers::State,
@@ -1791,7 +1794,22 @@ impl<'p, 's> Checker<'p, 's> {
         }
         let mutations = self.container_mutations_in(file);
         let Some(stored) = mutations.get(&sym.id) else { return false };
-        stored.iter().any(|&value| self.is_external_element(file, value))
+        if let Some(&known) = self.aot.storage.filled_with_external_data.get(&(file, sym.id)) {
+            return known;
+        }
+        let query = Query::FilledWithExternalData(file, sym.id);
+        if let Some(assumed) = self.assumption(query) {
+            return assumed != 0;
+        }
+        let careful_before = (self.aot.javascript.is_idle() && self.aot.kinds.is_stable()).then(|| self.stack_half_used_count());
+        let cuts = (self.interruptions(), self.aot.flows.unknown_count);
+        let scope = self.begin_scope();
+        let (found, is_final) = self.solve(query, 0, 1, |c| u64::from(stored.iter().any(|&value| c.is_external_element(file, value))));
+        let is_whole = self.end_scope(scope).is_ok();
+        if is_whole && is_final && cuts == (self.interruptions(), self.aot.flows.unknown_count) && self.is_result_cacheable(careful_before) {
+            self.aot.storage.filled_with_external_data.insert((file, sym.id), found != 0);
+        }
+        found != 0
     }
 
     fn rest_on_the_outermost_let(&mut self) {
@@ -1959,6 +1977,7 @@ impl<'p, 's> Checker<'p, 's> {
         std::mem::swap(&mut self.aot.storage.flow_coverage, &mut aside.flow_coverage);
         std::mem::swap(&mut self.aot.storage.stored, &mut aside.stored);
         std::mem::swap(&mut self.aot.storage.lets_known_plain, &mut aside.lets_known_plain);
+        std::mem::swap(&mut self.aot.storage.filled_with_external_data, &mut aside.filled_with_external_data);
         std::mem::swap(&mut self.aot.storage.results, &mut aside.results);
         std::mem::swap(&mut self.aot.trust, &mut aside.trust);
         std::mem::swap(&mut self.aot.integers, &mut aside.integers);

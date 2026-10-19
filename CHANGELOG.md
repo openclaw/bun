@@ -4,6 +4,9 @@ These entries describe the experimental `openclaw/aot-typed` fork.
 
 ## Unreleased
 
+- Finish typed AOT analysis of arrays filled from their own elements, including mutually dependent arrays.
+- Bound recursive generic layout families without changing their runtime values or shallow typed accesses.
+
 - Avoid preparing discarded task results when typed AOT source analysis retries a boundary-limited module.
 
 - Add bounded opt-in compiler source-search traces for slow typed AOT builds.
