@@ -6379,11 +6379,13 @@ impl<'p, 's> Checker<'p, 's> {
         } else {
             of == file && self.is_evaluated_after(file, e, Site::File, end)
         };
-        if !is_initialized && !cx.known_initialized.contains(&sym) {
+        // Keep the reference's alias so code generation can follow the bundler's runtime resolution.
+        let named = self.files().sym(file, local);
+        if !is_initialized && !cx.known_initialized.contains(&named) {
             if cx.uncertainty > 0 {
                 return cx.bail("walk: a name that may be early, under a condition");
             }
-            cx.known_initialized.push(sym);
+            cx.known_initialized.push(named);
         }
         Some(value)
     }

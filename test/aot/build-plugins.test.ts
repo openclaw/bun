@@ -30,6 +30,31 @@ const cases: Record<string, { files: Record<string, string>; prints: string; ref
     },
     prints: "other\n",
   },
+  "a lazy initializer checks the runtime import before a separate type source is evaluated": {
+    files: {
+      "package.json": JSON.stringify({ type: "module", sideEffects: false }),
+      "tsconfig.json": JSON.stringify({
+        compilerOptions: {
+          strict: true,
+          target: "ESNext",
+          module: "ESNext",
+          moduleResolution: "bundler",
+          noEmit: true,
+          allowImportingTsExtensions: true,
+          paths: { library: ["./types/diagnostics.ts"] },
+        },
+        include: ["**/*.ts"],
+      }),
+      "main.ts": `import { has } from "./consumer.ts"; console.log(has("runtime")); await import("./types/constant.ts");`,
+      "consumer.ts": `import { code } from "library"; const codes = new Set([code]); export function has(value: string): boolean { return codes.has(value); }`,
+      "types/diagnostics.ts": `export { code } from "./constant.ts";`,
+      "types/constant.ts": `export const code: string = "type source";`,
+      "runtime/diagnostics.ts": `export { code } from "./constant.ts";`,
+      "runtime/constant.ts": `export const code: string = "runtime";`,
+      "plugin.ts": `import { join } from "path"; export default { name: "runtime-library", setup(b: any) { b.onResolve({ filter: /^library$/ }, () => ({ path: join(import.meta.dir, "runtime/diagnostics.ts") })); } };`,
+    },
+    prints: "true\n",
+  },
   "a module that is in no file": {
     files: {
       "main.ts": `// @ts-ignore\nimport { answer, twice } from "virtual:config"; console.log(answer, twice(4));`,
