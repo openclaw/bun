@@ -1204,7 +1204,7 @@ impl<'c, 'p, 's> FileBuild<'c, 'p, 's> {
                     | ExprKind::Cond { .. }
                     | ExprKind::Binary { op: hir::BinOp::Comma | hir::BinOp::And | hir::BinOp::Or | hir::BinOp::Nullish, .. }
             );
-            if !is_allocated_for_other_type && matches!(fx.b.func.op(value), Some(Op::PropGet { .. })) {
+            if !is_allocated_for_other_type && !is_returned_argument && matches!(fx.b.func.op(value), Some(Op::PropGet { .. })) {
                 self.mark_read_unchecked(fx, value);
             }
             if fx.is_typed && !is_allocated_for_other_type && !is_returned_argument && self.is_checked_at_creation(fx, value) {

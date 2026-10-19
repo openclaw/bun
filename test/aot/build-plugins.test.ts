@@ -7,7 +7,7 @@ import { join } from "path";
 import { slot, spawned, unsupported } from "./run-programs";
 
 const build = `import plugin from "./plugin";
-const result = await Bun.build({ entrypoints: [process.argv[2]], compile: { outfile: process.argv[3], aot: process.argv[4] === "aot" }, plugins: [plugin], throw: false });
+const result = await Bun.build({ entrypoints: [process.argv[2]], compile: { outfile: process.argv[3], aot: process.argv[4] !== "bundle", ...(process.argv[4] === "log" ? { aotTypeErrors: "log" } : {}) }, plugins: [plugin], throw: false });
 for (const log of result.logs) console.log(String(log));
 process.exit(result.success ? 0 : 1);
 `;
@@ -99,4 +99,83 @@ describe.concurrent("compile/aot/plugins of Bun.build", () => {
       600_000,
     );
   }
+
+  test.concurrent.each([false, true])(
+    "a returned argument keeps its checked type across a declared import (nested call: %p)",
+    nested =>
+      slot(async () => {
+        using dir = tempDir("aot-returned-argument", {
+          "package.json": JSON.stringify({ type: "module" }),
+          "tsconfig.json": JSON.stringify({
+            compilerOptions: {
+              strict: true,
+              target: "ESNext",
+              module: "Preserve",
+              moduleResolution: "bundler",
+              noEmit: true,
+              allowImportingTsExtensions: true,
+              types: [],
+              lib: ["ESNext"],
+              paths: { sdk: ["./sdk.d.ts"] },
+            },
+            files: ["main.ts"],
+          }),
+          "sdk.d.ts": `export declare function prepareSource(code: string): string;\n`,
+          "sdk.ts": `${nested ? "function consume(code: string): number { return code.length; }\n" : ""}export function prepareSource(code: string): string { ${nested ? "consume(code); " : ""}return code; }\n`,
+          "main.ts": `import { prepareSource } from "sdk";
+import { receive } from "./bridge.mjs";
+type Input = { source: string };
+async function run(input: Input): Promise<string> { return prepareSource(input.source); }
+await receive(input => run(input as Input));
+`,
+          "bridge.d.mts": `export declare function receive<Output, Input = unknown>(handler: (input: Input) => Promise<Output>): Promise<void>;\n`,
+          "bridge.mjs": `import { prepareSource } from "./sdk.ts";
+export async function receive(handler) {
+  for (const source of ["hello", 42]) {
+    try { const value = await handler({ source }); console.log(typeof value + ":" + value); }
+    catch (error) { console.log(error.name); }
+  }
+  try { const value = prepareSource(42); console.log("direct:" + typeof value + ":" + value); }
+  catch (error) { console.log("direct:" + error.name); }
+}
+`,
+          "plugin.ts": `import { join } from "path"; export default { name: "sdk-code", setup(build: any) { build.onResolve({ filter: /^sdk$/ }, () => ({ path: join(import.meta.dir, "sdk.ts") })); } };`,
+          "build.ts": build,
+        });
+        const folder = String(dir);
+        for (const how of ["bundle", "aot", "log"]) {
+          const executable = join(folder, how + (isWindows ? ".exe" : ""));
+          const built = await spawned([bunExe(), "build.ts", "./main.ts", executable, how], folder, bunEnv);
+          expect({ how, stdout: built.stdout, stderr: built.stderr, exitCode: built.exitCode }).toEqual({
+            how,
+            stdout: expect.any(String),
+            stderr: expect.any(String),
+            exitCode: 0,
+          });
+          const ran = await spawned(
+            [executable],
+            folder,
+            how === "bundle"
+              ? bunEnv
+              : { ...bunEnv, BUN_JSC_crashIfInterpreterIsUsed: "1", BUN_AOT_TYPE_ERROR_LOG: "stderr" },
+          );
+          const prints =
+            how === "bundle"
+              ? "string:hello\nnumber:42\ndirect:number:42\n"
+              : how === "aot"
+                ? "string:hello\nTypeError\ndirect:TypeError\n"
+                : "string:hello\nTypeError\ndirect:number:42\n";
+          expect({ how, stdout: ran.stdout, exitCode: ran.exitCode, signal: ran.signal }).toEqual({
+            how,
+            stdout: prints,
+            exitCode: 0,
+            signal: null,
+          });
+          if (how === "log") {
+            expect(ran.stderr).toContain("expected string, got number; threw");
+            expect(ran.stderr).toContain("expected string, got number; continued");
+          }
+        }
+      }),
+  );
 });

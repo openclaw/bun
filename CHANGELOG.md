@@ -4,6 +4,8 @@ These entries describe the experimental `openclaw/aot-typed` fork.
 
 ## Unreleased
 
+- Preserve checked argument types when declared imports return an argument during typed AOT compilation.
+
 - Finish typed AOT analysis of arrays filled from their own elements, including mutually dependent arrays.
 - Bound recursive generic layout families without changing their runtime values or shallow typed accesses.
 
