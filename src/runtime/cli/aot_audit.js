@@ -79,7 +79,7 @@
     for (let i = 0; i < type.parts.length; i++) {
       const part = type.parts[i];
       if (part.k === "array") {
-        if (isArray(value) && !isProxy(value)) return true;
+        if (isArrayWithoutThrowing(value)) return true;
       } else if (part.k === "global" && isEnforcing) {
         const kind = cellKind(part.name === "SharedArrayBuffer" ? "ArrayBuffer" : part.name, value);
         if (kind !== false) return true;
@@ -92,6 +92,14 @@
       else if (under !== undefined && isInstanceOfSomeClass(value)) return true;
     }
     return checksMembers && canBeMade(type, value, under);
+  }
+
+  function isArrayWithoutThrowing(value) {
+    try {
+      return isArray(value);
+    } catch {
+      return false;
+    }
   }
 
   // Below a member, where a false word costs more than a missing one. The engine goes by the kind of the cell: a Date of another realm is a
@@ -587,6 +595,8 @@
     if (group.unsure || group.step) return;
     const steps = group.steps;
     if (typeof value === "object" || typeof value === "function") {
+      // A Proxy's Structure does not identify its target, and revocation can change membership.
+      if (isProxy(value)) return;
       if (hasInspectedMembers && tagOf(value) === undefined) return;
       for (let i = 0; i < steps.length; i++) if (steps[i].to === undefined) return;
       return 1;
@@ -709,7 +719,7 @@
       }
       if (step.what === "IteratorOpen") {
         if (held === null || held === undefined || (typeof held !== "object" && fits(type, held))) continue;
-        if (!isArray(held) || isProxy(held) || !isReadByIndex(held)) {
+        if (!isArrayWithoutThrowing(held) || (!isProxy(held) && !isReadByIndex(held))) {
           report(file, step, step.kind, type, held, "would-throw");
           hasFailed = true;
         }

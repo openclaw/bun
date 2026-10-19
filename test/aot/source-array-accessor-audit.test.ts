@@ -1,6 +1,8 @@
 import { expect } from "bun:test";
 import { test } from "./supported";
-import { bunEnv, bunExe, tempDir } from "harness";
+import { bunEnv, bunExe, isWindows, tempDir } from "harness";
+import { readFileSync, unlinkSync } from "node:fs";
+import { join } from "node:path";
 
 const refusal = "Cannot read array element: the array or its prototype chain has accessors or a Proxy";
 const tsconfig = JSON.stringify({
@@ -74,3 +76,28 @@ console.log("reads", reads);
   },
   30_000,
 );
+
+async function run(cmd: string[], cwd: string, env = bunEnv) {
+  await using child = Bun.spawn({ cmd, cwd, env, stdout: "pipe", stderr: "pipe" });
+  const [stdout, stderr, exitCode] = await Promise.all([child.stdout.text(), child.stderr.text(), child.exited]);
+  return { stdout, stderr, exitCode };
+}
+
+test("typed arrays preserve Proxy identity, traps, and element checks", async () => {
+  using dir = tempDir("aot-proxy-array-boundary", {
+    "main.ts": readFileSync(new URL("./fixtures/proxy-array-boundary.ts", import.meta.url), "utf8"),
+    "tsconfig.json": JSON.stringify({
+      compilerOptions: { strict: true, target: "ESNext", module: "ESNext", types: [], lib: ["ESNext"] },
+    }),
+  });
+  const cwd = String(dir);
+  const expected = { stdout: "proxy-array behavior passed\n", stderr: "", exitCode: 0 };
+  expect(await run([bunExe(), "run", "--aot", "main.ts"], cwd)).toEqual(expected);
+  const executable = join(cwd, "main" + (isWindows ? ".exe" : ""));
+  const build = await run([bunExe(), "build", "--compile", "--aot", "main.ts", "--outfile", executable], cwd);
+  expect({ stderr: build.stderr, exitCode: build.exitCode }).toEqual({ stderr: "", exitCode: 0 });
+  unlinkSync(join(cwd, "main.ts"));
+  expect(
+    await run([executable], cwd, { ...bunEnv, BUN_JSC_useJIT: "0", BUN_JSC_crashIfInterpreterIsUsed: "1" }),
+  ).toEqual(expected);
+}, 120_000);

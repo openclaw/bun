@@ -4,6 +4,7 @@ These entries describe the experimental `openclaw/aot-typed` fork.
 
 ## Unreleased
 
+- Match native AOT Proxy-array admission and iteration in source execution without caching a Proxy's target type by Structure.
 - Fix false temporal-dead-zone errors in typed AOT builds when a build plugin remaps an import to a different runtime module.
 - Fix `process.env` and `Bun.env` references becoming stale when the first `SHARE_ENV` worker starts on macOS and Linux.
 - Report final canonical body sizes for folded AOT map aliases.
