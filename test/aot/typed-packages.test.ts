@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { appendFileSync, cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
-import { bunEnv, bunExe, tempDir } from "harness";
-import { join } from "path";
+import { bunEnv, bunExe, normalizeBunSnapshot, tempDir } from "harness";
+import { basename, join } from "path";
 import { built, slot, spawned, told, unsupported } from "./run-programs";
 
 const host = join(import.meta.dir, "typed-packages", "react-reconciler-host");
@@ -124,6 +124,79 @@ describe.skipIf(!!unsupported)("compile/aot/typed-packages", () => {
       const walked = ["Fiber", "FiberRoot", "Hook", "HookQueue", "Effect", "FunctionComponentUpdateQueue", "Update", "UpdateQueue", "SharedQueue", "ContextDependency", "StackCursor"];
       expect(walked.filter(name => open.includes(name))).toEqual([]);
     }), 600_000);
+
+  test("a boundary-limit retry skips discarded cast and union scans on every worker", async () => {
+    const keys = Array.from({ length: 256 }, (_, i) => `"k${i}"`).join(" | ");
+    using folder = tempDir("aot-boundary-retry-tail", {
+      "tsconfig.json": JSON.stringify({
+        compilerOptions: {
+          strict: true,
+          allowJs: true,
+          checkJs: false,
+          target: "ESNext",
+          module: "Preserve",
+          moduleResolution: "Bundler",
+          types: [],
+          noEmit: true,
+        },
+      }),
+      "types.ts": `export type Key = ${keys};
+export type Table = { [P in Key]: { [Q in Key]: { source: P; destination: Q; payload: { text: string } } } };`,
+      "api0.ts": `import type { Table } from "./types.ts"; export function consume(table: Table): string { return table.k0.k0.payload.text; }`,
+      "api1.ts": `import type { Table } from "./types.ts"; export function consume(table: Table): string { return table.k0.k0.payload.text; }`,
+      "bridge.js": `import { consume as f0 } from "./api0.ts";
+import { consume as f1 } from "./api1.ts";
+export const functions = [f0, f1];`,
+      "extra.ts": `export interface Simple { value: number; }
+type Permutation<T, K = T> = [T] extends [never] ? [] : K extends K ? [K, ...Permutation<Exclude<T, K>>] : never;
+export type Unused = Permutation<"a" | "b" | "c" | "d" | "e"> | { done: true };`,
+      "main.ts": `import "./bridge.js"; import type { Simple } from "./extra.ts"; export const loaded: Simple = { value: 1 };`,
+    });
+    const cwd = String(folder);
+    const expectedWarnings = [0, 1].map(
+      i =>
+        `warning TS100011: '<dir>/api${i}.ts' is compiled untyped, which costs speed, not correctness: too many types cross between it and untyped code through 'Table' at bridge.js:3 to analyze.`,
+    );
+    for (const threads of [1, 4]) {
+      const trace = join(cwd, `trace-${threads}.jsonl`);
+      const checked = await spawned(
+        [bunExe(), "check", "--aot", `--threads=${threads}`, "--no-pretty", "main.ts"],
+        cwd,
+        {
+          ...bunEnv,
+          BUN_AOT_SOURCE_TRACE: trace,
+          BUN_AOT_SOURCE_TRACE_DETAIL: basename(cwd),
+        },
+      );
+      expect({ signal: checked.signal, exitCode: checked.exitCode }).toEqual({ signal: null, exitCode: 0 });
+      expect(normalizeBunSnapshot(checked.stdout, cwd).split(/\r?\n/)).toEqual(expectedWarnings);
+      expect(checked.stderr).toContain("No type errors in 6 files");
+      const events: { event: string; attempt: number; phase?: string; path_hex?: string }[] = readFileSync(
+        trace,
+        "utf8",
+      )
+        .trim()
+        .split("\n")
+        .map(line => JSON.parse(line));
+      expect(events.some(event => event.event === "trace_limit")).toBe(false);
+      const failed = new Set(events.filter(event => event.event === "fallback").map(event => event.attempt));
+      expect(failed.size).toBe(2);
+      expect(
+        events.filter(
+          event => failed.has(event.attempt) && ["casts", "cast", "unions", "union"].includes(event.phase ?? ""),
+        ),
+      ).toEqual([]);
+      expect(
+        events.some(
+          event =>
+            !failed.has(event.attempt) &&
+            event.event === "start" &&
+            event.phase === "union" &&
+            Buffer.from(event.path_hex ?? "", "hex").toString().replaceAll("\\", "/").endsWith("/extra.ts"),
+        ),
+      ).toBe(true);
+    }
+  }, 60_000);
 
   test("a package of TypeScript files that has no typed version falls back to untyped, says why, and the compile line counts it", () =>
     slot(async () => {

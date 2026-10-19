@@ -3462,6 +3462,16 @@ impl<'p, 's> Checker<'p, 's> {
                 *first = Some(gave_up);
             }
         }
+        // Only the boundary walks above can truncate the search. Let every worker report its
+        // candidate before skipping work whose result would be discarded by the retry.
+        let is_last = search.barrier.wait();
+        if search.gave_up.lock().is_some() {
+            if is_last {
+                *search.continues_past_sources.0.lock() = Some(false);
+                search.continues_past_sources.1.notify_all();
+            }
+            return false;
+        }
         for file in own(&files) {
             let _file_trace = search.trace.span(index, "casts", Some(file.0), self.files().module(file).file_name(), None);
             self.add_inspected_casts(file, looked_at, &search.trace, index);

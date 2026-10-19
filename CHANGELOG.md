@@ -5,6 +5,7 @@ These entries describe the experimental `openclaw/aot-typed` fork.
 ## Unreleased
 
 - Add bounded opt-in compiler source-search traces for slow typed AOT builds.
+- Skip cast and union scans for source-search attempts that already need a boundary-limit retry.
 
 - Preserve initial and final native-entry coverage while avoiding repeated GC snapshot writes.
 - Reduce full native-entry snapshot write overhead in large AOT images.
