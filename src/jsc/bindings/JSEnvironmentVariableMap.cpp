@@ -200,20 +200,20 @@ bool JSEnvironmentVariableMap::put(JSCell* cell, JSGlobalObject* globalObject, P
     if (uid && WTF::equal(uid, "TZ"_s)) [[unlikely]] {
         applyTimeZoneEnvValue(globalObject, string);
         RETURN_IF_EXCEPTION(scope, false);
-        static_cast<JSEnvironmentVariableMap*>(cell)->putDirect(vm, propertyName, string, 0);
+        asObject(cell)->putDirect(vm, propertyName, string, 0);
         return true;
     }
     if (uid && WTF::equal(uid, "NODE_TLS_REJECT_UNAUTHORIZED"_s)) [[unlikely]] {
         applyTLSRejectEnvValue(globalObject, string);
         RETURN_IF_EXCEPTION(scope, false);
-        static_cast<JSEnvironmentVariableMap*>(cell)->putDirect(vm, propertyName, string, 0);
+        asObject(cell)->putDirect(vm, propertyName, string, 0);
         return true;
     }
     // fetch() reads the proxy variables from the native env map.
     if (isProxyEnvVarName(vm, uid)) [[unlikely]] {
         setNativeEnvValue(globalObject, String(uid), string);
         RETURN_IF_EXCEPTION(scope, false);
-        static_cast<JSEnvironmentVariableMap*>(cell)->putDirect(vm, propertyName, string, 0);
+        asObject(cell)->putDirect(vm, propertyName, string, 0);
         return true;
     }
     RELEASE_AND_RETURN(scope, Base::put(cell, globalObject, propertyName, string, slot));
@@ -575,8 +575,8 @@ static ALWAYS_INLINE void syncWindowsEnv(SharedEnvStore* store, const String& ke
 // `process.env` object that is a thin write-through view over the tree's
 // SharedEnvStore (lock-guarded, strings isolatedCopy()'d both ways).
 //
-// Only the JS-visible `process.env` is shared; Bun's Zig-side env map (Bun.env,
-// fetch proxy resolution) is still snapshotted per worker.
+// The Zig-side environment used by native consumers is still snapshotted per
+// worker, except for the side effects explicitly synchronized below.
 
 // The store for the tree this global belongs to, or null if it's in none. The
 // context can be gone during teardown, when a surviving process.env is read.
@@ -595,8 +595,8 @@ static SharedEnvStore* sharedEnvStoreFor(JSC::JSObject* object)
     return globalObject ? sharedEnvStoreFor(globalObject) : nullptr;
 }
 
-// process.env variant whose reads/writes/deletes/enumeration go through the
-// tree's SharedEnvStore; no instance state, so no custom subspace.
+// The same env object serves local properties before joining a tree and the
+// shared store afterward, so references captured before SHARE_ENV stay live.
 class JSSharedEnvMap final : public JSC::JSNonFinalObject {
 public:
     using Base = JSC::JSNonFinalObject;
@@ -743,20 +743,16 @@ bool JSSharedEnvMap::put(JSCell* cell, JSGlobalObject* globalObject, PropertyNam
     VM& vm = JSC::getVM(globalObject);
     auto scope = DECLARE_THROW_SCOPE(vm);
 
+    auto* store = sharedEnvStoreFor(asObject(cell));
+    if (!store)
+        RELEASE_AND_RETURN(scope, JSEnvironmentVariableMap::put(cell, globalObject, propertyName, value, slot));
+
     // As in JSEnvironmentVariableMap::put, a write to an object that inherits from process.env is that object's.
     if (slot.thisValue() != cell) [[unlikely]]
         RELEASE_AND_RETURN(scope, Base::put(cell, globalObject, propertyName, value, slot));
 
     auto* uid = propertyName.uid();
     if (propertyName.isSymbol() || !uid) {
-        RELEASE_AND_RETURN(scope, Base::put(cell, globalObject, propertyName, value, slot));
-    }
-
-    // A JSSharedEnvMap only exists on a thread that joined a tree; without a store
-    // there is nowhere to write, so keep the value locally rather than drop it.
-    auto* store = sharedEnvStoreFor(asObject(cell));
-    if (!store) [[unlikely]] {
-        ASSERT_NOT_REACHED();
         RELEASE_AND_RETURN(scope, Base::put(cell, globalObject, propertyName, value, slot));
     }
 
@@ -783,10 +779,8 @@ bool JSSharedEnvMap::deleteProperty(JSCell* cell, JSGlobalObject* globalObject, 
     }
 
     auto* store = sharedEnvStoreFor(asObject(cell));
-    if (!store) [[unlikely]] {
-        ASSERT_NOT_REACHED();
-        return Base::deleteProperty(cell, globalObject, propertyName, slot);
-    }
+    if (!store)
+        return JSEnvironmentVariableMap::deleteProperty(cell, globalObject, propertyName, slot);
 
     // Mirror JSEnvironmentVariableMap::deleteProperty: put() applies the TZ
     // side effect via applySharedEnvSideEffects, so delete has to undo it or
@@ -822,6 +816,9 @@ bool JSSharedEnvMap::defineOwnProperty(JSObject* object, JSGlobalObject* globalO
 {
     VM& vm = JSC::getVM(globalObject);
     auto scope = DECLARE_THROW_SCOPE(vm);
+
+    if (!sharedEnvStoreFor(object))
+        RELEASE_AND_RETURN(scope, JSEnvironmentVariableMap::defineOwnProperty(object, globalObject, propertyName, descriptor, shouldThrow));
 
     auto* uid = propertyName.uid();
 
@@ -875,6 +872,8 @@ bool JSSharedEnvMap::getOwnPropertySlotByIndex(JSObject* object, JSGlobalObject*
 
 bool JSSharedEnvMap::putByIndex(JSCell* cell, JSGlobalObject* globalObject, unsigned index, JSValue value, bool shouldThrow)
 {
+    if (!sharedEnvStoreFor(asObject(cell)))
+        return JSEnvironmentVariableMap::putByIndex(cell, globalObject, index, value, shouldThrow);
     VM& vm = JSC::getVM(globalObject);
     PutPropertySlot slot(cell, shouldThrow);
     return put(cell, globalObject, Identifier::from(vm, index), value, slot);
@@ -885,10 +884,8 @@ bool JSSharedEnvMap::deletePropertyByIndex(JSCell* cell, JSGlobalObject* globalO
     // Delegate to Base::deletePropertyByIndex, not deleteProperty: JSObject's named
     // form re-dispatches index-like names back here, which would recurse forever.
     auto* store = sharedEnvStoreFor(asObject(cell));
-    if (!store) [[unlikely]] {
-        ASSERT_NOT_REACHED();
+    if (!store)
         return Base::deletePropertyByIndex(cell, globalObject, index);
-    }
 
     String keyStr = String::number(index);
     syncWindowsEnv(store, keyStr, nullptr);
@@ -918,8 +915,7 @@ RefPtr<SharedEnvStore> ensureSharedEnvStoreForWorker(Zig::GlobalObject* globalOb
     if (auto* existing = sharedEnvStoreFor(globalObject))
         return existing;
 
-    // Founding a new tree. processEnvObject() forces the lazy init so the OS
-    // environment is captured before the swap below.
+    // processEnvObject() captures the OS environment before founding the tree.
     JSObject* envObject = globalObject->processEnvObject();
     if (!envObject->staticPropertiesReified()) {
         envObject->reifyAllStaticProperties(globalObject);
@@ -945,14 +941,30 @@ RefPtr<SharedEnvStore> ensureSharedEnvStoreForWorker(Zig::GlobalObject* globalOb
 
     // Enumerating or reading process.env can run user JS (an accessor, or Windows'
     // Proxy traps) that spawns a SHARE_ENV worker and founds the tree first. Defer
-    // to it instead of overwriting its store and re-swapping process.env.
+    // to it instead of overwriting its store.
     if (auto* existing = sharedEnvStoreFor(globalObject))
         return existing;
 
-    // Publish before creating the view, which resolves its store via the context.
+    // Publish the backing store for this global's environment view.
     globalObject->scriptExecutionContext()->setSharedEnvStore(store.get());
 
-    // Swap this global's process.env to the shared, write-through variant.
+#if !OS(WINDOWS)
+    // Local slots must not reappear after a worker deletes their shared entries.
+    // Keep symbol/private properties; they are not environment variables.
+    JSC::PropertyNameArrayBuilder localKeys(vm, JSC::PropertyNameMode::Strings, JSC::PrivateSymbolMode::Exclude);
+    envObject->methodTable()->getOwnPropertyNames(envObject, globalObject, localKeys, JSC::DontEnumPropertiesMode::Include);
+    RETURN_IF_EXCEPTION(scope, nullptr);
+    for (const auto& key : localKeys) {
+        if (auto index = parseIndex(key))
+            JSObject::deletePropertyByIndex(envObject, globalObject, *index);
+        else {
+            DeletePropertySlot slot;
+            JSObject::deleteProperty(envObject, globalObject, key, slot);
+        }
+        RETURN_IF_EXCEPTION(scope, nullptr);
+    }
+#else
+    // Windows still promotes its case-insensitive Proxy to the shared variant.
     auto* shared = createSharedEnvironmentVariablesMap(globalObject).getObject();
     globalObject->m_processEnvObject.set(vm, globalObject, shared);
 
@@ -973,6 +985,7 @@ RefPtr<SharedEnvStore> ensureSharedEnvStoreForWorker(Zig::GlobalObject* globalOb
             bunObject->putDirect(vm, envIdentifier, shared, JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontDelete);
     }
 
+#endif
     return store;
 }
 
@@ -997,8 +1010,7 @@ JSValue createEnvironmentVariablesMap(Zig::GlobalObject* globalObject)
     JSArray* keyArray = constructEmptyArray(globalObject, nullptr, count);
     RETURN_IF_EXCEPTION(scope, {});
 #else
-    auto* structure = JSEnvironmentVariableMap::createStructure(vm, globalObject, globalObject->objectPrototype());
-    JSC::JSObject* object = JSEnvironmentVariableMap::create(vm, structure);
+    JSC::JSObject* object = createSharedEnvironmentVariablesMap(globalObject).getObject();
 #endif
 
     static NeverDestroyed<String> TZ = MAKE_STATIC_STRING_IMPL("TZ");
