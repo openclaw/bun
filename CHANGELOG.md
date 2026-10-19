@@ -4,6 +4,7 @@ These entries describe the experimental `openclaw/aot-typed` fork.
 
 ## Unreleased
 
+- Preserve initial and final native-entry coverage while avoiding repeated GC snapshot writes.
 - Reduce full native-entry snapshot write overhead in large AOT images.
 - Restore guarded direct calls for fresh record literals while preserving ordinary-object conversion checks.
 - Emit complete per-VM native-entry snapshots and preserve counter relocations in large AOT images.

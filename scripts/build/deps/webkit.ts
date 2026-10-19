@@ -3,7 +3,7 @@
  * for local mode. Override via `--webkit-version=<hash>` to test a branch.
  * This fork's revision is from https://github.com/openclaw/WebKit; use a local build.
  */
-export const WEBKIT_VERSION = "cca22a42d0b152f9caa1b627593928d602258343";
+export const WEBKIT_VERSION = "f6b16964d0a1ad7108e53c741369c53faaaf69ec";
 
 /**
  * WebKit (JavaScriptCore) — the JS engine, with WTF and bmalloc.
