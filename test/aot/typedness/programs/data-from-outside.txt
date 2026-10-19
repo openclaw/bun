@@ -17,7 +17,7 @@ fetch-reducer-schemas-over-parsed-data: 12 layouts, 18 given, 13 open, places 79
 forced-casts-native: 1 layouts, 0 given, 4 open, places 3 of 11, reads 0 of 8
 forced-casts: 9 layouts, 0 given, 1 open, places 38 of 47, reads 15 of 27
 forced-members: 3 layouts, 0 given, 1 open, places 26 of 47, reads 29 of 39
-frozen-object-from-untyped-code: 1 layouts, 0 given, 4 open, places 15 of 28, reads 4 of 12
+frozen-object-from-untyped-code: 1 layouts, 0 given, 5 open, places 15 of 28, reads 4 of 12
 host-members-as-interfaces: 47 layouts, 0 given, 25 open, places 147 of 189, reads 29 of 51
 host-objects-between-structural-types: 11 layouts, 0 given, 10 open, places 51 of 71, reads 17 of 27
 host-objects-cast-from-any: 15 layouts, 0 given, 13 open, places 42 of 66, reads 8 of 13

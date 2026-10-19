@@ -213,7 +213,7 @@ spread-into-any-holding-literal: 2 layouts, 0 given, 2 open, places 4 of 12, rea
 spread-literal-for-intersection-parameter: 3 layouts, 1 given, 3 open, places 73 of 99, reads 2 of 16
 spread-literal-satisfies: 8 layouts, 0 given, 3 open, places 157 of 174, reads 6 of 10
 spread-literal-satisfies-dts-type: 7 layouts, 0 given, 1 open, places 150 of 169, reads 6 of 10
-spread-literal-satisfies-in-try: 3 layouts, 0 given, 2 open, places 158 of 169, reads 4 of 10
+spread-literal-satisfies-in-try: 3 layouts, 0 given, 4 open, places 158 of 169, reads 4 of 10
 spread-literal-satisfies-optional-parameter: 5 layouts, 0 given, 1 open, places 163 of 199, reads 6 of 14
 spread-literal-vs-similar-parsed-data: 4 layouts, 1 given, 1 open, places 117 of 148, reads 6 of 16
 spread-literal-with-untyped-freeze: 4 layouts, 1 given, 4 open, places 74 of 104, reads 2 of 18

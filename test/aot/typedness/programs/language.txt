@@ -25,7 +25,7 @@ creation-points: 8 layouts, 0 given, 8 open, places 76 of 86, reads 13 of 37
 delete-optional: 2 layouts, 0 given, 0 open, places 12 of 20, reads 2 of 4
 direct-eval-sees-const-enums: 0 layouts, 0 given, 1 open, places 127 of 212, reads 0 of 6
 direct-eval-sees-imports: 2 layouts, 0 given, 2 open, places 561 of 858, reads 3 of 14
-error-constructors: 8 layouts, 0 given, 5 open, places 57 of 123, reads 4 of 38
+error-constructors: 8 layouts, 0 given, 7 open, places 57 of 123, reads 4 of 38
 error-thrown-to-ignoring-handler: 3 layouts, 0 given, 4 open, places 49 of 64, reads 5 of 23
 exceptions-through-finally-to-outer-catch: 3 layouts, 0 given, 3 open, places 95 of 123, reads 4 of 24
 exceptions: 0 layouts, 0 given, 1 open, places 21 of 30, reads 0 of 10

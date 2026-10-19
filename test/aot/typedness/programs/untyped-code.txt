@@ -61,7 +61,7 @@ literal-in-unknown-containers-changed: 5 layouts, 0 given, 7 open, places 10 of 
 literal-in-unknown-member-arrays-and-classes: 7 layouts, 0 given, 3 open, places 17 of 28, reads 4 of 20
 literal-in-unknown-member-cast: 4 layouts, 2 given, 3 open, places 11 of 22, reads 1 of 36
 literal-in-unknown-member-changed: 4 layouts, 0 given, 3 open, places 6 of 15, reads 0 of 9
-literal-matching-nested-escaped-literal-type: 3 layouts, 0 given, 4 open, places 5 of 15, reads 0 of 5
+literal-matching-nested-escaped-literal-type: 3 layouts, 0 given, 5 open, places 5 of 15, reads 0 of 5
 literal-returned-as-any-changed: 3 layouts, 0 given, 3 open, places 5 of 14, reads 0 of 7
 literal-thrown-changed: 3 layouts, 0 given, 5 open, places 6 of 15, reads 2 of 13
 literal-to-any-array-element-changed: 3 layouts, 0 given, 3 open, places 5 of 15, reads 0 of 15

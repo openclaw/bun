@@ -50,7 +50,7 @@ identity2-14: 78 layouts, 0 given, 0 open, places 434 of 523, reads 102 of 145
 identity2-15: 72 layouts, 0 given, 0 open, places 383 of 485, reads 119 of 227
 identity2-16: 143 layouts, 0 given, 4 open, places 464 of 552, reads 205 of 278
 identity2-17: 75 layouts, 0 given, 4 open, places 335 of 425, reads 122 of 210
-identity2-18: 54 layouts, 0 given, 2 open, places 304 of 392, reads 119 of 217
+identity2-18: 54 layouts, 0 given, 4 open, places 304 of 392, reads 119 of 217
 identity2-19: 75 layouts, 0 given, 4 open, places 344 of 443, reads 153 of 210
 identity2-20: 26 layouts, 0 given, 1 open, places 246 of 318, reads 24 of 94
 identity2-21: 19 layouts, 0 given, 3 open, places 237 of 314, reads 20 of 87
