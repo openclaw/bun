@@ -1,29 +1,18 @@
 import childProcess, { spawnSync } from "node:child_process";
-import { syncBuiltinESMExports } from "node:module";
-import { fileURLToPath } from "node:url";
-import { existsSync, realpathSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
-import { pathToFileURL } from "node:url";
+import { existsSync, realpathSync, writeFileSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
+import { dirname, join, relative, resolve, sep } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = realpathSync(process.env.LAND175276_ROOT);
 const source = realpathSync(process.env.LAND175276_CONSUMER);
 function assertPrivate(candidate) {
   const part = relative(root, candidate);
-  if (
-    part === ".." ||
-    part.startsWith(".." + sep) ||
-    resolve(root, part) !== candidate
-  )
+  if (part === ".." || part.startsWith(".." + sep) || resolve(root, part) !== candidate)
     throw new Error("Unsafe acceptance path: " + candidate);
 }
-for (const key of [
-  "TMPDIR",
-  "TEMP",
-  "TMP",
-  "OPENCLAW_STATE_DIR",
-  "OPENCLAW_CONFIG_PATH",
-])
+for (const key of ["TMPDIR", "TEMP", "TMP", "OPENCLAW_STATE_DIR", "OPENCLAW_CONFIG_PATH"])
   assertPrivate(realpathSync(process.env[key]));
 const env = {
   ...process.env,
@@ -37,26 +26,15 @@ const script =
 // its preload prevents recursion; its temp/state environment is the child's own.
 const result = spawnSync(
   process.execPath,
-  [
-    "--import",
-    pathToFileURL(join(source, "scripts/tsx.mjs")).href,
-    "--input-type=module",
-    "-e",
-    script,
-  ],
+  ["--import", pathToFileURL(join(source, "scripts/tsx.mjs")).href, "--input-type=module", "-e", script],
   { cwd: source, env, encoding: "utf8", timeout: 60000 },
 );
 if (result.error || result.status !== 0 || result.signal)
-  throw new Error(
-    "Private source resolver failed: " + (result.error ?? result.stderr),
-  );
+  throw new Error("Private source resolver failed: " + (result.error ?? result.stderr));
 const { databasePath } = JSON.parse(result.stdout.trim());
 const database = existsSync(databasePath)
   ? realpathSync(databasePath)
-  : join(
-      realpathSync(dirname(databasePath)),
-      databasePath.split(/[\\/]/).pop(),
-    );
+  : join(realpathSync(dirname(databasePath)), databasePath.split(/[\\/]/).pop());
 assertPrivate(database);
 writeFileSync(
   join(root, "preflights", process.pid + "-" + randomUUID() + ".json"),
@@ -90,9 +68,7 @@ const privateKeys = [
   "OPENCLAW_STATE_DIR",
   "OPENCLAW_CONFIG_PATH",
 ];
-const inherited = Object.fromEntries(
-  privateKeys.map((key) => [key, process.env[key]]),
-);
+const inherited = Object.fromEntries(privateKeys.map(key => [key, process.env[key]]));
 const preload = pathToFileURL(fileURLToPath(import.meta.url)).href;
 function childOptions(options = {}) {
   const env = {
@@ -106,25 +82,15 @@ function childOptions(options = {}) {
     ["NODE_OPTIONS", "--import="],
     ["BUN_OPTIONS", "--preload="],
   ]) {
-    if (!env[key]?.includes(flag + preload))
-      env[key] = ((env[key] ?? "") + " " + flag + preload).trim();
+    if (!env[key]?.includes(flag + preload)) env[key] = ((env[key] ?? "") + " " + flag + preload).trim();
   }
   return { ...options, env };
 }
-for (const name of [
-  "spawn",
-  "spawnSync",
-  "exec",
-  "execSync",
-  "execFile",
-  "execFileSync",
-  "fork",
-]) {
+for (const name of ["spawn", "spawnSync", "exec", "execSync", "execFile", "execFileSync", "fork"]) {
   const original = childProcess[name];
   childProcess[name] = function (...args) {
     const index = Array.isArray(args[1]) ? 2 : 1;
-    if (typeof args[index] === "function")
-      args.splice(index, 0, childOptions());
+    if (typeof args[index] === "function") args.splice(index, 0, childOptions());
     else args[index] = childOptions(args[index]);
     return Reflect.apply(original, this, args);
   };

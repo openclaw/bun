@@ -1,20 +1,12 @@
+import { test } from "bun:test";
+import { bunEnv, bunExe, tempDir } from "harness";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { test } from "bun:test";
-import { tempDir, bunEnv, bunExe } from "harness";
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
-import { fileURLToPath } from "node:url";
-import {
-  releaseAcceptance,
-  acceptancePolicyPath,
-} from "../../../scripts/openclaw-release/acceptance-policy.mjs";
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { selectTests, windowsSmoke } from "../../../scripts/openclaw-ci/tests.ts";
+import { acceptancePolicyPath, releaseAcceptance } from "../../../scripts/openclaw-release/acceptance-policy.mjs";
 import {
   archiveEntrySha256,
   assertRuntime,
@@ -27,12 +19,8 @@ import {
   sourceIdentity,
   testCounts,
 } from "../../../scripts/openclaw-release/acceptance.mjs";
-import {
-  selectTests,
-  windowsSmoke,
-} from "../../../scripts/openclaw-ci/tests.ts";
 
-const fixture = (callback) => {
+const fixture = callback => {
   using directory = tempDir("release-acceptance-test", {});
   return callback(String(directory));
 };
@@ -41,29 +29,17 @@ const commit = "a".repeat(40),
 
 for (const os of ["darwin", "linux", "windows"])
   for (const arch of ["x64", "arm64"]) {
-    test(
-      "native identity " + os + "-" + arch + " rejects other bytes/platform",
-      () => {
-        const facts = {
-          platform: os === "windows" ? "win32" : os,
-          arch,
-          revision: commit,
-          webkit,
-        };
-        assert.doesNotThrow(() =>
-          assertRuntime(facts, os + "-" + arch, commit, webkit),
-        );
-        for (const key of ["platform", "arch", "revision", "webkit"])
-          assert.throws(() =>
-            assertRuntime(
-              { ...facts, [key]: "wrong" },
-              os + "-" + arch,
-              commit,
-              webkit,
-            ),
-          );
-      },
-    );
+    test("native identity " + os + "-" + arch + " rejects other bytes/platform", () => {
+      const facts = {
+        platform: os === "windows" ? "win32" : os,
+        arch,
+        revision: commit,
+        webkit,
+      };
+      assert.doesNotThrow(() => assertRuntime(facts, os + "-" + arch, commit, webkit));
+      for (const key of ["platform", "arch", "revision", "webkit"])
+        assert.throws(() => assertRuntime({ ...facts, [key]: "wrong" }, os + "-" + arch, commit, webkit));
+    });
   }
 test("invalid native target cannot inherit a valid platform prefix", () => {
   assert.throws(() => assertRuntime({}, "other-x64", commit, webkit));
@@ -84,8 +60,7 @@ test("full native and hook inventories are counted, not an exit-only pass", () =
     failed: 0,
     skipped: 2,
   });
-  for (const log of ["", "\n 0 pass\n 0 fail\n", "\n 4 pass\n 1 fail\n"])
-    assert.throws(() => testCounts(log, "bun"));
+  for (const log of ["", "\n 0 pass\n 0 fail\n", "\n 4 pass\n 1 fail\n"]) assert.throws(() => testCounts(log, "bun"));
   assert.throws(() => testCounts(" Tests  24 passed | 1 failed", "vitest"));
 });
 test("Windows fixed selection includes all clone suites and keeps inherited coverage", () => {
@@ -101,7 +76,7 @@ test("Windows fixed selection includes all clone suites and keeps inherited cove
     () =>
       selectTests(
         [],
-        windowsSmoke.filter((path) => path !== nativeRegressions[0]),
+        windowsSmoke.filter(path => path !== nativeRegressions[0]),
         false,
         "windows",
       ),
@@ -109,27 +84,22 @@ test("Windows fixed selection includes all clone suites and keeps inherited cove
   );
 });
 test("private environment strips tokens and closes temp aliases", () =>
-  fixture((root) => {
+  fixture(root => {
     const env = privateEnvironment(root, root);
     assert.equal(env.GH_TOKEN, undefined);
     assert.equal(env.SSH_AUTH_SOCK, undefined);
     assert.equal(env.CI, "true");
-    for (const key of ["TMP", "TEMP", "TMPDIR", "HOME", "OPENCLAW_STATE_DIR"])
-      assert(inside(root, env[key]));
+    for (const key of ["TMP", "TEMP", "TMPDIR", "HOME", "OPENCLAW_STATE_DIR"]) assert(inside(root, env[key]));
   }));
 test("private path check rejects a symlink to a different temp root", () =>
-  fixture((root) =>
-    fixture((other) => {
-      symlinkSync(
-        other,
-        join(root, "escape"),
-        process.platform === "win32" ? "junction" : "dir",
-      );
+  fixture(root =>
+    fixture(other => {
+      symlinkSync(other, join(root, "escape"), process.platform === "win32" ? "junction" : "dir");
       assert.throws(() => inside(root, join(root, "escape")), /escapes/);
     }),
   ));
 test("candidate pin binds archive and executable without mutating original or siblings", () =>
-  fixture((root) => {
+  fixture(root => {
     const archive = join(root, "archive"),
       exe = join(root, "bun");
     writeFileSync(archive, "archive");
@@ -153,43 +123,24 @@ test("candidate pin binds archive and executable without mutating original or si
     assert.equal(original.revision, "old");
     assert.equal(pin.artifacts["darwin-arm64"].sha256, sha256(archive));
     assert.equal(pin.artifacts["darwin-arm64"].executableSha256, sha256(exe));
-    assert.deepEqual(
-      pin.artifacts["linux-x64"],
-      original.artifacts["linux-x64"],
-    );
+    assert.deepEqual(pin.artifacts["linux-x64"], original.artifacts["linux-x64"]);
     assert.equal(pin.tag, "candidate-tag");
     assert.equal(pin.commit, "abcdef012" + "0".repeat(31));
     assert.throws(
-      () =>
-        candidatePin(
-          original,
-          "1.4.4+abcdef012",
-          "darwin-arm64",
-          archive,
-          exe,
-          "candidate-tag",
-          "b".repeat(40),
-        ),
+      () => candidatePin(original, "1.4.4+abcdef012", "darwin-arm64", archive, exe, "candidate-tag", "b".repeat(40)),
       /commit does not match/,
     );
-    assert.throws(() =>
-      candidatePin(original, "nonsense", "darwin-arm64", archive, exe),
-    );
-    assert.throws(() =>
-      candidatePin(original, "1.4.4+abcdef012", "windows-arm64", archive, exe),
-    );
+    assert.throws(() => candidatePin(original, "nonsense", "darwin-arm64", archive, exe));
+    assert.throws(() => candidatePin(original, "1.4.4+abcdef012", "windows-arm64", archive, exe));
   }));
 test("real subprocess failures retain hashed evidence and cannot pass", () =>
-  fixture((root) => {
+  fixture(root => {
     assert.throws(
       () =>
         capture(
           "failure",
           process.execPath,
-          [
-            "-e",
-            "console.error('intentional-fixture-failure');process.exit(7)",
-          ],
+          ["-e", "console.error('intentional-fixture-failure');process.exit(7)"],
           root,
           process.env,
           root,
@@ -199,13 +150,10 @@ test("real subprocess failures retain hashed evidence and cannot pass", () =>
     const record = JSON.parse(readFileSync(join(root, "failure.json")));
     assert.equal(record.exit, 7);
     assert.equal(record.logSha256, sha256(record.log));
-    assert.match(
-      readFileSync(record.log, "utf8"),
-      /intentional-fixture-failure/,
-    );
+    assert.match(readFileSync(record.log, "utf8"), /intentional-fixture-failure/);
   }));
 test("source gate refuses abbreviated commits before starting a runtime", () =>
-  fixture((root) => {
+  fixture(root => {
     assert.throws(() => sourceIdentity(root, "abc123"), /full source commit/);
   }));
 
@@ -223,43 +171,26 @@ test("archive entry hash binds bytes and refuses a missing entry", async () => {
       ),
     );
     writeFileSync(exe, "artifact");
-    assert.equal(
-      await archiveEntrySha256(archive, "bun", process.env),
-      sha256(exe),
-    );
+    assert.equal(await archiveEntrySha256(archive, "bun", process.env), sha256(exe));
     writeFileSync(exe, "different bytes");
-    assert.notEqual(
-      await archiveEntrySha256(archive, "bun", process.env),
-      sha256(exe),
-    );
-    await assert.rejects(
-      archiveEntrySha256(archive, "missing", process.env),
-      /extraction failed/,
-    );
+    assert.notEqual(await archiveEntrySha256(archive, "bun", process.env), sha256(exe));
+    await assert.rejects(archiveEntrySha256(archive, "missing", process.env), /extraction failed/);
   }
 });
 test("escaped temp root is rejected before resolver or payload execution", () =>
-  fixture((root) =>
-    fixture((other) => {
+  fixture(root =>
+    fixture(other => {
       const env = privateEnvironment(root, root);
       env.TMPDIR = other;
       env.NODE_OPTIONS =
-        "--import=" +
-        new URL(
-          "../../../scripts/openclaw-release/private-preflight.mjs",
-          import.meta.url,
-        ).href;
+        "--import=" + new URL("../../../scripts/openclaw-release/private-preflight.mjs", import.meta.url).href;
       env.BUN_OPTIONS =
-        "--preload=" +
-        new URL(
-          "../../../scripts/openclaw-release/private-preflight.mjs",
-          import.meta.url,
-        ).href;
-      const result = spawnSync(
-        process.execPath,
-        ["-e", "require('node:fs').writeFileSync('payload-ran','bad')"],
-        { cwd: root, env, encoding: "utf8" },
-      );
+        "--preload=" + new URL("../../../scripts/openclaw-release/private-preflight.mjs", import.meta.url).href;
+      const result = spawnSync(process.execPath, ["-e", "require('node:fs').writeFileSync('payload-ran','bad')"], {
+        cwd: root,
+        env,
+        encoding: "utf8",
+      });
       assert.notEqual(result.status, 0);
       assert.match(result.stderr, /Unsafe acceptance path/);
       assert.equal(existsSync(join(root, "payload-ran")), false);
@@ -267,12 +198,7 @@ test("escaped temp root is rejected before resolver or payload execution", () =>
   ));
 
 const pipeline = fileURLToPath(new URL("../../../", import.meta.url));
-const workflow = Bun.YAML.parse(
-  readFileSync(
-    join(pipeline, ".github/workflows/openclaw-release.yml"),
-    "utf8",
-  ),
-);
+const workflow = Bun.YAML.parse(readFileSync(join(pipeline, ".github/workflows/openclaw-release.yml"), "utf8"));
 
 async function withReleaseSource(policy, callback) {
   using directory = tempDir("acceptance-route", {});
@@ -280,31 +206,20 @@ async function withReleaseSource(policy, callback) {
     source = join(root, "source");
   mkdirSync(join(source, "scripts/build/deps"), { recursive: true });
   mkdirSync(join(source, "scripts/openclaw-release"), { recursive: true });
-  writeFileSync(
-    join(source, "package.json"),
-    JSON.stringify({ version: "1.4.4" }),
-  );
-  writeFileSync(
-    join(source, "scripts/build/deps/webkit-artifacts.json"),
-    JSON.stringify({ version: webkit }),
-  );
-  if (policy !== undefined)
-    writeFileSync(join(source, acceptancePolicyPath), JSON.stringify(policy));
+  writeFileSync(join(source, "package.json"), JSON.stringify({ version: "1.4.4" }));
+  writeFileSync(join(source, "scripts/build/deps/webkit-artifacts.json"), JSON.stringify({ version: webkit }));
+  if (policy !== undefined) writeFileSync(join(source, acceptancePolicyPath), JSON.stringify(policy));
   const git = (...args) => {
-    const run = spawnSync(
-      "git",
-      ["-C", source, "-c", "core.hooksPath=/dev/null", ...args],
-      {
-        env: {
-          ...bunEnv,
-          GIT_AUTHOR_NAME: "Release fixture",
-          GIT_AUTHOR_EMAIL: "fixture@example.invalid",
-          GIT_COMMITTER_NAME: "Release fixture",
-          GIT_COMMITTER_EMAIL: "fixture@example.invalid",
-        },
-        encoding: "utf8",
+    const run = spawnSync("git", ["-C", source, "-c", "core.hooksPath=/dev/null", ...args], {
+      env: {
+        ...bunEnv,
+        GIT_AUTHOR_NAME: "Release fixture",
+        GIT_AUTHOR_EMAIL: "fixture@example.invalid",
+        GIT_COMMITTER_NAME: "Release fixture",
+        GIT_COMMITTER_EMAIL: "fixture@example.invalid",
       },
-    );
+      encoding: "utf8",
+    });
     assert.equal(run.status, 0, run.stderr);
     return run.stdout.trim();
   };
@@ -314,47 +229,22 @@ async function withReleaseSource(policy, callback) {
   const sha = git("rev-parse", "HEAD");
   const tagRun = spawnSync(
     bunExe(),
-    [
-      join(pipeline, "scripts/openclaw-release/release.ts"),
-      "tag",
-      "--source",
-      source,
-    ],
+    [join(pipeline, "scripts/openclaw-release/release.ts"), "tag", "--source", source],
     { env: bunEnv, encoding: "utf8" },
   );
   assert.equal(tagRun.status, 0, tagRun.stderr);
   const tag = tagRun.stdout.trim();
   git("tag", tag);
   git("update-ref", "refs/remotes/origin/main", sha);
-  symlinkSync(
-    pipeline,
-    join(root, "pipeline"),
-    process.platform === "win32" ? "junction" : "dir",
-  );
-  const run = async ({
-    event = "push",
-    input = "",
-    publish = true,
-    windows = true,
-    targets = "",
-  } = {}) => {
+  symlinkSync(pipeline, join(root, "pipeline"), process.platform === "win32" ? "junction" : "dir");
+  const run = async ({ event = "push", input = "", publish = true, windows = true, targets = "" } = {}) => {
     await using child = Bun.spawn(
-      [
-        "bash",
-        "-e",
-        "-o",
-        "pipefail",
-        "-c",
-        workflow.jobs.plan.steps.find((step) => step.id === "plan").run,
-      ],
+      ["bash", "-e", "-o", "pipefail", "-c", workflow.jobs.plan.steps.find(step => step.id === "plan").run],
       {
         cwd: root,
         env: {
           ...bunEnv,
-          PATH:
-            join(bunExe(), "..") +
-            (process.platform === "win32" ? ";" : ":") +
-            bunEnv.PATH,
+          PATH: join(bunExe(), "..") + (process.platform === "win32" ? ";" : ":") + bunEnv.PATH,
           GITHUB_EVENT_NAME: event,
           RELEASE_TAG: tag,
           PUBLISH: String(publish),
@@ -367,11 +257,7 @@ async function withReleaseSource(policy, callback) {
         stderr: "pipe",
       },
     );
-    const [stdout, stderr, status] = await Promise.all([
-      child.stdout.text(),
-      child.stderr.text(),
-      child.exited,
-    ]);
+    const [stdout, stderr, status] = await Promise.all([child.stdout.text(), child.stderr.text(), child.exited]);
     return { stdout, stderr, status };
   };
   await callback({ source, sha, run });
@@ -380,117 +266,88 @@ async function withReleaseSource(policy, callback) {
 test.concurrent(
   "tag-push plan supplies immutable policy, requires six targets, and refuses competing dispatch before build",
   async () => {
-    await withReleaseSource(
-      { consumerCommit: commit },
-      async ({ source, sha, run }) => {
-        const pushed = await run();
-        assert.equal(pushed.status, 0, pushed.stderr);
-        assert.match(
-          pushed.stdout,
-          new RegExp("^acceptance-ref=" + commit + "$", "m"),
-        );
-        const matrix = JSON.parse(
-          pushed.stdout
-            .split("\n")
-            .find((line) => line.startsWith("matrix="))
-            .slice(7),
-        );
-        assert.equal(matrix.length, 6);
-        assert.equal(
-          matrix
-            .filter((row) => row.target.startsWith("windows"))
-            .every((row) => row.artifact === "signed-windows"),
-          true,
-        );
-        // An uncommitted policy cannot alter the released commit's acceptance source.
-        writeFileSync(
-          join(source, acceptancePolicyPath),
-          JSON.stringify({ consumerCommit: webkit }),
-        );
-        assert.equal(releaseAcceptance(source, sha).ref, commit);
-        await Promise.all(
-          ["", commit].map(async (input) => {
-            const competing = await run({ event: "workflow_dispatch", input });
-            assert.notEqual(competing.status, 0);
-            assert.match(competing.stderr, /requires tag-push publication/);
-            assert.equal(competing.stdout.includes("matrix="), false);
-          }),
-        );
-        await Promise.all(
-          [webkit, "main", "abc123"].map(async (input) => {
-            const mismatch = await run({ input });
-            assert.notEqual(mismatch.status, 0);
-            assert.match(mismatch.stderr, /immutable commit|disagrees/);
-            assert.equal(mismatch.stdout.includes("matrix="), false);
-          }),
-        );
-        assert.match(pushed.stdout, /^build-release=true$/m);
-        const [dry, unsigned, partial, pullRequest] = await Promise.all([
-          run({ event: "workflow_dispatch", publish: false }),
-          run({ windows: false }),
-          run({ targets: "darwin-arm64" }),
-          run({ event: "pull_request", publish: false }),
-        ]);
-        assert.equal(pullRequest.status, 0, pullRequest.stderr);
-        assert.match(pullRequest.stdout, /^build-release=false$/m);
-        assert.match(pullRequest.stdout, new RegExp("^acceptance-ref=" + commit + "$", "m"));
-        assert.equal(dry.status, 0, dry.stderr);
-        assert.match(dry.stdout, /^build-release=true$/m);
-        assert.match(
-          dry.stdout,
-          new RegExp("^acceptance-ref=" + commit + "$", "m"),
-        );
-        assert.notEqual(unsigned.status, 0);
-        assert.match(unsigned.stderr, /all six signed/);
-        assert.notEqual(partial.status, 0);
-        assert.match(partial.stderr, /every release target/);
-      },
-    );
-  },
-);
-
-test.concurrent(
-  "ordinary source without policy preserves tag and publishing dispatch behavior",
-  async () => {
-    await withReleaseSource(undefined, async ({ run }) => {
-      for (const event of ["push", "workflow_dispatch", "pull_request"]) {
-        const ordinary = await run({ event, windows: false, publish: event !== "pull_request" });
-        assert.equal(ordinary.status, 0, ordinary.stderr);
-        assert.match(ordinary.stdout, /^acceptance-ref=$/m);
-        assert.match(ordinary.stdout, /^build-release=true$/m);
-        const optional = await run({ event, input: commit, windows: false, publish: event !== "pull_request" });
-        assert.equal(optional.status, 0, optional.stderr);
-        assert.match(
-          optional.stdout,
-          new RegExp("^acceptance-ref=" + commit + "$", "m"),
-        );
-      }
+    await withReleaseSource({ consumerCommit: commit }, async ({ source, sha, run }) => {
+      const pushed = await run();
+      assert.equal(pushed.status, 0, pushed.stderr);
+      assert.match(pushed.stdout, new RegExp("^acceptance-ref=" + commit + "$", "m"));
+      const matrix = JSON.parse(
+        pushed.stdout
+          .split("\n")
+          .find(line => line.startsWith("matrix="))
+          .slice(7),
+      );
+      assert.equal(matrix.length, 6);
+      assert.equal(
+        matrix.filter(row => row.target.startsWith("windows")).every(row => row.artifact === "signed-windows"),
+        true,
+      );
+      // An uncommitted policy cannot alter the released commit's acceptance source.
+      writeFileSync(join(source, acceptancePolicyPath), JSON.stringify({ consumerCommit: webkit }));
+      assert.equal(releaseAcceptance(source, sha).ref, commit);
+      await Promise.all(
+        ["", commit].map(async input => {
+          const competing = await run({ event: "workflow_dispatch", input });
+          assert.notEqual(competing.status, 0);
+          assert.match(competing.stderr, /requires tag-push publication/);
+          assert.equal(competing.stdout.includes("matrix="), false);
+        }),
+      );
+      await Promise.all(
+        [webkit, "main", "abc123"].map(async input => {
+          const mismatch = await run({ input });
+          assert.notEqual(mismatch.status, 0);
+          assert.match(mismatch.stderr, /immutable commit|disagrees/);
+          assert.equal(mismatch.stdout.includes("matrix="), false);
+        }),
+      );
+      assert.match(pushed.stdout, /^build-release=true$/m);
+      const [dry, unsigned, partial, pullRequest] = await Promise.all([
+        run({ event: "workflow_dispatch", publish: false }),
+        run({ windows: false }),
+        run({ targets: "darwin-arm64" }),
+        run({ event: "pull_request", publish: false }),
+      ]);
+      assert.equal(pullRequest.status, 0, pullRequest.stderr);
+      assert.match(pullRequest.stdout, /^build-release=false$/m);
+      assert.match(pullRequest.stdout, new RegExp("^acceptance-ref=" + commit + "$", "m"));
+      assert.equal(dry.status, 0, dry.stderr);
+      assert.match(dry.stdout, /^build-release=true$/m);
+      assert.match(dry.stdout, new RegExp("^acceptance-ref=" + commit + "$", "m"));
+      assert.notEqual(unsigned.status, 0);
+      assert.match(unsigned.stderr, /all six signed/);
+      assert.notEqual(partial.status, 0);
+      assert.match(partial.stderr, /every release target/);
     });
   },
 );
 
-test.concurrent(
-  "malformed committed policy refuses even an omitted dispatch input",
-  async () => {
-    await withReleaseSource({ consumerCommit: "main" }, async ({ run }) => {
-      const result = await run();
-      assert.notEqual(result.status, 0);
-      assert.match(result.stderr, /Invalid committed consumer/);
-      assert.equal(result.stdout.includes("matrix="), false);
-    });
-  },
-);
+test.concurrent("ordinary source without policy preserves tag and publishing dispatch behavior", async () => {
+  await withReleaseSource(undefined, async ({ run }) => {
+    for (const event of ["push", "workflow_dispatch", "pull_request"]) {
+      const ordinary = await run({ event, windows: false, publish: event !== "pull_request" });
+      assert.equal(ordinary.status, 0, ordinary.stderr);
+      assert.match(ordinary.stdout, /^acceptance-ref=$/m);
+      assert.match(ordinary.stdout, /^build-release=true$/m);
+      const optional = await run({ event, input: commit, windows: false, publish: event !== "pull_request" });
+      assert.equal(optional.status, 0, optional.stderr);
+      assert.match(optional.stdout, new RegExp("^acceptance-ref=" + commit + "$", "m"));
+    }
+  });
+});
+
+test.concurrent("malformed committed policy refuses even an omitted dispatch input", async () => {
+  await withReleaseSource({ consumerCommit: "main" }, async ({ run }) => {
+    const result = await run();
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Invalid committed consumer/);
+    assert.equal(result.stdout.includes("matrix="), false);
+  });
+});
 
 test("publication retains final-artifact acceptance and signing dependencies", () => {
   const jobs = workflow.jobs;
-  assert.equal(
-    jobs.plan.outputs["acceptance-ref"],
-    "${{ steps.plan.outputs.acceptance-ref }}",
-  );
-  assert.equal(
-    jobs.smoke.env.ACCEPTANCE_REF,
-    "${{ needs.plan.outputs.acceptance-ref }}",
-  );
+  assert.equal(jobs.plan.outputs["acceptance-ref"], "${{ steps.plan.outputs.acceptance-ref }}");
+  assert.equal(jobs.smoke.env.ACCEPTANCE_REF, "${{ needs.plan.outputs.acceptance-ref }}");
   assert.equal(jobs.plan.outputs["build-release"], "${{ steps.plan.outputs.build-release }}");
   assert.equal(jobs.build.if, "needs.plan.outputs.build-release == 'true'");
   assert(jobs.smoke.needs.includes("sign-macos"));
@@ -499,9 +356,7 @@ test("publication retains final-artifact acceptance and signing dependencies", (
   assert.match(jobs.manifest.if, /needs.smoke.result == 'success'/);
   assert(jobs.publish.needs.includes("manifest"));
   assert.match(jobs.publish.if, /needs.manifest.result == 'success'/);
-  const acceptance = jobs.smoke.steps.find(
-    (step) => step.name === "LAND175276 final-artifact acceptance",
-  );
+  const acceptance = jobs.smoke.steps.find(step => step.name === "LAND175276 final-artifact acceptance");
   assert.equal(acceptance.if, "env.ACCEPTANCE_REF != ''");
   assert.equal(acceptance["continue-on-error"], undefined);
   assert(acceptance.run.includes('--consumer-commit "$ACCEPTANCE_REF"'));

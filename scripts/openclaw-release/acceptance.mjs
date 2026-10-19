@@ -11,17 +11,12 @@ export const nativeRegressions = [
   "test/js/node/v8/v8-serdes-buffer.test.ts",
 ];
 export const hookSuite = "src/plugins/hooks.before-tool-call.test.ts";
-export const sha256 = (file) =>
-  createHash("sha256").update(readFileSync(file)).digest("hex");
+export const sha256 = file => createHash("sha256").update(readFileSync(file)).digest("hex");
 
 export function inside(root, file) {
   const canonicalRoot = realpathSync(root);
   const part = relative(canonicalRoot, realpathSync(file));
-  if (
-    part === ".." ||
-    part.startsWith(".." + sep) ||
-    resolve(canonicalRoot, part) !== realpathSync(file)
-  )
+  if (part === ".." || part.startsWith(".." + sep) || resolve(canonicalRoot, part) !== realpathSync(file))
     throw new Error("Private path escapes acceptance root");
   return realpathSync(file);
 }
@@ -33,15 +28,14 @@ export async function archiveEntrySha256(archive, entry, env) {
     stdio: ["ignore", "pipe", "pipe"],
   });
   let stderr = "";
-  child.stdout.on("data", (chunk) => hash.update(chunk));
-  child.stderr.on("data", (chunk) => {
+  child.stdout.on("data", chunk => hash.update(chunk));
+  child.stderr.on("data", chunk => {
     stderr = (stderr + chunk).slice(-8192);
   });
   return await new Promise((resolve, reject) => {
     child.on("error", reject);
     child.on("close", (code, signal) => {
-      if (code !== 0 || signal)
-        reject(new Error("Final archive extraction failed: " + stderr));
+      if (code !== 0 || signal) reject(new Error("Final archive extraction failed: " + stderr));
       else resolve(hash.digest("hex"));
     });
   });
@@ -69,13 +63,9 @@ export function checked(command, args, options = {}) {
 }
 
 export function sourceIdentity(root, commit) {
-  if (!/^[a-f0-9]{40}$/.test(commit))
-    throw new Error("Acceptance requires a full source commit");
+  if (!/^[a-f0-9]{40}$/.test(commit)) throw new Error("Acceptance requires a full source commit");
   const git = (...args) => checked("git", ["-C", root, ...args]);
-  if (
-    git("rev-parse", "HEAD") !== commit ||
-    git("status", "--porcelain", "--untracked-files=no")
-  )
+  if (git("rev-parse", "HEAD") !== commit || git("status", "--porcelain", "--untracked-files=no"))
     throw new Error("Acceptance source must be clean at the exact commit");
   return { commit, tree: git("rev-parse", "HEAD^{tree}") };
 }
@@ -90,25 +80,14 @@ export function assertRuntime(facts, target, commit, webkit) {
     facts.revision !== commit ||
     facts.webkit !== webkit
   )
-    throw new Error(
-      "Final executable identity does not match source/target/WebKit",
-    );
+    throw new Error("Final executable identity does not match source/target/WebKit");
 }
 
 export function testCounts(log, kind) {
   const plain = log.replace(/\x1b\[[0-9;]*m/g, "");
-  const passed =
-    kind === "bun"
-      ? /(?:^|\n)\s*(\d+) pass\b/m.exec(plain)
-      : /Tests\s+(\d+) passed\b/.exec(plain);
-  const failed =
-    kind === "bun"
-      ? /(?:^|\n)\s*(\d+) fail\b/m.exec(plain)
-      : /Tests[^\n]*?(\d+) failed\b/.exec(plain);
-  const skipped =
-    kind === "bun"
-      ? /(?:^|\n)\s*(\d+) skip\b/m.exec(plain)
-      : /Tests[^\n]*?(\d+) skipped\b/.exec(plain);
+  const passed = kind === "bun" ? /(?:^|\n)\s*(\d+) pass\b/m.exec(plain) : /Tests\s+(\d+) passed\b/.exec(plain);
+  const failed = kind === "bun" ? /(?:^|\n)\s*(\d+) fail\b/m.exec(plain) : /Tests[^\n]*?(\d+) failed\b/.exec(plain);
+  const skipped = kind === "bun" ? /(?:^|\n)\s*(\d+) skip\b/m.exec(plain) : /Tests[^\n]*?(\d+) skipped\b/.exec(plain);
   if (!passed || Number(passed[1]) === 0 || Number(failed?.[1] ?? 0) !== 0)
     throw new Error("Missing or failed test inventory");
   return {
@@ -118,20 +97,9 @@ export function testCounts(log, kind) {
   };
 }
 
-export function candidatePin(
-  original,
-  revision,
-  target,
-  archive,
-  executable,
-  tag,
-  commit,
-) {
+export function candidatePin(original, revision, target, archive, executable, tag, commit) {
   const pin = structuredClone(original);
-  if (
-    !pin.artifacts?.[target] ||
-    !/^\d+\.\d+\.\d+[^\s]*\+[a-f0-9]{7,40}$/.test(revision)
-  )
+  if (!pin.artifacts?.[target] || !/^\d+\.\d+\.\d+[^\s]*\+[a-f0-9]{7,40}$/.test(revision))
     throw new Error("Missing candidate pin target or revision");
   const suffix = revision.split("+").at(-1);
   if (!/^[a-f0-9]{40}$/.test(commit) || !commit.startsWith(suffix))
@@ -169,30 +137,15 @@ export function capture(label, command, args, cwd, env, out) {
     log: path,
     logSha256: sha256(path),
   };
-  writeFileSync(
-    join(out, label + ".json"),
-    JSON.stringify(record, null, 2) + "\n",
-    { flag: "wx" },
-  );
-  if (result.error || result.signal || result.status !== 0)
-    throw new Error(label + " failed; see " + path);
+  writeFileSync(join(out, label + ".json"), JSON.stringify(record, null, 2) + "\n", { flag: "wx" });
+  if (result.error || result.signal || result.status !== 0) throw new Error(label + " failed; see " + path);
   return { ...record, output: log };
 }
 
 export function privateEnvironment(out, consumer) {
   const env = {};
   // No credentials or caller preload are forwarded to test/dependency processes.
-  for (const key of [
-    "PATH",
-    "Path",
-    "SystemRoot",
-    "SYSTEMROOT",
-    "ComSpec",
-    "COMSPEC",
-    "PATHEXT",
-    "LANG",
-    "LC_ALL",
-  ])
+  for (const key of ["PATH", "Path", "SystemRoot", "SYSTEMROOT", "ComSpec", "COMSPEC", "PATHEXT", "LANG", "LC_ALL"])
     if (process.env[key]) env[key] = process.env[key];
   for (const [key, name] of Object.entries({
     HOME: "home",
@@ -223,10 +176,7 @@ export function privateEnvironment(out, consumer) {
 }
 
 export function installPreloads(out, source) {
-  const base = join(
-    dirname(fileURLToPath(import.meta.url)),
-    "private-preflight.mjs",
-  );
+  const base = join(dirname(fileURLToPath(import.meta.url)), "private-preflight.mjs");
   const bun = join(out, "bun-harness-preload.mjs");
   const keys = [
     "LAND175276_ROOT",
@@ -256,14 +206,7 @@ export function installPreloads(out, source) {
 
 export function runNativeSuites(runtime, source, out, env, preload) {
   return nativeRegressions.map((suite, index) => {
-    const run = capture(
-      "native-" + (index + 1),
-      runtime,
-      ["test", "--preload", preload, suite],
-      source,
-      env,
-      out,
-    );
+    const run = capture("native-" + (index + 1), runtime, ["test", "--preload", preload, suite], source, env, out);
     const { output, ...record } = run;
     return { ...record, suite, ...testCounts(output, "bun") };
   });
@@ -293,16 +236,7 @@ export function bootstrapConsumer(consumer, env, out) {
   );
 }
 
-export function runConsumerHooks(
-  runtime,
-  consumer,
-  archive,
-  target,
-  tag,
-  commit,
-  env,
-  out,
-) {
+export function runConsumerHooks(runtime, consumer, archive, target, tag, commit, env, out) {
   const pinFile = join(consumer, "scripts/lib/openclaw-bun.json");
   const original = readFileSync(pinFile);
   const proposed = candidatePin(
@@ -331,8 +265,7 @@ export function runConsumerHooks(
       out,
     );
     const counts = testCounts(run.output, "vitest");
-    if (counts.passed !== 24 || counts.skipped)
-      throw new Error("Expected the unchanged complete 24-hook inventory");
+    if (counts.passed !== 24 || counts.skipped) throw new Error("Expected the unchanged complete 24-hook inventory");
     const { output, ...record } = run;
     return {
       candidatePin: pin,
@@ -340,14 +273,12 @@ export function runConsumerHooks(
     };
   } finally {
     writeFileSync(pinFile, original);
-    if (sha256(pinFile) !== pin.originalSha256)
-      throw new Error("Disposable proposed pin was not restored");
+    if (sha256(pinFile) !== pin.originalSha256) throw new Error("Disposable proposed pin was not restored");
   }
 }
 
 export async function main(args = process.argv.slice(2)) {
-  if (!/^v24\./.test(process.version))
-    throw new Error("Acceptance requires the Node 24 control runtime");
+  if (!/^v24\./.test(process.version)) throw new Error("Acceptance requires the Node 24 control runtime");
   const options = {};
   for (let i = 0; i < args.length; i += 2) {
     if (!args[i]?.startsWith("--") || !args[i + 1] || options[args[i].slice(2)])
@@ -376,16 +307,10 @@ export async function main(args = process.argv.slice(2)) {
     bun: sourceIdentity(source, options.commit),
     openclaw: sourceIdentity(consumer, options["consumer-commit"]),
   };
-  const acceptance = releaseAcceptance(
-    source,
-    options.commit,
-    options["consumer-commit"],
-  );
+  const acceptance = releaseAcceptance(source, options.commit, options["consumer-commit"]);
   const pipeline = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
   const hashes = {
-    preflight: sha256(
-      join(dirname(fileURLToPath(import.meta.url)), "private-preflight.mjs"),
-    ),
+    preflight: sha256(join(dirname(fileURLToPath(import.meta.url)), "private-preflight.mjs")),
     archive: sha256(archive),
     executable: sha256(runtime),
     harness: sha256(fileURLToPath(import.meta.url)),
@@ -416,16 +341,10 @@ export async function main(args = process.argv.slice(2)) {
   const pinFile = join(consumer, "scripts/lib/openclaw-bun.json"),
     originalPin = readFileSync(pinFile);
   try {
-    if (!/^(darwin|linux|windows)-(x64|arm64)$/.test(options.target))
-      throw new Error("Unsupported acceptance target");
+    if (!/^(darwin|linux|windows)-(x64|arm64)$/.test(options.target)) throw new Error("Unsupported acceptance target");
     const [os, arch] = options.target.split("-");
     const entry =
-      "bun-" +
-      os +
-      "-" +
-      (arch === "arm64" ? "aarch64" : arch) +
-      "/" +
-      (os === "windows" ? "bun.exe" : "bun");
+      "bun-" + os + "-" + (arch === "arm64" ? "aarch64" : arch) + "/" + (os === "windows" ? "bun.exe" : "bun");
     report.archiveEntry = {
       path: entry,
       sha256: await archiveEntrySha256(archive, entry, env),
@@ -454,14 +373,7 @@ export async function main(args = process.argv.slice(2)) {
       [
         "bun",
         source,
-        [
-          ...nativeRegressions,
-          "bun.lock",
-          "test/bun.lock",
-          "test/harness.ts",
-          "test/preload.ts",
-          "bunfig.toml",
-        ],
+        [...nativeRegressions, "bun.lock", "test/bun.lock", "test/harness.ts", "test/preload.ts", "bunfig.toml"],
       ],
       [
         "openclaw",
@@ -476,36 +388,21 @@ export async function main(args = process.argv.slice(2)) {
         ],
       ],
     ])
-      for (const file of files)
-        report.inputs[name + "/" + file] = sha256(join(root, file));
+      for (const file of files) report.inputs[name + "/" + file] = sha256(join(root, file));
     report.results = runNativeSuites(runtime, source, out, env, bun);
-    const hooks = runConsumerHooks(
-      runtime,
-      consumer,
-      archive,
-      options.target,
-      options.tag,
-      options.commit,
-      env,
-      out,
-    );
+    const hooks = runConsumerHooks(runtime, consumer, archive, options.target, options.tag, options.commit, env, out);
     report.candidatePin = hooks.candidatePin;
     report.results.push(hooks.result);
-    if (
-      hashes.archive !== sha256(archive) ||
-      hashes.executable !== sha256(runtime)
-    )
+    if (hashes.archive !== sha256(archive) || hashes.executable !== sha256(runtime))
       throw new Error("Final artifact changed during acceptance");
-    report.status = report.results.some((result) => result.skipped)
+    report.status = report.results.some(result => result.skipped)
       ? "passed-with-recorded-skips-not-full-case-coverage"
       : "passed";
   } catch (error) {
     report.error = error.message;
     throw error;
   } finally {
-    report.pinRestored =
-      sha256(pinFile) ===
-      createHash("sha256").update(originalPin).digest("hex");
+    report.pinRestored = sha256(pinFile) === createHash("sha256").update(originalPin).digest("hex");
     report.hashesAfter = {
       archive: sha256(archive),
       executable: sha256(runtime),
@@ -519,17 +416,9 @@ export async function main(args = process.argv.slice(2)) {
       report.status = "incomplete";
       report.sourceError = error.message;
     }
-    writeFileSync(
-      join(out, "acceptance.json"),
-      JSON.stringify(report, null, 2) + "\n",
-      { flag: "wx" },
-    );
+    writeFileSync(join(out, "acceptance.json"), JSON.stringify(report, null, 2) + "\n", { flag: "wx" });
     if (report.sourceError) throw new Error(report.sourceError);
   }
 }
 
-if (
-  process.argv[1] &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-)
-  await main();
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();

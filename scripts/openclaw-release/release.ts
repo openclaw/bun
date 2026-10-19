@@ -754,7 +754,13 @@ async function main(argv: string[]): Promise<void> {
           throw new Error(`${facts.commit} is not on ${values.main}; only commits of the fork's main are released`);
         }
       }
-      const acceptance = releaseAcceptance(source, facts.commit, values["acceptance-ref"], values.event, values.publish);
+      const acceptance = releaseAcceptance(
+        source,
+        facts.commit,
+        values["acceptance-ref"],
+        values.event,
+        values.publish,
+      );
       if (acceptance.required && values.publish && !values["windows-signed"]) {
         throw new Error("Consumer acceptance publication requires all six signed release targets (--windows-signed)");
       }
