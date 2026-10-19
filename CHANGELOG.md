@@ -4,6 +4,7 @@ These entries describe the experimental `openclaw/aot-typed` fork.
 
 ## Unreleased
 
+- Fix typed-fact validation crashes when mutable captured strings enter a loop, and cover native compilation with sources hidden and JIT disabled.
 - Keep ordinary nested generic records compatible across typed views while preserving open layouts for generic spreads and Proxy allocations.
 - Pin WebKit's typed Proxy-array handling and ARM64 pre-frame outlining repair.
 - Preserve nested generic Array.map result fields in typed AOT code without opening the enclosing object's fixed layout.
