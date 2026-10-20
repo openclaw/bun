@@ -4,6 +4,7 @@ These entries describe the experimental `openclaw/aot-typed` fork.
 
 ## Unreleased
 
+- Normalize equivalent nested inline payload records during typed AOT flow narrowing.
 - Keep typed AOT compilation bounded for flow-narrowed unions with equivalent inline payload records.
 - Cover ordinary-array getter and iterator checks while preserving supported Proxy-array behavior.
 - Preserve native object identity across overlapping flow-narrowed unions by retaining and deduplicating their intersection layouts.

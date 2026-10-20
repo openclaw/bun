@@ -1112,6 +1112,14 @@ struct FlowRecordKey {
     declared_only: bool,
 }
 
+#[derive(Default)]
+struct FlowReferenceNormalization {
+    remaining: usize,
+    active: FxHashSet<TypeId>,
+    resolved: FxHashMap<TypeId, TypeId>,
+    pending: FxHashMap<FlowRecordKey, TypeId>,
+}
+
 /// What type arguments are applied to.
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 enum Applied {
@@ -2798,9 +2806,7 @@ impl<'p, 's> Checker<'p, 's> {
         record
     }
 
-    fn flow_reference_leaves(&self, ty: TypeId) -> Option<Vec<TypeId>> {
-        // This local optimization never inspects more nodes than the Flow family's existing member ceiling.
-        const MAX_NODES: usize = 1024;
+    fn flow_reference_leaves(&self, ty: TypeId, remaining: &mut usize) -> Option<Vec<TypeId>> {
         let mut seen = FxHashSet::default();
         let mut pending = vec![ty];
         let mut leaves = Vec::new();
@@ -2813,12 +2819,9 @@ impl<'p, 's> Checker<'p, 's> {
                     if parts.is_empty() {
                         return None;
                     }
-                    // Keep source constituent order. Only aggregate edges are followed, never a record's field types.
                     for &part in parts.iter() {
                         if seen.insert(part) {
-                            if seen.len() > MAX_NODES {
-                                return None;
-                            }
+                            *remaining = remaining.checked_sub(1)?;
                             pending.push(part);
                         }
                     }
@@ -2830,64 +2833,107 @@ impl<'p, 's> Checker<'p, 's> {
     }
 
     fn canonical_flow_reference_field(&mut self, ty: TypeId) -> TypeId {
-        if !matches!(self.data(ty), TypeData::Union(_) | TypeData::Intersection(_)) { return ty; }
-        let Some(parts) = self.flow_reference_leaves(ty) else { return ty };
-        let Some((&first, rest)) = parts.split_first() else { return ty };
-        if rest.is_empty() || self.results_are_provisional() {
+        if !matches!(self.data(ty), TypeData::Union(_) | TypeData::Intersection(_)) || self.results_are_provisional() {
             return ty;
+        }
+        // Share one work limit across aggregate edges and nested fields; failed walks publish no representatives.
+        let mut normalization = FlowReferenceNormalization { remaining: 1024, ..Default::default() };
+        let (result, is_cacheable) = self.compute_cacheable(|checker| checker.canonical_flow_reference_child(ty, 0, &mut normalization));
+        if !is_cacheable || self.results_are_provisional() {
+            return ty;
+        }
+        let Some(result) = result else { return ty };
+        self.aot.flows.flow_reference_records.extend(normalization.pending);
+        result
+    }
+
+    fn canonical_flow_reference_child(&mut self, ty: TypeId, depth: usize, normalization: &mut FlowReferenceNormalization) -> Option<TypeId> {
+        if let Some(&result) = normalization.resolved.get(&ty) {
+            return Some(result);
+        }
+        if depth > 64 || normalization.active.contains(&ty) {
+            return None;
+        }
+        normalization.remaining = normalization.remaining.checked_sub(1)?;
+        normalization.active.insert(ty);
+        let result = self.compute_flow_reference_child(ty, depth, normalization);
+        normalization.active.remove(&ty);
+        if let Some(result) = result {
+            normalization.resolved.insert(ty, result);
+        }
+        result
+    }
+
+    fn compute_flow_reference_child(&mut self, ty: TypeId, depth: usize, normalization: &mut FlowReferenceNormalization) -> Option<TypeId> {
+        let parts = match self.data(ty) {
+            TypeData::Union(_) | TypeData::Intersection(_) => self.flow_reference_leaves(ty, &mut normalization.remaining)?,
+            TypeData::Anon { origin: Origin::TypeLiteral(..), mapper: MapperId::IDENTITY } => vec![ty],
+            _ => return Some(ty),
+        };
+        let Some((&first, rest)) = parts.split_first() else { return None };
+        if depth == 0 && rest.is_empty() {
+            return Some(ty);
+        }
+        if self.results_are_provisional() {
+            return None;
         }
         let before = (self.stack_half_used_count(), self.aot.flows.unknown_count);
         let declared_only = self.is_declared_only_record(first);
         let unsupported = PropFlags::PRIVATE | PropFlags::PROTECTED | PropFlags::METHOD | PropFlags::ACCESSOR | PropFlags::WRITE_ONLY | PropFlags::ABSTRACT;
         let mut first_fields: Option<Vec<(Atom, PropFlags, TypeId, TypeId)>> = None;
         for &part in &parts {
-            // Only own, unmapped data members participate; inherited and instantiated contracts retain their original type.
             if !matches!(self.data(part), TypeData::Anon { origin: Origin::TypeLiteral(..), mapper: MapperId::IDENTITY })
                 || self.is_instance_type(part)
                 || self.is_coercion_result_type(part)
                 || self.has_type_variables(part)
                 || self.is_declared_only_record(part) != declared_only
             {
-                return ty;
+                return Some(ty);
             }
-            let Some(members) = self.members(part) else { return ty };
+            let Some(members) = self.members(part) else { return Some(ty) };
             if members.mapper != MapperId::IDENTITY
                 || members.has_signatures()
                 || !members.index_infos().is_empty()
                 || members.shape().props.iter().any(|prop| prop.mapper != MapperId::IDENTITY || prop.flags.intersects(unsupported) || self.is_private_name(prop.name))
             {
-                return ty;
+                return Some(ty);
             }
-            let mut fields: Vec<_> = members.shape().props.iter().map(|prop| {
-                (prop.name, prop.flags, prop.name_type, self.type_of_prop(prop, members.mapper))
-            }).collect();
+            let mut fields = Vec::with_capacity(members.shape().props.len());
+            for prop in members.shape().props.iter() {
+                let child = self.type_of_prop(prop, members.mapper);
+                let child = self.canonical_flow_reference_child(child, depth + 1, normalization)?;
+                fields.push((prop.name, prop.flags, prop.name_type, child));
+            }
             fields.sort_unstable_by_key(|field| field.0.0);
             if let Some(first_fields) = &first_fields {
-                // Exact child types retain declaration-file provenance, even when their structures happen to be identical.
                 if *first_fields != fields {
-                    return ty;
+                    return Some(ty);
                 }
             } else {
                 first_fields = Some(fields);
             }
         }
         let identical = rest.iter().all(|&part| self.is_provably_related(first, part, Relation::Identity));
-        if !identical || before != (self.stack_half_used_count(), self.aot.flows.unknown_count) || self.results_are_provisional() {
-            return ty;
+        if !identical {
+            return Some(ty);
         }
-        let Some(fields) = first_fields else { return ty };
+        if before != (self.stack_half_used_count(), self.aot.flows.unknown_count) || self.results_are_provisional() {
+            return None;
+        }
+        let fields = first_fields?;
         let key = FlowRecordKey { fields, indexes: Vec::new(), declared_only };
-        if let Some(&representative) = self.aot.flows.flow_reference_records.get(&key) {
-            if !self.is_provably_related(representative, first, Relation::Identity)
-                || before != (self.stack_half_used_count(), self.aot.flows.unknown_count)
-                || self.results_are_provisional()
-            {
-                return ty;
+        let representative = normalization.pending.get(&key).copied().or_else(|| self.aot.flows.flow_reference_records.get(&key).copied());
+        if let Some(representative) = representative {
+            if !self.is_provably_related(representative, first, Relation::Identity) {
+                return Some(ty);
             }
-            return representative;
+            if before != (self.stack_half_used_count(), self.aot.flows.unknown_count) || self.results_are_provisional() {
+                return None;
+            }
+            return Some(representative);
         }
-        self.aot.flows.flow_reference_records.insert(key, first);
-        first
+        normalization.pending.insert(key, first);
+        Some(first)
     }
 
     /// A value is cast to `target`, with `as`, with `!` or by entering a place whose type is written down. `sources`: what it is looked at
