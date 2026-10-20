@@ -135,3 +135,60 @@ describe.skipIf(!!unsupported)("compile/aot/flow-task-owner-fallback", () => {
       expect(existsSync(executable)).toBe(false);
     }), 60_000);
 });
+
+describe.skipIf(!!unsupported)("compile/aot/flow-redefined-meet", () => {
+  for (const redefined of [true, false]) {
+    test(`a generated meet ${redefined ? "with" : "without"} property redefinition runs natively`, () =>
+      slot(async () => {
+        const files = fixture("flow-redefined-meet");
+        if (!redefined) {
+          files["redefine.ts"] = files["redefine.ts"].replace(
+            'Object.defineProperty(value, "a", { configurable: true, get() { return "x"; } });',
+            "void value;",
+          );
+        }
+        using directory = tempDir("aot-flow-redefined-meet", files);
+        const cwd = String(directory);
+        const executable = join(cwd, "program");
+        const result = await spawned([
+          bunExe(), "build", "--compile", "--aot", "--aot-type-errors=throw",
+          "--format=esm", "main.ts", "--outfile", executable,
+        ], cwd, bunEnv);
+        built(result);
+        expect(result.signal).toBeNull();
+        if (redefined) {
+          expect(result.stderr).toContain("a generated Flow record may be redefined");
+          expect(result.stderr).toContain("compiled untyped");
+        } else {
+          expect(result.stderr).not.toContain("compiled untyped");
+        }
+        for (const name of Object.keys(files)) unlinkSync(join(cwd, name));
+        const ran = await spawned([executable], cwd, {
+          ...bunEnv,
+          BUN_JSC_useJIT: "0",
+          BUN_JSC_crashIfInterpreterIsUsed: "1",
+        });
+        expect(ran.stdout).toBe("3 x\n");
+        expect(ran.stderr).toBe("");
+        expect(ran.signal).toBeNull();
+        expect(ran.exitCode).toBe(0);
+      }), 60_000);
+  }
+
+  test("a type error in a redefined meet contributor remains fatal", () =>
+    slot(async () => {
+      const files = fixture("flow-redefined-meet");
+      files["left.ts"] = files["left.ts"].replace("saved.n += 1;", 'saved.n = "wrong";');
+      using directory = tempDir("aot-flow-redefined-meet-error", files);
+      const cwd = String(directory);
+      const executable = join(cwd, "must-not-exist");
+      const result = await spawned([
+        bunExe(), "build", "--compile", "--aot", "--aot-type-errors=throw",
+        "--format=esm", "main.ts", "--outfile", executable,
+      ], cwd, bunEnv);
+      expect(result.stderr).toMatch(/Type 'string' is not assignable to type 'number'/);
+      expect(result.signal).toBeNull();
+      expect(result.exitCode).toBe(1);
+      expect(existsSync(executable)).toBe(false);
+    }), 60_000);
+});

@@ -290,7 +290,8 @@ pub(super) fn make_pairs<'s>(
             for &(left, a, right, b) in slices[*task] {
                 let before = c.unknown_count();
                 let both = c.intersection_for_flow_cast(a, b);
-                let generated = both.and_then(|both| {
+                let redefined = both.is_some_and(|both| c.may_be_redefined(both));
+                let generated = both.filter(|_| !redefined).and_then(|both| {
                     c.keep_type(both);
                     made.push((a, b, both));
                     let generated = c.flow_record_contract(both);
@@ -305,9 +306,9 @@ pub(super) fn make_pairs<'s>(
                     generated
                 });
                 let unknown = c.unknown_count() != before;
-                let missing_contract = both.is_some() && generated.is_none();
+                let missing_contract = both.is_some() && !redefined && generated.is_none();
                 pair_unknown += usize::from(unknown);
-                if unknown || missing_contract {
+                if unknown || missing_contract || redefined {
                     if failure.is_none() {
                         let mut reasons = Vec::new();
                         if unknown {
@@ -315,6 +316,9 @@ pub(super) fn make_pairs<'s>(
                         }
                         if missing_contract {
                             reasons.push("a materialized record contract could not be resolved");
+                        }
+                        if redefined {
+                            reasons.push("a generated Flow record may be redefined");
                         }
                         failure = Some(Failure { pairs: vec![(left, right)], reasons });
                     }

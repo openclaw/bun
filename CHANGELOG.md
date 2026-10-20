@@ -4,6 +4,8 @@ These entries describe the experimental `openclaw/aot-typed` fork.
 
 ## Unreleased
 
+- Retry typed AOT Flow intersections that can be redefined through generic native code before requiring a fixed record layout.
+
 - Retry bounded native Flow queries with their contributing modules compiled untyped while preserving source type errors.
 - Retry exhausted typed AOT Flow families with affected modules compiled untyped, preserving function source text and explicit type-driven validation.
 - Preserve typed object aliases across function boundaries and annotated local assignments.
