@@ -1,13 +1,13 @@
 //! What the whole-program analysis of `bun build --compile --aot` found, as the bundler passes it on.
 
 pub struct EarlyEngine {
-    thread: Option<std::thread::JoinHandle<usize>>,
+    thread: Option<std::thread::JoinHandle<Result<usize, String>>>,
     strings: Option<std::sync::mpsc::Sender<Vec<u8>>>,
     discard: fn(usize),
 }
 
 impl EarlyEngine {
-    pub fn new(thread: std::thread::JoinHandle<usize>, strings: Option<std::sync::mpsc::Sender<Vec<u8>>>, discard: fn(usize)) -> EarlyEngine {
+    pub fn new(thread: std::thread::JoinHandle<Result<usize, String>>, strings: Option<std::sync::mpsc::Sender<Vec<u8>>>, discard: fn(usize)) -> EarlyEngine {
         EarlyEngine { thread: Some(thread), strings, discard }
     }
 
@@ -17,16 +17,16 @@ impl EarlyEngine {
         }
     }
 
-    pub fn finish(mut self) -> Option<usize> {
+    pub fn finish(mut self) -> Result<Option<usize>, String> {
         self.strings = None;
-        self.thread.take()?.join().ok()
+        self.thread.take().and_then(|thread| thread.join().ok()).transpose()
     }
 }
 
 impl Drop for EarlyEngine {
     fn drop(&mut self) {
         self.strings = None;
-        if let Some(prepared) = self.thread.take().and_then(|thread| thread.join().ok()) {
+        if let Some(Ok(prepared)) = self.thread.take().and_then(|thread| thread.join().ok()) {
             (self.discard)(prepared);
         }
     }

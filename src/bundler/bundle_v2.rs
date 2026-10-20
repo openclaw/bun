@@ -1609,7 +1609,7 @@ pub mod bv2_impl {
                 program: &[u8],
                 modules: &[u32],
                 replaced_strings: &[u8],
-            ) -> bool;
+            ) -> Result<bool, String>;
             safe fn __bun_jsc_bytecode_link_encoder_set_prepared_typed_program(
                 encoder: core::ptr::NonNull<BytecodeLinkEncoder>,
                 prepared: usize,
@@ -1825,7 +1825,7 @@ pub mod bv2_impl {
                 ok
             }
             /// `replaced_strings`: pairs of a string of the program and what to put in its place, each a length in four bytes and the bytes.
-            pub(crate) fn set_typed_program(&mut self, program: &[u8], modules: &[u32], replaced_strings: &[u8]) -> bool {
+            pub(crate) fn set_typed_program(&mut self, program: &[u8], modules: &[u32], replaced_strings: &[u8]) -> Result<bool, String> {
                 __bun_jsc_bytecode_link_encoder_set_typed_program(self.encoder, program, modules, replaced_strings)
             }
             pub(crate) fn set_prepared_typed_program(&mut self, prepared: usize, modules: &[u32]) -> bool {

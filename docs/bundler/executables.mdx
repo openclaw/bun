@@ -445,6 +445,12 @@ The compiler sees your whole program at once, and the executable differs from on
 
 The build target must be the platform and the version of Bun that runs the build. `bun build` reports an error for any other `--target`.
 
+#### Inspect the native compiler inputs
+
+Set `BUN_AOT_NATIVE_IR_EXPORT` to an existing absolute directory to capture the exact serialized typed program passed to JavaScriptCore. Each handoff writes `<pid>-<sequence>.ir`, the ordered late string replacement buffer in `<pid>-<sequence>.replacements`, and a JSON receipt with their lengths and SHA-256 hashes. The replacement buffer contains repeated pairs of a little-endian 32-bit byte length followed by the string bytes: first the original string, then its replacement.
+
+The receipt is written last, before the native call that performs optimization. It confirms that both inputs were captured, not that compilation succeeded. A capture without a complete receipt is incomplete. Existing files are never overwritten, and an export error fails the build. When the variable is unset, no captures are written.
+
 #### Validate data by its type
 
 With `--aot` the compiler knows your types, so it can write the code that checks a value against one. There is no schema to keep in step with the type.
