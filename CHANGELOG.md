@@ -4,6 +4,7 @@ These entries describe the experimental `openclaw/aot-typed` fork.
 
 ## Unreleased
 
+- Keep build regeneration anchored to its source checkout when using an external build directory.
 - Cover Object.entries iteration after an indexed array-subclass accessor and pin the corrected WebKit.
 - Retry typed AOT Flow intersections that can be redefined through generic native code before requiring a fixed record layout.
 

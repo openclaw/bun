@@ -3,8 +3,10 @@
  * gives it. Driven through the script itself; each case ends in argument parsing, before anything is configured.
  */
 import { expect, test } from "bun:test";
-import { bunEnv, bunExe } from "harness";
+import { bunEnv, bunExe, tempDir } from "harness";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { quote } from "../../scripts/build/shell.ts";
 
 const buildScript = join(import.meta.dirname, "..", "..", "scripts", "build.ts");
 
@@ -49,4 +51,29 @@ test.concurrent("every spelling of a field is accepted", async () => {
   );
   expect(stderr).toStartWith("Usage: bun scripts/build.ts");
   expect(exitCode).toBe(0);
+});
+
+test("regeneration keeps the source owner when the build directory belongs to another checkout", async () => {
+  using dir = tempDir("build regen owner", { "package.json": JSON.stringify({ name: "bun" }) });
+  const buildDir = join(String(dir), "output");
+  const configured = await build("--mode=codegen", `--build-dir=${buildDir}`, "--configure-only");
+  expect(configured.stderr).toContain("codegen only");
+  expect(configured.exitCode).toBe(0);
+  const manifest = join(buildDir, "build.ninja");
+  const before = readFileSync(manifest, "utf8");
+  const command = /^rule regen\n  command = (.+)$/m.exec(before)?.[1];
+  expect(command).toBeDefined();
+  const windows = process.platform === "win32";
+  // Substitute the same relative input Ninja supplies to the old rule.
+  const expanded = command!.replaceAll("$in", quote("configure.json", windows));
+  await using proc = Bun.spawn({
+    cmd: windows ? ["cmd", "/d", "/s", "/c", expanded] : ["sh", "-c", expanded],
+    cwd: buildDir,
+    env: bunEnv,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect({ stdout, stderr, exitCode }).toEqual({ stdout: "", stderr: "", exitCode: 0 });
+  expect(readFileSync(manifest, "utf8")).toBe(before);
 });
