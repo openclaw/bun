@@ -4,6 +4,8 @@ These entries describe the experimental `openclaw/aot-typed` fork.
 
 ## Unreleased
 
+- Preserve aliased generic spreads when their later typed layout needs extra storage, and pin the corrected WebKit.
+
 - Keep build regeneration anchored to its source checkout when using an external build directory.
 - Capture exact typed AOT engine inputs and ordered late string replacements with the opt-in `BUN_AOT_NATIVE_IR_EXPORT` directory.
 - Cover Object.entries iteration after an indexed array-subclass accessor and pin the corrected WebKit.
