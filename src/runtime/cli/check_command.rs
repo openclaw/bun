@@ -373,6 +373,7 @@ fn request<'a>(
         paths: entries.paths,
         are_entry_points: command_line.is_none(),
         is_one_program: false,
+        forced_untyped: &[],
         code: &[],
         script_kinds: entries.script_kinds,
         script_kinds_by_extension: entries.script_kinds_by_extension,
@@ -391,6 +392,7 @@ fn request<'a>(
         uses_typescript_wording: false,
         loaded: None,
         compile: None,
+        compilation_finished: None,
         checked: None,
         after_file: None,
         before_visits: None,
@@ -503,6 +505,7 @@ impl CheckCommand {
         let said: bun_threading::Guarded<(Vec<String>, Vec<String>)> = bun_threading::Guarded::new(Default::default());
         let translation = bun_aot::Translation::new(&constants).explaining(explaining(&options.aot_explain));
         let begin = |program: &bun_sema_driver::Program, in_parallel: bun_sema_driver::InParallel<'_>| {
+            *said.lock() = Default::default();
             let roots = command_line.paths.iter().filter_map(|path| program.files.by_path.get(&from_argument(&from_native(&cwd), path)));
             let entry_points: Vec<Vec<_>> = roots.map(|root| vec![root]).collect();
             translation.begin(program, &entry_points, in_parallel);
@@ -510,8 +513,13 @@ impl CheckCommand {
         let translate_file = |checker: &mut bun_sema_driver::Checker<'_, '_>, file: bun_sema_driver::FileId| translation.translate_file(checker, file);
         let record_file = |checker: &mut bun_sema_driver::Checker<'_, '_>, file: bun_sema_driver::FileId| translation.record_file(checker, file);
         let merge_notes = |program: &bun_sema_driver::Program| translation.merge_notes(program);
+        let finished = || translation.discard();
         let analyze = |program: &bun_sema_driver::Program, in_parallel: bun_sema_driver::InParallel<'_>, errors: &[(bun_sema_driver::FileId, u32)]| {
             let mut translated = translation.finish(program, in_parallel, errors);
+            if let Some(retry) = translated.retry_untyped.take() {
+                bun_aot::release(translated.program, in_parallel);
+                return bun_sema_driver::CompilationOutcome::FlowFamilyExhausted { kept_errors: translated.kept_errors, contributors: retry.contributors, message: retry.message };
+            }
             if let Some(path) = &options.aot_out
                 && translated.problems.is_empty()
                 && !translated.kept_errors.contains(&true)
@@ -521,7 +529,7 @@ impl CheckCommand {
             }
             *said.lock() = (translated.explained, translated.problems);
             bun_aot::release(translated.program, in_parallel);
-            translated.kept_errors
+            bun_sema_driver::CompilationOutcome::Complete(translated.kept_errors)
         };
         let paths = Paths::EntryPoints(Entries { paths: &command_line.paths, ..Default::default() });
         let request = Request {
@@ -532,6 +540,7 @@ impl CheckCommand {
             before_visits: Some(&record_file),
             all_visited_once: Some(&merge_notes),
             compile: Some(&analyze),
+            compilation_finished: Some(&finished),
             ..request(&cwd, command_line.project.as_deref(), &paths, &command_line.compiler_options, options.threads, None)
         };
         let report = bun_sema_driver::check_provided_then(&request, with_pages(&cwd, provided), |report| report);
@@ -1206,6 +1215,9 @@ fn analyze_on_this_thread(
     let explained: bun_threading::Guarded<Vec<String>> = bun_threading::Guarded::new(Vec::new());
     let translation = bun_aot::Translation::new(&constants).explaining(explaining(explain));
     let begin = |program: &bun_sema_driver::Program, in_parallel: bun_sema_driver::InParallel<'_>| {
+        *found.lock() = None;
+        not_compiled.lock().clear();
+        explained.lock().clear();
         function_source_printing.start(usize::from(bun_core::get_thread_count()).div_ceil(2));
         // The executable runs its first entry point. The others are what it starts workers with.
         let entry_points: Vec<Vec<_>> = (entry_functions.iter())
@@ -1220,11 +1232,12 @@ fn analyze_on_this_thread(
         translation.record_file(checker, file);
     };
     let merge_notes = |program: &bun_sema_driver::Program| translation.merge_notes(program);
+    let finished = || translation.discard();
     let compiled_entry_points = || entry_function_names.iter().map(|name| name.clone().into_boxed_slice()).collect();
     let analyze = |program: &bun_sema_driver::Program,
                    in_parallel: bun_sema_driver::InParallel<'_>,
                    errors: &[(bun_sema_driver::FileId, u32)]|
-     -> Vec<bool> {
+     -> bun_sema_driver::CompilationOutcome {
         if let Some(path) = bun_core::env_var::BUN_AOT_TYPED_FILE.get() {
             if let Ok(typed) = bun_sys::File::read_from(bun_sys::Fd::cwd(), path) {
                 *found.lock() = Some(bun_ast::type_tags::ProgramFacts {
@@ -1234,11 +1247,14 @@ fn analyze_on_this_thread(
                     tokens: None,
                 });
             }
-            return vec![false; errors.len()];
+            return bun_sema_driver::CompilationOutcome::Complete(vec![false; errors.len()]);
         }
         let engine: bun_threading::Guarded<Option<bun_ast::type_tags::EarlyEngine>> = bun_threading::Guarded::new(None);
         let on_written = |typed: &[u8]| *engine.lock() = Some(bun_jsc::cached_bytecode::start_typed_program(typed, has_late_strings));
-        let bun_aot::EngineProgram { written: typed, kept_errors, explained: lines, tokens } = translation.finish_for_engine(program, in_parallel, errors, &on_written);
+        let bun_aot::EngineProgram { written: typed, kept_errors, explained: lines, tokens, retry_untyped } = translation.finish_for_engine(program, in_parallel, errors, &on_written);
+        if let Some(retry) = retry_untyped {
+            return bun_sema_driver::CompilationOutcome::FlowFamilyExhausted { kept_errors, contributors: retry.contributors, message: retry.message };
+        }
         *explained.lock() = lines;
         match typed {
             Ok(typed) => {
@@ -1251,7 +1267,7 @@ fn analyze_on_this_thread(
             }
             Err(problems) => *not_compiled.lock() = problems,
         }
-        kept_errors
+        bun_sema_driver::CompilationOutcome::Complete(kept_errors)
     };
     let entries = Paths::EntryPoints(Entries {
         paths: &paths,
@@ -1267,6 +1283,7 @@ fn analyze_on_this_thread(
         before_visits: Some(&record_file),
         all_visited_once: Some(&merge_notes),
         compile: Some(&analyze),
+        compilation_finished: Some(&finished),
         plan_options: bun_sema_driver::PlanOptions { early_run: early.map(|(run, _)| run), ..Default::default() },
         ..request(cwd, tsconfig, &entries, &[], 0, None)
     };
@@ -1854,15 +1871,16 @@ pub(crate) fn audit_before(
         }
     };
     let merge_notes = |program: &bun_sema_driver::Program| translation.merge_notes(program);
+    let finished = || translation.discard();
     let found: bun_threading::Guarded<AuditFound> = bun_threading::Guarded::new(AuditFound::default());
     let imports: bun_threading::Guarded<Vec<(Vec<u8>, Vec<u32>)>> = bun_threading::Guarded::new(Vec::new());
     let list = |program: &bun_sema_driver::Program,
                 in_parallel: bun_sema_driver::InParallel<'_>,
                 errors: &[(bun_sema_driver::FileId, u32)]|
-     -> Vec<bool> {
+     -> bun_sema_driver::CompilationOutcome {
         if let Some((never_visited, unlinked_files)) = restarted.lock().take() {
             *found.lock() = AuditFound { never_visited, unlinked_files, ..Default::default() };
-            return vec![false; errors.len()];
+            return bun_sema_driver::CompilationOutcome::Complete(vec![false; errors.len()]);
         }
         let text_of = |path: &[u8]| {
             let path = join_abs_string::<Auto>(&cwd, &[bun_sema_driver::host::to_native(path)]);
@@ -1892,12 +1910,16 @@ pub(crate) fn audit_before(
             if let Some(on_found) = on_found {
                 on_found(core::mem::take(&mut *found.lock()));
             }
-            return vec![matches!(audited, Audited::Changed { .. }); errors.len()];
+            return bun_sema_driver::CompilationOutcome::Complete(vec![matches!(audited, Audited::Changed { .. }); errors.len()]);
         }
         if is_for_tests {
             *imports.lock() = (program.files.modules.iter()).map(|module| (module.file_name().to_vec(), module.imports.values().map(|imported| imported.idx() as u32).collect())).collect();
         }
         let mut translated = translation.finish(program, in_parallel, errors);
+        if let Some(retry) = translated.retry_untyped.take() {
+            bun_aot::release(translated.program, in_parallel);
+            return bun_sema_driver::CompilationOutcome::Failed { kept_errors: translated.kept_errors, message: retry.message };
+        }
         bun_aot::audit::widen_layoutless_classes_to_any_object(&mut translated.program);
         let modules = with_sources(bun_aot::audit::table(&translated.program, true, &text_of, in_parallel));
         let never_visited = (modules.iter())
@@ -1923,7 +1945,7 @@ pub(crate) fn audit_before(
             entry_points_reaching_errors: Vec::new(),
         };
         bun_aot::release(translated.program, in_parallel);
-        translated.kept_errors
+        bun_sema_driver::CompilationOutcome::Complete(translated.kept_errors)
     };
     let entries = Paths::EntryPoints(Entries {
         paths: &roots,
@@ -1939,6 +1961,7 @@ pub(crate) fn audit_before(
         before_visits: Some(&record_file),
         all_visited_once: Some(&merge_notes),
         compile: Some(&list),
+        compilation_finished: Some(&finished),
         only: only.as_deref(),
         threads: match audited {
             Audited::Whole | Audited::Changed { .. } => 0,
@@ -2027,4 +2050,93 @@ fn check_and_report(paths: &Paths, provided: Provided) -> bool {
     let _ = Output::error_writer().write_all(&out);
     Output::flush();
     report.is_ok()
+}
+
+#[cfg(test)]
+mod flow_family_retry_tests {
+    use super::*;
+    use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+
+    #[derive(Clone, Copy)]
+    enum Finish {
+        Accept,
+        Exhausted,
+        Failed,
+    }
+
+    fn check_deferred_source(finish: Finish) -> (bun_sema_driver::Report, usize, usize) {
+        let native_cwd = std::env::temp_dir().join("bun-flow-family-retry-test");
+        let cwd = native_cwd.to_str().expect("temporary path").as_bytes();
+        let file = native_cwd.join("main.ts");
+        let file = file.to_str().expect("source path").as_bytes().to_vec();
+        let paths = [file.clone()];
+        let path = bun_sema_driver::host::from_native(&file);
+        const SOURCE: &[u8] = b"export const value: number = 1;\n";
+        let supplier_calls = Arc::new(AtomicUsize::new(0));
+        let loads = AtomicUsize::new(0);
+        let loaded_files = bun_threading::Guarded::new(Vec::new());
+        let supplied = Arc::clone(&supplier_calls);
+        let source_path = path.clone();
+        let mut provided = Provided { without_builtin_modules: true, ..Default::default() };
+        provided.already_read.insert(path.clone(), (&b""[..]).into());
+        provided.deferred_read = Some(Box::new(move || {
+            supplied.fetch_add(1, Ordering::Relaxed);
+            [(source_path, SOURCE.into())].into_iter().collect()
+        }));
+        let loaded = |program: &bun_sema_driver::Program, _: bun_sema_driver::InParallel<'_>| {
+            let turn = loads.fetch_add(1, Ordering::Relaxed);
+            let file = program.files.by_path.get(&path).expect("provided source");
+            assert_eq!(&program.files.hir(file).text[..], SOURCE);
+            assert_eq!(program.files.module(file).is_forced_untyped.load(Ordering::Relaxed), turn != 0);
+            loaded_files.lock().push(program.files.modules.len());
+        };
+        let compiled = AtomicUsize::new(0);
+        let compile = |program: &bun_sema_driver::Program, _: bun_sema_driver::InParallel<'_>, errors: &[(bun_sema_driver::FileId, u32)]| {
+            assert!(errors.is_empty(), "the source fixture must be valid");
+            let turn = compiled.fetch_add(1, Ordering::Relaxed);
+            let file = program.files.by_path.get(&path).expect("provided source");
+            if matches!(finish, Finish::Failed) {
+                return bun_sema_driver::CompilationOutcome::Failed { kept_errors: Vec::new(), message: "unresolved Flow intersection".into() };
+            }
+            if turn == 0 || matches!(finish, Finish::Exhausted) {
+                return bun_sema_driver::CompilationOutcome::FlowFamilyExhausted {
+                    kept_errors: Vec::new(), contributors: vec![file], message: "original Flow family limit".into(),
+                };
+            }
+            bun_sema_driver::CompilationOutcome::Complete(Vec::new())
+        };
+        let entries = Paths::EntryPoints(Entries { paths: &paths, ..Default::default() });
+        let request = Request {
+            is_one_program: true, loaded: Some(&loaded), compile: Some(&compile),
+            ..request(cwd, None, &entries, &[], 1, None)
+        };
+        let report = bun_sema_driver::check_provided_then(&request, provided, |report| report);
+        assert_eq!(supplier_calls.load(Ordering::Relaxed), 1);
+        assert_eq!(report.files_loaded, *loaded_files.lock().last().expect("loaded once"));
+        (report, loads.load(Ordering::Relaxed), compiled.load(Ordering::Relaxed))
+    }
+
+    #[test]
+    fn retry_reuses_the_deferred_source_and_applies_keys_before_loaded() {
+        let (report, loads, compiled) = check_deferred_source(Finish::Accept);
+        assert!(report.is_ok(), "{:?}", report.diagnostics);
+        assert_eq!((loads, compiled), (2, 2));
+        assert_eq!(report.files_compiled_untyped, 1);
+    }
+
+    #[test]
+    fn an_exhausted_already_untyped_family_is_terminal() {
+        let (report, loads, compiled) = check_deferred_source(Finish::Exhausted);
+        assert!(!report.is_ok());
+        assert_eq!((loads, compiled), (2, 2));
+        assert!(report.diagnostics.iter().any(|d| d.category == bun_sema_driver::Category::Error && d.text == b"original Flow family limit"));
+    }
+
+    #[test]
+    fn failed_compilation_outcome_is_terminal() {
+        let (report, loads, compiled) = check_deferred_source(Finish::Failed);
+        assert!(!report.is_ok());
+        assert_eq!((loads, compiled), (1, 1));
+        assert!(report.diagnostics.iter().any(|d| d.category == bun_sema_driver::Category::Error && d.text == b"unresolved Flow intersection"));
+    }
 }

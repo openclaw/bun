@@ -85,6 +85,7 @@ static OWN_MESSAGES: &[(u32, Category, &str)] = &[
     (100019, Category::Warning, "{2} expects '{1}' and always gets {0}: with --aot-type-errors=log the executable logs a record here and continues as plain JavaScript would; any other --aot build fails with TS100013."),
     (100020, Category::Warning, "{0} The 'catch' around it runs instead."),
     (100021, Category::Error, "The typed version of '{0}' in {1} has type errors ({2}), the first at {3}. Fix it, or remove it to compile '{0}' untyped."),
+    (100022, Category::Warning, "'{0}' is compiled untyped: {1}. Retrying native AOT compilation."),
 ];
 
 const _: () = {

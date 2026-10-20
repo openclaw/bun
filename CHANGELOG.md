@@ -4,6 +4,7 @@ These entries describe the experimental `openclaw/aot-typed` fork.
 
 ## Unreleased
 
+- Retry exhausted typed AOT Flow families with affected modules compiled untyped, preserving function source text and explicit type-driven validation.
 - Preserve typed object aliases across function boundaries and annotated local assignments.
 - Prevent redundant plain-data union terms from multiplying typed AOT Flow layouts.
 - Allow opt-in compiler trace byte limits up to 2 GiB while retaining the 256 MiB default.

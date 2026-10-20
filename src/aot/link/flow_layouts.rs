@@ -4,6 +4,7 @@ use super::{Fragment, FragmentIndex, Identity, Index, Notes, Reach, reached};
 use bun_sema::check::task::Finished;
 use bun_sema::check::{FlowRecordContract, KindsDeclared, Program as Checked, SourceSearchTrace};
 use bun_sema::types::TypeId;
+use bun_sema::program::FileId;
 use bun_sema::util::{InParallel, for_each_mut};
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -12,11 +13,17 @@ const MAX_FAMILY_PAIRS: usize = 65_536;
 const PAIRS_PER_BATCH: usize = 4096;
 const PAIRS_PER_TASK: usize = 128;
 
+pub struct Exhausted {
+    pub contributors: Vec<FileId>,
+    pub what: &'static str,
+}
+
 #[derive(Default)]
 pub(super) struct Closure {
     scanned: FxHashSet<u32>,
     family_of: FxHashMap<Identity, usize>,
     families: Vec<Vec<Identity>>,
+    contributors: Vec<FxHashSet<FileId>>,
     comparisons: Vec<usize>,
     dirty: Vec<bool>,
     generators: FxHashSet<Identity>,
@@ -32,6 +39,8 @@ impl Closure {
         match self.family_of.get(&identity).copied() {
             Some(other) if other == family => {}
             Some(other) => {
+                let contributors = std::mem::take(&mut self.contributors[other]);
+                self.contributors[family].extend(contributors);
                 self.comparisons[family] += std::mem::take(&mut self.comparisons[other]);
                 self.dirty[family] = true;
                 self.dirty[other] = false;
@@ -48,7 +57,7 @@ impl Closure {
         }
     }
 
-    fn join(&mut self, left: Identity, right: Identity) {
+    fn join(&mut self, left: Identity, right: Identity) -> usize {
         let family = self
             .family_of
             .get(&left)
@@ -56,6 +65,7 @@ impl Closure {
             .copied()
             .unwrap_or_else(|| {
                 self.families.push(Vec::new());
+                self.contributors.push(FxHashSet::default());
                 self.comparisons.push(0);
                 self.dirty.push(true);
                 self.families.len() - 1
@@ -63,6 +73,7 @@ impl Closure {
         self.add(family, left);
         self.add(family, right);
         self.dirty[family] = true;
+        family
     }
 
     pub(super) fn include_reached(
@@ -91,27 +102,37 @@ impl Closure {
                 }
                 for (left, right) in body.notes.flow_layout_edges() {
                     self.generators.extend([left, right]);
-                    self.join(left, right);
+                    let family = self.join(left, right);
+                    if function.key.file() != super::NO_FILE {
+                        self.contributors[family].insert(function.key.file());
+                    }
                 }
             }
         }
     }
 
-    pub(super) fn pending(&mut self) -> Result<Vec<(Identity, Identity)>, &'static str> {
+    fn exhausted(&self, family: usize, what: &'static str) -> Exhausted {
+        let mut contributors: Vec<_> = self.contributors[family].iter().copied().collect();
+        contributors.sort_unstable();
+        Exhausted { contributors, what }
+    }
+
+    pub(super) fn pending(&mut self) -> Result<Vec<(Identity, Identity)>, Exhausted> {
         let mut pairs = Vec::new();
-        for (family, members) in self.families.iter_mut().enumerate() {
+        for family in 0..self.families.len() {
             if !self.dirty[family] {
                 continue;
             }
-            if members.len() > MAX_FAMILY_MEMBERS {
-                return Err("a cross-function Flow family with more than 1024 layouts");
+            if self.families[family].len() > MAX_FAMILY_MEMBERS {
+                return Err(self.exhausted(family, "a cross-function Flow family with more than 1024 layouts"));
             }
             if self.comparisons[family] > MAX_FAMILY_PAIRS {
-                return Err(
+                return Err(self.exhausted(family,
                     "a cross-function Flow family requiring more than 65536 layout comparisons",
-                );
+                ));
             }
-            members.sort_unstable();
+            self.families[family].sort_unstable();
+            let members = &self.families[family];
             for (right, &b) in members.iter().enumerate() {
                 for &a in &members[..right] {
                     if (!self.generators.contains(&a) && !self.generators.contains(&b))
@@ -120,9 +141,9 @@ impl Closure {
                         continue;
                     }
                     if self.comparisons[family] >= MAX_FAMILY_PAIRS {
-                        return Err(
+                        return Err(self.exhausted(family,
                             "a cross-function Flow family requiring more than 65536 layout comparisons",
-                        );
+                        ));
                     }
                     self.comparisons[family] += 1;
                     self.compared.insert((a, b));

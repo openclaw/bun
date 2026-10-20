@@ -63,6 +63,7 @@ pub struct Linked {
     pub program: Program,
     /// What could not be translated of the code that is reached, and what the fragments do not agree on.
     pub problems: Vec<Problem>,
+    pub flow_family_exhausted: Option<(FileId, flow_layouts::Exhausted)>,
     /// `Membership::sizes`, as a line.
     pub members: String,
     /// What `Explain` has asked for, a line each.
@@ -3020,6 +3021,7 @@ fn link_with_helper_threads<'scope>(
     let mut precomputed_line_tables = None;
     let mut untyped_object_evidence = UntypedObjectEvidence::default();
     let mut flow_layouts = flow_layouts::Closure::default();
+    let mut flow_family_exhausted = None;
     loop {
         reach.run(&fragments, &index, in_parallel);
         if precomputed_line_tables.is_none() {
@@ -3079,8 +3081,8 @@ fn link_with_helper_threads<'scope>(
             flow_layouts.include_reached(&fragments, &index, &reach, &is_opaque);
             let pairs = match flow_layouts.pending() {
                 Ok(pairs) => pairs,
-                Err(what) => {
-                    problems.push(Problem { file: nowhere, pos: 0, what: what.into() });
+                Err(exhausted) => {
+                    flow_family_exhausted = Some((nowhere, exhausted));
                     break;
                 }
             };
@@ -3221,6 +3223,12 @@ fn link_with_helper_threads<'scope>(
             .or_else(|| is_in_package_declarations(place).then_some(OutsideProgramReason::PackageDeclarations))
     };
     let errors: Vec<Option<OutsideProgramReason>> = places.iter().zip(in_dropped_imports).map(place_of).collect();
+    if flow_family_exhausted.is_some() {
+        if ran_out_of_stack {
+            problems.push(Problem { file: nowhere, pos: 0, what: "types that are nested too deeply".into() });
+        }
+        return Linked { problems, errors, times, flow_family_exhausted, ..Linked::default() };
+    }
     // Nothing comes of a program with an error in it.
     if errors.iter().any(Option::is_none) {
         return Linked { problems, errors, times, ..Linked::default() };
@@ -4204,7 +4212,7 @@ fn link_with_helper_threads<'scope>(
     drop((membership, names));
     times.add("free", &mut since);
     let failure_check = Some(FailureCheck { setup: setup_of_what_always_fails, modules });
-    Linked { program, problems, members, explained, errors, skipped_builtin_modules, skipped_builtin_functions, found: Vec::new(), times, failure_check }
+    Linked { program, problems, members, explained, errors, skipped_builtin_modules, skipped_builtin_functions, found: Vec::new(), times, failure_check, flow_family_exhausted: None }
 }
 
 #[cfg(test)]

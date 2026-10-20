@@ -48,6 +48,12 @@ pub struct Translated {
     pub skipped_builtin_functions: Vec<(u32, String)>,
     pub times: link::Times,
     pub tokens: Option<Box<[u8]>>,
+    pub retry_untyped: Option<RetryUntyped>,
+}
+
+pub struct RetryUntyped {
+    pub contributors: Vec<FileId>,
+    pub message: String,
 }
 
 pub struct EngineProgram {
@@ -55,6 +61,7 @@ pub struct EngineProgram {
     pub kept_errors: Vec<bool>,
     pub explained: Vec<String>,
     pub tokens: Option<Box<[u8]>>,
+    pub retry_untyped: Option<RetryUntyped>,
 }
 
 pub const REQUIRE_SPECIFIER_PREFIX: &[u8] = b"\0require ";
@@ -234,6 +241,8 @@ pub struct Translation<'a> {
     explain: Explain,
     /// `None`: `begin` has not been called.
     begun: RwLock<Option<StartedTranslation<'a>>>,
+    /// The bundler supplies these once; Flow-family exhaustion returns before the linker consumes them.
+    retry_function_sources: RwLock<Option<FunctionSources>>,
 }
 
 struct StartedTranslation<'a> {
@@ -248,12 +257,17 @@ struct StartedTranslation<'a> {
 
 impl<'a> Translation<'a> {
     pub fn new(constants: &'a Constants) -> Translation<'a> {
-        Translation { constants, explain: Explain::default(), begun: RwLock::new(None) }
+        Translation { constants, explain: Explain::default(), begun: RwLock::new(None), retry_function_sources: RwLock::new(None) }
     }
 
     /// The same, which says of what it decides what is asked for.
     pub fn explaining(self, explain: Explain) -> Translation<'a> {
         Translation { explain, ..self }
+    }
+
+    /// Releases an attempt that did not reach its compile callback.
+    pub fn discard(&self) {
+        drop(self.begun.write().take());
     }
 
     /// `Request::loaded`. `entry_points`: for each, the files that are run when the program is started with it, in order. What can run then,
@@ -361,8 +375,7 @@ impl<'a> Translation<'a> {
     }
 
     fn finish_before_renaming(&self, program: &Checked<'_>, in_parallel: InParallel<'_>, errors: &[(FileId, u32)]) -> (Translated, Option<names::Said>) {
-        let begun = self.begun.read();
-        let begun = begun.as_ref().expect(NOT_STARTED_MESSAGE);
+        let begun = self.begun.write().take().expect(NOT_STARTED_MESSAGE);
         let mut linked = match &begun.translating {
             Some((shared, fragments)) => {
                 // Also in a file that is not compiled with the program, whose fragment would have said so.
@@ -378,9 +391,13 @@ impl<'a> Translation<'a> {
                 };
                 let in_dropped_imports: Vec<bool> = errors.iter().map(is_in_dropped_import).collect();
                 let errors = Errors { places: errors, in_dropped_imports: &in_dropped_imports, imported_by: &|c, file| build::files_imported_by(c, shared, file) };
-                let mut function_sources = self.constants.function_sources.as_ref().map(|later| later());
+                let mut function_sources = self.retry_function_sources.write().take().or_else(|| self.constants.function_sources.as_ref().map(|later| later()));
                 program.release_translation_caches();
-                link::link(program, fragments.take(&|file| program.files.rank_of_file(file), in_parallel), &fragments.program_ids, shared.roots(), shared.entry_points(), shared.builtin_modules(), shared.prelude(), &self.constants.root, self.constants.source_path_to_url.is_some(), function_sources.as_mut(), errors, in_parallel, self.explain, &|c, missing, is_defined| build::describe(c, shared, missing, is_defined))
+                let linked = link::link(program, fragments.take(&|file| program.files.rank_of_file(file), in_parallel), &fragments.program_ids, shared.roots(), shared.entry_points(), shared.builtin_modules(), shared.prelude(), &self.constants.root, self.constants.source_path_to_url.is_some(), function_sources.as_mut(), errors, in_parallel, self.explain, &|c, missing, is_defined| build::describe(c, shared, missing, is_defined));
+                if linked.flow_family_exhausted.is_some() {
+                    *self.retry_function_sources.write() = function_sources;
+                }
+                linked
             }
             // A file that is only code is not checked, so that nobody has reported it.
             None => {
@@ -389,6 +406,37 @@ impl<'a> Translation<'a> {
                 Linked { problems: begun.partially_parsed.iter().map(parse_failure).chain(refused).collect(), errors: errors.iter().map(|_| None).collect(), ..Linked::default() }
             }
         };
+        if let Some((file, exhausted)) = linked.flow_family_exhausted.take() {
+            for (elsewhere, _) in linked.errors.iter_mut().zip(errors).filter(|(_, place)| program.files.hir(place.0).kind == FileKind::Declaration) {
+                *elsewhere = None;
+            }
+            let line_of = |file: FileId, pos: u32| {
+                let text = &program.files.hir(file).text;
+                bun_core::strings::count_char(&text[..(pos as usize).min(text.len())], b'\n') + 1
+            };
+            let shown = |problem: &Problem| format!("{}:{}: --aot does not support {}", bstr::BStr::new(program.files.module(problem.file).file_name()), line_of(problem.file, problem.pos), problem.what);
+            let message = shown(&Problem { file, pos: 0, what: exhausted.what.into() });
+            let kept_errors: Vec<bool> = linked.errors.iter().map(Option::is_none).collect();
+            let retry_untyped = (linked.problems.is_empty() && !kept_errors.contains(&true)).then_some(RetryUntyped { contributors: exhausted.contributors, message: message.clone() });
+            let mut problems: Vec<String> = linked.problems.iter().map(shown).collect();
+            if retry_untyped.is_none() {
+                problems.push(message);
+            }
+            return (Translated {
+                program: linked.program,
+                problems,
+                members: linked.members,
+                explained: linked.explained,
+                kept_errors,
+                always_fails: false,
+                error_dismissal_reasons: Vec::new(),
+                skipped_builtin_modules: Vec::new(),
+                skipped_builtin_functions: Vec::new(),
+                times: linked.times,
+                tokens: None,
+                retry_untyped,
+            }, None);
+        }
         linked.program.logs_type_errors = self.constants.logs_type_errors;
         webassembly::add_referenced_files(&mut linked.program);
         let tdz_names = self.constants.minifies_identifiers.then(|| names::intern_tdz_names(&mut linked.program.strs));
@@ -436,14 +484,14 @@ impl<'a> Translation<'a> {
         let skipped_builtin_functions = linked.skipped_builtin_functions.iter().map(|(id, problem)| (*id, shown(problem))).collect();
         let always_fails = linked.found.iter().any(|found| !matches!(found.code, 100019 | 100020));
         program.compiler_diagnostics.lock().extend(linked.found);
-        (Translated { program: linked.program, problems, members: linked.members, explained: linked.explained, kept_errors: linked.errors.iter().map(Option::is_none).collect(), always_fails, error_dismissal_reasons, skipped_builtin_modules, skipped_builtin_functions, times: linked.times, tokens: None }, said)
+        (Translated { program: linked.program, problems, members: linked.members, explained: linked.explained, kept_errors: linked.errors.iter().map(Option::is_none).collect(), always_fails, error_dismissal_reasons, skipped_builtin_modules, skipped_builtin_functions, times: linked.times, tokens: None, retry_untyped: None }, said)
     }
 
     /// The same as what the engine reads, with `Translated::kept_errors`. `Err`: what could not be translated. Nothing, if an
     /// error stands.
     pub fn finish_for_engine(&self, program: &Checked<'_>, in_parallel: InParallel<'_>, errors: &[(FileId, u32)], on_written: &dyn Fn(&[u8])) -> EngineProgram {
-        let (Translated { program: mut linked, problems, kept_errors, always_fails, explained, .. }, said) = self.finish_before_renaming(program, in_parallel, errors);
-        let written = if kept_errors.contains(&true) || always_fails {
+        let (Translated { program: mut linked, problems, kept_errors, always_fails, explained, retry_untyped, .. }, said) = self.finish_before_renaming(program, in_parallel, errors);
+        let written = if kept_errors.contains(&true) || always_fails || retry_untyped.is_some() {
             Err(Vec::new())
         } else if !problems.is_empty() {
             Err(problems)
@@ -454,7 +502,7 @@ impl<'a> Translation<'a> {
         };
         let tokens = said.map(|said| names::as_json(&said).into_boxed_slice());
         release(linked, in_parallel);
-        EngineProgram { written, kept_errors, explained, tokens }
+        EngineProgram { written, kept_errors, explained, tokens, retry_untyped }
     }
 }
 

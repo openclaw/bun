@@ -75,7 +75,8 @@ pub(crate) struct Validators {
 
 impl<'c, 'p, 's> FileBuild<'c, 'p, 's> {
     pub(crate) fn validation_call(&mut self, fx: &mut Fx, e: ExprId, call: CallId) -> Option<V> {
-        if !fx.is_typed {
+        // Retrying a typed source as untyped changes its representation, not these explicit type-driven APIs.
+        if !fx.is_typed && !self.files.module(fx.file).is_forced_untyped.load(std::sync::atomic::Ordering::Relaxed) {
             return None;
         }
         let (which, ty) = self.c.validation_call(fx.file, e)?;
