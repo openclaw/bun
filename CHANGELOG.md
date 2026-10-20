@@ -4,6 +4,8 @@ These entries describe the experimental `openclaw/aot-typed` fork.
 
 ## Unreleased
 
+- Keep logical fallback inference separate from typed AOT runtime contracts, preserving valid empty-object fallbacks and explicit casts.
+
 - Preserve spread-provided union discriminants during checked and native AOT execution.
 
 - Retry generated typed AOT Flow records that exceed the existing nesting limit with their contributing modules compiled untyped, while preserving checked execution.

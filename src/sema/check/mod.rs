@@ -1077,6 +1077,7 @@ bitflags::bitflags! {
         const NO_CONSTRAINTS = 1 << 1;
         const IGNORE_NODE_INFERENCES = 1 << 2;
         const SKIP_BINDING_PATTERNS = 1 << 3;
+        const SKIP_LOGICAL_FALLBACK = 1 << 4;
     }
 }
 

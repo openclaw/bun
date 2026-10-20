@@ -3764,8 +3764,9 @@ impl<'p, 's> Checker<'p, 's> {
             return None;
         }
         self.prepare_enclosing(file, e);
-        let expected = self.contextual_type(file, e, ContextFlags::SKIP_BINDING_PATTERNS)?;
-        Some(self.instantiate_contextual_type(expected, file, e, ContextFlags::SKIP_BINDING_PATTERNS))
+        let flags = ContextFlags::SKIP_BINDING_PATTERNS | ContextFlags::SKIP_LOGICAL_FALLBACK;
+        let expected = self.contextual_type(file, e, flags)?;
+        Some(self.instantiate_contextual_type(expected, file, e, flags))
     }
 
     pub fn copied_named_values(&mut self, file: FileId, e: ExprId) -> Vec<(FileId, Atom, ExprId)> {
