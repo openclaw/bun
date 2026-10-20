@@ -16,12 +16,12 @@ describe("v8 serialize/deserialize Buffer identity", () => {
     }
   });
 
-  test("only a graph with a cause edge requires v15", () => {
+  test("only a graph with a cause edge requires v16", () => {
     const error = new Error("empty");
     error.stack = "stable";
     expect(v8.serialize([error, error]).readUInt32LE(0)).toBe(14);
     error.cause = undefined;
-    expect(v8.serialize([new Error("first"), error]).readUInt32LE(0)).toBe(15);
+    expect(v8.serialize([new Error("first"), error]).readUInt32LE(0)).toBe(16);
   });
   test.each([new Uint8Array([1, 2]), Buffer.from([1, 2])])("serialized output is transferable: %p", input => {
     const serialized = v8.serialize(input);

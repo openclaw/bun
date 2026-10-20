@@ -266,7 +266,8 @@ mod advanced {
     // entire hello word, so its high bits can advertise serializer capabilities.
     const VERSION: u32 = 2;
     const VERSION_MASK: u32 = 0xFFFF;
-    const ERROR_CAUSE_CAPABILITY: u32 = 1 << 16;
+    // Bit 16 identified the incompatible, intermediate v15 Error layout.
+    const ERROR_CAUSE_CAPABILITY: u32 = 1 << 17;
 
     pub(super) fn supports_error_cause(hello: u32) -> bool {
         hello & VERSION_MASK == VERSION && hello & ERROR_CAUSE_CAPABILITY != 0

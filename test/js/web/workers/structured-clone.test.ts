@@ -1427,6 +1427,43 @@ for (const clone of [structuredClone, jscSerializeRoundtrip, v8SerializeRoundtri
       expect(result.cause.cause).toEqual({ code: 42 });
     });
 
+    test("mixed Error tags preserve snapshots, terminal records, and aliases", () => {
+      const early = new Error("early");
+      const late = new Error("late", { cause: early });
+      const last = new Error("last");
+      let calls = 0;
+      Object.defineProperty(early, "name", {
+        get() {
+          calls++;
+          early.cause = "added after snapshot";
+          return "Error";
+        },
+      });
+      const result = clone([early, late, last, early, late, { sentinel: 42 }]);
+      expect(calls).toBe(1);
+      expect(Object.hasOwn(result[0], "cause")).toBe(false);
+      expect(result[1].cause).toBe(result[0]);
+      expect(Object.hasOwn(result[2], "cause")).toBe(false);
+      expect(result[3]).toBe(result[0]);
+      expect(result[4]).toBe(result[1]);
+      expect(result[5]).toEqual({ sentinel: 42 });
+    });
+
+    test("dictionary Error properties retain an own data cause before metadata effects", () => {
+      const source = new Error("dictionary");
+      for (let i = 0; i < 100; i++) source[`property${i}`] = i;
+      for (let i = 0; i < 100; i++) delete source[`property${i}`];
+      const cause = { original: true };
+      Object.defineProperty(source, "cause", { value: cause, writable: true });
+      Object.defineProperty(source, "name", {
+        get() {
+          source.cause = "replacement";
+          return "Error";
+        },
+      });
+      expect(clone(source).cause).toEqual({ original: true });
+    });
+
     for (const field of ["name", "message", "stack"]) {
       test.each(["replace", "delete", "uncloneable"])(
         "cause snapshot precedes " + field + " metadata effects: %s",
@@ -1614,23 +1651,25 @@ for (const [name, read] of [
     const error = new Error("wire", { cause: 1 });
     error.stack = "";
     const bytes = Buffer.from(serialize(error));
-    expect(bytes.readUInt32LE(0)).toBe(15);
+    expect(bytes.readUInt32LE(0)).toBe(16);
     expect(read(bytes).cause).toBe(1);
     for (let end = 4; end < bytes.length; end++) {
       expect(() => read(bytes.subarray(0, end))).toThrow("Unable to deserialize data.");
     }
-    // A present cause ends with the presence byte and OneTag for this primitive.
-    expect([...bytes.subarray(-2)]).toEqual([1, 7]);
-    const invalidPresence = Buffer.from(bytes);
-    invalidPresence[invalidPresence.length - 2] = 2;
-    expect(() => read(invalidPresence)).toThrow("Unable to deserialize data.");
+    expect(bytes[4]).toBe(56);
+    expect(bytes.at(-1)).toBe(7); // OneTag, directly after Error metadata.
+    for (const version of [14, 15]) {
+      const invalidVersion = Buffer.from(bytes);
+      invalidVersion.writeUInt32LE(version, 0);
+      expect(() => read(invalidVersion)).toThrow("Unable to deserialize data.");
+    }
     const invalidTag = Buffer.from(bytes);
     invalidTag[invalidTag.length - 1] = 255;
     expect(() => read(invalidTag)).toThrow("Unable to deserialize data.");
     const invalidReference = Buffer.concat([bytes.subarray(0, -1), Buffer.from([19, 255])]);
     expect(() => read(invalidReference)).toThrow("Unable to deserialize data.");
     const future = Buffer.from(bytes);
-    future.writeUInt32LE(16, 0);
+    future.writeUInt32LE(17, 0);
     expect(() => read(future)).toThrow("Unable to deserialize data.");
   });
 }

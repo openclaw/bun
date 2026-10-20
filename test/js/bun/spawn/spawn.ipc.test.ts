@@ -357,7 +357,7 @@ it("child with unusable NODE_CHANNEL_FD tears down IPC without crashing", async 
 
 it.skipIf(isWindows)("advanced serialization advertises protocol 2 and Error.cause support", async () => {
   // The version packet is the first frame on the channel:
-  // [type=Version(1), u16 LE protocol=2, u16 LE capabilities=1]. Read it raw off fd 3 before the
+  // [type=Version(1), u16 LE protocol=2, u16 LE capabilities=2]. Read it raw off fd 3 before the
   // child's own channel machinery starts consuming the socket.
   await using child = Bun.spawn({
     cmd: [
@@ -381,7 +381,7 @@ it.skipIf(isWindows)("advanced serialization advertises protocol 2 and Error.cau
     ipc() {},
   });
   const [stdout, exitCode] = await Promise.all([child.stdout.text(), child.exited]);
-  expect(JSON.parse(stdout.trim())).toEqual([1, 2, 0, 1, 0]);
+  expect(JSON.parse(stdout.trim())).toEqual([1, 2, 0, 2, 0]);
   expect(exitCode).toBe(0);
 });
 

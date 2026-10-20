@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep cause-free Error serialization on its terminal fast path with byte-identical v14 output; use a distinct v16 Error cause tag and capability negotiation with older IPC peers.
+
 - Preserve Error cause graphs in structured cloning and worker messages, while retaining v14 bytes for cause-free values and negotiating cause support for advanced IPC with older Bun processes; thanks fuller-stack-dev.
 
 - Sync oven-sh/bun through `ad4089bf49d9f4c3ab7c8d95a58f3e0f0f186054`, including lint, format, binding, WebSocket and SQL updates, while retaining the fork runtime and CI contracts.

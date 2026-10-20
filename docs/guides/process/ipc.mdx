@@ -56,7 +56,7 @@ process.on("message", message => {
 
 By default, Bun serializes messages with the JSC `serialize` API. This API supports everything [`structuredClone` supports](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm), including strings, typed arrays, and objects. The API does not support transferring ownership of objects.
 
-Advanced IPC preserves `Error.cause` once the peer has advertised support on that channel. Messages sent before that advertisement, or to an older Bun process, omit causes and retain the v14 format used by older builds. Cause-free messages always retain v14 bytes. This allows an already-running process to communicate with a child started from an updated Bun executable. In-process `structuredClone`, Worker, MessagePort, and BroadcastChannel messages preserve causes without IPC negotiation.
+Advanced IPC preserves `Error.cause` once the peer has advertised v16 cause-format support on that channel. Messages sent before that advertisement, or to an older Bun process, omit causes and retain the v14 format used by older builds. The unreleased intermediate v15 capability does not enable v16 causes. Cause-free messages always retain v14 bytes. This allows an already-running process to communicate with a child started from an updated Bun executable. In-process `structuredClone`, Worker, MessagePort, and BroadcastChannel messages preserve causes without IPC negotiation.
 
 ```ts child.ts icon="/icons/typescript.svg"
 // send a string
