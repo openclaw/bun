@@ -4,6 +4,8 @@ These entries describe the experimental `openclaw/aot-typed` fork.
 
 ## Unreleased
 
+- Preserve spread-provided union discriminants during checked and native AOT execution.
+
 - Retry generated typed AOT Flow records that exceed the existing nesting limit with their contributing modules compiled untyped, while preserving checked execution.
 
 - Preserve aliased generic spreads when their later typed layout needs extra storage, and pin the corrected WebKit.

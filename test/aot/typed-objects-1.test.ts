@@ -270,3 +270,52 @@ describe.skipIf(!!unsupported)("compile/aot/flow-nested-meet", () => {
       expect(checked.exitCode).toBe(1);
     }), 60_000);
 });
+
+
+describe.skipIf(!!unsupported)("compile/aot/spread-discriminant", () => {
+  for (const variant of ["spread", "explicit-key", "absent-optional", "override"] as const) {
+    test(`${variant} preserves the selected union arm`, () =>
+      slot(async () => {
+        const files = fixture("spread-discriminant");
+        if (variant === "explicit-key") {
+          files["caller.ts"] = files["caller.ts"].replace(
+            '{ ...request, projection: "sharing" }',
+            '{ ...request, sessionKeys: request.sessionKeys, projection: "sharing" }',
+          );
+        } else if (variant === "absent-optional") {
+          files["main.ts"] = 'import { read } from "./reader.ts";\n' +
+            'const result = await read({ agentId: "a", storePath: "s", sessionKeys: ["selected"], projection: "sharing" });\n' +
+            'console.log(result.entries[0]?.sessionKey);\n';
+        } else if (variant === "override") {
+          files["main.ts"] = 'import { read } from "./reader.ts";\n' +
+            'const previous = { agentId: "a", storePath: "s", sessionKeys: ["stale"] };\n' +
+            'const result = await read({ ...previous, sessionKeys: undefined, selection: { kind: "session-id", sessionId: "selected" }, projection: "sharing" });\n' +
+            'console.log(result.entries[0]?.sessionKey);\n';
+        }
+        const expected = variant === "spread" || variant === "explicit-key" ? "ok sharing\n" : "selected\n";
+        using directory = tempDir("aot-spread-discriminant", files);
+        const cwd = String(directory);
+        for (const flags of [[], ["--aot", "--aot-type-errors=throw"]]) {
+          const result = await spawned([bunExe(), "run", ...flags, "main.ts"], cwd, bunEnv);
+          expect(result.signal).toBeNull();
+          expect(result.exitCode).toBe(0);
+          expect(result.stdout).toBe(expected);
+          expect(result.stderr).toBe("");
+        }
+        const executable = join(cwd, "program");
+        built(await spawned([
+          bunExe(), "build", "--compile", "--aot", "--aot-type-errors=throw",
+          "--format=esm", "main.ts", "--outfile", executable,
+        ], cwd, bunEnv));
+        for (const name of Object.keys(files)) unlinkSync(join(cwd, name));
+        const native = await spawned([executable], cwd, {
+          ...bunEnv, BUN_JSC_useJIT: "0", BUN_JSC_crashIfInterpreterIsUsed: "1",
+        });
+        expect(native.signal).toBeNull();
+        expect(native.exitCode).toBe(0);
+        expect(native.stdout).toBe(expected);
+        expect(native.stderr).toBe("");
+      }), 60_000);
+  }
+
+});
