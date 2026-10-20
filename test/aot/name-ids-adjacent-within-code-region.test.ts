@@ -7,12 +7,13 @@ import { join } from "node:path";
 const often = Array.from({ length: 2600 }, (_, i) => `often${i}`);
 const seldom = Array.from({ length: 1200 }, (_, i) => `seldom${String(i).padStart(4, "0")}`);
 const sumOf = (names: string[]) => names.map(name => `(o.${name} | 0)`).join(" + ");
+// Keep the seed keys out of module-level lookup sites.
 const files = {
   "main.js": `function busy(o) { return ${sumOf(often)} + ${sumOf(often)}; }
 function early(o) { return ${sumOf(seldom.filter((_, i) => i % 2 === 0))}; }
 function late(o) { return ${sumOf(seldom.filter((_, i) => i % 2 === 1))}; }
 let total = 0;
-for (let i = 0; i < 3; i++) total += busy({ often7: i }) + early({ seldom0000: i }) + late({ seldom0001: i });
+for (let i = 0; i < 3; i++) total += busy({ often7: i }) + early(JSON.parse('{"seldom0000":' + i + '}')) + late(JSON.parse('{"seldom0001":' + i + '}'));
 console.log(total);
 `,
 };
