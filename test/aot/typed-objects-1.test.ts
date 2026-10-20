@@ -192,3 +192,81 @@ describe.skipIf(!!unsupported)("compile/aot/flow-redefined-meet", () => {
       expect(existsSync(executable)).toBe(false);
     }), 60_000);
 });
+
+describe.skipIf(!!unsupported)("compile/aot/flow-nested-meet", () => {
+  test("checked execution does not require native record layouts", () =>
+    slot(async () => {
+      using directory = tempDir("aot-flow-nested-meet-checked", fixture("flow-nested-meet"));
+      const result = await spawned([
+        bunExe(), "run", "--aot", "--aot-type-errors=throw", "main.ts",
+      ], String(directory), bunEnv);
+      expect(result.stdout).toBe("true true 3 3 1 2\n");
+      expect(result.stderr).toBe("");
+      expect(result.signal).toBeNull();
+      expect(result.exitCode).toBe(0);
+    }), 60_000);
+
+  for (const depth of [5, 6]) {
+    test(`a generated meet with ${depth} nested applications preserves aliases`, () =>
+      slot(async () => {
+        const files = fixture("flow-nested-meet");
+        if (depth === 5) {
+          files["types.ts"] = files["types.ts"]
+            .replace("A<A<A<A<A<A<number>>>>>>", "A<A<A<A<A<number>>>>>")
+            .replace("B<B<B<B<B<B<number>>>>>>", "B<B<B<B<B<number>>>>>");
+          files["main.ts"] = files["main.ts"]
+            .replace("{ child: { child: 1 } }", "{ child: 1 }")
+            .replace("{ child: { child: 2 } }", "{ child: 2 }")
+            .replaceAll(".child.child.child.child.child.child", ".child.child.child.child.child");
+        }
+        using directory = tempDir("aot-flow-nested-meet", files);
+        const cwd = String(directory);
+        const executable = join(cwd, "program");
+        const result = await spawned([
+          bunExe(), "build", "--compile", "--aot", "--aot-type-errors=throw",
+          "--format=esm", "main.ts", "--outfile", executable,
+        ], cwd, bunEnv);
+        built(result);
+        expect(result.signal).toBeNull();
+        if (depth === 6) {
+          expect(result.stderr).toContain("a generated Flow record exceeds the nesting limit");
+          expect(result.stderr).toContain("compiled untyped");
+        } else {
+          expect(result.stderr).not.toContain("compiled untyped");
+        }
+        for (const name of Object.keys(files)) unlinkSync(join(cwd, name));
+        const ran = await spawned([executable], cwd, {
+          ...bunEnv,
+          BUN_JSC_useJIT: "0",
+          BUN_JSC_crashIfInterpreterIsUsed: "1",
+        });
+        expect(ran.stdout).toBe("true true 3 3 1 2\n");
+        expect(ran.stderr).toBe("");
+        expect(ran.signal).toBeNull();
+        expect(ran.exitCode).toBe(0);
+      }), 60_000);
+  }
+
+  test("a type error in a nested meet contributor remains fatal", () =>
+    slot(async () => {
+      const files = fixture("flow-nested-meet");
+      files["left.ts"] = files["left.ts"].replace("saved.n += 1;", 'saved.n = "wrong";');
+      using directory = tempDir("aot-flow-nested-meet-error", files);
+      const cwd = String(directory);
+      const executable = join(cwd, "must-not-exist");
+      const result = await spawned([
+        bunExe(), "build", "--compile", "--aot", "--aot-type-errors=throw",
+        "--format=esm", "main.ts", "--outfile", executable,
+      ], cwd, bunEnv);
+      expect(result.stderr).toMatch(/Type 'string' is not assignable to type 'number'/);
+      expect(result.signal).toBeNull();
+      expect(result.exitCode).toBe(1);
+      expect(existsSync(executable)).toBe(false);
+      const checked = await spawned([
+        bunExe(), "run", "--aot", "--aot-type-errors=throw", "main.ts",
+      ], cwd, bunEnv);
+      expect(checked.stderr).toMatch(/Type 'string' is not assignable to type 'number'/);
+      expect(checked.signal).toBeNull();
+      expect(checked.exitCode).toBe(1);
+    }), 60_000);
+});

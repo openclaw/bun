@@ -265,6 +265,7 @@ pub(super) fn make_pairs<'s>(
     program: &Checked<'s>,
     pairs: &[(Identity, TypeId, Identity, TypeId)],
     kinds_declared: &KindsDeclared,
+    requires_native_layouts: bool,
     in_parallel: InParallel<'_>,
 ) -> Batch {
     let mut batch = Batch::default();
@@ -291,7 +292,8 @@ pub(super) fn make_pairs<'s>(
                 let before = c.unknown_count();
                 let both = c.intersection_for_flow_cast(a, b);
                 let redefined = both.is_some_and(|both| c.may_be_redefined(both));
-                let generated = both.filter(|_| !redefined).and_then(|both| {
+                let too_nested = requires_native_layouts && !redefined && both.is_some_and(|both| c.is_nested_too_deeply(both));
+                let generated = both.filter(|_| !redefined && !too_nested).and_then(|both| {
                     c.keep_type(both);
                     made.push((a, b, both));
                     let generated = c.flow_record_contract(both);
@@ -306,9 +308,9 @@ pub(super) fn make_pairs<'s>(
                     generated
                 });
                 let unknown = c.unknown_count() != before;
-                let missing_contract = both.is_some() && !redefined && generated.is_none();
+                let missing_contract = both.is_some() && !redefined && !too_nested && generated.is_none();
                 pair_unknown += usize::from(unknown);
-                if unknown || missing_contract || redefined {
+                if unknown || missing_contract || redefined || too_nested {
                     if failure.is_none() {
                         let mut reasons = Vec::new();
                         if unknown {
@@ -319,6 +321,9 @@ pub(super) fn make_pairs<'s>(
                         }
                         if redefined {
                             reasons.push("a generated Flow record may be redefined");
+                        }
+                        if too_nested {
+                            reasons.push("a generated Flow record exceeds the nesting limit");
                         }
                         failure = Some(Failure { pairs: vec![(left, right)], reasons });
                     }

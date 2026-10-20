@@ -369,12 +369,21 @@ impl<'a> Translation<'a> {
     /// declaration file is no code at all, and says what the code is: an error there stands. So does one outside of functions in a
     /// file that is no module of the program and that a module of the program imports, be it through other such files.
     pub fn finish(&self, program: &Checked<'_>, in_parallel: InParallel<'_>, errors: &[(FileId, u32)]) -> Translated {
-        let (mut translated, said) = self.finish_before_renaming(program, in_parallel, errors);
+        self.finish_with_layout_requirement(program, in_parallel, errors, true)
+    }
+
+    /// Audit metadata is consumed by the checked runtime, without requiring every record to have a native layout.
+    pub fn finish_for_audit(&self, program: &Checked<'_>, in_parallel: InParallel<'_>, errors: &[(FileId, u32)]) -> Translated {
+        self.finish_with_layout_requirement(program, in_parallel, errors, false)
+    }
+
+    fn finish_with_layout_requirement(&self, program: &Checked<'_>, in_parallel: InParallel<'_>, errors: &[(FileId, u32)], requires_native_layouts: bool) -> Translated {
+        let (mut translated, said) = self.finish_before_renaming(program, in_parallel, errors, requires_native_layouts);
         translated.tokens = said.map(|said| names::as_json(&said).into_boxed_slice());
         translated
     }
 
-    fn finish_before_renaming(&self, program: &Checked<'_>, in_parallel: InParallel<'_>, errors: &[(FileId, u32)]) -> (Translated, Option<names::Said>) {
+    fn finish_before_renaming(&self, program: &Checked<'_>, in_parallel: InParallel<'_>, errors: &[(FileId, u32)], requires_native_layouts: bool) -> (Translated, Option<names::Said>) {
         let begun = self.begun.write().take().expect(NOT_STARTED_MESSAGE);
         let mut linked = match &begun.translating {
             Some((shared, fragments)) => {
@@ -393,7 +402,7 @@ impl<'a> Translation<'a> {
                 let errors = Errors { places: errors, in_dropped_imports: &in_dropped_imports, imported_by: &|c, file| build::files_imported_by(c, shared, file) };
                 let mut function_sources = self.retry_function_sources.write().take().or_else(|| self.constants.function_sources.as_ref().map(|later| later()));
                 program.release_translation_caches();
-                let linked = link::link(program, fragments.take(&|file| program.files.rank_of_file(file), in_parallel), &fragments.program_ids, shared.roots(), shared.entry_points(), shared.builtin_modules(), shared.prelude(), &self.constants.root, self.constants.source_path_to_url.is_some(), function_sources.as_mut(), errors, in_parallel, self.explain, &|c, missing, is_defined| build::describe(c, shared, missing, is_defined));
+                let linked = link::link(program, fragments.take(&|file| program.files.rank_of_file(file), in_parallel), &fragments.program_ids, shared.roots(), shared.entry_points(), shared.builtin_modules(), shared.prelude(), &self.constants.root, self.constants.source_path_to_url.is_some(), function_sources.as_mut(), errors, in_parallel, self.explain, requires_native_layouts, &|c, missing, is_defined| build::describe(c, shared, missing, is_defined));
                 if linked.flow_family_exhausted.is_some() {
                     *self.retry_function_sources.write() = function_sources;
                 }
@@ -490,7 +499,7 @@ impl<'a> Translation<'a> {
     /// The same as what the engine reads, with `Translated::kept_errors`. `Err`: what could not be translated. Nothing, if an
     /// error stands.
     pub fn finish_for_engine(&self, program: &Checked<'_>, in_parallel: InParallel<'_>, errors: &[(FileId, u32)], on_written: &dyn Fn(&[u8])) -> EngineProgram {
-        let (Translated { program: mut linked, problems, kept_errors, always_fails, explained, retry_untyped, .. }, said) = self.finish_before_renaming(program, in_parallel, errors);
+        let (Translated { program: mut linked, problems, kept_errors, always_fails, explained, retry_untyped, .. }, said) = self.finish_before_renaming(program, in_parallel, errors, true);
         let written = if kept_errors.contains(&true) || always_fails || retry_untyped.is_some() {
             Err(Vec::new())
         } else if !problems.is_empty() {

@@ -2754,6 +2754,7 @@ pub fn link(
     errors: Errors<'_>,
     in_parallel: InParallel<'_>,
     explain: Explain,
+    requires_native_layouts: bool,
     describe: Describe<'_>,
 ) -> Linked {
     let kinds_declared = checked.checker().kinds_declared();
@@ -2781,7 +2782,7 @@ pub fn link(
                 methods_found.send((replaced, c.take_notes_recorded(), c.take_ran_out_of_stack())).ok();
             }
         });
-        let linked = link_with_helper_threads(scope, checked, fragments, ids, roots, entry_points, builtin_modules, prelude, shown_from, shows_whole_paths, function_sources, errors, &kinds_declared, &referenced_by_typeof, (stores_known, methods_awaited), in_parallel, explain, describe);
+        let linked = link_with_helper_threads(scope, checked, fragments, ids, roots, entry_points, builtin_modules, prelude, shown_from, shows_whole_paths, function_sources, errors, &kinds_declared, &referenced_by_typeof, (stores_known, methods_awaited), in_parallel, explain, requires_native_layouts, describe);
         kinds_declared.give_up();
         linked
     })
@@ -2837,6 +2838,7 @@ fn link_with_helper_threads<'scope>(
     replaced_methods_channel: (Sender<Vec<MethodStore>>, Receiver<(ReplacedMethods, FlowNotes, bool)>),
     in_parallel: InParallel<'scope>,
     explain: Explain,
+    requires_native_layouts: bool,
     describe: Describe<'_>,
 ) -> Linked {
     let (mut times, mut since) = (Times::default(), Instant::now());
@@ -3094,7 +3096,7 @@ fn link_with_helper_threads<'scope>(
                 problems.push(Problem { file: nowhere, pos: 0, what: "a Flow layout type that no task has kept".into() });
                 break;
             };
-            let mut batch = flow_layouts::make_pairs(checked, &requests, kinds_declared, in_parallel);
+            let mut batch = flow_layouts::make_pairs(checked, &requests, kinds_declared, requires_native_layouts, in_parallel);
             times.add("flow layouts", &mut since);
             if let Some(failure) = batch.failure.take() {
                 flow_family_exhausted = Some((nowhere, flow_layouts.failed(failure)));

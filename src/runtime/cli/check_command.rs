@@ -1915,7 +1915,7 @@ pub(crate) fn audit_before(
         if is_for_tests {
             *imports.lock() = (program.files.modules.iter()).map(|module| (module.file_name().to_vec(), module.imports.values().map(|imported| imported.idx() as u32).collect())).collect();
         }
-        let mut translated = translation.finish(program, in_parallel, errors);
+        let mut translated = translation.finish_for_audit(program, in_parallel, errors);
         if let Some(retry) = translated.retry_untyped.take() {
             bun_aot::release(translated.program, in_parallel);
             return bun_sema_driver::CompilationOutcome::Failed { kept_errors: translated.kept_errors, message: retry.message };
