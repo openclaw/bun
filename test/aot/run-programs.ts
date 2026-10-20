@@ -13,6 +13,7 @@
 //   <program>.json                        { "build": [flags for `bun build`], "env": { .. }, "reference": "compiled" }
 //                                         "compiled": compare with `bun build --compile` without --aot, for features that
 //                                         only the bundler provides (--define, --feature, files imported as text)
+//                                         "buildTimeout": native build limit in ms for release builds; debug/ASAN keep 90s
 //                                         "skipInShell": why shell/quick.py skips the program; not read here
 //                                         "skipWithASAN": why a Bun built with AddressSanitizer skips the program
 //   programs/**/tsconfig.json             the compiler options for the programs below it
@@ -93,9 +94,9 @@ export async function slot<T>(work: () => Promise<T>): Promise<T> {
   }
 }
 
-export async function spawned(cmd: string[], cwd: string, env: Record<string, string | undefined>) {
+export async function spawned(cmd: string[], cwd: string, env: Record<string, string | undefined>, timeout = 90_000) {
   // A child that hangs is killed here, and the signal fails the test. A test that merely timed out would leave it running.
-  await using proc = Bun.spawn({ cmd, cwd, env, stdin: "ignore", stdout: "pipe", stderr: "pipe", timeout: 90_000, killSignal: "SIGKILL" });
+  await using proc = Bun.spawn({ cmd, cwd, env, stdin: "ignore", stdout: "pipe", stderr: "pipe", timeout, killSignal: "SIGKILL" });
   const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
   return { stdout, stderr, exitCode, signal: proc.signalCode };
 }
@@ -145,15 +146,17 @@ export function withoutDebugInformation(_folder?: string): string[] {
 let executables = 0;
 
 async function run(path: string, beside: string, folder: string, carrier: string[], buildEnv: Record<string, string>, runEnv: Record<string, string>) {
-  const options: { build?: string[]; env?: Record<string, string>; reference?: "compiled"; skipInShell?: string } = existsSync(beside + ".json")
+  const options: { build?: string[]; buildTimeout?: number; env?: Record<string, string>; reference?: "compiled"; skipInShell?: string } = existsSync(beside + ".json")
     ? JSON.parse(readFileSync(beside + ".json", "utf8"))
     : {};
   const flags = options.build ?? [];
+  const buildTimeout = isDebug || isASAN ? undefined : options.buildTimeout;
   const env = { ...bunEnv, ...options.env };
   const cwd = join(path, "..");
   const executable = join(folder, `program-${executables++}${isWindows ? ".exe" : ""}`);
   try {
-    const build = await spawned([bunExe(), "build", "--compile", "--aot", ...carrier, ...flags, path, "--outfile", executable], cwd, { ...bunEnv, ...buildEnv });
+    const build = await spawned([bunExe(), "build", "--compile", "--aot", ...carrier, ...flags, path, "--outfile", executable], cwd, { ...bunEnv, ...buildEnv }, buildTimeout);
+    expect(build.signal).toBeNull();
     if (existsSync(beside + ".build-errors.txt")) {
       // Each distinct error counts once; how often it is repeated for different positions is not what is tested.
       const errors = [...new Set(build.stderr.split("\n").filter(line => line.startsWith("error: ")))].join("\n") + "\n";

@@ -34,7 +34,7 @@ use crate::id::{FuncId, GlobalId, LayoutId, ModuleId, StrId, TyId, V};
 use crate::ir::{self, Def, Func, FuncKind, Layout, LayoutKind, Literal, NO_VARIABLE, Op, Operation, Prediction, Program, Strs, Term, CoerceReason, class_flags, field_flags, func_flags, method_flags};
 use bun_sema::atom::Atom;
 use bun_sema::check::task::Finished;
-use bun_sema::check::{Answer, Checker, CompilerDiagnostic, Identity, Int32Verdict, KindsDeclared, MethodStore, FlowNotes, NumberFlow, Program as Checked, Question, ReplacedMethods, compute_ecma_line_starts, expected_int32};
+use bun_sema::check::{Answer, Checker, CompilerDiagnostic, Identity, Int32Verdict, KindsDeclared, MethodStore, FlowNotes, NumberFlow, Program as Checked, Question, ReplacedMethods, SourceSearchTrace, compute_ecma_line_starts, expected_int32};
 use bun_sema::hir::{self, ClassId, Flags, StmtKind};
 use bun_sema::program::{Builtin, FileId, LoadedBy};
 use bun_sema::resolve::get_relative_path_from_directory;
@@ -51,6 +51,7 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::{Duration, Instant};
 
 mod exports;
+mod flow_layouts;
 mod nil;
 mod reads;
 mod reuse;
@@ -3018,6 +3019,7 @@ fn link_with_helper_threads<'scope>(
     let mut unpredicted: FxHashSet<LayoutKey> = FxHashSet::default();
     let mut precomputed_line_tables = None;
     let mut untyped_object_evidence = UntypedObjectEvidence::default();
+    let mut flow_layouts = flow_layouts::Closure::default();
     loop {
         reach.run(&fragments, &index, in_parallel);
         if precomputed_line_tables.is_none() {
@@ -3071,8 +3073,65 @@ fn link_with_helper_threads<'scope>(
                     }
                 }
             }
-            if !reached_more {
+            if reached_more {
+                continue;
+            }
+            flow_layouts.include_reached(&fragments, &index, &reach, &is_opaque);
+            let pairs = match flow_layouts.pending() {
+                Ok(pairs) => pairs,
+                Err(what) => {
+                    problems.push(Problem { file: nowhere, pos: 0, what: what.into() });
+                    break;
+                }
+            };
+            if pairs.is_empty() {
                 break;
+            }
+            let requests: Option<Vec<_>> = pairs.iter().map(|&(left, right)| Some((left, *types.get(&left)?, right, *types.get(&right)?))).collect();
+            let Some(requests) = requests else {
+                problems.push(Problem { file: nowhere, pos: 0, what: "a Flow layout type that no task has kept".into() });
+                break;
+            };
+            let mut batch = flow_layouts::make_pairs(checked, &requests, kinds_declared, in_parallel);
+            times.add("flow layouts", &mut since);
+            if batch.unresolved {
+                problems.push(Problem { file: nowhere, pos: 0, what: "a cross-function Flow intersection whose type could not be resolved".into() });
+                break;
+            }
+            flow_layouts.accept(checked, &mut batch);
+            add_kept_types(checked, &mut seen, &mut types, usize::MAX, in_parallel);
+            let missing: Option<Vec<_>> = flow_layouts.roots().into_iter()
+                .filter(|&identity| index.record(ids, identity).is_none())
+                .map(|identity| Some((identity, *types.get(&identity)?)))
+                .collect();
+            let Some(missing) = missing else {
+                problems.push(Problem { file: nowhere, pos: 0, what: "a canonical Flow layout type that no task has kept".into() });
+                break;
+            };
+            let description_started = SourceSearchTrace::native_queries_enabled().then(Instant::now);
+            let (described, is_exhausted) = describe_in_tasks(checked, &missing, &index, ids, kinds_declared, in_parallel, describe, (&mut times, &mut since));
+            if let Some(started) = description_started {
+                SourceSearchTrace::flow_layout_described(std::ptr::from_ref(checked).addr(), missing.len(), started.elapsed().as_nanos());
+            }
+            ran_out_of_stack |= is_exhausted;
+            let first_described = fragments.len();
+            index.grow(ids);
+            for fragment in described {
+                index.by_file.entry(fragment.file).or_insert(fragments.len() as u32);
+                index.add(fragments.len(), &fragment);
+                fragments.push(fragment);
+            }
+            index.extend_outline(&mut fragments[first_described..], first_described, in_parallel);
+            add_kept_types(checked, &mut seen, &mut types, usize::MAX, in_parallel);
+            reach.grow(&fragments, ids);
+            for identity in flow_layouts.roots() {
+                let Some(id) = ids.layouts.find(&LayoutKey::Record(identity)).filter(|&id| index.layout(id).is_some()) else {
+                    problems.push(Problem { file: nowhere, pos: 0, what: "a generated Flow layout whose definition was not retained".into() });
+                    continue;
+                };
+                if reach.layouts[id as usize].fetch_or(reached::IS_REACHED, Ordering::Relaxed) & reached::IS_REACHED == 0 {
+                    reach.work.push(Work::Layout(id));
+                }
             }
             continue;
         }
@@ -3243,6 +3302,16 @@ fn link_with_helper_threads<'scope>(
         }
     }
     let mut noted: FlowNotes = FlowNotes::default();
+    let mut lost_flow_layout_type = false;
+    noted.absorb(flow_layouts.take_notes().renamed(|identity| {
+        let ty = types.get(&identity).copied();
+        lost_flow_layout_type |= ty.is_none();
+        ty
+    }));
+    if lost_flow_layout_type {
+        problems.push(Problem { file: nowhere, pos: 0, what: "a generated Flow edge whose type was not retained".into() });
+    }
+    let flow_layout_roots = flow_layouts.roots();
     let mut lost: Vec<(Identity, Problem)> = Vec::new();
     let mut included_by_fragment: Vec<[&[(FragmentIndex, bool)]; 2]> = vec![[&included[..0]; 2]; fragments.len()];
     let mut slots_by_fragment: Vec<[&[u32]; 2]> = vec![[&included_slots[..0]; 2]; fragments.len()];
@@ -3282,6 +3351,13 @@ fn link_with_helper_threads<'scope>(
             is_runtime_layout.resize(numbering.layouts.len(), is_runtime(function.file));
         }
     }
+    for identity in &flow_layout_roots {
+        if let Some(id) = ids.layouts.find(&LayoutKey::Record(*identity)) {
+            numbering.mark_layout_reached(id);
+        }
+    }
+    numbering.settle();
+    is_runtime_layout.resize(numbering.layouts.len(), false);
     let mut extended_globals: Vec<StrId> = Vec::new();
     let mut prototype_property_names: Vec<StrId> = Vec::new();
     let mut method_stores: Vec<(FileId, MethodStore<Identity>)> = Vec::new();

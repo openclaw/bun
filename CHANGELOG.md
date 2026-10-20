@@ -4,6 +4,8 @@ These entries describe the experimental `openclaw/aot-typed` fork.
 
 ## Unreleased
 
+- Preserve typed object aliases across function boundaries and annotated local assignments.
+- Prevent redundant plain-data union terms from multiplying typed AOT Flow layouts.
 - Allow opt-in compiler trace byte limits up to 2 GiB while retaining the 256 MiB default.
 - Add opt-in native IR body and Flow-query timings to the compiler trace.
 - Normalize equivalent nested inline payload records during typed AOT flow narrowing.

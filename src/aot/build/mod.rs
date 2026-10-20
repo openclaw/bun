@@ -290,7 +290,6 @@ pub(crate) struct Fx {
     pub(crate) checked_vars: FxHashMap<Var, TypeId>,
     /// By block, value and type: the value as held to the type in that block.
     pub(crate) fitted: FxHashMap<(BlockId, V, TyId), V>,
-    pub(crate) flow_layouts: fit::FlowLayouts,
     /// What a written `as` has yielded with an `undefined` or a `null` that the type after `as` has not: `Builder::coerce`.
     pub(crate) nullish_after_cast: FxHashSet<V>,
     /// The operand of the `as` that is being translated: `Checker::is_syntactically_fresh_graph`.
@@ -2776,7 +2775,6 @@ impl<'c, 'p, 's> FileBuild<'c, 'p, 's> {
             checked: CheckedTypes::default(),
             checked_vars: FxHashMap::default(),
             fitted: FxHashMap::default(),
-            flow_layouts: fit::FlowLayouts::default(),
             nullish_after_cast: FxHashSet::default(),
             is_coercing_fresh_graph: false,
             handed_back: FxHashSet::default(),
@@ -3093,7 +3091,6 @@ impl<'c, 'p, 's> FileBuild<'c, 'p, 's> {
             notes_for_unknown_callers: Notes::default(),
             problems: std::mem::take(&mut self.problems),
             mentions: ReferencedIds::default(),
-            transition_layouts: fx.flow_layouts.into_roots(),
         };
         self.bodies[id.idx()] = Some(Box::new(body));
         self.c.translate_untyped_clone(None);

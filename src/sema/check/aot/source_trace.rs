@@ -289,16 +289,19 @@ pub struct NativeCounts {
 }
 
 #[derive(Clone, Copy)]
+enum NativeOwner {
+    Function { body: u64, file: u32, function: u32, ir_function: u32 },
+    FlowLayouts { closure: u64, pairs: usize },
+}
+
+#[derive(Clone, Copy)]
 struct NativeContext {
     trace: Trace,
     worker: usize,
-    body: u64,
+    owner: NativeOwner,
     span: u64,
     parent: u64,
-    file: u32,
-    function: u32,
-    ir_function: u32,
-    position: u32,
+    position: Option<u32>,
     counts: NativeCounts,
 }
 
@@ -308,6 +311,10 @@ thread_local! {
 }
 
 impl Trace {
+    pub fn native_queries_enabled() -> bool {
+        native_config().is_some_and(|config| config.queries) && log().is_some()
+    }
+
     #[inline]
     pub fn native_active() -> bool {
         native_config().is_some_and(|config| config.queries) && NATIVE_CONTEXT.with(|slot| slot.get().is_some())
@@ -326,8 +333,27 @@ impl Trace {
             worker
         });
         let span = log.next.fetch_add(1, Ordering::Relaxed);
-        let context = NativeContext { trace, worker, body: span, span, parent: 0, file, function, ir_function, position, counts: NativeCounts::default() };
+        let owner = NativeOwner::Function { body: span, file, function, ir_function };
+        let context = NativeContext { trace, worker, owner, span, parent: 0, position: Some(position), counts: NativeCounts::default() };
         Some(NativeSpan::begin(context, "native_function", None, None, Some(path)))
+    }
+
+    /// Link-wide Flow closure has no native function or source-file owner.
+    pub fn flow_layout_closure(program: usize, pairs: usize) -> Option<NativeSpan> {
+        if !native_config()?.queries {
+            return None;
+        }
+        let log = log()?;
+        let trace = Self { log: Some(log), id: 0, program };
+        let worker = NATIVE_WORKER.with(|slot| {
+            let worker = slot.get().unwrap_or_else(|| log.next.fetch_add(1, Ordering::Relaxed) as usize);
+            slot.set(Some(worker));
+            worker
+        });
+        let span = log.next.fetch_add(1, Ordering::Relaxed);
+        let owner = NativeOwner::FlowLayouts { closure: span, pairs };
+        let context = NativeContext { trace, worker, owner, span, parent: 0, position: None, counts: NativeCounts::default() };
+        Some(NativeSpan::begin(context, "flow_layout_closure", None, None, None))
     }
 
     pub fn native_query(phase: &'static str, source: u32, target: u32, position: Option<u32>, counts: Option<NativeCounts>) -> Option<NativeSpan> {
@@ -339,11 +365,50 @@ impl Trace {
         let context = NativeContext {
             span: log.next.fetch_add(1, Ordering::Relaxed),
             parent: previous.span,
-            position: position.unwrap_or(previous.position),
+            position: position.or(previous.position),
             counts: counts.unwrap_or(previous.counts),
             ..previous
         };
         Some(NativeSpan::begin(context, phase, Some(source), Some(target), None))
+    }
+
+    pub fn native_phase(phase: &'static str) -> Option<NativeSpan> {
+        if !native_config()?.queries { return None; }
+        let previous = NATIVE_CONTEXT.with(|slot| slot.get())?;
+        let log = previous.trace.log?;
+        let context = NativeContext { span: log.next.fetch_add(1, Ordering::Relaxed), parent: previous.span, ..previous };
+        Some(NativeSpan::begin(context, phase, None, None, None))
+    }
+
+    pub fn flow_layout_batch(program: usize, results: usize, generated: usize, new_records: usize, before: &[usize], after: &[usize]) -> Option<Self> {
+        if !native_config()?.queries { return None; }
+        let log = log()?;
+        let trace = Self { log: Some(log), id: log.next.fetch_add(1, Ordering::Relaxed), program };
+        trace.write(format!("\"event\":\"counts\",\"domain\":\"link_flow_contracts\",\"phase\":\"flow_layout_batch\",\"results\":{results},\"generated\":{generated},\"new_canonical\":{new_records},\"duplicate_contracts\":{},\"families_before\":{before:?},\"families_after\":{after:?}", generated - new_records));
+        Some(trace)
+    }
+
+    pub fn flow_layout_described(program: usize, records: usize, elapsed_ns: u128) {
+        if !Self::native_queries_enabled() { return; }
+        let Some(log) = log() else { return };
+        let trace = Self { log: Some(log), id: log.next.fetch_add(1, Ordering::Relaxed), program };
+        trace.write(format!("\"event\":\"counts\",\"domain\":\"link_flow_contracts\",\"phase\":\"flow_layout_describe\",\"records\":{records},\"elapsed_ns\":{elapsed_ns}"));
+    }
+
+    pub fn flow_layout_record(&self, left: [u64; 2], right: [u64; 2], identity: [u64; 2], detail: &str) {
+        self.write(format!("\"event\":\"record\",\"domain\":\"link_flow_contracts\",\"phase\":\"flow_layout_record\",\"left\":{left:?},\"right\":{right:?},\"identity\":{identity:?},\"detail_hex\":\"{}\"", hex(detail.as_bytes())));
+    }
+
+    pub fn flow_layout_pair_failure(left: [u64; 2], right: [u64; 2], source: u32, target: u32, unknown: bool, missing_contract: bool, detail: &str) {
+        let Some(context) = NATIVE_CONTEXT.with(|slot| slot.get()) else { return };
+        let NativeOwner::FlowLayouts { closure, .. } = context.owner else { return };
+        context.trace.write(format!("\"event\":\"record\",\"domain\":\"link_flow_layouts\",\"phase\":\"flow_layout_pair_failure\",\"closure_span\":{closure},\"left\":{left:?},\"right\":{right:?},\"source\":{source},\"target\":{target},\"unknown\":{unknown},\"missing_contract\":{missing_contract},\"detail_hex\":\"{}\"", hex(detail.as_bytes())));
+    }
+
+    pub fn flow_layout_reasons(pair_unknown: usize, no_contract: usize, notes_unknown: bool, ran_out_of_stack: bool, failed_pairs: usize, logged_failed_pairs: usize) {
+        let Some(context) = NATIVE_CONTEXT.with(|slot| slot.get()) else { return };
+        let NativeOwner::FlowLayouts { closure, .. } = context.owner else { return };
+        context.trace.write(format!("\"event\":\"counts\",\"domain\":\"link_flow_layouts\",\"phase\":\"flow_layout_reasons\",\"closure_span\":{closure},\"pair_unknown\":{pair_unknown},\"no_contract\":{no_contract},\"notes_unknown\":{notes_unknown},\"ran_out_of_stack\":{ran_out_of_stack},\"failed_pairs\":{failed_pairs},\"logged_failed_pairs\":{logged_failed_pairs},\"omitted_failed_pairs\":{}", failed_pairs - logged_failed_pairs));
     }
 }
 
@@ -393,9 +458,13 @@ impl NativeSpan {
         let c = self.context;
         let n = c.counts;
         let path = path.map(|path| format!(",\"path_hex\":\"{}\"", hex(path))).unwrap_or_default();
+        let owner = match c.owner {
+            NativeOwner::Function { body, file, function, ir_function } => format!("\"domain\":\"native_ir\",\"body_span\":{body},\"file\":{file},\"function\":{function},\"ir_function\":{ir_function}"),
+            NativeOwner::FlowLayouts { closure, pairs } => format!("\"domain\":\"link_flow_layouts\",\"closure_span\":{closure},\"pairs\":{pairs}"),
+        };
         c.trace.write(format!(
-            "\"event\":\"{event}\",\"domain\":\"native_ir\",\"phase\":\"{}\",\"span\":{},\"parent_span\":{},\"body_span\":{},\"worker\":{},\"file\":{},\"function\":{},\"ir_function\":{},\"position\":{},\"source_type\":{},\"target_type\":{},\"members\":{},\"comparisons\":{},\"scanned\":{},\"skipped\":{},\"provisional\":{},\"join_added\":{},\"join_merged\":{},\"elapsed_ns\":{}{}",
-            self.phase, c.span, c.parent, c.body, c.worker, c.file, c.function, c.ir_function, c.position,
+            "\"event\":\"{event}\",{owner},\"phase\":\"{}\",\"span\":{},\"parent_span\":{},\"worker\":{},\"position\":{},\"source_type\":{},\"target_type\":{},\"members\":{},\"comparisons\":{},\"scanned\":{},\"skipped\":{},\"provisional\":{},\"join_added\":{},\"join_merged\":{},\"elapsed_ns\":{}{}",
+            self.phase, c.span, c.parent, c.worker, optional(c.position),
             optional(self.source), optional(self.target), n.members, n.comparisons, n.scanned, n.skipped,
             n.provisional, n.join_added, n.join_merged,
             if event == "start" { 0 } else { self.started.elapsed().as_nanos() }, path,
@@ -434,8 +503,9 @@ mod tests {
 
     fn native_test_context(span: u64) -> NativeContext {
         NativeContext {
-            trace: Trace { log: None, id: 0, program: 1 }, worker: 0, body: 1, span, parent: 0,
-            file: 7, function: 8, ir_function: 9, position: 10, counts: NativeCounts::default(),
+            trace: Trace { log: None, id: 0, program: 1 }, worker: 0,
+            owner: NativeOwner::Function { body: 1, file: 7, function: 8, ir_function: 9 },
+            span, parent: 0, position: Some(10), counts: NativeCounts::default(),
         }
     }
 

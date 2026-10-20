@@ -44,7 +44,7 @@ pub use identity::Identity;
 pub use int32_fields::{NotInt32Reason, FlowNode, FlowSource, Int32Verdict, NumberFlow, CodeOwner, expected_int32};
 pub use javascript::ImportedCode;
 pub use kinds::kind;
-pub use flows::{Answer, BuiltIn, Candidate, TruncatedSearch, KindsDeclared, Literal, SearchBarrier, Membership, FlowNotes, DataOrigin, Place, Question, Reach, Share, UntypedReason};
+pub use flows::{Answer, BuiltIn, Candidate, TruncatedSearch, KindsDeclared, Literal, SearchBarrier, Membership, FlowNotes, FlowRecordContract, DataOrigin, Place, Question, Reach, Share, UntypedReason};
 pub use subtypes::{Cause, FieldTypes, LoggingRelaxation, Sizes, Subtypes};
 pub use source_trace::{Trace as SourceSearchTrace, NativeCounts as NativeTraceCounts};
 pub use storage::{Evaluates, Primitive, ReferenceRead, Storage};

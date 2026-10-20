@@ -11,10 +11,9 @@ use crate::id::{FuncId, LayoutId, StrId, TyId, V};
 use crate::ir::{BinOp, FuncKind, LayoutKind, MethodKind, Op, Operation, Prediction, Term, UnOp, CoerceReason, field_flags, func_flags};
 use bun_sema::atom::Atom;
 use bun_sema::bind::Parent;
-use bun_sema::check::{kind, SourceSearchTrace, NativeTraceCounts};
+use bun_sema::check::kind;
 use bun_sema::hir::{self, ExprId, ExprKind};
 use bun_sema::types::TypeId;
-use rustc_hash::{FxHashMap, FxHashSet};
 use std::rc::Rc;
 
 /// A type as the engine reads it, and as the checker has it, which says more: what a function returns, what a map holds.
@@ -30,54 +29,6 @@ impl Ty {
 
     pub(crate) fn of(id: TyId) -> Ty {
         Ty { id, checked: TypeId::UNRESOLVED }
-    }
-}
-
-/// Physical views connected by Flow in one function, including overlaps retained across SSA joins.
-#[derive(Default)]
-pub(crate) struct FlowLayouts {
-    family_of: FxHashMap<TypeId, usize>,
-    members: Vec<Vec<TypeId>>,
-    compared: FxHashSet<(TypeId, TypeId)>,
-    comparisons: usize,
-    exhausted: bool,
-    roots: Vec<LayoutId>,
-}
-
-const MAX_FLOW_LAYOUT_MEMBERS: usize = 1024;
-const MAX_FLOW_LAYOUT_PAIRS: usize = 65_536;
-
-impl FlowLayouts {
-    pub(super) fn into_roots(mut self) -> Vec<LayoutId> {
-        self.roots.sort_unstable_by_key(|layout| layout.idx());
-        self.roots.dedup();
-        self.roots
-    }
-
-    fn add(&mut self, family: usize, ty: TypeId) {
-        match self.family_of.get(&ty).copied() {
-            Some(other) if other == family => {}
-            Some(other) => {
-                for member in std::mem::take(&mut self.members[other]) {
-                    self.family_of.insert(member, family);
-                    self.members[family].push(member);
-                }
-            }
-            None => {
-                self.family_of.insert(ty, family);
-                self.members[family].push(ty);
-            }
-        }
-    }
-
-    fn join(&mut self, source: TypeId, target: TypeId) -> usize {
-        let family = self.family_of.get(&source).or_else(|| self.family_of.get(&target)).copied().unwrap_or_else(|| {
-            self.members.push(Vec::new());
-            self.members.len() - 1
-        });
-        self.add(family, source);
-        self.add(family, target);
-        family
     }
 }
 
@@ -495,7 +446,7 @@ impl<'c, 'p, 's> FileBuild<'c, 'p, 's> {
             have.id = self.ty(fx, value);
         }
         if why == CoerceReason::Flow {
-            self.record_flow_intersections(fx, have.id, want.id);
+            self.record_flow_layouts(have.id, want.id);
         }
         if self.is_within(have, want) {
             let described = self.out.tys.get(have.id);
@@ -619,85 +570,13 @@ impl<'c, 'p, 's> FileBuild<'c, 'p, 's> {
         held
     }
 
-    fn record_flow_intersections(&mut self, fx: &mut Fx, source: TyId, target: TyId) {
-        if fx.flow_layouts.exhausted {
-            return;
-        }
+    fn record_flow_layouts(&mut self, source: TyId, target: TyId) {
         let (Some(source), Some(target)) = (self.out.tys.get(source).single_layout(), self.out.tys.get(target).single_layout()) else { return };
         if self.out.layouts[source.idx()].kind != LayoutKind::Record || self.out.layouts[target.idx()].kind != LayoutKind::Record {
             return;
         }
         let (Some(&source), Some(&target)) = (self.layout_types.get(&source), self.layout_types.get(&target)) else { return };
-        let join_counts = SourceSearchTrace::native_active().then(|| {
-            let left = fx.flow_layouts.family_of.get(&source).copied();
-            let right = fx.flow_layouts.family_of.get(&target).copied();
-            (usize::from(left.is_none()) + usize::from(target != source && right.is_none()),
-             left.is_some() && right.is_some() && left != right)
-        });
-        let family = fx.flow_layouts.join(source, target);
-        let mut native_trace = join_counts.and_then(|(join_added, join_merged)| SourceSearchTrace::native_query(
-            "record_flow_intersections", source.0, target.0, Some(fx.b.pos),
-            Some(NativeTraceCounts { members: fx.flow_layouts.members[family].len(), comparisons: fx.flow_layouts.comparisons, join_added, join_merged, ..NativeTraceCounts::default() }),
-        ));
-        let mut right = 1;
-        loop {
-            if fx.flow_layouts.members[family].len() > MAX_FLOW_LAYOUT_MEMBERS {
-                fx.flow_layouts.exhausted = true;
-                self.problem(fx.file, fx.b.pos, "a Flow layout family with more than 1024 members");
-                return;
-            }
-            if right >= fx.flow_layouts.members[family].len() {
-                return;
-            }
-            let b = fx.flow_layouts.members[family][right];
-            for left in 0..right {
-                let a = fx.flow_layouts.members[family][left];
-                let pair = if a.0 < b.0 { (a, b) } else { (b, a) };
-                let known = fx.flow_layouts.compared.contains(&pair);
-                if let Some(trace) = &mut native_trace {
-                    trace.scan(known);
-                }
-                if known {
-                    continue;
-                }
-                if fx.flow_layouts.comparisons == MAX_FLOW_LAYOUT_PAIRS {
-                    fx.flow_layouts.exhausted = true;
-                    self.problem(fx.file, fx.b.pos, "a function requiring more than 65536 Flow layout comparisons");
-                    return;
-                }
-                fx.flow_layouts.comparisons += 1;
-                let not_known_before = self.c.unknown_count();
-                if let Some(trace) = &mut native_trace {
-                    trace.progress(fx.flow_layouts.members[family].len(), fx.flow_layouts.comparisons, false);
-                }
-                let both = self.c.intersection_for_flow_cast(a, b);
-                if let Some(trace) = &mut native_trace {
-                    trace.progress(fx.flow_layouts.members[family].len(), fx.flow_layouts.comparisons, self.c.unknown_count() != not_known_before);
-                }
-                if self.c.unknown_count() == not_known_before {
-                    fx.flow_layouts.compared.insert(pair);
-                }
-                let Some(both) = both else { continue };
-                // These edges preserve both older aliases and the new narrowed view.
-                let native = self.ty_of(both);
-                if let Some(layout) = self.out.tys.get(native).single_layout() {
-                    fx.flow_layouts.roots.push(layout);
-                }
-                self.c.record_cast(&[a, b], both, false, false, true, true);
-                self.c.record_upcast(both, a);
-                self.c.record_upcast(both, b);
-                fx.flow_layouts.add(family, both);
-                if let Some(trace) = &mut native_trace {
-                    trace.progress(fx.flow_layouts.members[family].len(), fx.flow_layouts.comparisons, false);
-                }
-                if fx.flow_layouts.members[family].len() > MAX_FLOW_LAYOUT_MEMBERS {
-                    fx.flow_layouts.exhausted = true;
-                    self.problem(fx.file, fx.b.pos, "a Flow layout family with more than 1024 members");
-                    return;
-                }
-            }
-            right += 1;
-        }
+        self.c.record_flow_layout(source, target);
     }
 
     /// `e as T`, which coerces and does not assert. `value`: that of `e`, held to its own type. `tries`: `T`. `result`: what is known of the
@@ -1528,11 +1407,15 @@ impl<'c, 'p, 's> FileBuild<'c, 'p, 's> {
         }
         let checked = self.value_type(fx, e);
         let own = self.ty_of(checked);
+        // An annotated store must retain a local's tested view before converting it to the destination type.
+        let is_narrowed_local = matches!(self.hir(fx.file)[e].kind, ExprKind::Ident(_))
+            && self.c.reference_read(fx.file, e).is_some_and(|read| read.is_narrowing_reliable && read.declared != checked);
         let described = self.out.tys.get(own);
         own != self.out.tys.anything
             && described.has_objects()
             && !described.any_object
-            && (!self.cast_may_allocate(own)
+            && (is_narrowed_local
+                || !self.cast_may_allocate(own)
                 || matches!(self.hir(fx.file)[e].kind, ExprKind::Dot { .. } | ExprKind::Index { .. }) && matches!((described.single_layout(), self.out.tys.get(want).single_layout()), (Some(read_as), Some(supertypes_of)) if read_as != supertypes_of))
     }
 

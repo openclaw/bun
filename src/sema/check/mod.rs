@@ -125,7 +125,7 @@ pub use aot::{CommonJsExports, ExportsReference};
 pub use aot::{Identity, SourceSearchTrace, NativeTraceCounts};
 pub use aot::given;
 pub use aot::{NotInt32Reason, FlowNode, FlowSource, Int32Verdict, NumberFlow, CodeOwner, expected_int32};
-pub use aot::{Answer, BuiltIn, Candidate, TruncatedSearch, KindsDeclared, Literal, SearchBarrier, Membership, FlowNotes, DataOrigin, Place, Question, Reach, Share, UntypedReason};
+pub use aot::{Answer, BuiltIn, Candidate, TruncatedSearch, KindsDeclared, Literal, SearchBarrier, Membership, FlowNotes, FlowRecordContract, DataOrigin, Place, Question, Reach, Share, UntypedReason};
 pub use aot::{Cause, FieldTypes, LoggingRelaxation, Sizes, Subtypes};
 pub use aot::{Evaluates, FirstStore, Primitive, ReferenceRead, Storage, kind};
 pub use aot::{Claim, is_engine_global};
