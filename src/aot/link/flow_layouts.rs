@@ -7,6 +7,7 @@ use bun_sema::types::TypeId;
 use bun_sema::program::FileId;
 use bun_sema::util::{InParallel, for_each_mut};
 use rustc_hash::{FxHashMap, FxHashSet};
+use std::borrow::Cow;
 
 const MAX_FAMILY_MEMBERS: usize = 1024;
 const MAX_FAMILY_PAIRS: usize = 65_536;
@@ -15,7 +16,12 @@ const PAIRS_PER_TASK: usize = 128;
 
 pub struct Exhausted {
     pub contributors: Vec<FileId>,
-    pub what: &'static str,
+    pub what: Cow<'static, str>,
+}
+
+pub(super) struct Failure {
+    pairs: Vec<(Identity, Identity)>,
+    reasons: Vec<&'static str>,
 }
 
 #[derive(Default)]
@@ -114,7 +120,19 @@ impl Closure {
     fn exhausted(&self, family: usize, what: &'static str) -> Exhausted {
         let mut contributors: Vec<_> = self.contributors[family].iter().copied().collect();
         contributors.sort_unstable();
-        Exhausted { contributors, what }
+        Exhausted { contributors, what: what.into() }
+    }
+
+    pub(super) fn failed(&self, failure: Failure) -> Exhausted {
+        let mut contributors = FxHashSet::default();
+        for (left, right) in failure.pairs {
+            let family = self.family_of[&left];
+            debug_assert_eq!(family, self.family_of[&right], "pending Flow pair belongs to one family");
+            contributors.extend(self.contributors[family].iter().copied());
+        }
+        let mut contributors: Vec<_> = contributors.into_iter().collect();
+        contributors.sort_unstable();
+        Exhausted { contributors, what: format!("a cross-function Flow task where {}", failure.reasons.join("; ")).into() }
     }
 
     pub(super) fn pending(&mut self) -> Result<Vec<(Identity, Identity)>, Exhausted> {
@@ -232,14 +250,14 @@ pub(super) struct Batch {
     notes: Notes,
     results: Vec<(Identity, Identity, Option<(Identity, FlowRecordContract)>)>,
     diagnostics: FxHashMap<Identity, String>,
-    pub(super) unresolved: bool,
+    pub(super) failure: Option<Failure>,
 }
 
 struct Task<'s> {
     notes: Notes,
     results: Vec<(Identity, Identity, Option<(Identity, FlowRecordContract)>)>,
     diagnostics: FxHashMap<Identity, String>,
-    unresolved: bool,
+    failure: Option<Failure>,
     finished: Finished<'s>,
 }
 
@@ -266,14 +284,12 @@ pub(super) fn make_pairs<'s>(
             let mut made = Vec::new();
             let mut results = Vec::new();
             let mut diagnostics = FxHashMap::default();
-            let mut unresolved = false;
+            let mut failure = None;
             let (mut pair_unknown, mut no_contract) = (0, 0);
             let (mut failed_pairs, mut logged_failed_pairs) = (0, 0);
             for &(left, a, right, b) in slices[*task] {
                 let before = c.unknown_count();
                 let both = c.intersection_for_flow_cast(a, b);
-                unresolved |= c.unknown_count() != before;
-                pair_unknown += usize::from(c.unknown_count() != before);
                 let generated = both.and_then(|both| {
                     c.keep_type(both);
                     made.push((a, b, both));
@@ -285,14 +301,23 @@ pub(super) fn make_pairs<'s>(
                                 .or_insert_with(|| c.flow_record_diagnostic(both, contract));
                         }
                     }
-                    unresolved |= generated.is_none();
                     no_contract += usize::from(generated.is_none());
                     generated
                 });
-                unresolved |= c.unknown_count() != before;
                 let unknown = c.unknown_count() != before;
                 let missing_contract = both.is_some() && generated.is_none();
+                pair_unknown += usize::from(unknown);
                 if unknown || missing_contract {
+                    if failure.is_none() {
+                        let mut reasons = Vec::new();
+                        if unknown {
+                            reasons.push("an auxiliary relation exceeded its analysis limit");
+                        }
+                        if missing_contract {
+                            reasons.push("a materialized record contract could not be resolved");
+                        }
+                        failure = Some(Failure { pairs: vec![(left, right)], reasons });
+                    }
                     failed_pairs += 1;
                     if SourceSearchTrace::native_active() && logged_failed_pairs < 16 {
                         let detail = format!(
@@ -343,7 +368,24 @@ pub(super) fn make_pairs<'s>(
             });
             let notes_unknown = c.unknown_count() != before_notes;
             let ran_out_of_stack = c.take_ran_out_of_stack();
-            unresolved |= notes_unknown || ran_out_of_stack;
+            if notes_unknown || ran_out_of_stack {
+                // Notes and stack limits cover this native task, so retain every pair it processed.
+                let pairs = slices[*task].iter().map(|&(left, _, right, _)| (left, right)).collect();
+                let mut reasons = Vec::new();
+                if pair_unknown != 0 {
+                    reasons.push("an auxiliary relation exceeded its analysis limit");
+                }
+                if no_contract != 0 {
+                    reasons.push("a materialized record contract could not be resolved");
+                }
+                if notes_unknown {
+                    reasons.push("transition notes exceeded an auxiliary relation limit");
+                }
+                if ran_out_of_stack {
+                    reasons.push("native analysis exhausted its stack");
+                }
+                failure = Some(Failure { pairs, reasons });
+            }
             SourceSearchTrace::flow_layout_reasons(
                 pair_unknown,
                 no_contract,
@@ -360,7 +402,7 @@ pub(super) fn make_pairs<'s>(
                 notes,
                 results,
                 diagnostics,
-                unresolved,
+                failure,
                 finished,
             });
         });
@@ -370,17 +412,17 @@ pub(super) fn make_pairs<'s>(
             notes,
             results,
             diagnostics,
-            unresolved,
+            failure,
             finished: task,
         } in tasks.into_iter().filter_map(|task| task.1)
         {
-            outcomes.push((notes, results, diagnostics, unresolved));
+            outcomes.push((notes, results, diagnostics, failure));
             finished.push(task);
         }
         let invalid = program.validate(&finished, true);
         let mut accepted = Vec::new();
         let mut retried = Vec::new();
-        for (((notes, results, diagnostics, unresolved), record), (slice, invalid)) in outcomes
+        for (((notes, results, diagnostics, failure), record), (slice, invalid)) in outcomes
             .into_iter()
             .zip(finished)
             .zip(slices.into_iter().zip(invalid))
@@ -392,7 +434,9 @@ pub(super) fn make_pairs<'s>(
                 batch.notes.append(notes);
                 batch.results.extend(results);
                 batch.diagnostics.extend(diagnostics);
-                batch.unresolved |= unresolved;
+                if batch.failure.is_none() {
+                    batch.failure = failure;
+                }
             }
         }
         kinds_declared.publish(|| {
@@ -402,4 +446,48 @@ pub(super) fn make_pairs<'s>(
         slices = retried;
     }
     batch
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pair_failure_keeps_original_owners_and_excludes_other_task_families() {
+        let mut closure = Closure::default();
+        let (left, right, generated, other) = ([1, 0], [2, 0], [3, 0], [4, 0]);
+        let first = closure.join(left, generated);
+        closure.contributors[first].insert(FileId(7));
+        let second = closure.join(right, other);
+        closure.contributors[second].insert(FileId(2));
+        closure.join(generated, right);
+        let unrelated = closure.join([5, 0], [6, 0]);
+        closure.contributors[unrelated].insert(FileId(99));
+
+        let exhausted = closure.failed(Failure {
+            pairs: vec![(generated, other)],
+            reasons: vec!["an auxiliary relation exceeded its analysis limit"],
+        });
+        assert_eq!(exhausted.contributors, vec![FileId(2), FileId(7)]);
+        assert!(exhausted.what.contains("auxiliary relation"));
+    }
+
+    #[test]
+    fn task_failure_keeps_every_task_family_but_not_unrelated_families() {
+        let mut closure = Closure::default();
+        let first = closure.join([1, 0], [2, 0]);
+        closure.contributors[first].extend([FileId(7), FileId(2)]);
+        let second = closure.join([3, 0], [4, 0]);
+        closure.contributors[second].extend([FileId(8), FileId(2)]);
+        let unrelated = closure.join([5, 0], [6, 0]);
+        closure.contributors[unrelated].insert(FileId(99));
+
+        let exhausted = closure.failed(Failure {
+            pairs: vec![([1, 0], [2, 0]), ([3, 0], [4, 0])],
+            reasons: vec!["transition notes exceeded an auxiliary relation limit", "native analysis exhausted its stack"],
+        });
+        assert_eq!(exhausted.contributors, vec![FileId(2), FileId(7), FileId(8)]);
+        assert!(exhausted.what.contains("transition notes"));
+        assert!(exhausted.what.contains("exhausted its stack"));
+    }
 }

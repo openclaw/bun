@@ -3096,8 +3096,8 @@ fn link_with_helper_threads<'scope>(
             };
             let mut batch = flow_layouts::make_pairs(checked, &requests, kinds_declared, in_parallel);
             times.add("flow layouts", &mut since);
-            if batch.unresolved {
-                problems.push(Problem { file: nowhere, pos: 0, what: "a cross-function Flow intersection whose type could not be resolved".into() });
+            if let Some(failure) = batch.failure.take() {
+                flow_family_exhausted = Some((nowhere, flow_layouts.failed(failure)));
                 break;
             }
             flow_layouts.accept(checked, &mut batch);
