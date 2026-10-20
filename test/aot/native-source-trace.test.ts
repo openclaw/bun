@@ -15,16 +15,21 @@ describe.skipIf(!!unsupported)("compile/aot/native-source-trace", () => {
         "main.ts": readFileSync(join(import.meta.dir, "programs", "typed-objects", "inline-nested-record-flow-eight.ts"), "utf8"),
       });
       const cwd = String(folder);
-      for (const mode of ["0", "functions", "queries"]) {
-        const trace = join(cwd, `${mode}.jsonl`);
+      for (const [mode, maxBytes] of [["0", undefined], ["functions", undefined], ["queries", undefined], ["functions", "1"]] as const) {
+        const name = maxBytes === undefined ? mode : `${mode}-${maxBytes}`;
+        const trace = join(cwd, `${name}.jsonl`);
         const result = await spawned(
-          [bunExe(), "check", "--aot", "--threads=1", "--no-builtin-modules", `--aot-out=${join(cwd, `${mode}.bin`)}`, "main.ts"],
+          [bunExe(), "check", "--aot", "--threads=1", "--no-builtin-modules", `--aot-out=${join(cwd, `${name}.bin`)}`, "main.ts"],
           cwd,
-          { ...bunEnv, BUN_AOT_SOURCE_TRACE: trace, BUN_AOT_NATIVE_TRACE: mode, BUN_AOT_NATIVE_TRACE_FILTER: "main.ts" },
+          { ...bunEnv, BUN_AOT_SOURCE_TRACE: trace, BUN_AOT_SOURCE_TRACE_MAX_BYTES: maxBytes, BUN_AOT_NATIVE_TRACE: mode, BUN_AOT_NATIVE_TRACE_FILTER: "main.ts" },
         );
         built(result);
         expect(result.signal).toBeNull();
         const raw = readFileSync(trace, "utf8");
+        if (maxBytes !== undefined) {
+          expect(raw).toBe('{"event":"trace_limit","complete":false}\n');
+          continue;
+        }
         expect(raw.endsWith("\n")).toBe(true);
         const events: { event: string; domain?: string; phase?: string; span?: number; body_span?: number }[] = raw
           .trim()

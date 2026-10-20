@@ -234,7 +234,7 @@ BUN_AOT_SOURCE_TRACE="$PWD/source-search.jsonl" bun build --compile --aot app.ts
 
 The JSON-lines trace records search attempts, worker phases, propagation counts, and package fallbacks. File and query completions taking at least 100 ms include their elapsed time. Source paths are encoded as `path_hex` to preserve their exact bytes. Set `BUN_AOT_SOURCE_TRACE_DETAIL=path-substring` to also record starts and ends for every file and query matching that substring; an unfinished start identifies work still in progress.
 
-The compiler never overwrites an existing trace file. Output is capped at 256 MiB; a `trace_limit` record marks an incomplete trace. Trace I/O errors leave compilation running. Tracing must be enabled before the process starts and adds diagnostic work, so leave it disabled for performance measurements.
+The compiler never overwrites an existing trace file. Output is capped at 256 MiB by default. Set `BUN_AOT_SOURCE_TRACE_MAX_BYTES` to an integer from `1` through `2147483648` to change the byte limit; for example, `2147483648` permits up to 2 GiB of trace records. A `trace_limit` record marks an incomplete trace. Invalid limits disable tracing with a diagnostic before the file is created. Trace I/O errors leave compilation running. Tracing must be enabled before the process starts and adds diagnostic work, so leave it disabled for performance measurements.
 
 ### Native entry counters in the OpenClaw fork
 

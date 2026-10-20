@@ -4,6 +4,7 @@ These entries describe the experimental `openclaw/aot-typed` fork.
 
 ## Unreleased
 
+- Allow opt-in compiler trace byte limits up to 2 GiB while retaining the 256 MiB default.
 - Add opt-in native IR body and Flow-query timings to the compiler trace.
 - Normalize equivalent nested inline payload records during typed AOT flow narrowing.
 - Keep typed AOT compilation bounded for flow-narrowed unions with equivalent inline payload records.

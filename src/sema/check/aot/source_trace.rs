@@ -7,7 +7,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 
-const MAX_BYTES: usize = 256 << 20;
+const DEFAULT_MAX_BYTES: usize = 256 << 20;
+const MAX_CONFIGURED_BYTES: usize = 2 << 30;
 static LOG: OnceLock<Option<Log>> = OnceLock::new();
 
 struct Log {
@@ -20,6 +21,7 @@ struct Log {
 struct Output<W> {
     writer: W,
     bytes: usize,
+    max_bytes: usize,
     stopped: bool,
     phases: HashMap<(usize, usize), (u64, &'static str)>,
 }
@@ -29,7 +31,7 @@ impl<W: std::io::Write> Output<W> {
         if self.stopped {
             return;
         }
-        if self.bytes + line.len() > MAX_BYTES {
+        if line.len() > self.max_bytes.saturating_sub(self.bytes) {
             let _ = self
                 .writer
                 .write_all(b"{\"event\":\"trace_limit\",\"complete\":false}\n");
@@ -48,9 +50,22 @@ impl<W: std::io::Write> Output<W> {
     }
 }
 
+fn source_trace_max_bytes(value: Option<&[u8]>) -> Option<usize> {
+    let Some(value) = value else { return Some(DEFAULT_MAX_BYTES) };
+    let bytes = std::str::from_utf8(value).ok()?.parse::<usize>().ok()?;
+    (1..=MAX_CONFIGURED_BYTES).contains(&bytes).then_some(bytes)
+}
+
 fn log() -> Option<&'static Log> {
     LOG.get_or_init(|| {
         let path = std::env::var_os("BUN_AOT_SOURCE_TRACE")?;
+        let Some(max_bytes) = source_trace_max_bytes(bun_core::env_var::BUN_AOT_SOURCE_TRACE_MAX_BYTES::get()) else {
+            let _ = std::io::Write::write_all(
+                &mut std::io::stderr().lock(),
+                b"aot: BUN_AOT_SOURCE_TRACE_MAX_BYTES must be an integer from 1 to 2147483648; source trace disabled\n",
+            );
+            return None;
+        };
         match OpenOptions::new().write(true).create_new(true).open(path) {
             Ok(writer) => Some(Log {
                 started: Instant::now(),
@@ -62,6 +77,7 @@ fn log() -> Option<&'static Log> {
                 output: Mutex::new(Output {
                     writer,
                     bytes: 0,
+                    max_bytes,
                     stopped: false,
                     phases: HashMap::new(),
                 }),
@@ -399,6 +415,16 @@ mod tests {
     use super::*;
 
     #[test]
+    fn source_trace_byte_limit_defaults_and_validates_bounds() {
+        assert_eq!(source_trace_max_bytes(None), Some(256 << 20));
+        assert_eq!(source_trace_max_bytes(Some(b"1")), Some(1));
+        assert_eq!(source_trace_max_bytes(Some(b"2147483648")), Some(2 << 30));
+        for invalid in [b"".as_slice(), b"0", b"-1", b"2147483649", b"18446744073709551616", b"2GiB", b"\xff"] {
+            assert_eq!(source_trace_max_bytes(Some(invalid)), None);
+        }
+    }
+
+    #[test]
     fn native_mode_defaults_to_function_identity_only() {
         assert_eq!(native_mode("1"), Some(false));
         assert_eq!(native_mode("functions"), Some(false));
@@ -461,6 +487,7 @@ mod tests {
         let mut output = Output {
             writer: FailingWriter(0),
             bytes: 0,
+            max_bytes: DEFAULT_MAX_BYTES,
             stopped: false,
             phases: HashMap::new(),
         };
@@ -475,7 +502,8 @@ mod tests {
     fn capped_output_reports_incomplete_once() {
         let mut output = Output {
             writer: Vec::new(),
-            bytes: MAX_BYTES - 1,
+            bytes: DEFAULT_MAX_BYTES - 1,
+            max_bytes: DEFAULT_MAX_BYTES,
             stopped: false,
             phases: HashMap::new(),
         };
