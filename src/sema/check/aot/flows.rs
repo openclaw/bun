@@ -2743,6 +2743,7 @@ impl<'p, 's> Checker<'p, 's> {
     /// A Flow narrowing must retain the primitive constraints of every older alias. Unlike an explicit cast, it needs a distinct
     /// record when layout canonicalization would widen the intersection back to one of its operands.
     pub fn intersection_for_flow_cast(&mut self, source: TypeId, target: TypeId) -> Option<TypeId> {
+        let _native_trace = Trace::native_query("intersection_for_flow_cast", source.0, target.0, None, None);
         let not_known_before = self.aot.flows.unknown_count;
         if self.is_coercion_result_type(source) || self.is_coercion_result_type(target) {
             return None;

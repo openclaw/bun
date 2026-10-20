@@ -4,6 +4,7 @@ These entries describe the experimental `openclaw/aot-typed` fork.
 
 ## Unreleased
 
+- Add opt-in native IR body and Flow-query timings to the compiler trace.
 - Normalize equivalent nested inline payload records during typed AOT flow narrowing.
 - Keep typed AOT compilation bounded for flow-narrowed unions with equivalent inline payload records.
 - Cover ordinary-array getter and iterator checks while preserving supported Proxy-array behavior.

@@ -11,7 +11,7 @@ use crate::id::{FuncId, LayoutId, StrId, TyId, V};
 use crate::ir::{BinOp, FuncKind, LayoutKind, MethodKind, Op, Operation, Prediction, Term, UnOp, CoerceReason, field_flags, func_flags};
 use bun_sema::atom::Atom;
 use bun_sema::bind::Parent;
-use bun_sema::check::kind;
+use bun_sema::check::{kind, SourceSearchTrace, NativeTraceCounts};
 use bun_sema::hir::{self, ExprId, ExprKind};
 use bun_sema::types::TypeId;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -628,7 +628,17 @@ impl<'c, 'p, 's> FileBuild<'c, 'p, 's> {
             return;
         }
         let (Some(&source), Some(&target)) = (self.layout_types.get(&source), self.layout_types.get(&target)) else { return };
+        let join_counts = SourceSearchTrace::native_active().then(|| {
+            let left = fx.flow_layouts.family_of.get(&source).copied();
+            let right = fx.flow_layouts.family_of.get(&target).copied();
+            (usize::from(left.is_none()) + usize::from(target != source && right.is_none()),
+             left.is_some() && right.is_some() && left != right)
+        });
         let family = fx.flow_layouts.join(source, target);
+        let mut native_trace = join_counts.and_then(|(join_added, join_merged)| SourceSearchTrace::native_query(
+            "record_flow_intersections", source.0, target.0, Some(fx.b.pos),
+            Some(NativeTraceCounts { members: fx.flow_layouts.members[family].len(), comparisons: fx.flow_layouts.comparisons, join_added, join_merged, ..NativeTraceCounts::default() }),
+        ));
         let mut right = 1;
         loop {
             if fx.flow_layouts.members[family].len() > MAX_FLOW_LAYOUT_MEMBERS {
@@ -643,7 +653,11 @@ impl<'c, 'p, 's> FileBuild<'c, 'p, 's> {
             for left in 0..right {
                 let a = fx.flow_layouts.members[family][left];
                 let pair = if a.0 < b.0 { (a, b) } else { (b, a) };
-                if fx.flow_layouts.compared.contains(&pair) {
+                let known = fx.flow_layouts.compared.contains(&pair);
+                if let Some(trace) = &mut native_trace {
+                    trace.scan(known);
+                }
+                if known {
                     continue;
                 }
                 if fx.flow_layouts.comparisons == MAX_FLOW_LAYOUT_PAIRS {
@@ -653,7 +667,13 @@ impl<'c, 'p, 's> FileBuild<'c, 'p, 's> {
                 }
                 fx.flow_layouts.comparisons += 1;
                 let not_known_before = self.c.unknown_count();
+                if let Some(trace) = &mut native_trace {
+                    trace.progress(fx.flow_layouts.members[family].len(), fx.flow_layouts.comparisons, false);
+                }
                 let both = self.c.intersection_for_flow_cast(a, b);
+                if let Some(trace) = &mut native_trace {
+                    trace.progress(fx.flow_layouts.members[family].len(), fx.flow_layouts.comparisons, self.c.unknown_count() != not_known_before);
+                }
                 if self.c.unknown_count() == not_known_before {
                     fx.flow_layouts.compared.insert(pair);
                 }
@@ -667,6 +687,9 @@ impl<'c, 'p, 's> FileBuild<'c, 'p, 's> {
                 self.c.record_upcast(both, a);
                 self.c.record_upcast(both, b);
                 fx.flow_layouts.add(family, both);
+                if let Some(trace) = &mut native_trace {
+                    trace.progress(fx.flow_layouts.members[family].len(), fx.flow_layouts.comparisons, false);
+                }
                 if fx.flow_layouts.members[family].len() > MAX_FLOW_LAYOUT_MEMBERS {
                     fx.flow_layouts.exhausted = true;
                     self.problem(fx.file, fx.b.pos, "a Flow layout family with more than 1024 members");

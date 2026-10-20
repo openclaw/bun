@@ -234,9 +234,210 @@ impl Drop for Span {
     }
 }
 
+
+// Native IR translation outlives source search. Keep its current body in thread-local state.
+static NATIVE_CONFIG: OnceLock<Option<NativeConfig>> = OnceLock::new();
+
+struct NativeConfig {
+    filter: Option<Vec<u8>>,
+    queries: bool,
+}
+
+fn native_mode(value: &str) -> Option<bool> {
+    match value {
+        "1" | "functions" => Some(false),
+        "queries" => Some(true),
+        _ => None,
+    }
+}
+
+fn native_config() -> Option<&'static NativeConfig> {
+    NATIVE_CONFIG.get_or_init(|| {
+        let queries = native_mode(&std::env::var("BUN_AOT_NATIVE_TRACE").ok()?)?;
+        Some(NativeConfig {
+            filter: std::env::var("BUN_AOT_NATIVE_TRACE_FILTER").ok().filter(|s| !s.is_empty()).map(String::into_bytes),
+            queries,
+        })
+    }).as_ref()
+}
+
+#[derive(Clone, Copy, Default)]
+pub struct NativeCounts {
+    pub members: usize,
+    pub comparisons: usize,
+    pub scanned: usize,
+    pub skipped: usize,
+    pub provisional: usize,
+    pub join_added: usize,
+    pub join_merged: bool,
+}
+
+#[derive(Clone, Copy)]
+struct NativeContext {
+    trace: Trace,
+    worker: usize,
+    body: u64,
+    span: u64,
+    parent: u64,
+    file: u32,
+    function: u32,
+    ir_function: u32,
+    position: u32,
+    counts: NativeCounts,
+}
+
+thread_local! {
+    static NATIVE_CONTEXT: std::cell::Cell<Option<NativeContext>> = const { std::cell::Cell::new(None) };
+    static NATIVE_WORKER: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
+}
+
+impl Trace {
+    #[inline]
+    pub fn native_active() -> bool {
+        native_config().is_some_and(|config| config.queries) && NATIVE_CONTEXT.with(|slot| slot.get().is_some())
+    }
+
+    pub fn native_function(program: usize, file: u32, function: u32, ir_function: u32, position: u32, path: &[u8]) -> Option<NativeSpan> {
+        let config = native_config()?;
+        if config.filter.as_ref().is_some_and(|filter| !path.windows(filter.len()).any(|part| part == filter)) {
+            return NativeSpan::suspend();
+        }
+        let log = log()?;
+        let trace = Self { log: Some(log), id: 0, program };
+        let worker = NATIVE_WORKER.with(|slot| {
+            let worker = slot.get().unwrap_or_else(|| log.next.fetch_add(1, Ordering::Relaxed) as usize);
+            slot.set(Some(worker));
+            worker
+        });
+        let span = log.next.fetch_add(1, Ordering::Relaxed);
+        let context = NativeContext { trace, worker, body: span, span, parent: 0, file, function, ir_function, position, counts: NativeCounts::default() };
+        Some(NativeSpan::begin(context, "native_function", None, None, Some(path)))
+    }
+
+    pub fn native_query(phase: &'static str, source: u32, target: u32, position: Option<u32>, counts: Option<NativeCounts>) -> Option<NativeSpan> {
+        if !native_config()?.queries {
+            return None;
+        }
+        let previous = NATIVE_CONTEXT.with(|slot| slot.get())?;
+        let log = previous.trace.log?;
+        let context = NativeContext {
+            span: log.next.fetch_add(1, Ordering::Relaxed),
+            parent: previous.span,
+            position: position.unwrap_or(previous.position),
+            counts: counts.unwrap_or(previous.counts),
+            ..previous
+        };
+        Some(NativeSpan::begin(context, phase, Some(source), Some(target), None))
+    }
+}
+
+pub struct NativeSpan {
+    context: NativeContext,
+    previous: Option<NativeContext>,
+    phase: &'static str,
+    source: Option<u32>,
+    target: Option<u32>,
+    started: Instant,
+    // Restoring a TLS context must happen on the thread that installed it.
+    _thread: std::marker::PhantomData<std::rc::Rc<()>>,
+}
+
+impl NativeSpan {
+    fn suspend() -> Option<Self> {
+        let previous = NATIVE_CONTEXT.with(|slot| slot.replace(None))?;
+        let context = NativeContext { trace: Trace { log: None, ..previous.trace }, ..previous };
+        Some(Self { context, previous: Some(previous), phase: "filtered", source: None, target: None, started: Instant::now(), _thread: std::marker::PhantomData })
+    }
+
+    fn begin(context: NativeContext, phase: &'static str, source: Option<u32>, target: Option<u32>, path: Option<&[u8]>) -> Self {
+        let previous = NATIVE_CONTEXT.with(|slot| slot.replace(Some(context)));
+        let span = Self { context, previous, phase, source, target, started: Instant::now(), _thread: std::marker::PhantomData };
+        // An unbuffered start record identifies the query even if it never returns.
+        span.write("start", path);
+        span
+    }
+
+    pub fn scan(&mut self, known: bool) {
+        self.context.counts.scanned += 1;
+        self.context.counts.skipped += usize::from(known);
+        NATIVE_CONTEXT.with(|slot| slot.set(Some(self.context)));
+    }
+
+    pub fn progress(&mut self, members: usize, comparisons: usize, provisional: bool) {
+        self.context.counts.members = members;
+        self.context.counts.comparisons = comparisons;
+        self.context.counts.provisional += usize::from(provisional);
+        NATIVE_CONTEXT.with(|slot| slot.set(Some(self.context)));
+    }
+
+    fn write(&self, event: &str, path: Option<&[u8]>) {
+        if self.context.trace.log.is_none() {
+            return;
+        }
+        let c = self.context;
+        let n = c.counts;
+        let path = path.map(|path| format!(",\"path_hex\":\"{}\"", hex(path))).unwrap_or_default();
+        c.trace.write(format!(
+            "\"event\":\"{event}\",\"domain\":\"native_ir\",\"phase\":\"{}\",\"span\":{},\"parent_span\":{},\"body_span\":{},\"worker\":{},\"file\":{},\"function\":{},\"ir_function\":{},\"position\":{},\"source_type\":{},\"target_type\":{},\"members\":{},\"comparisons\":{},\"scanned\":{},\"skipped\":{},\"provisional\":{},\"join_added\":{},\"join_merged\":{},\"elapsed_ns\":{}{}",
+            self.phase, c.span, c.parent, c.body, c.worker, c.file, c.function, c.ir_function, c.position,
+            optional(self.source), optional(self.target), n.members, n.comparisons, n.scanned, n.skipped,
+            n.provisional, n.join_added, n.join_merged,
+            if event == "start" { 0 } else { self.started.elapsed().as_nanos() }, path,
+        ));
+    }
+}
+
+impl Drop for NativeSpan {
+    fn drop(&mut self) {
+        self.write("end", None);
+        NATIVE_CONTEXT.with(|slot| slot.set(self.previous));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_mode_defaults_to_function_identity_only() {
+        assert_eq!(native_mode("1"), Some(false));
+        assert_eq!(native_mode("functions"), Some(false));
+        assert_eq!(native_mode("queries"), Some(true));
+        assert_eq!(native_mode("0"), None);
+    }
+
+    fn native_test_context(span: u64) -> NativeContext {
+        NativeContext {
+            trace: Trace { log: None, id: 0, program: 1 }, worker: 0, body: 1, span, parent: 0,
+            file: 7, function: 8, ir_function: 9, position: 10, counts: NativeCounts::default(),
+        }
+    }
+
+    #[test]
+    fn native_nested_spans_restore_parent_identity_and_counts() {
+        let before = NATIVE_CONTEXT.with(|slot| slot.replace(None));
+        {
+            let mut outer = NativeSpan::begin(native_test_context(1), "record_flow_intersections", Some(2), Some(3), None);
+            outer.scan(true);
+            outer.progress(4, 5, true);
+            {
+                let parent = NATIVE_CONTEXT.with(|slot| slot.get()).unwrap();
+                let _inner = NativeSpan::begin(NativeContext { span: 2, parent: parent.span, ..parent }, "intersection_for_flow_cast", Some(2), Some(3), None);
+                assert_eq!(NATIVE_CONTEXT.with(|slot| slot.get()).unwrap().parent, 1);
+            }
+            let parent = NATIVE_CONTEXT.with(|slot| slot.get()).unwrap();
+            assert_eq!(parent.span, 1);
+            assert_eq!((parent.counts.scanned, parent.counts.skipped, parent.counts.provisional), (1, 1, 1));
+            assert_eq!((parent.counts.members, parent.counts.comparisons), (4, 5));
+            {
+                let _filtered = NativeSpan::suspend().unwrap();
+                assert!(NATIVE_CONTEXT.with(|slot| slot.get()).is_none());
+            }
+            assert_eq!(NATIVE_CONTEXT.with(|slot| slot.get()).unwrap().span, 1);
+        }
+        assert!(NATIVE_CONTEXT.with(|slot| slot.get()).is_none());
+        NATIVE_CONTEXT.with(|slot| slot.set(before));
+    }
 
     #[test]
     fn path_hex_preserves_invalid_utf8_and_newlines() {

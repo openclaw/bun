@@ -46,7 +46,7 @@ pub use javascript::ImportedCode;
 pub use kinds::kind;
 pub use flows::{Answer, BuiltIn, Candidate, TruncatedSearch, KindsDeclared, Literal, SearchBarrier, Membership, FlowNotes, DataOrigin, Place, Question, Reach, Share, UntypedReason};
 pub use subtypes::{Cause, FieldTypes, LoggingRelaxation, Sizes, Subtypes};
-pub use source_trace::Trace as SourceSearchTrace;
+pub use source_trace::{Trace as SourceSearchTrace, NativeCounts as NativeTraceCounts};
 pub use storage::{Evaluates, Primitive, ReferenceRead, Storage};
 pub use reported_by_lint::{AotCheck, AotCheckKind};
 pub use trust::{Claim, is_engine_global};

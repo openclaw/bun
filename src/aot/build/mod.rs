@@ -42,7 +42,7 @@ use crate::id::{BlockId, FuncId, GlobalId, LayoutId, ModuleId, StrId, TyId, V};
 use crate::ir::{self, Func, FuncKind, Op, Term};
 use bun_builtin_syntax::Archive;
 use bun_sema::atom::Atom;
-use bun_sema::check::{Activation, Capture, Checker, Evaluates, FirstStore, Identity, Program as Checked, Receiver, CodeOwner};
+use bun_sema::check::{Activation, Capture, Checker, Evaluates, FirstStore, Identity, Program as Checked, Receiver, CodeOwner, SourceSearchTrace};
 use bun_sema::hir::{self, ClassId, FileKind, FnId, StmtKind};
 use bun_sema::program::{Builtin, FileId, Files, LoadedBy, Sym};
 use bun_sema::types::TypeId;
@@ -2711,6 +2711,10 @@ impl<'c, 'p, 's> FileBuild<'c, 'p, 's> {
             Source::EnumObject(sym) | Source::NamespaceObject(sym) | Source::Initializer(sym) => (sym.file, FnId::NONE, None),
             Source::DynamicImport(file, _) | Source::Required(file) | Source::DynamicImportBody(file, _) | Source::ModuleBody(file) | Source::ModuleDriver(file) | Source::ModuleInner(file) | Source::ModuleNamespaceReader(file) | Source::ExportedObjectMember(file) | Source::ExportedObjectDefault(file, _) | Source::FilesByPath(file) | Source::EvaluateByIndex(file) | Source::EvaluateSingleFile(file, _) | Source::ExportVariablesReader(file) | Source::NamespaceForHost(file) | Source::Validator(file, _) => (file, FnId::NONE, None),
         };
+        let _native_trace = SourceSearchTrace::native_function(
+            std::ptr::from_ref(self.c.p).addr(), file.0, func.0, id.0,
+            self.out.funcs[id.idx()].pos, self.files.module(file).file_name(),
+        );
         let role = match source {
             Source::Function { role, .. } => role,
             _ => Role::Whole,
