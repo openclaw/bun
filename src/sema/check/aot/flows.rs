@@ -817,6 +817,8 @@ pub(super) struct State {
     pub(super) provably_related: FxHashMap<(TypeId, TypeId, u8), bool>,
     derived_types: FxHashMap<(TypeId, DerivedTypeKind), TypeId>,
     flow_records: FxHashMap<FlowRecordKey, TypeId>,
+    /// Exact reference-leaf contracts; these representatives are not synthesized Flow records.
+    flow_reference_records: FxHashMap<FlowRecordKey, TypeId>,
     pub(super) literal_contextual_types: FxHashMap<(FileId, ExprId), Option<TypeId>>,
     pub(super) unknown_count: usize,
     /// `root_of`, as far as it has been asked. Arrays, functions and the classes of the engine are in it from the first time on.
@@ -2768,6 +2770,7 @@ impl<'p, 's> Checker<'p, 's> {
         };
         for prop in properties.shape().props.iter() {
             let ty = self.type_of_prop(prop, properties.mapper);
+            let ty = self.canonical_flow_reference_field(ty);
             // type_of_prop has already applied these transformations; the remaining flags still describe the property contract.
             let flags = prop.flags & !(PropFlags::WIDEN | PropFlags::REGULAR);
             key.fields.push((prop.name, flags, prop.name_type, ty));
@@ -2793,6 +2796,98 @@ impl<'p, 's> Checker<'p, 's> {
             self.aot.flows.flow_records.insert(key, record);
         }
         record
+    }
+
+    fn flow_reference_leaves(&self, ty: TypeId) -> Option<Vec<TypeId>> {
+        // This local optimization never inspects more nodes than the Flow family's existing member ceiling.
+        const MAX_NODES: usize = 1024;
+        let mut seen = FxHashSet::default();
+        let mut pending = vec![ty];
+        let mut leaves = Vec::new();
+        seen.insert(ty);
+        let mut next = 0;
+        while let Some(&part) = pending.get(next) {
+            next += 1;
+            match self.data(part) {
+                TypeData::Union(parts) | TypeData::Intersection(parts) => {
+                    if parts.is_empty() {
+                        return None;
+                    }
+                    // Keep source constituent order. Only aggregate edges are followed, never a record's field types.
+                    for &part in parts.iter() {
+                        if seen.insert(part) {
+                            if seen.len() > MAX_NODES {
+                                return None;
+                            }
+                            pending.push(part);
+                        }
+                    }
+                }
+                _ => leaves.push(part),
+            }
+        }
+        (!leaves.is_empty()).then_some(leaves)
+    }
+
+    fn canonical_flow_reference_field(&mut self, ty: TypeId) -> TypeId {
+        if !matches!(self.data(ty), TypeData::Union(_) | TypeData::Intersection(_)) { return ty; }
+        let Some(parts) = self.flow_reference_leaves(ty) else { return ty };
+        let Some((&first, rest)) = parts.split_first() else { return ty };
+        if rest.is_empty() || self.results_are_provisional() {
+            return ty;
+        }
+        let before = (self.stack_half_used_count(), self.aot.flows.unknown_count);
+        let declared_only = self.is_declared_only_record(first);
+        let unsupported = PropFlags::PRIVATE | PropFlags::PROTECTED | PropFlags::METHOD | PropFlags::ACCESSOR | PropFlags::WRITE_ONLY | PropFlags::ABSTRACT;
+        let mut first_fields: Option<Vec<(Atom, PropFlags, TypeId, TypeId)>> = None;
+        for &part in &parts {
+            // Only own, unmapped data members participate; inherited and instantiated contracts retain their original type.
+            if !matches!(self.data(part), TypeData::Anon { origin: Origin::TypeLiteral(..), mapper: MapperId::IDENTITY })
+                || self.is_instance_type(part)
+                || self.is_coercion_result_type(part)
+                || self.has_type_variables(part)
+                || self.is_declared_only_record(part) != declared_only
+            {
+                return ty;
+            }
+            let Some(members) = self.members(part) else { return ty };
+            if members.mapper != MapperId::IDENTITY
+                || members.has_signatures()
+                || !members.index_infos().is_empty()
+                || members.shape().props.iter().any(|prop| prop.mapper != MapperId::IDENTITY || prop.flags.intersects(unsupported) || self.is_private_name(prop.name))
+            {
+                return ty;
+            }
+            let mut fields: Vec<_> = members.shape().props.iter().map(|prop| {
+                (prop.name, prop.flags, prop.name_type, self.type_of_prop(prop, members.mapper))
+            }).collect();
+            fields.sort_unstable_by_key(|field| field.0.0);
+            if let Some(first_fields) = &first_fields {
+                // Exact child types retain declaration-file provenance, even when their structures happen to be identical.
+                if *first_fields != fields {
+                    return ty;
+                }
+            } else {
+                first_fields = Some(fields);
+            }
+        }
+        let identical = rest.iter().all(|&part| self.is_provably_related(first, part, Relation::Identity));
+        if !identical || before != (self.stack_half_used_count(), self.aot.flows.unknown_count) || self.results_are_provisional() {
+            return ty;
+        }
+        let Some(fields) = first_fields else { return ty };
+        let key = FlowRecordKey { fields, indexes: Vec::new(), declared_only };
+        if let Some(&representative) = self.aot.flows.flow_reference_records.get(&key) {
+            if !self.is_provably_related(representative, first, Relation::Identity)
+                || before != (self.stack_half_used_count(), self.aot.flows.unknown_count)
+                || self.results_are_provisional()
+            {
+                return ty;
+            }
+            return representative;
+        }
+        self.aot.flows.flow_reference_records.insert(key, first);
+        first
     }
 
     /// A value is cast to `target`, with `as`, with `!` or by entering a place whose type is written down. `sources`: what it is looked at

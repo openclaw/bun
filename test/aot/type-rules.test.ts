@@ -8,6 +8,7 @@ import { test } from "./supported";
 programs("type-rules");
 
 const analysisRegressions = [
+  "typed-objects/inline-nested-record-flow.ts",
   "typed-objects/generic-type-growing-several-ways.ts",
   "type-rules/arrays-filled-with-sums-of-their-own-elements.ts",
 ];
