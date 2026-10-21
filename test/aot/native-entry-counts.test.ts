@@ -32,6 +32,24 @@ function snapshot(path: string, phase: "partial" | "final" = "final") {
   return { vm: Number(header[3]), pid: Number(header[2]), lines };
 }
 
+function functionStates(executable: Buffer) {
+  const magic = Buffer.from("BUNAOT01", "latin1");
+  for (let at = executable.indexOf(magic); at >= 0; at = executable.indexOf(magic, at + 1)) {
+    if (at + 24 > executable.length) break;
+    const imageSize = Number(executable.readBigUInt64LE(at + 16));
+    const program = at + imageSize;
+    if (imageSize < 24 || program + 60 > executable.length) continue;
+    if (executable.toString("latin1", program, program + 8) !== "PRDATA04") continue;
+    const size = executable.readUInt32LE(program + 16);
+    const infos = executable.readUInt32LE(program + 44);
+    const count = executable.readUInt32LE(program + 52);
+    if (program + size > executable.length || infos + count * 8 > size) continue;
+    // FunctionInfo stores four flag bits before the per-instance state number.
+    return Array.from({ length: count }, (_, index) => executable.readUInt32LE(program + infos + index * 8 + 4) >>> 4);
+  }
+  throw new Error("the executable holds no AOT function state table");
+}
+
 const workerFiles = {
   "main.mjs": `
 import { Worker } from "node:worker_threads";
@@ -167,10 +185,18 @@ continueFromParent();
 let total = 0;
 function observed(value: number) { total += value; }
 function neverCalled(value: number) { total -= value; }
+function stateless(value: number) { return value + 1; }
+function stateful(value: any) { total += value.amount; }
 const emitter = new EventEmitter();
 emitter.on("counted", observed);
 emitter.on("uncalled", neverCalled);
-for (let i = 0; i < 37; i++) emitter.emit("counted", 2);
+emitter.on("stateless", stateless);
+emitter.on("stateful", stateful);
+for (let i = 0; i < 37; i++) {
+  emitter.emit("counted", 2);
+  emitter.emit("stateless", 2);
+  emitter.emit("stateful", { amount: 3 });
+}
 Bun.gc(true);
 console.log(total);
 continueFromParent();
@@ -184,6 +210,7 @@ declare module "node:fs" {
 declare module "node:events" {
   export class EventEmitter {
     on(event: string, listener: (value: number) => void): this;
+    emit(event: "stateful", value: { amount: number }): boolean;
     emit(event: string, value: number): boolean;
   }
 }
@@ -204,9 +231,15 @@ declare module "node:events" {
           .filter(line => line.startsWith("F\t"))
           .map(line => {
             const fields = line.split("\t");
-            return [Number(fields[1]), fields[7]];
+            return [Number(fields[1]), { name: fields[7], kind: fields[8] }];
           }),
       );
+      const states = functionStates(readFileSync(executable));
+      const statesOf = (name: string) =>
+        [...names].filter(([, value]) => value.name === name && value.kind === "typed").map(([id]) => states[id]);
+      expect(statesOf("stateless").length).toBeGreaterThan(0);
+      expect(statesOf("stateless").every(state => state === 0)).toBe(true);
+      expect(statesOf("stateful").some(state => state > 0)).toBe(true);
       for (const mode of ["native", "operations", "retry", "killed"] as const) {
         const prefix = mode === "retry" ? join(cwd, mode, "counts") : join(cwd, mode);
         const nativePath = prefix + "-vm-1.native-entries";
@@ -254,7 +287,7 @@ declare module "node:events" {
         }
         child.stdin.write("1");
         await child.stdin.flush();
-        expect(await readLine()).toBe("74");
+        expect(await readLine()).toBe("185");
         if (mode === "retry") snapshot(nativePath, "partial");
         else expect(readFileSync(nativePath, "utf8")).toBe(initial);
         expect(readdirSync(cwd).filter(name => name.startsWith(mode) && name.endsWith(".tmp"))).toEqual([]);
@@ -289,13 +322,18 @@ declare module "node:events" {
           .lines.slice(1)
           .map(line => line.split("\t"));
         const ofName = (name: string) =>
-          rows.filter(fields => names.get(Number(fields[0])) === name && fields[1] === "typed");
+          rows.filter(fields => names.get(Number(fields[0]))?.name === name && fields[1] === "typed");
         const called = ofName("observed");
         const uncalled = ofName("neverCalled");
         expect(called.length).toBeGreaterThan(0);
         expect(uncalled.length).toBeGreaterThan(0);
         expect(called.reduce((sum, fields) => sum + Number(fields[3]), 0)).toBe(37);
         expect(uncalled.reduce((sum, fields) => sum + Number(fields[3]), 0)).toBe(0);
+        for (const name of ["stateless", "stateful"]) {
+          const counted = ofName(name);
+          expect(counted.length).toBeGreaterThan(0);
+          expect(counted.reduce((sum, fields) => sum + Number(fields[3]), 0)).toBe(37);
+        }
         if (mode === "operations" || mode === "retry") {
           snapshot(prefix + "-vm-1.operations");
           snapshot(prefix + "-vm-1.allocations");

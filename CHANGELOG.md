@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Keep stateless typed functions free of VM state when native-entry counters are enabled.
 - Preserve typed validation results across native fallback joins, prune redundant plain-data Flow union arms, and retry generated layouts that exceed native nesting limits.
 
 - Bound repeated nested Flow intersections by reusing equivalent record contracts, and preserve explicit typed parsing and validation during native fallback.
