@@ -7,7 +7,7 @@ function describeCrate(crate: Crate): string { return crate.labels.join() + " " 
 function describeShipment(shipment: Shipment): string { return shipment.id + " " + describeCrate(shipment.crate) }
 function untypedGadget(): any { const gadget: any = {}; gadget.serial = "s-1"; return gadget }
 function firstLines(f: () => string): string {
-  try { return f() } catch (e) { return e instanceof Error ? e.name + ": " + e.message.split("\n").slice(0, 2).map(line => line.replace(/ \(bun --aot: [^)]*\)/, "").trim()).join(" | ").split(", and a copy")[0] : String(e) }
+  try { return f() } catch (e) { return e instanceof Error ? e.name + ": " + e.message.split("\n").slice(0, 2).map(line => line.replace(/ \((?:bun --aot: https:\/\/bun\.com\/docs\/bundler\/executables#ahead-of-time-compilation|bun compile checks types at run time: https:\/\/bun\.com\/docs\/bundler\/aot-troubleshooting)\)$/, "").trim()).join(" | ").split(", and a copy")[0] : String(e) }
 }
 
 const known: Shipment = { id: 1, crate: { labels: ["known"], gadget: { serial: "s-0", vendor: "v" } } };

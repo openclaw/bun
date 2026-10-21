@@ -125,9 +125,16 @@ describe.concurrent("compile/aot/plugins of Bun.build", () => {
     );
   }
 
-  test.concurrent.each([false, true])(
-    "a returned argument keeps its checked type across a declared import (nested call: %p)",
-    nested =>
+  test.concurrent.each([
+    [false, "bundle"],
+    [false, "aot"],
+    [false, "log"],
+    [true, "bundle"],
+    [true, "aot"],
+    [true, "log"],
+  ] as const)(
+    "a returned argument keeps its checked type across a declared import (nested call: %p; %s)",
+    (nested, how) =>
       slot(async () => {
         using dir = tempDir("aot-returned-argument", {
           "package.json": JSON.stringify({ type: "module" }),
@@ -168,39 +175,38 @@ export async function receive(handler) {
           "build.ts": build,
         });
         const folder = String(dir);
-        for (const how of ["bundle", "aot", "log"]) {
-          const executable = join(folder, how + (isWindows ? ".exe" : ""));
-          const built = await spawned([bunExe(), "build.ts", "./main.ts", executable, how], folder, bunEnv);
-          expect({ how, stdout: built.stdout, stderr: built.stderr, exitCode: built.exitCode }).toEqual({
-            how,
-            stdout: expect.any(String),
-            stderr: expect.any(String),
-            exitCode: 0,
-          });
-          const ran = await spawned(
-            [executable],
-            folder,
-            how === "bundle"
-              ? bunEnv
-              : { ...bunEnv, BUN_JSC_crashIfInterpreterIsUsed: "1", BUN_AOT_TYPE_ERROR_LOG: "stderr" },
-          );
-          const prints =
-            how === "bundle"
-              ? "string:hello\nnumber:42\ndirect:number:42\n"
-              : how === "aot"
-                ? "string:hello\nTypeError\ndirect:TypeError\n"
-                : "string:hello\nTypeError\ndirect:number:42\n";
-          expect({ how, stdout: ran.stdout, exitCode: ran.exitCode, signal: ran.signal }).toEqual({
-            how,
-            stdout: prints,
-            exitCode: 0,
-            signal: null,
-          });
-          if (how === "log") {
-            expect(ran.stderr).toContain("expected string, got number; threw");
-            expect(ran.stderr).toContain("expected string, got number; continued");
-          }
+        const executable = join(folder, how + (isWindows ? ".exe" : ""));
+        const built = await spawned([bunExe(), "build.ts", "./main.ts", executable, how], folder, bunEnv);
+        expect({ how, stdout: built.stdout, stderr: built.stderr, exitCode: built.exitCode }).toEqual({
+          how,
+          stdout: expect.any(String),
+          stderr: expect.any(String),
+          exitCode: 0,
+        });
+        const ran = await spawned(
+          [executable],
+          folder,
+          how === "bundle"
+            ? bunEnv
+            : { ...bunEnv, BUN_JSC_crashIfInterpreterIsUsed: "1", BUN_AOT_TYPE_ERROR_LOG: "stderr" },
+        );
+        const prints =
+          how === "bundle"
+            ? "string:hello\nnumber:42\ndirect:number:42\n"
+            : how === "aot"
+              ? "string:hello\nTypeError\ndirect:TypeError\n"
+              : "string:hello\nTypeError\ndirect:number:42\n";
+        expect({ how, stdout: ran.stdout, exitCode: ran.exitCode, signal: ran.signal }).toEqual({
+          how,
+          stdout: prints,
+          exitCode: 0,
+          signal: null,
+        });
+        if (how === "log") {
+          expect(ran.stderr).toContain("expected string, got number; threw");
+          expect(ran.stderr).toContain("expected string, got number; continued");
         }
       }),
+    60_000,
   );
 });

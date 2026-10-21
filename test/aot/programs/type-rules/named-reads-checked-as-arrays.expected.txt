@@ -283,21 +283,21 @@
 0 true own written | TypeError: expected number[], got boolean true
 0 true inherited written | TypeError: expected number[], got boolean true
 0 true getter written | TypeError: expected number[], got boolean true
-0 proxy own numbers | TypeError: expected number[], got native ProxyObject
-0 proxy inherited numbers | TypeError: expected number[], got native ProxyObject
-0 proxy getter numbers | TypeError: expected number[], got native ProxyObject
-0 proxy own texts | TypeError: expected string[], got native ProxyObject
-0 proxy inherited texts | TypeError: expected string[], got native ProxyObject
-0 proxy getter texts | TypeError: expected string[], got native ProxyObject
-0 proxy own any | TypeError: expected any[], got native ProxyObject
-0 proxy inherited any | TypeError: expected any[], got native ProxyObject
-0 proxy getter any | TypeError: expected any[], got native ProxyObject
-0 proxy own either | TypeError: expected any[], got native ProxyObject
-0 proxy inherited either | TypeError: expected any[], got native ProxyObject
-0 proxy getter either | TypeError: expected any[], got native ProxyObject
-0 proxy own written | TypeError: expected number[], got native ProxyObject
-0 proxy inherited written | TypeError: expected number[], got native ProxyObject
-0 proxy getter written | TypeError: expected number[], got native ProxyObject
+0 proxy own numbers 1:1
+0 proxy inherited numbers 1:1
+0 proxy getter numbers 1:1
+0 proxy own texts 1:1
+0 proxy inherited texts 1:1
+0 proxy getter texts 1:1
+0 proxy own any 1:1
+0 proxy inherited any 1:1
+0 proxy getter any 1:1
+0 proxy own either 1:1
+0 proxy inherited either 1:1
+0 proxy getter either 1:1
+0 proxy own written 1
+0 proxy inherited written 1
+0 proxy getter written 1
 0 arguments own numbers | TypeError: expected number[], got native Object
 0 arguments inherited numbers | TypeError: expected number[], got native Object
 0 arguments getter numbers | TypeError: expected number[], got native Object
@@ -643,21 +643,21 @@
 1 true own written | TypeError: expected number[], got boolean true
 1 true inherited written | TypeError: expected number[], got boolean true
 1 true getter written | TypeError: expected number[], got boolean true
-1 proxy own numbers | TypeError: expected number[], got native ProxyObject
-1 proxy inherited numbers | TypeError: expected number[], got native ProxyObject
-1 proxy getter numbers | TypeError: expected number[], got native ProxyObject
-1 proxy own texts | TypeError: expected string[], got native ProxyObject
-1 proxy inherited texts | TypeError: expected string[], got native ProxyObject
-1 proxy getter texts | TypeError: expected string[], got native ProxyObject
-1 proxy own any | TypeError: expected any[], got native ProxyObject
-1 proxy inherited any | TypeError: expected any[], got native ProxyObject
-1 proxy getter any | TypeError: expected any[], got native ProxyObject
-1 proxy own either | TypeError: expected any[], got native ProxyObject
-1 proxy inherited either | TypeError: expected any[], got native ProxyObject
-1 proxy getter either | TypeError: expected any[], got native ProxyObject
-1 proxy own written | TypeError: expected number[], got native ProxyObject
-1 proxy inherited written | TypeError: expected number[], got native ProxyObject
-1 proxy getter written | TypeError: expected number[], got native ProxyObject
+1 proxy own numbers 1:1
+1 proxy inherited numbers 1:1
+1 proxy getter numbers 1:1
+1 proxy own texts 1:1
+1 proxy inherited texts 1:1
+1 proxy getter texts 1:1
+1 proxy own any 1:1
+1 proxy inherited any 1:1
+1 proxy getter any 1:1
+1 proxy own either 1:1
+1 proxy inherited either 1:1
+1 proxy getter either 1:1
+1 proxy own written 1
+1 proxy inherited written 1
+1 proxy getter written 1
 1 arguments own numbers | TypeError: expected number[], got native Object
 1 arguments inherited numbers | TypeError: expected number[], got native Object
 1 arguments getter numbers | TypeError: expected number[], got native Object

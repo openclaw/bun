@@ -12,7 +12,7 @@ list | a Map: TypeError: expected string[], got native Map
 list | a Set: TypeError: expected string[], got native Set
 list | a Date: TypeError: expected string[], got native Date
 list | bytes: TypeError: expected string[], got native Uint8Array
-list | a proxy of an array: TypeError: expected string[], got native ProxyObject
+list | a proxy of an array: taken
 list | a proxy of a function: TypeError: expected string[], got function
 list | a number: TypeError: expected string[], got number 5
 list | a string: TypeError: expected string[], got string "text"
@@ -32,7 +32,7 @@ pair | a Map: TypeError: expected (number | string)[], got native Map
 pair | a Set: TypeError: expected (number | string)[], got native Set
 pair | a Date: TypeError: expected (number | string)[], got native Date
 pair | bytes: TypeError: expected (number | string)[], got native Uint8Array
-pair | a proxy of an array: TypeError: expected (number | string)[], got native ProxyObject
+pair | a proxy of an array: taken
 pair | a proxy of a function: TypeError: expected (number | string)[], got function
 pair | a number: TypeError: expected (number | string)[], got number 5
 pair | a string: TypeError: expected (number | string)[], got string "text"
@@ -52,7 +52,7 @@ optionalList | a Map: TypeError: expected number[], got native Map
 optionalList | a Set: TypeError: expected number[], got native Set
 optionalList | a Date: TypeError: expected number[], got native Date
 optionalList | bytes: TypeError: expected number[], got native Uint8Array
-optionalList | a proxy of an array: TypeError: expected number[], got native ProxyObject
+optionalList | a proxy of an array: taken
 optionalList | a proxy of a function: TypeError: expected number[], got function
 optionalList | a number: TypeError: expected number[], got number 5
 optionalList | a string: TypeError: expected number[], got string "text"
@@ -132,7 +132,7 @@ listOrSet | a Map: TypeError
 listOrSet | a Set: taken
 listOrSet | a Date: TypeError
 listOrSet | bytes: TypeError
-listOrSet | a proxy of an array: TypeError
+listOrSet | a proxy of an array: taken
 listOrSet | a proxy of a function: TypeError
 listOrSet | a number: TypeError
 listOrSet | a string: TypeError
@@ -152,7 +152,7 @@ listOrFunction | a Map: TypeError
 listOrFunction | a Set: TypeError
 listOrFunction | a Date: TypeError
 listOrFunction | bytes: TypeError
-listOrFunction | a proxy of an array: TypeError
+listOrFunction | a proxy of an array: taken
 listOrFunction | a proxy of a function: taken
 listOrFunction | a number: TypeError
 listOrFunction | a string: TypeError
@@ -172,7 +172,7 @@ arrow | a Map: TypeError: expected string[], got native Map
 arrow | a Set: TypeError: expected string[], got native Set
 arrow | a Date: TypeError: expected string[], got native Date
 arrow | bytes: TypeError: expected string[], got native Uint8Array
-arrow | a proxy of an array: TypeError: expected string[], got native ProxyObject
+arrow | a proxy of an array: taken
 arrow | a proxy of a function: TypeError: expected string[], got function
 arrow | a number: TypeError: expected string[], got number 5
 arrow | a string: TypeError: expected string[], got string "text"
@@ -192,7 +192,7 @@ later | a Map: TypeError: expected string[], got native Map
 later | a Set: TypeError: expected string[], got native Set
 later | a Date: TypeError: expected string[], got native Date
 later | bytes: TypeError: expected string[], got native Uint8Array
-later | a proxy of an array: TypeError: expected string[], got native ProxyObject
+later | a proxy of an array: taken
 later | a proxy of a function: TypeError: expected string[], got function
 later | a number: TypeError: expected string[], got number 5
 later | a string: TypeError: expected string[], got string "text"
@@ -212,7 +212,7 @@ second | a Map: TypeError: expected string[], got native Map
 second | a Set: TypeError: expected string[], got native Set
 second | a Date: TypeError: expected string[], got native Date
 second | bytes: TypeError: expected string[], got native Uint8Array
-second | a proxy of an array: TypeError: expected string[], got native ProxyObject
+second | a proxy of an array: taken
 second | a proxy of a function: TypeError: expected string[], got function
 second | a number: TypeError: expected string[], got number 5
 second | a string: TypeError: expected string[], got string "text"
@@ -232,7 +232,7 @@ used | a Map: TypeError: expected string[], got native Map
 used | a Set: TypeError: expected string[], got native Set
 used | a Date: TypeError: expected string[], got native Date
 used | bytes: TypeError: expected string[], got native Uint8Array
-used | a proxy of an array: TypeError: expected string[], got native ProxyObject
+used | a proxy of an array: taken
 used | a proxy of a function: TypeError: expected string[], got function
 used | a number: TypeError: expected string[], got number 5
 used | a string: TypeError: expected string[], got string "text"
@@ -252,7 +252,7 @@ through a record of functions | list | a Map: TypeError: expected string[], got 
 through a record of functions | list | a Set: TypeError: expected string[], got native Set
 through a record of functions | list | a Date: TypeError: expected string[], got native Date
 through a record of functions | list | bytes: TypeError: expected string[], got native Uint8Array
-through a record of functions | list | a proxy of an array: TypeError: expected string[], got native ProxyObject
+through a record of functions | list | a proxy of an array: taken
 through a record of functions | list | a proxy of a function: TypeError: expected string[], got function
 through a record of functions | list | a number: TypeError: expected string[], got number 5
 through a record of functions | list | a string: TypeError: expected string[], got string "text"

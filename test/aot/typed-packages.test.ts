@@ -33,7 +33,7 @@ export type Unused = Permutation<"a" | "b" | "c" | "d" | "e"> | { done: true };`
     });
     const cwd = String(folder);
     const expectedWarnings = [0, 1].map(i =>
-      `warning TS100011: '<dir>/api${i}.ts' is compiled untyped, which costs speed, not correctness: too many types cross between it and untyped code through 'Table' at bridge.js:3 to analyze.`,
+      `warning TS100011: '<dir>/api${i}.ts' is compiled untyped, which costs speed, not correctness: too many types cross between it and untyped code through 'Table' at bridge.js:3 to analyze. [untyped-file]`,
     );
     for (const threads of [1, 4]) {
       await using checked = Bun.spawn({
