@@ -1,27 +1,6 @@
 import { $ } from "bun";
 import { bunEnv, bunExe, tempDir } from "harness";
 
-for (const kind of ["object", "error", "cause"]) {
-  for (const direction of ["parent", "child"]) {
-    test.concurrent(`advanced IPC negotiates Error.cause: ${kind} from ${direction}`, async () => {
-      await using child = Bun.spawn({
-        cmd: [bunExe(), `${import.meta.dir}/fixtures/error-cause-ipc.cjs`, bunExe(), kind, direction, "true"],
-        env: bunEnv,
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      const [stdout, stderr, exitCode] = await Promise.all([child.stdout.text(), child.stderr.text(), child.exited]);
-      expect(stderr).toBe("");
-      expect(JSON.parse(stdout)).toEqual(
-        kind === "object"
-          ? { answer: 42, error: false }
-          : { error: true, message: "outer", ...(kind === "cause" ? { cause: "inner" } : {}) },
-      );
-      expect(exitCode).toBe(0);
-    });
-  }
-}
-
 test("child_process ipc", async () => {
   const output = await $`${bunExe()} ${import.meta.dir}/fixtures/ipc_fixture.js`.text();
   // node (v23.4.0) has identical output

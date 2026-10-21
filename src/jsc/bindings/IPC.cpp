@@ -38,6 +38,21 @@ extern "C" [[ZIG_EXPORT(zero_is_throw)]] JSC::EncodedJSValue IPCParse(Zig::Globa
     return JSC::JSValue::encode(result);
 }
 
+extern "C" [[ZIG_EXPORT(zero_is_throw)]] JSC::EncodedJSValue IPCTagAdvancedBuffers(Zig::GlobalObject* global, JSC::EncodedJSValue message)
+{
+    auto& vm = JSC::getVM(global);
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    JSC::JSFunction* tagFunction = global->m_ipcTagAdvancedBuffersFunction.getInitializedOnMainThread(global);
+    JSC::CallData callData = JSC::getCallData(tagFunction);
+
+    JSC::MarkedArgumentBuffer args;
+    args.append(JSC::JSValue::decode(message));
+
+    auto result = JSC::call(global, tagFunction, callData, JSC::jsUndefined(), args);
+    RETURN_IF_EXCEPTION(scope, {});
+    return JSC::JSValue::encode(result);
+}
+
 extern "C" [[ZIG_EXPORT(zero_is_throw)]] JSC::EncodedJSValue IPCRestoreAdvancedBuffers(Zig::GlobalObject* global, JSC::EncodedJSValue envelope)
 {
     auto& vm = JSC::getVM(global);

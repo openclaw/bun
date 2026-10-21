@@ -262,16 +262,10 @@ mod advanced {
     const HEADER_LENGTH: usize = size_of::<IPCMessageType>() + size_of::<u32>();
     // HEADER_LENGTH is a 5-byte compile-time constant; narrowing to u32 is provably safe.
     const HEADER_LENGTH_U32: u32 = HEADER_LENGTH as u32;
-    // The low 16 bits remain protocol v2; old readers consume and ignore the
-    // entire hello word, so its high bits can advertise serializer capabilities.
+    // v2 added `SerializedMessageWithBuffers`. The peer's advertised version is
+    // debug-logged, never consulted, so mixed-version pairs only break when a
+    // Buffer-bearing message actually crosses to a v1 peer.
     const VERSION: u32 = 2;
-    const VERSION_MASK: u32 = 0xFFFF;
-    // Bit 16 identified the incompatible, intermediate v15 Error layout.
-    const ERROR_CAUSE_CAPABILITY: u32 = 1 << 17;
-
-    pub(super) fn supports_error_cause(hello: u32) -> bool {
-        hello & VERSION_MASK == VERSION && hello & ERROR_CAUSE_CAPABILITY != 0
-    }
 
     #[repr(u8)]
     #[derive(Copy, Clone, Eq, PartialEq)]
@@ -301,7 +295,7 @@ mod advanced {
     }
 
     static VERSION_PACKET_BYTES: [u8; HEADER_LENGTH] = {
-        let v = (VERSION | ERROR_CAUSE_CAPABILITY).to_le_bytes();
+        let v = VERSION.to_ne_bytes();
         [IPCMessageType::Version as u8, v[0], v[1], v[2], v[3]]
     };
 
@@ -392,27 +386,29 @@ mod advanced {
         global: &JSGlobalObject,
         value: JSValue,
         is_internal: IsInternal,
-        peer_supports_error_cause: bool,
     ) -> Result<usize, IPCSerializationError> {
         // Internal (control) messages never carry user Buffers, and the
         // hardcoded ack/nack packets depend on their bare wire shape.
+        let (value, message_type) = match is_internal {
+            IsInternal::Internal => (value, IPCMessageType::SerializedInternalMessage),
+            IsInternal::External => {
+                let tagged = ipc_tag_advanced_buffers(global, value)?;
+                if tagged.is_null() {
+                    (value, IPCMessageType::SerializedMessage)
+                } else {
+                    (tagged, IPCMessageType::SerializedMessageWithBuffers)
+                }
+            }
+        };
+
         let serialized = value.serialize(
             global,
             SerializedFlags {
-                // IPC sends across process. Internal ACK/NACK messages stay bare.
+                // IPC sends across process.
                 for_cross_process_transfer: true,
                 for_storage: false,
-                preserve_node_buffers: matches!(is_internal, IsInternal::External),
-                omit_error_cause: !peer_supports_error_cause,
             },
         )?;
-        let message_type = match is_internal {
-            IsInternal::Internal => IPCMessageType::SerializedInternalMessage,
-            IsInternal::External if serialized.has_buffer_envelope() => {
-                IPCMessageType::SerializedMessageWithBuffers
-            }
-            IsInternal::External => IPCMessageType::SerializedMessage,
-        };
         // `serialized` Drops at scope exit (defer serialized.deinit()).
 
         let size: u32 = u32::try_from(serialized.data().len()).expect("int cast");
@@ -626,16 +622,9 @@ pub(crate) fn serialize(
     global: &JSGlobalObject,
     value: JSValue,
     is_internal: IsInternal,
-    peer_supports_error_cause: bool,
 ) -> Result<usize, IPCSerializationError> {
     match mode {
-        Mode::Advanced => advanced::serialize(
-            writer,
-            global,
-            value,
-            is_internal,
-            peer_supports_error_cause,
-        ),
+        Mode::Advanced => advanced::serialize(writer, global, value, is_internal),
         Mode::Json => json::serialize(writer, global, value, is_internal),
     }
 }
@@ -917,7 +906,6 @@ pub(crate) struct SendQueue {
     #[cfg(debug_assertions)]
     pub(crate) has_written_version: Cell<u8>,
     pub(crate) mode: Mode,
-    peer_supports_error_cause: Cell<bool>,
     pub internal_msg_queue: JsCell<InternalMsgHolder>,
     incoming: JsCell<IncomingBuffer>,
     pub(crate) incoming_fd: Cell<Option<Fd>>,
@@ -1046,7 +1034,6 @@ impl SendQueue {
             #[cfg(debug_assertions)]
             has_written_version: Cell::new(0),
             mode,
-            peer_supports_error_cause: Cell::new(false),
             internal_msg_queue: JsCell::new(InternalMsgHolder::default()),
             incoming: JsCell::new(IncomingBuffer::init(mode)),
             incoming_fd: Cell::new(None),
@@ -1660,20 +1647,7 @@ impl SendQueue {
         let immediate = self.queue.get().is_empty() && self.waiting_for_ack.get().is_none();
         let mode = self.mode;
         let mut payload = StreamBuffer::default();
-        let supports_error_cause = self.peer_supports_error_cause.get();
-        if mode == Mode::Advanced && !supports_error_cause {
-            log!(
-                "Peer has not advertised Error.cause support; serializing legacy v14 without causes"
-            );
-        }
-        let payload_length = match serialize(
-            mode,
-            &mut payload,
-            global,
-            value,
-            is_internal,
-            supports_error_cause,
-        ) {
+        let payload_length = match serialize(mode, &mut payload, global, value, is_internal) {
             Ok(n) => n,
             Err(_) => return SerializeAndSendResult::Failure,
         };
@@ -2131,11 +2105,6 @@ fn handle_ipc_message(
     message: DecodedIPCMessage,
     global_this: &JSGlobalObject,
 ) -> JsResult<()> {
-    if let DecodedIPCMessage::Version(hello) = message {
-        send_queue
-            .peer_supports_error_cause
-            .set(advanced::supports_error_cause(hello));
-    }
     #[cfg(debug_assertions)]
     {
         // The `Formatter` runs its deinit in `Drop`.
@@ -2657,6 +2626,16 @@ pub(crate) fn ipc_serialize(
 ) -> JsResult<JSValue> {
     // `[[ZIG_EXPORT(zero_is_throw)]]`
     bun_jsc::cpp::IPCSerialize(global_object, message, handle, options)
+}
+
+#[track_caller]
+pub(crate) fn ipc_tag_advanced_buffers(
+    global_object: &JSGlobalObject,
+    message: JSValue,
+) -> JsResult<JSValue> {
+    // `[[ZIG_EXPORT(zero_is_throw)]]`; returns null when the message holds no
+    // Buffers, else the `[message, buffers]` envelope (see Ipc.ts).
+    bun_jsc::cpp::IPCTagAdvancedBuffers(global_object, message)
 }
 
 #[track_caller]

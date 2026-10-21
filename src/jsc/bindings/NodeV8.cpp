@@ -5,6 +5,7 @@
 #include "ErrorCode.h"
 #include "BunClientData.h"
 #include "NodeV8.h"
+#include "MessagePort.h"
 #include "SerializedScriptValue.h"
 #include "ZigGlobalObject.h"
 
@@ -45,15 +46,16 @@ JSC_DEFINE_HOST_FUNCTION(functionSerializeForNode, (JSGlobalObject * globalObjec
     auto& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
     auto* domGlobal = uncheckedDowncast<WebCore::JSDOMGlobalObject>(globalObject);
-    bool hasBufferEnvelope = false;
-    auto result = WebCore::SerializedScriptValue::createForNode(*domGlobal, callFrame->argument(0), WebCore::SerializationForStorage::Yes, WebCore::SerializationForCrossProcessTransfer::No, hasBufferEnvelope);
+    Vector<Strong<JSObject>> transfers;
+    Vector<RefPtr<WebCore::MessagePort>> ports;
+    auto result = WebCore::SerializedScriptValue::create(*domGlobal, callFrame->argument(0), WTF::move(transfers), ports, WebCore::SerializationForStorage::Yes);
     EXCEPTION_ASSERT(result.hasException() == !!scope.exception());
     if (result.hasException()) {
         WebCore::propagateException(*domGlobal, scope, result.releaseException());
         RELEASE_AND_RETURN(scope, {});
     }
     auto serialized = result.releaseReturnValue();
-    auto prefix = hasBufferEnvelope ? std::span<const uint8_t>(bufferEnvelopeMagic) : std::span<const uint8_t>();
+    auto prefix = callFrame->argument(1).asBoolean() ? std::span<const uint8_t>(bufferEnvelopeMagic) : std::span<const uint8_t>();
     auto buffer = serialized->toArrayBuffer(ArrayBufferSharingMode::Default, prefix);
     size_t length = buffer->byteLength();
     RELEASE_AND_RETURN(scope, JSValue::encode(JSUint8Array::create(globalObject, domGlobal->JSBufferSubclassStructure(), WTF::move(buffer), 0, length)));
@@ -202,7 +204,7 @@ JSC::JSObject* createNodeV8Binding(JSC::JSGlobalObject* globalObject)
         RETURN_IF_EXCEPTION(scope, nullptr);
     }
     object->putDirect(vm, Identifier::fromString(vm, "bufferEnvelopeMagic"_s), magic);
-    object->putDirectNativeFunction(vm, globalObject, Identifier::fromString(vm, "serialize"_s), 1, functionSerializeForNode, ImplementationVisibility::Public, NoIntrinsic, 0);
+    object->putDirectNativeFunction(vm, globalObject, Identifier::fromString(vm, "serialize"_s), 2, functionSerializeForNode, ImplementationVisibility::Public, NoIntrinsic, 0);
     object->putDirectNativeFunction(vm, globalObject, JSC::Identifier::fromString(vm, "queryObjects"_s), 1, functionQueryObjects, ImplementationVisibility::Public, JSC::NoIntrinsic, 0);
     object->putDirectNativeFunction(vm, globalObject, JSC::Identifier::fromString(vm, "getHeapUsage"_s), 0, functionGetHeapUsage, ImplementationVisibility::Public, JSC::NoIntrinsic, 0);
     object->putDirectNativeFunction(vm, globalObject, JSC::Identifier::fromString(vm, "isStringOneByteRepresentation"_s), 1, functionIsStringOneByteRepresentation, ImplementationVisibility::Public, JSC::NoIntrinsic, 0);

@@ -298,7 +298,7 @@ function getCppHeapStatistics(type = "detailed") {
 }
 // Buffer-bearing payloads are framed as MAGIC + version + SSV([value, buffers]) so deserialize
 // can restore Buffer prototypes (see internal/serialization_buffers). Leading 0xFF cannot collide
-// with bare SSV output; Buffer-free payloads retain the current bare SSV framing.
+// with bare SSV output; Buffer-free payloads stay bare SSV so older readers keep working.
 
 function hasBufferEnvelopeMagic(view) {
   // In-bounds integer-indexed reads on a typed array never consult the
@@ -345,7 +345,8 @@ function stopCoverage() {
   notimpl("stopCoverage");
 }
 function serialize(arg1) {
-  return serializeNative(arg1);
+  const tagged = require("internal/serialization_buffers").tagBuffers(arg1);
+  return serializeNative(tagged === null ? arg1 : tagged, tagged !== null);
 }
 
 function getDefaultHeapSnapshotPath() {
