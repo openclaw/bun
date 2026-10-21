@@ -25,6 +25,7 @@ use std::time::{Duration, Instant};
 
 mod accesses;
 mod exports;
+mod flow_layouts;
 mod by_name;
 mod explain;
 mod interpreted;
@@ -42,6 +43,7 @@ pub use typedness::Typedness;
 pub struct Linked {
     pub program: Program,
     pub problems: Vec<Problem>,
+    pub flow_family_exhausted: Option<(FileId, flow_layouts::Exhausted)>,
     pub members: String,
     pub explained: Vec<String>,
     pub errors: Vec<Option<OutsideProgramReason>>,
@@ -2904,6 +2906,7 @@ pub fn link(
     errors: Errors<'_>,
     in_parallel: InParallel<'_>,
     explain: Explain,
+    requires_native_layouts: bool,
     describe: Describe<'_>,
 ) -> Linked {
     let kinds_declared = checked.checker().kinds_declared();
@@ -2931,7 +2934,7 @@ pub fn link(
                 methods_found.send((replaced, c.take_notes_recorded(), c.take_ran_out_of_stack())).ok();
             }
         });
-        let linked = link_with_helper_threads(scope, checked, fragments, ids, roots, entry_points, builtin_modules, prelude, shown_from, shows_whole_paths, function_sources, errors, &kinds_declared, &referenced_by_typeof, (stores_known, methods_awaited), in_parallel, explain, describe);
+        let linked = link_with_helper_threads(scope, checked, fragments, ids, roots, entry_points, builtin_modules, prelude, shown_from, shows_whole_paths, function_sources, errors, &kinds_declared, &referenced_by_typeof, (stores_known, methods_awaited), in_parallel, explain, requires_native_layouts, describe);
         kinds_declared.give_up();
         linked
     })
@@ -2990,6 +2993,7 @@ fn link_with_helper_threads<'scope>(
     replaced_methods_channel: (Sender<Vec<MethodStore>>, Receiver<(ReplacedMethods, FlowNotes, bool)>),
     in_parallel: InParallel<'scope>,
     explain: Explain,
+    requires_native_layouts: bool,
     describe: Describe<'_>,
 ) -> Linked {
     let (mut times, mut since) = (Times::default(), Instant::now());
@@ -3209,6 +3213,8 @@ fn link_with_helper_threads<'scope>(
     let mut unpredicted: FxHashSet<LayoutKey> = FxHashSet::default();
     let mut precomputed_line_tables = None;
     let mut untyped_object_evidence = UntypedObjectEvidence::default();
+    let mut flow_layouts = flow_layouts::Closure::default();
+    let mut flow_family_exhausted = None;
     loop {
         reach.run(&fragments, &index, in_parallel);
         if precomputed_line_tables.is_none() {
@@ -3262,8 +3268,61 @@ fn link_with_helper_threads<'scope>(
                     }
                 }
             }
-            if !reached_more {
+            if reached_more {
+                continue;
+            }
+            flow_layouts.include_reached(&fragments, &index, &reach, &is_opaque);
+            let pairs = match flow_layouts.pending() {
+                Ok(pairs) => pairs,
+                Err(exhausted) => {
+                    flow_family_exhausted = Some((nowhere, exhausted));
+                    break;
+                }
+            };
+            if pairs.is_empty() {
                 break;
+            }
+            let requests: Option<Vec<_>> = pairs.iter().map(|&(left, right)| Some((left, *types.get(&left)?, right, *types.get(&right)?))).collect();
+            let Some(requests) = requests else {
+                problems.push(Problem { file: nowhere, pos: 0, what: "a Flow layout type that no task has kept".into() });
+                break;
+            };
+            let mut batch = flow_layouts::make_pairs(checked, &requests, kinds_declared, requires_native_layouts, in_parallel);
+            times.add("flow layouts", &mut since);
+            if let Some(failure) = batch.failure.take() {
+                flow_family_exhausted = Some((nowhere, flow_layouts.failed(failure)));
+                break;
+            }
+            flow_layouts.accept(&mut batch);
+            add_kept_types(checked, &mut seen, &mut types, usize::MAX, in_parallel);
+            let missing: Option<Vec<_>> = flow_layouts.roots().into_iter()
+                .filter(|&identity| index.record(ids, identity).is_none())
+                .map(|identity| Some((identity, *types.get(&identity)?)))
+                .collect();
+            let Some(missing) = missing else {
+                problems.push(Problem { file: nowhere, pos: 0, what: "a canonical Flow layout type that no task has kept".into() });
+                break;
+            };
+            let (described, is_exhausted) = describe_in_tasks(checked, &missing, &index, ids, kinds_declared, in_parallel, describe, (&mut times, &mut since));
+            ran_out_of_stack |= is_exhausted;
+            let first_described = fragments.len();
+            index.grow(ids);
+            for fragment in described {
+                index.by_file.entry(fragment.file).or_insert(fragments.len() as u32);
+                index.add(fragments.len(), &fragment);
+                fragments.push(fragment);
+            }
+            index.extend_outline(&mut fragments[first_described..], first_described, in_parallel);
+            add_kept_types(checked, &mut seen, &mut types, usize::MAX, in_parallel);
+            reach.grow(&fragments, ids);
+            for identity in flow_layouts.roots() {
+                let Some(id) = ids.layouts.find(&LayoutKey::Record(identity)).filter(|&id| index.layout(id).is_some()) else {
+                    problems.push(Problem { file: nowhere, pos: 0, what: "a generated Flow layout whose definition was not retained".into() });
+                    continue;
+                };
+                if reach.layouts[id as usize].fetch_or(reached::IS_REACHED, Ordering::Relaxed) & reached::IS_REACHED == 0 {
+                    reach.work.push(Work::Layout(id));
+                }
             }
             continue;
         }
@@ -3391,6 +3450,12 @@ fn link_with_helper_threads<'scope>(
         return Linked { problems, errors, times, found, ..Linked::default() };
     }
 
+    if flow_family_exhausted.is_some() {
+        if ran_out_of_stack {
+            problems.push(Problem { file: nowhere, pos: 0, what: "types that are nested too deeply".into() });
+        }
+        return Linked { problems, errors, times, flow_family_exhausted, ..Linked::default() };
+    }
     let runtime_flags: FxHashSet<FileId> = builtin_modules.iter().map(|module| module.1).collect();
     let mut included_of: Vec<(usize, [Vec<((FragmentIndex, bool), u32)>; 2])> = (0..fragments.len()).map(|number| (number, Default::default())).collect();
     {
@@ -3464,6 +3529,17 @@ fn link_with_helper_threads<'scope>(
         }
     }
     let mut recorded: FlowNotes = FlowNotes::default();
+    let mut lost_flow_layout_type = false;
+    recorded.absorb(flow_layouts.take_notes().renamed(|identity| {
+        let ty = types.get(&identity).copied();
+        lost_flow_layout_type |= ty.is_none();
+        ty
+    }));
+    if lost_flow_layout_type {
+        problems.push(Problem { file: nowhere, pos: 0, what: "a generated Flow edge whose type was not retained".into() });
+    }
+    let flow_layout_roots = flow_layouts.roots();
+
     let mut lost: Vec<(Identity, Problem)> = Vec::new();
     let mut included_by_fragment: Vec<[&[(FragmentIndex, bool)]; 2]> = vec![[&included[..0]; 2]; fragments.len()];
     let mut slots_by_fragment: Vec<[&[u32]; 2]> = vec![[&included_slots[..0]; 2]; fragments.len()];
@@ -3502,6 +3578,13 @@ fn link_with_helper_threads<'scope>(
             is_runtime_layout.resize(numbering.layouts.len(), is_runtime(function.file));
         }
     }
+    for identity in &flow_layout_roots {
+        if let Some(id) = ids.layouts.find(&LayoutKey::Record(*identity)) {
+            numbering.mark_layout_reached(id);
+        }
+    }
+    numbering.settle();
+    is_runtime_layout.resize(numbering.layouts.len(), false);
     let mut extended_globals: Vec<StrId> = Vec::new();
     let mut prototype_property_names: Vec<StrId> = Vec::new();
     let mut method_stores: Vec<(FileId, MethodStore<Identity>)> = Vec::new();
@@ -4523,7 +4606,7 @@ fn link_with_helper_threads<'scope>(
     *checked.reads_that_may_find_what_makes_or_loads_code.lock() = reads.that_may_find_what_makes_or_loads_code;
     *checked.loads_of_modules_that_are_not_compiled.lock() = reads.of_modules_that_are_not_compiled;
     let failure_check = Some(FailureCheck { setup: setup_of_what_always_fails, modules });
-    Linked { program, problems, members, explained, errors, skipped_builtin_modules, skipped_builtin_functions, found, typedness, times, failure_check }
+    Linked { program, problems, members, explained, errors, skipped_builtin_modules, skipped_builtin_functions, found, typedness, times, failure_check, flow_family_exhausted: None }
 }
 
 #[cfg(test)]

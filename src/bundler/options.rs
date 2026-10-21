@@ -1631,7 +1631,8 @@ fn clone_macro_remap(src: &MacroRemap) -> MacroRemap {
     out
 }
 
-const EFFECTIVE_AOT_ENV_VARS: [&[u8]; 5] = [
+const EFFECTIVE_AOT_ENV_VARS: [&[u8]; 6] = [
+    b"BUN_AOT_NATIVE_IR_EXPORT",
     b"BUN_AOT_TYPED_FILE",
     b"BUN_AOT_TYPED_SNAPSHOT",
     b"BUN_AOT_TYPE_ERROR_LOG",

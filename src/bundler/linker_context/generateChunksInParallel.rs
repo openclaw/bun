@@ -1496,9 +1496,16 @@ pub(crate) fn generate_chunks_in_parallel<const IS_DEV_SERVER: bool>(
         };
         let engine = c.facts.as_mut().and_then(|facts| facts.engine.take());
         if let Some(typed) = c.facts.as_ref().and_then(|facts| facts.typed.as_deref()) {
-            let is_set = match engine {
-                Some(engine) => engine.finish().is_some_and(|prepared| linked.encoder.set_prepared_typed_program(prepared, &typed_modules)),
+            let result = match engine {
+                Some(engine) => engine.finish().map(|prepared| prepared.is_some_and(|prepared| linked.encoder.set_prepared_typed_program(prepared, &typed_modules))),
                 None => linked.encoder.set_typed_program(typed, &typed_modules, &replaced_strings),
+            };
+            let is_set = match result {
+                Ok(is_set) => is_set,
+                Err(error) => {
+                    c.log_mut().add_error_fmt(None, bun_ast::Loc::EMPTY, format_args!("{error}"));
+                    return Err(crate::Error::BuildFailed);
+                }
             };
             if !is_set {
                 add_aot_build_errors(c, linked.encoder.take_build_errors());

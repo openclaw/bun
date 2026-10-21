@@ -48,7 +48,7 @@ pub use int32_fields::{NotInt32Reason, FlowNode, FlowSource, Int32Verdict, Numbe
 pub use javascript::ImportedCode;
 pub use json_schemas::JsonParseSchema;
 pub use kinds::kind;
-pub use flows::{SubtypeAnswer, BuiltIn, Candidate, TruncatedSearch, KindsDeclared, Literal, SearchBarrier, Membership, FlowNotes, DataOrigin, Place, SubtypeQuery, LayoutUsage, FilePartition, UntypedReason};
+pub use flows::{SubtypeAnswer, BuiltIn, Candidate, TruncatedSearch, KindsDeclared, Literal, SearchBarrier, Membership, FlowNotes, FlowRecordContract, DataOrigin, Place, SubtypeQuery, LayoutUsage, FilePartition, UntypedReason};
 pub use subtypes::{Cause, FieldTypes, LoggingRelaxation, Sizes, Subtypes};
 pub use storage::{EvaluationTime, Primitive, ReferenceRead, Storage};
 pub use symbols::{ConstantSymbol, FieldKey};

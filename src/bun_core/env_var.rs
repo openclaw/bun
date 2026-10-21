@@ -74,6 +74,7 @@ new!(pub BUN_CONFIG_WS_HANDSHAKE_TIMEOUT: unsigned, "BUN_CONFIG_WS_HANDSHAKE_TIM
 // Seconds the `new WebSocket()` client waits for the server's TCP close after its close event. 0 disables.
 new!(pub BUN_CONFIG_WS_CLOSE_TIMEOUT: unsigned, "BUN_CONFIG_WS_CLOSE_TIMEOUT", { default: 30 });
 new!(pub BUN_CRASH_REPORT_URL: string, "BUN_CRASH_REPORT_URL", {});
+new!(pub BUN_AOT_NATIVE_IR_EXPORT: string, "BUN_AOT_NATIVE_IR_EXPORT", {});
 new!(pub BUN_AOT_TYPED_FILE: string, "BUN_AOT_TYPED_FILE", {});
 new!(pub BUN_AOT_TYPED_SNAPSHOT: string, "BUN_AOT_TYPED_SNAPSHOT", {});
 new!(pub BUN_DEBUG: string, "BUN_DEBUG", {});

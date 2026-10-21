@@ -2397,7 +2397,11 @@ impl<'c, 'p, 's> FileBuild<'c, 'p, 's> {
         self.read_builtins_given_to_a_module_graph(fx, props);
         let created = self.make_object_literal(fx, e, props);
         let has_fixed_layout = matches!(fx.b.func.op(created), Some(Op::New(_) | Op::NewWith { .. }));
-        if fx.is_typed && !has_fixed_layout && props.iter().any(|p| matches!(self.hir(fx.file)[p].kind, PropKind::Getter | PropKind::Setter)) {
+        // Explicit `any` discards ordinary-literal type identity instead of opening that type.
+        if fx.is_typed && !has_fixed_layout
+            && (props.iter().any(|p| matches!(self.hir(fx.file)[p].kind, PropKind::Getter | PropKind::Setter))
+                || !self.c.is_inside_any_context(fx.file, e) && self.is_explicitly_dynamic(fx, e))
+        {
             let own = self.c.type_of_expr(fx.file, e);
             self.c.record_object_without_layout(own);
         }

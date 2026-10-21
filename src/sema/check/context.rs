@@ -1246,7 +1246,7 @@ impl<'p, 's> Checker<'p, 's> {
             return None;
         }
         self.prepare_enclosing(file, e);
-        self.apparent_type_of_contextual_type(file, e, ContextFlags::SKIP_BINDING_PATTERNS)
+        self.apparent_type_of_contextual_type(file, e, ContextFlags::SKIP_BINDING_PATTERNS | ContextFlags::SKIP_LOGICAL_FALLBACK)
     }
 
     /// `getApparentTypeOfContextualType`
@@ -1504,9 +1504,11 @@ impl<'p, 's> Checker<'p, 's> {
         // Only names the binder knows count. A computed name is skipped.
         let (mut items, mut written) = (Discriminants::new(), SmallVec::<[Atom; 16]>::new());
         let mut is_given_for_good = true;
+        let mut has_spread = false;
         for p in props.iter() {
             let prop = &hir[p];
             if prop.kind == PropKind::Spread {
+                has_spread = true;
                 continue;
             }
             let Some(name) = prop.key.name() else {
@@ -1525,7 +1527,10 @@ impl<'p, 's> Checker<'p, 's> {
                 items.push((name, actual));
             }
         }
-        self.push_omitted_discriminants(context, &written, &mut items);
+        // A spread may supply a discriminant that no explicit property names.
+        if !has_spread {
+            self.push_omitted_discriminants(context, &written, &mut items);
+        }
         (
             self.discriminate_by_items(context, &items, Self::is_assignable),
             is_given_for_good,
@@ -1846,6 +1851,10 @@ impl<'p, 's> Checker<'p, 's> {
                 BinOp::Or | BinOp::Nullish => {
                     let context = self.contextual_type(file, parent, context_flags);
                     if e == right && context.is_none_or(|t| self.is_expected_by_pattern(t)) {
+                        // The left operand supplies inference, not a contract: `record ?? {}` need not produce a record.
+                        if context_flags.contains(ContextFlags::SKIP_LOGICAL_FALLBACK) {
+                            return None;
+                        }
                         return Some(self.get_type_of_expression(file, left));
                     }
                     context

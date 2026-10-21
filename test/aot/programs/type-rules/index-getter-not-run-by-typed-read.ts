@@ -33,3 +33,42 @@ for (let turn = 0; turn < 3; turn++) {
   row(turn + " any[]: a getter that stores a field", () => { const o = box(); return F.anyAcross(withGetter(() => { o.x = 2; return "got" }), o, 1) });
   row(turn + " a getter on Array.prototype behind a hole", () => { const o = box(); const a: unknown[] = [1.5, , 3.5]; Object.defineProperty(Array.prototype, 1, { get() { o.x = 2; return "inherited" }, configurable: true }); try { return F.fieldAcross(a, o, 1) } finally { delete (Array.prototype as any)[1] } });
 }
+
+// Declared-array iteration rejects indexed getters before they run, including one installed after opening the iterator.
+function iterateTypedArray(values: number[], afterFirst: () => void): number {
+  let total = 0;
+  let index = 0;
+  for (const value of values) {
+    total += value;
+    if (index++ === 0) afterFirst();
+  }
+  return total;
+}
+function destructureTypedArray(values: number[], afterFirst: () => void): number {
+  const [first, second] = values;
+  afterFirst();
+  return first + second;
+}
+function iterateAsIterable(values: Iterable<number>, afterFirst: () => void): number {
+  let total = 0;
+  let index = 0;
+  for (const value of values) {
+    total += value;
+    if (index++ === 0) afterFirst();
+  }
+  return total;
+}
+function reportIteration(label: string, consume: (values: number[], afterFirst: () => void) => number, afterOpen: boolean): void {
+  const values = [1, 2];
+  let reads = 0;
+  const install = () => Object.defineProperty(values, 1, { configurable: true, get() { reads++; return 2; } });
+  if (!afterOpen) install();
+  let result: string;
+  try { result = "returned " + Reflect.apply(consume, undefined, [values, afterOpen ? install : () => {}]); }
+  catch (error) { result = error instanceof TypeError ? "TypeError" : "unexpected " + String(error); }
+  console.log("iteration " + label + ": " + result + " reads " + reads);
+}
+reportIteration("for-of", iterateTypedArray, false);
+reportIteration("destructure", destructureTypedArray, false);
+reportIteration("after-open", iterateTypedArray, true);
+reportIteration("Iterable", iterateAsIterable, false);

@@ -1204,6 +1204,8 @@ pub struct Request<'a> {
     /// With `after_file`, every call of that is made by a task of the plan, so that what it keeps goes through a barrier
     /// (`Checker::keep_type`), and the files of `code` are visited too.
     pub is_one_program: bool,
+    pub forced_untyped: &'a [Vec<u8>],
+    pub forced_untyped_reasons: &'a [ForcedUntypedReason],
     /// With `is_one_program`: the files of the bundle that `paths` are the entry points of. See `Options::code_roots`.
     pub code: &'a [Vec<u8>],
     /// `Host::script_kind` of those of `paths` whose names do not tell what they are run as.
@@ -1251,7 +1253,8 @@ pub struct Request<'a> {
     /// not. Those that do not stand go to `Report::unreachable_diagnostics`. If one stands, nothing is to be compiled. It is not called
     /// if the check has stopped early (`stops_like_tsc`), if it is incomplete, or if an error lies in no file of the program: nothing is
     /// compiled then either.
-    pub compile: Option<&'a (dyn Fn(&Program, InParallel<'_>, &[(FileId, u32)]) -> Vec<bool> + Sync)>,
+    pub compile: Option<&'a (dyn Fn(&Program, InParallel<'_>, &[(FileId, u32)]) -> CompilationOutcome + Sync)>,
+    pub compilation_finished: Option<&'a (dyn Fn() + Sync)>,
     /// Called for each file right after it is checked, on the thread and with the checker that checked it, while the types that are
     /// local to the task are still alive. The way to read the type of every expression without `retains_everything`. The files that
     /// are not checked are visited when the others have been: a declaration file under `skipLibCheck`, a JSON file, a file that is
@@ -1288,6 +1291,26 @@ pub struct Request<'a> {
     /// emits for the projects that reference it.
     /// Nothing is written to disk: this is the way to observe them.
     pub declaration_file_emitted: Option<&'a (dyn Fn(&[u8], &[u8]) + Sync)>,
+}
+
+pub enum CompilationOutcome {
+    Complete(Vec<bool>),
+    Failed { kept_errors: Vec<bool>, message: String },
+    FlowFamilyExhausted { kept_errors: Vec<bool>, contributors: Vec<FileId>, message: String },
+}
+
+#[derive(Clone)]
+pub struct ForcedUntypedReason {
+    key: Vec<u8>,
+    message: String,
+}
+
+struct CompilationRetry {
+    inherited_keys: Vec<Vec<u8>>,
+    new_keys: Vec<Vec<u8>>,
+    warnings: Vec<Diagnostic>,
+    reasons: Vec<ForcedUntypedReason>,
+    failure: Diagnostic,
 }
 
 /// A diagnostic, ready to be formatted.
@@ -1425,6 +1448,7 @@ pub struct GlobalsOf {
 
 #[derive(Default)]
 pub struct Report {
+    compilation_retry: Option<CompilationRetry>,
     /// Sorted as TypeScript sorts them: diagnostics without a file first, then by path and
     /// position.
     pub diagnostics: Vec<Diagnostic>,
@@ -1503,7 +1527,14 @@ impl Report {
     }
 
     /// Adds the result of checking another project. The diagnostics are left unsorted.
-    fn merge(&mut self, other: Report) {
+    fn merge(&mut self, mut other: Report) {
+        self.compilation_retry = match (self.compilation_retry.take(), other.compilation_retry.take()) {
+            (Some(left), Some(right)) => {
+                self.diagnostics.extend([left.failure, right.failure]);
+                None
+            }
+            (left, right) => left.or(right),
+        };
         self.diagnostics.extend(other.diagnostics);
         self.unreachable_diagnostics.extend(other.unreachable_diagnostics);
         self.unjudged_diagnostics.extend(other.unjudged_diagnostics);
@@ -1595,6 +1626,59 @@ pub(crate) const PRELUDE_DIRECTORY: &[u8] = b"/.bun-aot-prelude/";
 
 fn invalidation_key<'a>(files: &'a bun_sema::program::Files<'_>, module: &'a bun_sema::program::Module<'_>) -> (&'a [u8], &'a [u8]) {
     package_of(files, module).unwrap_or_else(|| (module.path.text, module.file_name()))
+}
+
+fn compilation_failure(message: String) -> Diagnostic {
+    Diagnostic { text: message.into_bytes(), code: 0, ..global(0, &[] as &[&[u8]]) }
+}
+
+fn sorted_keys(mut keys: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
+    keys.sort_unstable();
+    keys.dedup();
+    keys
+}
+
+fn next_compilation_attempt(forced: Vec<Vec<u8>>, retry: CompilationRetry) -> Result<(Vec<Vec<u8>>, Vec<Diagnostic>, Vec<ForcedUntypedReason>), Diagnostic> {
+    let inherited = sorted_keys(forced.into_iter().chain(retry.inherited_keys).collect());
+    let new_keys: Vec<_> = retry.new_keys.into_iter().filter(|key| inherited.binary_search(key).is_err()).collect();
+    if new_keys.is_empty() {
+        return Err(retry.failure);
+    }
+    Ok((sorted_keys(inherited.into_iter().chain(new_keys).collect()), retry.warnings, retry.reasons))
+}
+
+fn prepare_flow_family_retry(program: &Program, request: &Request, report: &Report, contributors: &[FileId], message: String) -> Result<CompilationRetry, Diagnostic> {
+    let failure = compilation_failure(message.clone());
+    if !request.is_one_program || !report.is_ok() {
+        return Err(failure);
+    }
+    let inherited_keys = sorted_keys(program.files.modules.iter().filter(|module| module.is_forced_untyped.load(Ordering::Relaxed)).map(|module| invalidation_key(&program.files, module).0.to_vec()).collect());
+    let mut new_keys = Vec::new();
+    let mut reasons = Vec::new();
+    let mut warnings: Vec<Diagnostic> = report.diagnostics.iter().filter(|reported| matches!(reported.code, 100009..=100011 | 100107)).cloned().collect();
+    for &file in contributors {
+        let Some(module) = program.files.modules.get(file.idx()) else { continue };
+        if module.is_untyped() || module.builtin.is_some() || !matches!(module.hir.kind, FileKind::Ts | FileKind::Tsx) || strings::contains(module.path.text, b"/.bun-aot-prelude/") {
+            continue;
+        }
+        let (key, name) = invalidation_key(&program.files, module);
+        if inherited_keys.binary_search_by(|known| known.as_slice().cmp(key)).is_ok() || request.forced_untyped.binary_search_by(|known| known.as_slice().cmp(key)).is_ok() || new_keys.iter().any(|known: &Vec<u8>| known.as_slice() == key) {
+            continue;
+        }
+        let reported = global(100107, &[name, message.as_bytes()]);
+        if let Some(reported) = with_rule_severity(program, Some(file), reported).filter(|reported| is_beyond_baseline(program, reported)) {
+            if reported.category == Category::Error {
+                return Err(reported);
+            }
+            warnings.push(reported);
+        }
+        new_keys.push(key.to_vec());
+        reasons.push(ForcedUntypedReason { key: key.to_vec(), message: message.clone() });
+    }
+    if new_keys.is_empty() {
+        return Err(failure);
+    }
+    Ok(CompilationRetry { inherited_keys, new_keys: sorted_keys(new_keys), warnings, reasons, failure })
 }
 
 fn from_compiler_diagnostic(program: &Program, found: &CompilerDiagnostic) -> Diagnostic {
@@ -2050,7 +2134,38 @@ fn check_provided_once<R>(
     disk.lowers_like_the_runtime = provided.lowers_like_the_runtime;
     // Work outside a parallel region runs on this thread.
     let lent = disk.caches.lend();
-    let mut report = check_request(&disk, request);
+    let mut forced_untyped = request.forced_untyped.to_vec();
+    forced_untyped = sorted_keys(forced_untyped);
+    let mut fallback_warnings = Vec::new();
+    let mut fallback_reasons = request.forced_untyped_reasons.to_vec();
+    let mut report = loop {
+        let attempt_request = Request { forced_untyped: &forced_untyped, forced_untyped_reasons: &fallback_reasons, ..*request };
+        let mut attempt = check_request(&disk, &attempt_request);
+        let Some(retry) = attempt.compilation_retry.take() else {
+            attempt.diagnostics.append(&mut fallback_warnings);
+            sort_and_deduplicate(&mut attempt.diagnostics);
+            break attempt;
+        };
+        if !attempt.is_ok() {
+            attempt.diagnostics.push(retry.failure);
+            attempt.diagnostics.append(&mut fallback_warnings);
+            sort_and_deduplicate(&mut attempt.diagnostics);
+            break attempt;
+        }
+        match next_compilation_attempt(forced_untyped, retry) {
+            Ok((keys, warnings, reasons)) => {
+                forced_untyped = keys;
+                fallback_warnings.extend(warnings);
+                fallback_reasons.extend(reasons);
+            }
+            Err(failure) => {
+                attempt.diagnostics.push(failure);
+                attempt.diagnostics.append(&mut fallback_warnings);
+                sort_and_deduplicate(&mut attempt.diagnostics);
+                break attempt;
+            }
+        }
+    };
     report.is_case_sensitive = disk.is_case_sensitive();
     report.builtin_modules = disk.compiled.as_ref().and_then(|compiled| compiled.builtin_modules.lock().take());
     report.abandoned = disk.abandoned.lock().take();
@@ -2535,6 +2650,9 @@ fn check_request(disk: &host::Disk, request: &Request) -> Report {
         _ => *request,
     };
     let mut report = check_paths(disk, request);
+    if report.compilation_retry.is_some() {
+        return report;
+    }
     // Each is checked in its own project, like a file that is named, and once.
     let mut seen: FxHashSet<Vec<u8>> = FxHashSet::default();
     loop {
@@ -2551,6 +2669,7 @@ fn check_request(disk: &host::Disk, request: &Request) -> Report {
             code: &[],
             loaded: None,
             compile: None,
+            compilation_finished: None,
             after_file: None,
             before_visits: None,
             all_visited_once: None,
@@ -5211,6 +5330,20 @@ fn check_named_files(
     let files = session.arena().alloc(files);
     let root = session.arena().alloc(Program::new(&session, files));
     let program: &Program = root;
+    for module in &program.files.modules {
+        let key = invalidation_key(&program.files, module).0;
+        if request.forced_untyped.binary_search_by(|known| known.as_slice().cmp(key)).is_ok() {
+            module.is_forced_untyped.store(true, Ordering::Relaxed);
+            if let Some(reason) = request.forced_untyped_reasons.iter().find(|reason| reason.key.as_slice() == key) {
+                let file = program.files.by_path.get(module.path.text).expect("a loaded module has its path");
+                let name = invalidation_key(program.files, module).1;
+                program.compiled_untyped.lock().push(CompilerDiagnostic {
+                    file, start: 0, end: 0, code: 100107,
+                    args: vec![name.to_vec(), reason.message.as_bytes().to_vec()], related: Vec::new(),
+                });
+            }
+        }
+    }
     if request.is_one_program {
         host.program_is_loaded(program);
     }
@@ -6757,7 +6890,12 @@ fn check_named_files(
         && report.incomplete.is_empty()
     {
         let errors: Vec<(FileId, u32)> = places.iter().flatten().copied().collect();
-        let mut stands = compile(program, &in_parallel, &errors).into_iter();
+        let (kept_errors, exhausted, failed) = match compile(program, &in_parallel, &errors) {
+            CompilationOutcome::Complete(kept_errors) => (kept_errors, None, None),
+            CompilationOutcome::Failed { kept_errors, message } => (kept_errors, None, Some(message)),
+            CompilationOutcome::FlowFamilyExhausted { kept_errors, contributors, message } => (kept_errors, Some((contributors, message)), None),
+        };
+        let mut stands = kept_errors.into_iter();
         host.program_is_compiled(program);
         for (diagnostic, place) in std::mem::take(&mut report.diagnostics).into_iter().zip(places) {
             if place.is_none() || stands.next().unwrap_or(true) {
@@ -6771,6 +6909,15 @@ fn check_named_files(
             report.diagnostics.extend(found.iter().filter_map(|found| with_rule_severity(program, Some(found.file), from_compiler_diagnostic(program, found))));
             sort_and_deduplicate(&mut report.diagnostics);
         }
+        if let Some(message) = failed {
+            report.diagnostics.push(compilation_failure(message));
+        }
+        if let Some((contributors, message)) = exhausted {
+            match prepare_flow_family_retry(program, request, &report, &contributors, message) {
+                Ok(retry) => report.compilation_retry = Some(retry),
+                Err(failure) => report.diagnostics.push(failure),
+            }
+        }
     } else if request.compile.is_some() && !report.incomplete.is_empty() {
         for (diagnostic, place) in std::mem::take(&mut report.diagnostics).into_iter().zip(places) {
             match place {
@@ -6782,6 +6929,45 @@ fn check_named_files(
     if let Some(place) = in_room {
         place.has_taken(session.allocated_bytes());
     }
+    if let Some(finished) = request.compilation_finished {
+        finished();
+    }
     root.release();
     report
+}
+
+#[cfg(test)]
+mod native_flow_retry_state_tests {
+    use super::*;
+
+    #[test]
+    fn subsequent_retries_preserve_keys_reasons_and_warnings() {
+        let first = b"first.ts".to_vec();
+        let second = b"second.ts".to_vec();
+        let retry = CompilationRetry {
+            inherited_keys: vec![first.clone()], new_keys: vec![second.clone()],
+            warnings: vec![global(100107, &[b"first.ts".as_slice(), b"first reason".as_slice()]), global(100107, &[b"second.ts".as_slice(), b"second reason".as_slice()])],
+            reasons: vec![ForcedUntypedReason { key: second.clone(), message: "second reason".into() }],
+            failure: compilation_failure("second failure".into()),
+        };
+        let (keys, warnings, reasons) = next_compilation_attempt(vec![first.clone()], retry).unwrap();
+        assert_eq!(keys, vec![first, second.clone()]);
+        assert_eq!(warnings.len(), 2);
+        assert_eq!(reasons[0].key, second);
+        assert_eq!(reasons[0].message, "second reason");
+    }
+
+    #[test]
+    fn an_already_forced_key_is_terminal() {
+        let key = b"same.ts".to_vec();
+        let retry = CompilationRetry {
+            inherited_keys: vec![key.clone()], new_keys: vec![key.clone()],
+            warnings: Vec::new(), reasons: Vec::new(),
+            failure: compilation_failure("still unsupported".into()),
+        };
+        match next_compilation_attempt(vec![key], retry) {
+            Ok(_) => panic!("an unchanged set of forced keys must not retry"),
+            Err(failed) => assert_eq!(failed.text, b"still unsupported"),
+        }
+    }
 }

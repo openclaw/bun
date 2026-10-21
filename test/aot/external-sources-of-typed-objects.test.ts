@@ -79,3 +79,100 @@ describe.concurrent("compile/aot/doors to typed objects", () => {
     );
   }
 });
+
+describe.concurrent("compile/aot/typed views of global host properties", () => {
+  if (unsupported) return void test.skip(unsupported, () => {});
+  const runtimeBuffer = `
+    interface RuntimeBuffer {
+      byteLength(content: string, encoding: "utf8"): number;
+      from(content: string, encoding: "utf16le"): { toString(encoding: "utf16le"): string };
+    }
+  `;
+  const readBuffer = `console.log(value === Buffer, value.byteLength("abc", "utf8"), value.from("abc", "utf16le").toString("utf16le"));`;
+  const cases = {
+    "an asserted optional Buffer property": {
+      source: runtimeBuffer + `const value = (globalThis as { Buffer?: RuntimeBuffer }).Buffer!;` + readBuffer,
+      stdout: "true 3 abc\n",
+    },
+    "an assigned optional Buffer property": {
+      source:
+        runtimeBuffer + `const host: { Buffer?: RuntimeBuffer } = globalThis; const value = host.Buffer!;` + readBuffer,
+      stdout: "true 3 abc\n",
+    },
+    "an assigned optional Array property": {
+      source: `interface ArrayFactory { from(content: string): unknown[]; }
+        const host: { Array?: ArrayFactory } = globalThis;
+        const value = host.Array!;
+        console.log(value === Array, value.from("abc").join(""));`,
+      stdout: "true abc\n",
+    },
+    "a direct Buffer assignment": {
+      source: runtimeBuffer + `const value: RuntimeBuffer = Buffer;` + readBuffer,
+      stdout: "true 3 abc\n",
+    },
+    "missing and non-callable methods after a valid host assignment": {
+      source:
+        runtimeBuffer +
+        `
+        const real: RuntimeBuffer = Buffer;
+        console.log("real", real.byteLength("abc", "utf8"));
+        function consume(value: RuntimeBuffer) { return value.from("abc", "utf16le").toString("utf16le"); }
+        const missing: any = function () {};
+        const wrong: any = Object.assign(function () {}, { from: 0 });
+        for (const [label, value] of [["missing", missing], ["wrong", wrong]] as const) {
+          try { console.log(label, consume(value)); }
+          catch (error) { console.log(label, error instanceof TypeError ? "TypeError" : "unexpected"); }
+        }`,
+      stdout: "real 3\nmissing TypeError\nwrong TypeError\n",
+    },
+  };
+  for (const mode of ["run", "compile"]) {
+    for (const [name, fixture] of Object.entries(cases)) {
+      test(
+        `${mode}: ${name}`,
+        () =>
+          slot(async () => {
+            using dir = tempDir("aot-global-host-fields", {
+              "tsconfig.json": JSON.stringify({
+                compilerOptions: {
+                  strict: true,
+                  target: "ESNext",
+                  module: "Preserve",
+                  moduleResolution: "Bundler",
+                  types: [],
+                  noEmit: true,
+                },
+              }),
+              "globals.d.ts": `
+              declare var Buffer: BufferConstructor;
+              interface BufferConstructor {
+                (content: string): { toString(encoding: "utf16le"): string };
+                byteLength(content: string, encoding: "utf8"): number;
+                from(content: string, encoding: "utf16le"): { toString(encoding: "utf16le"): string };
+              }
+              declare module "node:path" {}
+            `,
+              "main.ts": `import "node:path";\n` + fixture.source,
+            });
+            const folder = String(dir);
+            let result;
+            if (mode === "compile") {
+              const executable = join(folder, isWindows ? "program.exe" : "program");
+              built(
+                await spawned(
+                  [bunExe(), "build", "--compile", "--aot", "main.ts", "--outfile", executable],
+                  folder,
+                  bunEnv,
+                ),
+              );
+              result = await spawned([executable], folder, bunEnv);
+            } else {
+              result = await spawned([bunExe(), "run", "--aot", "main.ts"], folder, bunEnv);
+            }
+            expect(result).toEqual({ stdout: fixture.stdout, stderr: "", exitCode: 0, signal: null });
+          }),
+        60_000,
+      );
+    }
+  }
+});

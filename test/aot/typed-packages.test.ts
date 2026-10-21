@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { appendFileSync, cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
-import { bunEnv, bunExe, tempDir } from "harness";
+import { bunEnv, bunExe, isASAN, isDebug, normalizeBunSnapshot, tempDir } from "harness";
 import { join } from "path";
 import { built, slot, spawned, told, unsupported } from "./run-programs";
 
@@ -12,6 +12,45 @@ const flags = ["--define", `process.env.NODE_ENV="production"`, "--outfile", "ap
 describe.skipIf(!!unsupported)("compile/aot/typed-packages", () => {
   const folders: string[] = [];
   afterAll(() => folders.forEach(folder => rmSync(folder, { recursive: true, force: true })));
+
+  test("boundary-limit retries finish and preserve fallback warnings with one and four workers", () => slot(async () => {
+    const keys = Array.from({ length: 256 }, (_, i) => `"k${i}"`).join(" | ");
+    using folder = tempDir("aot-boundary-retry-tail", {
+      "tsconfig.json": JSON.stringify({
+        compilerOptions: { strict: true, allowJs: true, checkJs: false, target: "ESNext", module: "Preserve", moduleResolution: "Bundler", types: [], noEmit: true },
+      }),
+      "types.ts": `export type Key = ${keys};
+export type Table = { [P in Key]: { [Q in Key]: { source: P; destination: Q; payload: { text: string } } } };`,
+      "api0.ts": `import type { Table } from "./types.ts"; export function consume(table: Table): string { return table.k0.k0.payload.text; }`,
+      "api1.ts": `import type { Table } from "./types.ts"; export function consume(table: Table): string { return table.k0.k0.payload.text; }`,
+      "bridge.js": `import { consume as f0 } from "./api0.ts";
+import { consume as f1 } from "./api1.ts";
+export const functions = [f0, f1];`,
+      "extra.ts": `export interface Simple { value: number; }
+type Permutation<T, K = T> = [T] extends [never] ? [] : K extends K ? [K, ...Permutation<Exclude<T, K>>] : never;
+export type Unused = Permutation<"a" | "b" | "c" | "d" | "e"> | { done: true };`,
+      "main.ts": `import "./bridge.js"; import type { Simple } from "./extra.ts"; export const loaded: Simple = { value: 1 };`,
+    });
+    const cwd = String(folder);
+    const expectedWarnings = [0, 1].map(i =>
+      `warning TS100011: '<dir>/api${i}.ts' is compiled untyped, which costs speed, not correctness: too many types cross between it and untyped code through 'Table' at bridge.js:3 to analyze.`,
+    );
+    for (const threads of [1, 4]) {
+      await using checked = Bun.spawn({
+        cmd: [bunExe(), "check", "--aot", `--threads=${threads}`, "--no-pretty", "main.ts"],
+        cwd,
+        env: bunEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+        timeout: isASAN || isDebug ? 90_000 : 30_000,
+        killSignal: "SIGKILL",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([checked.stdout.text(), checked.stderr.text(), checked.exited]);
+      expect({ signal: checked.signalCode, exitCode }).toEqual({ signal: null, exitCode: 0 });
+      expect(normalizeBunSnapshot(stdout, cwd).split(/\r?\n/)).toEqual(expectedWarnings);
+      expect(stderr).toContain("No type errors in 6 files");
+    }
+  }), isASAN || isDebug ? 185_000 : 65_000);
 
   function project(name: string) {
     const folder = String(tempDir(name, {}));

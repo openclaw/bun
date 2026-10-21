@@ -166,6 +166,7 @@ static OWN_MESSAGES: &[(u32, Category, &str)] = &[
     (100104, Category::Message, "'{0}' is declared to return '{1}', but code that the compiler cannot see creates the value, so its type is only a prediction."),
     (100105, Category::Message, "The object is made by Object.create here, with a prototype of its own, so every access through its type tests the object first."),
     (100106, Category::Message, "'{0}' gets its type, '{1}', from the function that this callback is passed to. The parameters of an async callback are not checked when it is entered, so the compiler does not rely on that type."),
+    (100107, Category::Warning, "'{0}' is compiled untyped: {1}. Retrying native AOT compilation."),
 ];
 
 const _: () = {

@@ -432,10 +432,10 @@ pub(crate) const BUILD_ONLY_PARAMS: &[ParamType] = concat_params!(
             "--compile-jit-policy <NUMBER>    JIT tier-up threshold scale the executable starts with (default 1 = normal; see Bun.unsafe.setJITPolicy)"
         ),
         parse_param!(
-            "--compile-function-source        With --compile --aot: keep the source text that Function.prototype.toString() returns (default: true)"
+            "--compile-function-source        With --compile --aot: embed function text for Function.prototype.toString() (default: true, except with --compile-in-place)"
         ),
         parse_param!(
-            "--no-compile-function-source     With --compile --aot: omit that source text; toString() on a compiled function returns [native code]"
+            "--no-compile-function-source     With --compile --aot: omit embedded function text; --compile-in-place can still read it from disk"
         ),
         parse_param!(
             "--compile-autoload-dotenv        Enable autoloading of .env files in standalone executable (default: true)"
@@ -2712,7 +2712,7 @@ fn parse_build_command_options(
                 );
                 Global::crash();
             }
-            ctx.bundler_options.compile_function_source = has_positive;
+            ctx.bundler_options.compile_function_source = Some(has_positive);
         }
     }
 

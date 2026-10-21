@@ -1454,7 +1454,10 @@ fn walk_module(
                     let is_array_element = !read_of.parts.is_empty() && !read_of.any_object && !read_of.any_function && read_of.prims & !prim::NULLISH == 0 && read_of.ints.is_none() && read_of.parts.iter().all(|part| matches!(part, Part::Array(_)));
                     let has_numeric_key = !by.has_objects() && by.prims & !(prim::NUMBER | prim::NULLISH) == 0 && (by.prims & prim::NUMBER != 0 || by.ints.is_some());
                     if is_array_element && has_numeric_key {
-                        chains_of_module.push(Chain { start: at.start, end: at.end, step: 0, passes: class::ALL | class::TAGGED | class::ARRAY | class::READS_ARRAY_ELEMENT, integer_range: Some(FULL_INT32_RANGE), steps: Vec::new() });
+                        let mut rest = String::from(",\"to\":");
+                        write_type(program, &mut rest, func.ty(obj), 0, linked);
+                        let line = step(pos, Kind::ArrayNotPlain, "ArrayElementRead", &rest, None);
+                        chains_of_module.push(Chain { start: at.start, end: at.end, step: 0, passes: class::ALL | class::TAGGED | class::ARRAY | class::READS_ARRAY_ELEMENT, integer_range: Some(FULL_INT32_RANGE), steps: vec![(v, line)] });
                     }
                 }
                 let Some(mut coercion_site) = coercion_site(program, func, v, is_linked, linked) else { continue };

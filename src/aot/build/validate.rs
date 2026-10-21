@@ -69,7 +69,8 @@ pub(crate) struct Validators {
 
 impl<'c, 'p, 's> FileBuild<'c, 'p, 's> {
     pub(crate) fn validation_call(&mut self, fx: &mut Fx, e: ExprId, call: CallId) -> Option<V> {
-        if !fx.is_typed {
+        // Native fallback changes representation, not the explicit type argument of a validation API.
+        if !fx.is_typed && !self.files.module(fx.file).is_forced_untyped.load(std::sync::atomic::Ordering::Relaxed) {
             return None;
         }
         let (which, ty) = self.c.validation_call(fx.file, e)?;
@@ -312,6 +313,7 @@ impl<'c, 'p, 's> FileBuild<'c, 'p, 's> {
         let failure = self.helper_function(fx, GeneratedFunction::Failure(number), 1);
         self.out.funcs[failure.idx()].result = safe_result.id;
         let refused = self.emit_throwing(fx, Op::CallDirect { func: failure, args: [value].into_iter().collect() });
+        let refused = self.coerce_to(fx, refused, safe_result, CoerceReason::Cast);
         fx.b.write(result, refused);
         fx.b.jump(done);
         fx.b.seal(done);

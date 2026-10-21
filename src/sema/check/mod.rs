@@ -129,7 +129,7 @@ pub use aot::ObjectOrigin;
 pub use aot::{Assertion, Derivation, Explaining, MissingLayout, UntypedOrigin};
 pub use aot::nullish_flow;
 pub use aot::{NotInt32Reason, FlowNode, FlowSource, Int32Verdict, NumberFlow, CodeOwner, expected_int32};
-pub use aot::{SubtypeAnswer, BuiltIn, Candidate, TruncatedSearch, KindsDeclared, Literal, SearchBarrier, Membership, FlowNotes, DataOrigin, Place, SubtypeQuery, LayoutUsage, FilePartition, UntypedReason};
+pub use aot::{SubtypeAnswer, BuiltIn, Candidate, TruncatedSearch, KindsDeclared, Literal, SearchBarrier, Membership, FlowNotes, FlowRecordContract, DataOrigin, Place, SubtypeQuery, LayoutUsage, FilePartition, UntypedReason};
 pub use aot::{Cause, FieldTypes, LoggingRelaxation, Sizes, Subtypes};
 pub use aot::{EvaluationTime, FirstStore, Primitive, ReferenceRead, Storage, kind};
 pub use aot::{Claim, is_engine_global, is_typed_array_class};
@@ -1128,6 +1128,7 @@ bitflags::bitflags! {
         const NO_CONSTRAINTS = 1 << 1;
         const IGNORE_NODE_INFERENCES = 1 << 2;
         const SKIP_BINDING_PATTERNS = 1 << 3;
+        const SKIP_LOGICAL_FALLBACK = 1 << 4;
     }
 }
 

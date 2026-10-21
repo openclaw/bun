@@ -6126,6 +6126,8 @@ impl<'p, 's> Checker<'p, 's> {
         let mut inherited = self.inherited_of(sm.shape());
         let leaves_out =
             r.relation == Relation::AssignableAsStored && self.is_created_by_program(target);
+        let open_host_namespace =
+            r.relation.is_lenient() && self.is_open_host_bun_namespace(has_properties);
         // `getUnmatchedProperty`
         for tp in &tm.shape().props {
             if !(require_optional_properties || !tp.flags.contains(PropFlags::OPTIONAL))
@@ -6133,6 +6135,7 @@ impl<'p, 's> Checker<'p, 's> {
                 // `isStaticPrivateIdentifierProperty`
                 || self.is_static_private_name(tp)
                 || leaves_out && self.is_never_stored(tp.name)
+                || open_host_namespace
             {
                 continue;
             }

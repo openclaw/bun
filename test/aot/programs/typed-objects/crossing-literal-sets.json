@@ -1,0 +1,6 @@
+{
+  "build": [
+    "--aot-type-errors=throw"
+  ],
+  "buildTimeout": 30000
+}

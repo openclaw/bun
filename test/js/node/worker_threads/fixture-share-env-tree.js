@@ -63,6 +63,41 @@ async function main() {
     return;
   }
 
+  if (mode === "references") {
+    const captured = process.env;
+    const capturedBun = typeof Bun === "undefined" ? captured : Bun.env;
+    captured.REFERENCE_BEFORE = "before";
+    captured.REFERENCE_DELETE = "delete";
+    captured["123"] = "indexed";
+    Object.defineProperty(captured, "REFERENCE_DESCRIPTOR", {
+      value: "descriptor", writable: true, configurable: true, enumerable: true,
+    });
+    const first = await spawn({ role: "first", mode }, SHARE_ENV);
+    const afterFirst = {
+      value: orNull(captured.REFERENCE_BEFORE),
+      deleted: orNull(captured.REFERENCE_DELETE),
+      indexed: orNull(captured["123"]),
+      child: orNull(captured.REFERENCE_CHILD),
+    };
+    captured.REFERENCE_AFTER = "after";
+    delete captured.REFERENCE_BEFORE;
+    const second = await spawn({ role: "second", mode }, SHARE_ENV);
+    const inherited = Object.create(captured);
+    inherited.REFERENCE_CHILD = "own";
+    console.log(JSON.stringify({
+      sameProcessEnv: captured === process.env,
+      sameBunEnv: capturedBun === (typeof Bun === "undefined" ? process.env : Bun.env),
+      first, afterFirst, second,
+      afterDeleted: orNull(captured.REFERENCE_AFTER),
+      child: orNull(captured.REFERENCE_CHILD),
+      childListed: Object.keys(captured).includes("REFERENCE_CHILD"),
+      deletedListed: Object.keys(captured).includes("REFERENCE_DELETE"),
+      descriptor: Object.getOwnPropertyDescriptor(captured, "REFERENCE_CHILD"),
+      inheritedOwn: Object.hasOwn(inherited, "REFERENCE_CHILD"),
+    }));
+    return;
+  }
+
   // Integer-like keys route through JSC's indexed hooks, not the named ones.
   if (mode === "indexed") {
     process.env["123"] = "from-main";
@@ -119,6 +154,23 @@ async function worker() {
       parentPort.postMessage({ SHARED_KEY: orNull(process.env.SHARED_KEY) });
     } else if (role === "C") {
       parentPort.postMessage({ ok: true });
+    }
+    return;
+  }
+
+  if (mode === "references") {
+    if (role === "first") {
+      const before = orNull(process.env.REFERENCE_BEFORE);
+      process.env.REFERENCE_BEFORE = "worker";
+      process.env.REFERENCE_CHILD = "child";
+      delete process.env.REFERENCE_DELETE;
+      delete process.env["123"];
+      parentPort.postMessage({ before, descriptor: orNull(process.env.REFERENCE_DESCRIPTOR) });
+    } else {
+      const after = orNull(process.env.REFERENCE_AFTER);
+      const before = orNull(process.env.REFERENCE_BEFORE);
+      delete process.env.REFERENCE_AFTER;
+      parentPort.postMessage({ after, before });
     }
     return;
   }

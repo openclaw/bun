@@ -204,7 +204,8 @@ fn run(args: &[String]) {
             constants.has_test_globals = has("--test-globals");
             constants.logs_type_errors = has("--aot-type-errors=log");
             constants.minifies_identifiers = (has("--minify") || has("--minify-identifiers")) && !has("--keep-names");
-            constants.records_spans = args.iter().any(|a| a.starts_with("--audit-sites-out="));
+            let audit_sites_out = args.iter().find_map(|a| a.strip_prefix("--audit-sites-out="));
+            constants.records_spans = audit_sites_out.is_some();
             // `--own-paths`: as for `bun run --aot`, each module reports its own path.
             if has("--own-paths") || snapshot.as_ref().is_some_and(|it| it.preserve_source_paths) {
                 constants.source_path_to_url = Some(|path| {
@@ -456,22 +457,34 @@ fn run(args: &[String]) {
             let translate = |program: &bun_sema::check::Program,
                              in_parallel: bun_sema::util::InParallel<'_>,
                              errors: &[(bun_sema::program::FileId, u32)]|
-             -> Vec<bool> {
+             -> bun_sema_driver::CompilationOutcome {
                 let started = std::time::Instant::now();
                 if audited_separately.is_some() {
-                    let path = args.iter().find_map(|a| a.strip_prefix("--audit-sites-out=")).expect("--audit-only goes with --audit-sites-out");
+                    let path = audit_sites_out.expect("--audit-only goes with --audit-sites-out");
                     let tables: Vec<String> = (translation.take_fragment_programs(program).iter())
                         .map(|of_fragment| bun_aot::audit::to_json(&bun_aot::audit::table(of_fragment, false, &|path| program.files.by_path.get(&bun_sema_driver::host::from_native(std::path::Path::new(&cwd).join(bstr::BStr::new(path).to_string()).to_string_lossy().as_bytes())).map(|file| &program.files.hir(file).text[..]), in_parallel), &[]))
                         .collect();
                     let is_written = write_file(path, tables.join("\n").as_bytes()).is_ok();
                     lacks_output.store(!is_written, std::sync::atomic::Ordering::Relaxed);
                     error_line!("aot: sites of {} fragments written in {:.3} s", tables.len(), started.elapsed().as_secs_f64());
-                    return vec![false; errors.len()];
+                    return bun_sema_driver::CompilationOutcome::Complete(vec![false; errors.len()]);
                 }
-                let mut translated = translation.finish(program, in_parallel, errors);
+                let mut translated = if audit_sites_out.is_some() {
+                    translation.finish_for_audit(program, in_parallel, errors)
+                } else {
+                    translation.finish(program, in_parallel, errors)
+                };
+                if let Some(retry) = translated.retry_untyped.take() {
+                    bun_aot::release(translated.program, in_parallel);
+                    return if audit_sites_out.is_some() || explains_react {
+                        bun_sema_driver::CompilationOutcome::Failed { kept_errors: translated.kept_errors, message: retry.message }
+                    } else {
+                        bun_sema_driver::CompilationOutcome::FlowFamilyExhausted { kept_errors: translated.kept_errors, contributors: retry.contributors, message: retry.message }
+                    };
+                }
                 *error_dismissal_reasons.lock() = std::mem::take(&mut translated.error_dismissal_reasons);
                 if translated.kept_errors.contains(&true) {
-                    return translated.kept_errors;
+                    return bun_sema_driver::CompilationOutcome::Complete(translated.kept_errors);
                 }
                 for problem in &translated.problems {
                     error_line!("{problem}");
@@ -511,13 +524,13 @@ fn run(args: &[String]) {
                     translated.times.layouts_described,
                     translated.times.rounds
                 );
-                if let Some(path) = args.iter().find_map(|a| a.strip_prefix("--audit-sites-out=")) {
+                if let Some(path) = audit_sites_out {
                     let linked_in = started.elapsed().as_secs_f64();
                     bun_aot::audit::widen_layoutless_classes_to_any_object(&mut translated.program);
                     let is_written = write_file(path, bun_aot::audit::to_json(&bun_aot::audit::table(&translated.program, true, &|path| program.files.by_path.get(&bun_sema_driver::host::from_native(std::path::Path::new(&cwd).join(bstr::BStr::new(path).to_string()).to_string_lossy().as_bytes())).map(|file| &program.files.hir(file).text[..]), in_parallel), &bun_aot::audit::shapes(&translated.program)).as_bytes()).is_ok();
                     lacks_output.store(!is_written, std::sync::atomic::Ordering::Relaxed);
                     error_line!("aot: linked in {:.3} s, sites written in {:.3} s", linked_in, started.elapsed().as_secs_f64() - linked_in);
-                    return translated.kept_errors;
+                    return bun_sema_driver::CompilationOutcome::Complete(translated.kept_errors);
                 }
                 if let Some(path) = args.iter().find_map(|a| a.strip_prefix("--aot-out=")) {
                     let linked_in = started.elapsed().as_secs_f64();
@@ -530,11 +543,11 @@ fn run(args: &[String]) {
                     let written_in = started.elapsed().as_secs_f64();
                     bun_aot::release(translated.program, in_parallel);
                     error_line!("aot: the linked program was released in {:.3} s", started.elapsed().as_secs_f64() - written_in);
-                    return translated.kept_errors;
+                    return bun_sema_driver::CompilationOutcome::Complete(translated.kept_errors);
                 }
                 output_line!("{}", translated.program.dump().trim_end());
                 error_line!("aot: {:.3} s", started.elapsed().as_secs_f64());
-                translated.kept_errors
+                bun_sema_driver::CompilationOutcome::Complete(translated.kept_errors)
             };
             type AfterFile<'a> = &'a (
                     dyn Fn(&mut bun_sema::check::Checker<'_, '_>, bun_sema::program::FileId) + Sync
@@ -632,6 +645,8 @@ fn run(args: &[String]) {
                 paths: &paths,
                 are_entry_points: snapshot.is_some() || has("--aot"),
                 is_one_program: has("--aot"),
+                forced_untyped: &[],
+                forced_untyped_reasons: &[],
                 code: &code,
                 threads: args
                     .iter()
@@ -670,9 +685,10 @@ fn run(args: &[String]) {
                             &bun_sema::check::Program,
                             bun_sema::util::InParallel<'_>,
                             &[(bun_sema::program::FileId, u32)],
-                        ) -> Vec<bool>
+                        ) -> bun_sema_driver::CompilationOutcome
                             + Sync),
                 ),
+                compilation_finished: Some(&|| translation.discard()),
                 checked: is_timed.then_some(&list_largest_tables as &(dyn Fn(&bun_sema::check::Program) + Sync)),
                 after_file,
                 before_visits: has("--aot").then_some(&record_file as AfterFile<'_>),

@@ -1,5 +1,6 @@
 use super::{ByExpression, ByFile};
 use super::captures::Receiver;
+use super::callees::Callee;
 use super::type_flags;
 use super::int32_fields::CodeOwner;
 use crate::atom::Atom;
@@ -39,6 +40,7 @@ pub struct StoreAtBirth {
 #[derive(Clone, Default)]
 pub struct FreshGraph {
     pub is_object: bool,
+    pub needs_open_layout: bool,
     pub within: Vec<(Atom, FreshGraph)>,
     pub anywhere: Option<Box<FreshGraph>>,
     pub elements: Option<Box<FreshGraph>>,
@@ -50,7 +52,17 @@ impl FreshGraph {
     }
 
     fn named_contents(self) -> FreshGraph {
-        FreshGraph { is_object: false, elements: None, ..self }
+        FreshGraph { is_object: false, needs_open_layout: false, elements: None, ..self }
+    }
+
+    pub fn retain_open_layouts(&mut self) {
+        self.is_object &= self.needs_open_layout;
+        for (_, held) in &mut self.within {
+            held.retain_open_layouts();
+        }
+        for held in [&mut self.anywhere, &mut self.elements].into_iter().flatten() {
+            held.retain_open_layouts();
+        }
     }
 
     fn all_contents(self) -> FreshGraph {
@@ -63,6 +75,7 @@ impl FreshGraph {
 
     fn join(&mut self, other: FreshGraph) {
         self.is_object |= other.is_object;
+        self.needs_open_layout |= other.needs_open_layout;
         for (name, held) in other.within {
             match self.within.iter_mut().find(|known| known.0 == name) {
                 Some(known) => known.1.join(held),
@@ -4122,6 +4135,10 @@ impl<'p, 's> Checker<'p, 's> {
                     if !matches!(kind, PropKind::Init | PropKind::Shorthand | PropKind::Spread) {
                         continue;
                     }
+                    if kind == PropKind::Spread {
+                        let spread = self.type_of_expr(file, value);
+                        created.needs_open_layout |= self.is_generic(spread);
+                    }
                     let Some(held) = self.expr_allocation(file, value, looked_at) else { continue };
                     created.join(match (kind, key) {
                         (PropKind::Spread, _) => held.named_contents(),
@@ -4131,7 +4148,7 @@ impl<'p, 's> Checker<'p, 's> {
                 }
                 Some(created)
             }
-            ExprKind::New(_) if self.creates_proxy(file, e) => Some(FreshGraph::object()),
+            ExprKind::New(_) if self.creates_proxy(file, e) => Some(FreshGraph { needs_open_layout: true, ..FreshGraph::object() }),
             ExprKind::As { expr, .. } | ExprKind::Satisfies { expr, .. } | ExprKind::NonNull(expr) | ExprKind::AsConst(expr) => self.expr_allocation(file, expr, looked_at),
             ExprKind::Cond { yes, no, .. } => self.either_allocation(file, yes, no, looked_at),
             ExprKind::Binary { op: BinOp::Or | BinOp::And | BinOp::Nullish, left, right } => self.either_allocation(file, left, right, looked_at),
@@ -4190,6 +4207,18 @@ impl<'p, 's> Checker<'p, 's> {
                 created
             }
             ExprKind::Call(call) => {
+                if (self.is_library_call(file, e, b"Array", &[b"map"]) || self.is_library_call(file, e, b"ReadonlyArray", &[b"map"]))
+                    && self.resolved_signature(file, e).sig.and_then(|sig| self.sig_decl(sig)).is_some_and(|(declared_in, ..)| self.files.module(declared_in).is_lib)
+                    && let Some(callback) = self.hir(file).ids(self.hir(file)[call].args).next()
+                {
+                    let callback = self.result_callees_of(file, callback, 0);
+                    if !callback.is_predicted && !callback.may_be_nullish
+                        && let Callee::One(of, func) = callback.callee
+                        && let Some(elements) = self.function_allocation(of, func, looked_at)
+                    {
+                        return Some(FreshGraph { elements: Some(Box::new(elements)), ..FreshGraph::default() });
+                    }
+                }
                 if let Some(handed_back) = self.returned_argument_of(file, e) {
                     let mut created = self.expr_allocation(file, handed_back, looked_at)?;
                     let hir = self.hir(file);
@@ -4271,8 +4300,9 @@ impl<'p, 's> Checker<'p, 's> {
             return None;
         }
         self.prepare_enclosing(file, e);
-        let expected = self.contextual_type(file, e, ContextFlags::SKIP_BINDING_PATTERNS)?;
-        Some(self.instantiate_contextual_type(expected, file, e, ContextFlags::SKIP_BINDING_PATTERNS))
+        let flags = ContextFlags::SKIP_BINDING_PATTERNS | ContextFlags::SKIP_LOGICAL_FALLBACK;
+        let expected = self.contextual_type(file, e, flags)?;
+        Some(self.instantiate_contextual_type(expected, file, e, flags))
     }
 
     pub fn copied_named_values(&mut self, file: FileId, e: ExprId) -> Vec<(FileId, Atom, ExprId)> {
@@ -4475,7 +4505,7 @@ impl<'p, 's> Checker<'p, 's> {
     }
 
     pub fn record_nested_proxies(&mut self, ty: TypeId) {
-        let created = FreshGraph { is_object: true, within: Vec::new(), anywhere: Some(Box::new(FreshGraph::object())), elements: Some(Box::new(FreshGraph::object())) };
+        let created = FreshGraph { is_object: true, needs_open_layout: true, within: Vec::new(), anywhere: Some(Box::new(FreshGraph::object())), elements: Some(Box::new(FreshGraph::object())) };
         self.record_generic_function_result(&created, ty);
     }
 
@@ -7384,11 +7414,13 @@ impl<'p, 's> Checker<'p, 's> {
         } else {
             of == file && self.is_evaluated_after(file, e, Site::File, end)
         };
-        if !is_initialized && !cx.known_initialized.contains(&sym) {
+        // Keep the reference's alias so code generation can follow the bundler's runtime resolution.
+        let named = self.files().sym(file, local);
+        if !is_initialized && !cx.known_initialized.contains(&named) {
             if cx.uncertainty > 0 {
                 return cx.bail("walk: a name that may be early, under a condition");
             }
-            cx.known_initialized.push(sym);
+            cx.known_initialized.push(named);
         }
         Some(value)
     }

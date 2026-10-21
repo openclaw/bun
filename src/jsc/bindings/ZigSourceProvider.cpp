@@ -923,6 +923,7 @@ extern "C" uint32_t Bun__WTFStringHashUTF16(const char16_t* characters, size_t l
 extern "C" void Bun__AOTAudit__describe(uint32_t id, BunString* out);
 extern "C" void Bun__AOTAudit__describeShape(const BunString* key, BunString* out);
 extern "C" void Bun__AOTAudit__write(const uint8_t* line, size_t length);
+extern "C" bool Bun__AOTAudit__isEnforcing();
 
 extern "C" void Bun__AOTAudit__setPendingSites(size_t sourceLength, const uint32_t* expressions, size_t expressionCount, const uint32_t* parameters, size_t numberOfParameters)
 {
@@ -1286,11 +1287,33 @@ JSC_DEFINE_HOST_FUNCTION(jsAOTAuditCheck, (JSC::JSGlobalObject * globalObject, J
         if (!array || !subscript.isNumber())
             return JSC::JSValue::encode(JSC::jsUndefined());
         std::optional<uint32_t> index = subscript.tryGetAsUint32Index();
-        JSC::PropertySlot slot(array, JSC::PropertySlot::InternalMethodType::VMInquiry, &vm);
-        bool isFound = index ? array->getPropertySlot(globalObject, *index, slot) : array->getPropertySlot(globalObject, JSC::Identifier::from(vm, subscript.asNumber()), slot);
-        RETURN_IF_EXCEPTION(scope, {});
-        if (slot.isTaintedByOpaqueObject() || (isFound && !slot.isValue()))
-            return JSC::throwVMTypeError(globalObject, scope, JSC::withAOTErrorNote("Cannot read array element: the array or its prototype chain has accessors or a Proxy, which are not run for an array of a declared element type"_s));
+        bool blocked;
+        {
+            // VMInquiry forbids JavaScript entry until its PropertySlot is destroyed.
+            JSC::PropertySlot slot(array, JSC::PropertySlot::InternalMethodType::VMInquiry, &vm);
+            bool isFound = index ? array->getPropertySlot(globalObject, *index, slot) : array->getPropertySlot(globalObject, JSC::Identifier::from(vm, subscript.asNumber()), slot);
+            RETURN_IF_EXCEPTION(scope, {});
+            blocked = slot.isTaintedByOpaqueObject() || (isFound && !slot.isValue());
+        }
+        if (blocked) {
+            if (Bun__AOTAudit__isEnforcing())
+                return JSC::throwVMTypeError(globalObject, scope, JSC::withAOTErrorNote("Cannot read array element: the array or its prototype chain has accessors or a Proxy, which are not run for an array of a declared element type"_s));
+            if (s_auditHelpers) {
+                auto found = s_auditHelpers->find(globalObject);
+                if (found != s_auditHelpers->end()) {
+                    JSC::MarkedArgumentBuffer arguments;
+                    arguments.append(value);
+                    arguments.append(number);
+                    arguments.append(JSC::jsNumber(s_auditGeneration.load(std::memory_order_acquire)));
+                    arguments.append(JSC::jsBoolean(true));
+                    scope.release();
+                    auto reportScope = DECLARE_TOP_EXCEPTION_SCOPE(vm);
+                    JSC::call(globalObject, found->value.get(), arguments, "bun:aot-audit"_s);
+                    if (reportScope.exception()) [[unlikely]]
+                        (void)reportScope.tryClearException();
+                }
+            }
+        }
         return JSC::JSValue::encode(JSC::jsUndefined());
     }
     if (callFrame->argumentCount() > 2)

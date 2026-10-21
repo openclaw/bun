@@ -93,6 +93,7 @@ struct NotedTables<T = TypeId> {
     upcasts: FxHashMap<(T, T), Place>,
     casts: FxHashSet<(T, T)>,
     guards: FxHashSet<(T, T)>,
+    flow_layouts: FxHashSet<(T, T)>,
     forced: FxHashSet<(T, T)>,
     unverified_overload_results: FxHashSet<(T, T)>,
     assignable_casts: FxHashSet<(T, T)>,
@@ -129,6 +130,7 @@ impl<T> Default for NotedTables<T> {
             upcasts: FxHashMap::default(),
             casts: FxHashSet::default(),
             guards: FxHashSet::default(),
+            flow_layouts: FxHashSet::default(),
             forced: FxHashSet::default(),
             unverified_overload_results: FxHashSet::default(),
             assignable_casts: FxHashSet::default(),
@@ -164,6 +166,7 @@ impl<T: Copy + Eq + Hash> NotedTables<T> {
         self.copied_into.extend(other.copied_into);
         self.casts.extend(other.casts);
         self.guards.extend(other.guards);
+        self.flow_layouts.extend(other.flow_layouts);
         self.untyped_into_both.extend(other.untyped_into_both);
         self.stored_read_only.extend(other.stored_read_only);
         self.read_only_passed_on.extend(other.read_only_passed_on);
@@ -276,6 +279,9 @@ impl<T: Copy + Eq + Hash> NotedTables<T> {
             NoteKind::Guard => {
                 self.guards.insert((first, second));
             }
+            NoteKind::FlowLayout => {
+                self.flow_layouts.insert((first, second));
+            }
             NoteKind::Forced => {
                 self.forced.insert((first, second));
             }
@@ -321,6 +327,7 @@ pub(super) enum NoteKind {
     NoFixedLayout,
     Cast,
     Guard,
+    FlowLayout,
     Forced,
     UnverifiedOverloadResult,
     AssignableCast,
@@ -433,6 +440,11 @@ impl<T> Default for FlowNotes<T> {
 }
 
 impl<T: Copy + Eq + Hash> FlowNotes<T> {
+    pub fn flow_layout_edges(&self) -> impl Iterator<Item = (T, T)> + '_ {
+        self.notes.iter().filter(|note| note.kind == NoteKind::FlowLayout).map(|note| (note.first, note.second))
+            .chain(self.absorbed.iter().flat_map(|tables| tables.flow_layouts.iter().copied()))
+    }
+
     pub fn has_mutations(&self) -> bool {
         self.escapes.mutations.is_some() || !self.parameter_notes.is_empty() || self.notes.last().is_some_and(|note| note.kind >= NoteKind::EntersParameter)
     }
@@ -767,6 +779,9 @@ pub(super) struct State {
     pub(super) truncated: FxHashSet<(TypeId, TypeId, u8)>,
     pub(super) provably_related: FxHashMap<(TypeId, TypeId, u8), bool>,
     derived_types: FxHashMap<(TypeId, DerivedTypeKind), TypeId>,
+    flow_records: FxHashMap<FlowRecordKey, TypeId>,
+    // Representatives retain the exact written leaf contract; they are not synthesized Flow records.
+    flow_reference_records: FxHashMap<FlowRecordKey, TypeId>,
     pub(super) literal_contextual_types: FxHashMap<(FileId, ExprId), Option<TypeId>>,
     pub(super) unknown_count: usize,
     roots: FxHashMap<Sym, Root>,
@@ -1043,6 +1058,49 @@ enum DerivedTypeKind {
     Union,
     Either,
     AnythingAs,
+    FlowIntersection,
+}
+
+#[derive(PartialEq, Eq, Hash)]
+struct FlowRecordKey {
+    fields: Vec<(Atom, PropFlags, TypeId, TypeId)>,
+    indexes: Vec<crate::types::IndexInfo>,
+    declared_only: bool,
+}
+
+#[derive(Default)]
+struct FlowReferenceAbsorption {
+    remaining: usize,
+    comparisons: usize,
+    active: FxHashSet<TypeId>,
+    verified: FxHashSet<TypeId>,
+}
+
+#[derive(Default)]
+struct FlowReferenceNormalization {
+    remaining: usize,
+    active: FxHashSet<TypeId>,
+    resolved: FxHashMap<TypeId, TypeId>,
+    pending: FxHashMap<FlowRecordKey, TypeId>,
+}
+
+
+/// The exact materialized Flow record contract, with no task-local names or construction history.
+#[derive(PartialEq, Eq, Hash, Debug)]
+pub struct FlowRecordContract {
+    fields: Vec<(Box<[u8]>, PropFlags, Identity, Identity)>,
+    indexes: Vec<FlowIndexContract>,
+    declared_only: bool,
+}
+
+#[derive(PartialEq, Eq, Hash, Debug)]
+struct FlowIndexContract {
+    key: Identity,
+    value: Identity,
+    readonly: bool,
+    is_enum_number_index_info: bool,
+    declaration: Option<(FileId, crate::hir::MemberId)>,
+    components: Vec<crate::types::IndexComponent>,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
@@ -1355,6 +1413,10 @@ impl<'s> Program<'s> {
             searcher.aot.flows.is_searching_from_sources = true;
             searcher.aot.flows.is_boundary_bounded = true;
             searcher.search_from_sources(&search, index, &FilePartition::Rest { index, of: search.searchers, is_taken: &[] }, &FxHashMap::default());
+            // Failed attempts publish no task results; drop the checker without preparing them.
+            if search.gave_up.lock().is_some() {
+                return;
+            }
             let mut found = searcher.end_task();
             found.diagnostics.retain(|(owner, _)| owner.is_some());
             *finished[index].lock() = Some(found);
@@ -1924,11 +1986,13 @@ impl<'p, 's> Checker<'p, 's> {
             return;
         }
         let is_module = matches!(self.data(allocated_as), TypeData::Anon { origin: Origin::Module(..), .. });
-        if !created.is_object || self.built_in_for_type(allocated_as).is_some() || self.is_instance_type(allocated_as) || !self.declares_properties(allocated_as) || is_module {
+        if self.built_in_for_type(allocated_as).is_some() || self.is_instance_type(allocated_as) || !self.declares_properties(allocated_as) || is_module {
             return;
         }
-        let view = self.layout_defining_type(allocated_as);
-        out.push(view);
+        if created.is_object {
+            let view = self.layout_defining_type(allocated_as);
+            out.push(view);
+        }
         for (name, held) in &created.within {
             if let Some(of_field) = self.type_of_property(allocated_as, *name) {
                 self.add_allocated_types(held, of_field, out);
@@ -2521,6 +2585,353 @@ impl<'p, 's> Checker<'p, 's> {
         let both = self.intersection(&[source, target]);
         let both = self.layout_defining_type(both);
         matches!(self.data(both), TypeData::Intersection(_)).then_some(both)
+    }
+
+    /// A Flow narrowing must retain the primitive constraints of every older alias. Unlike an explicit cast, it needs a distinct
+    /// record when layout canonicalization would widen the intersection back to one of its operands.
+    pub fn intersection_for_flow_cast(&mut self, source: TypeId, target: TypeId) -> Result<Option<TypeId>, &'static str> {
+        let not_known_before = self.aot.flows.unknown_count;
+        if self.is_coercion_result_type(source) || self.is_coercion_result_type(target) {
+            return Ok(None);
+        }
+        let have_fixed_layout = self.declares_properties(source) && self.declares_properties(target) && !self.is_instance_type(source) && !self.is_instance_type(target);
+        if !have_fixed_layout || self.is_allocated_subtype(target, source) || self.is_allocated_subtype(source, target) || self.aot.flows.unknown_count != not_known_before {
+            return Ok(None);
+        }
+        let both = self.intersection(&[source, target]);
+        let both = self.reduced(both);
+        if !matches!(self.data(both), TypeData::Intersection(_)) {
+            return Ok(None);
+        }
+        let record = self.cached_derived_type(both, DerivedTypeKind::FlowIntersection, Self::compute_flow_intersection_record);
+
+        if record.is_never() {
+            return Err("a Flow intersection has no supported data-field representation");
+        }
+        Ok((self.aot.flows.unknown_count == not_known_before).then_some(record))
+    }
+
+    fn compute_flow_intersection_record(&mut self, intersection: TypeId) -> TypeId {
+        let is_result_cacheable = !self.results_are_provisional();
+        let careful_before = (self.stack_half_used_count(), self.aot.flows.unknown_count);
+        let Some(properties) = self.members(intersection) else { return TypeId::NEVER };
+        let Some(structured) = self.structured_members(intersection) else { return TypeId::NEVER };
+        // This record owns data fields, not callable or declaration-dependent member contracts.
+        let unsupported = PropFlags::PRIVATE | PropFlags::PROTECTED | PropFlags::METHOD | PropFlags::ACCESSOR | PropFlags::WRITE_ONLY | PropFlags::ABSTRACT;
+        if !structured.shape().call.is_empty() || !structured.shape().construct.is_empty() || properties.shape().props.iter().any(|prop| prop.flags.intersects(unsupported) || self.is_private_name(prop.name)) {
+            return TypeId::NEVER;
+        }
+        let mut shape = Shape::new_in(self.arena);
+        let mut key = FlowRecordKey {
+            fields: Vec::with_capacity(properties.shape().props.len()),
+            indexes: Vec::with_capacity(structured.shape().index.len()),
+            declared_only: self.is_declared_only_record(intersection),
+        };
+        for prop in properties.shape().props.iter() {
+            let ty = self.type_of_prop(prop, properties.mapper);
+            let ty = self.canonical_flow_reference_field(ty);
+            // type_of_prop has already applied these transformations; the remaining flags still describe the property contract.
+            let flags = prop.flags & !(PropFlags::WIDEN | PropFlags::REGULAR);
+            key.fields.push((prop.name, flags, prop.name_type, ty));
+            shape.props.push(Prop { name: prop.name, flags, source: PropSource::Type(ty), mapper: MapperId::IDENTITY, name_type: prop.name_type });
+        }
+        self.sort_by_name(&mut shape);
+        key.fields.sort_unstable_by_key(|field| field.0.0);
+        for info in structured.shape().index.iter() {
+            let mut info = *info;
+            info.key = self.instantiate(info.key, structured.mapper);
+            info.value = self.instantiate(info.value, structured.mapper);
+            key.indexes.push(info);
+            shape.index.push(info);
+        }
+        let can_cache = is_result_cacheable && careful_before == (self.stack_half_used_count(), self.aot.flows.unknown_count);
+        if can_cache && let Some(&record) = self.aot.flows.flow_records.get(&key) {
+            return record;
+        }
+        // Keep declaration-only provenance, as union_as_record does, without marking this as a coercion result.
+        (shape.created_from, shape.spread_rank) = (Some((TypeId::NEVER, intersection)), u32::MAX - 1);
+        let record = self.synth(shape);
+        if can_cache {
+            self.aot.flows.flow_records.insert(key, record);
+        }
+        record
+    }
+
+    fn flow_reference_leaves(&self, ty: TypeId, remaining: &mut usize) -> Option<Vec<TypeId>> {
+        let mut seen = FxHashSet::default();
+        let mut pending = vec![ty];
+        let mut leaves = Vec::new();
+        seen.insert(ty);
+        let mut next = 0;
+        while let Some(&part) = pending.get(next) {
+            next += 1;
+            match self.data(part) {
+                TypeData::Union(parts) | TypeData::Intersection(parts) => {
+                    if parts.is_empty() {
+                        return None;
+                    }
+                    for &part in parts.iter() {
+                        if seen.insert(part) {
+                            *remaining = remaining.checked_sub(1)?;
+                            pending.push(part);
+                        }
+                    }
+                }
+                _ => leaves.push(part),
+            }
+        }
+        (!leaves.is_empty()).then_some(leaves)
+    }
+
+    fn canonical_flow_reference_field(&mut self, ty: TypeId) -> TypeId {
+        if !matches!(self.data(ty), TypeData::Union(_) | TypeData::Intersection(_)) || self.results_are_provisional() {
+            return ty;
+        }
+        // Share one work limit across aggregate edges and nested fields; failed walks publish no representatives.
+        let mut normalization = FlowReferenceNormalization { remaining: 1024, ..Default::default() };
+        let before = (self.stack_half_used_count(), self.aot.flows.unknown_count);
+        let (result, is_cacheable) = self.compute_cacheable(|checker| {
+            let absorbed = checker.absorb_flow_reference_union(ty).unwrap_or(ty);
+            checker.canonical_flow_reference_child(absorbed, 0, &mut normalization)
+        });
+        if !is_cacheable || self.results_are_provisional() || before != (self.stack_half_used_count(), self.aot.flows.unknown_count) {
+            return ty;
+        }
+        let Some(result) = result else { return ty };
+        self.aot.flows.flow_reference_records.extend(normalization.pending);
+        result
+    }
+
+    fn flow_absorption_atoms(&self, ty: TypeId, attempt: &mut FlowReferenceAbsorption) -> Option<Vec<TypeId>> {
+        let mut pending = vec![(ty, 0)];
+        let mut atoms = Vec::new();
+        while let Some((part, depth)) = pending.pop() {
+            attempt.remaining = attempt.remaining.checked_sub(1)?;
+            if self.types().instantiation_class(part) != crate::types::InstantiationClass::Unchanged { return None; }
+            if depth > 64 { return None; }
+            match self.data(part) {
+                TypeData::Intersection(parts) => {
+                    if parts.is_empty() || parts.len() > attempt.remaining.saturating_sub(pending.len()) { return None; }
+                    // The checker gives intersection order meaning for overloads. Keep that order even in this data-only fragment.
+                    pending.extend(parts.iter().rev().map(|&part| (part, depth + 1)));
+                }
+                TypeData::Anon { origin: Origin::TypeLiteral(..), mapper: MapperId::IDENTITY } => atoms.push(part),
+                _ => return None,
+            }
+        }
+        (!atoms.is_empty()).then_some(atoms)
+    }
+
+    fn flow_absorption_data(&mut self, ty: TypeId, depth: usize, attempt: &mut FlowReferenceAbsorption) -> Option<()> {
+        attempt.remaining = attempt.remaining.checked_sub(1)?;
+        if self.types().instantiation_class(ty) != crate::types::InstantiationClass::Unchanged { return None; }
+        if attempt.verified.contains(&ty) { return Some(()); }
+        if depth > 64 || attempt.active.contains(&ty) { return None; }
+        attempt.active.insert(ty);
+        let result = self.compute_flow_absorption_data(ty, depth, attempt);
+        attempt.active.remove(&ty);
+        if result.is_some() { attempt.verified.insert(ty); }
+        result
+    }
+
+    fn compute_flow_absorption_data(&mut self, ty: TypeId, depth: usize, attempt: &mut FlowReferenceAbsorption) -> Option<()> {
+        match self.data(ty) {
+            TypeData::Intrinsic(Intrinsic::Never | Intrinsic::Undefined | Intrinsic::Null | Intrinsic::String | Intrinsic::Number | Intrinsic::BigInt | Intrinsic::Symbol)
+            | TypeData::StringLit { .. } | TypeData::NumberLit { .. } | TypeData::BigIntLit { .. } | TypeData::BoolLit { .. } => return Some(()),
+            TypeData::Union(parts) | TypeData::Intersection(parts) => {
+                if parts.is_empty() || parts.len() > attempt.remaining { return None; }
+                let parts = parts.to_vec();
+                for part in parts { self.flow_absorption_data(part, depth + 1, attempt)?; }
+                return Some(());
+            }
+            TypeData::Anon { origin: Origin::TypeLiteral(..), mapper: MapperId::IDENTITY } => {}
+            _ => return None,
+        }
+        if self.is_instance_type(ty) || self.is_coercion_result_type(ty) || self.is_declared_only_record(ty) || self.has_type_variables(ty) {
+            return None;
+        }
+        let members = self.members(ty)?;
+        let unsupported = PropFlags::PRIVATE | PropFlags::PROTECTED | PropFlags::METHOD | PropFlags::ACCESSOR | PropFlags::WRITE_ONLY | PropFlags::ABSTRACT;
+        if members.mapper != MapperId::IDENTITY || members.has_signatures() || !members.index_infos().is_empty() { return None; }
+        for prop in members.shape().props.iter() {
+            attempt.remaining = attempt.remaining.checked_sub(1)?;
+            if prop.mapper != MapperId::IDENTITY || prop.flags.intersects(unsupported) || self.is_private_name(prop.name) { return None; }
+            if prop.name_type != TypeId::UNRESOLVED { self.flow_absorption_data(prop.name_type, depth + 1, attempt)?; }
+            let field = self.type_of_prop(prop, members.mapper);
+            self.flow_absorption_data(field, depth + 1, attempt)?;
+        }
+        Some(())
+    }
+
+    /// Remove only ordered projections of settled plain-data arms; original arm identities and alias views stay intact.
+    fn absorb_flow_reference_union(&mut self, ty: TypeId) -> Option<TypeId> {
+        let TypeData::Union(members) = self.data(ty) else { return Some(ty) };
+        if self.types().instantiation_class(ty) != crate::types::InstantiationClass::Unchanged { return None; }
+        let mut attempt = FlowReferenceAbsorption { remaining: 65_536, comparisons: 65_536, ..Default::default() };
+        if members.len() > attempt.remaining { return None; }
+        let members = members.to_vec();
+        let mut atoms = Vec::with_capacity(members.len());
+        for &member in &members { atoms.push(self.flow_absorption_atoms(member, &mut attempt)?); }
+        let mut order: Vec<_> = (0..members.len()).collect();
+        order.sort_unstable_by_key(|&index| (atoms[index].len(), index));
+        let mut keep = vec![true; members.len()];
+        let mut by_first: FxHashMap<TypeId, Vec<usize>> = FxHashMap::default();
+        for index in order {
+            let mut checked = FxHashSet::default();
+            let mut absorbed = false;
+            'candidates: for atom in &atoms[index] {
+                attempt.comparisons = attempt.comparisons.checked_sub(1)?;
+                for &candidate in by_first.get(atom).into_iter().flatten() {
+                    attempt.comparisons = attempt.comparisons.checked_sub(1)?;
+                    if !checked.insert(candidate) { continue; }
+                    let mut found = 0;
+                    for part in &atoms[index] {
+                        attempt.comparisons = attempt.comparisons.checked_sub(1)?;
+                        if *part == atoms[candidate][found] { found += 1; }
+                        if found == atoms[candidate].len() {
+                            absorbed = true;
+                            break 'candidates;
+                        }
+                    }
+                }
+            }
+            if absorbed { keep[index] = false; }
+            else { by_first.entry(atoms[index][0]).or_default().push(index); }
+        }
+        if keep.iter().all(|&kept| kept) { return Some(ty); }
+        // Gate every arm, including nested fields, before committing any of the proposed removals.
+        for term in &atoms {
+            for &atom in term { self.flow_absorption_data(atom, 0, &mut attempt)?; }
+        }
+        let retained: Vec<_> = members.into_iter().zip(keep).filter_map(|(member, keep)| keep.then_some(member)).collect();
+        Some(self.union(&retained))
+    }
+
+    fn canonical_flow_reference_child(&mut self, ty: TypeId, depth: usize, normalization: &mut FlowReferenceNormalization) -> Option<TypeId> {
+        if let Some(&result) = normalization.resolved.get(&ty) {
+            return Some(result);
+        }
+        if depth > 64 || normalization.active.contains(&ty) {
+            return None;
+        }
+        normalization.remaining = normalization.remaining.checked_sub(1)?;
+        normalization.active.insert(ty);
+        let result = self.compute_flow_reference_child(ty, depth, normalization);
+        normalization.active.remove(&ty);
+        if let Some(result) = result {
+            normalization.resolved.insert(ty, result);
+        }
+        result
+    }
+
+    fn compute_flow_reference_child(&mut self, ty: TypeId, depth: usize, normalization: &mut FlowReferenceNormalization) -> Option<TypeId> {
+        let parts = match self.data(ty) {
+            TypeData::Union(_) | TypeData::Intersection(_) => self.flow_reference_leaves(ty, &mut normalization.remaining)?,
+            TypeData::Anon { origin: Origin::TypeLiteral(..), mapper: MapperId::IDENTITY } => vec![ty],
+            _ => return Some(ty),
+        };
+        let Some((&first, rest)) = parts.split_first() else { return None };
+        if depth == 0 && rest.is_empty() {
+            return Some(ty);
+        }
+        if self.results_are_provisional() {
+            return None;
+        }
+        let before = (self.stack_half_used_count(), self.aot.flows.unknown_count);
+        let declared_only = self.is_declared_only_record(first);
+        let unsupported = PropFlags::PRIVATE | PropFlags::PROTECTED | PropFlags::METHOD | PropFlags::ACCESSOR | PropFlags::WRITE_ONLY | PropFlags::ABSTRACT;
+        let mut first_fields: Option<Vec<(Atom, PropFlags, TypeId, TypeId)>> = None;
+        for &part in &parts {
+            if !matches!(self.data(part), TypeData::Anon { origin: Origin::TypeLiteral(..), mapper: MapperId::IDENTITY })
+                || self.is_instance_type(part)
+                || self.is_coercion_result_type(part)
+                || self.has_type_variables(part)
+                || self.is_declared_only_record(part) != declared_only
+            {
+                return Some(ty);
+            }
+            let Some(members) = self.members(part) else { return Some(ty) };
+            if members.mapper != MapperId::IDENTITY
+                || members.has_signatures()
+                || !members.index_infos().is_empty()
+                || members.shape().props.iter().any(|prop| prop.mapper != MapperId::IDENTITY || prop.flags.intersects(unsupported) || self.is_private_name(prop.name))
+            {
+                return Some(ty);
+            }
+            let mut fields = Vec::with_capacity(members.shape().props.len());
+            for prop in members.shape().props.iter() {
+                let child = self.type_of_prop(prop, members.mapper);
+                let child = self.canonical_flow_reference_child(child, depth + 1, normalization)?;
+                fields.push((prop.name, prop.flags, prop.name_type, child));
+            }
+            fields.sort_unstable_by_key(|field| field.0.0);
+            if let Some(first_fields) = &first_fields {
+                if *first_fields != fields {
+                    return Some(ty);
+                }
+            } else {
+                first_fields = Some(fields);
+            }
+        }
+        let identical = rest.iter().all(|&part| self.is_provably_related(first, part, Relation::Identity));
+        if !identical {
+            return Some(ty);
+        }
+        if before != (self.stack_half_used_count(), self.aot.flows.unknown_count) || self.results_are_provisional() {
+            return None;
+        }
+        let fields = first_fields?;
+        let key = FlowRecordKey { fields, indexes: Vec::new(), declared_only };
+        let representative = normalization.pending.get(&key).copied().or_else(|| self.aot.flows.flow_reference_records.get(&key).copied());
+        if let Some(representative) = representative {
+            if !self.is_provably_related(representative, first, Relation::Identity) {
+                return Some(ty);
+            }
+            if before != (self.stack_half_used_count(), self.aot.flows.unknown_count) || self.results_are_provisional() {
+                return None;
+            }
+            return Some(representative);
+        }
+        normalization.pending.insert(key, first);
+        Some(first)
+    }
+
+    /// Only generated Flow records are interned across link tasks; written types retain their identities.
+    pub fn flow_record_contract(&mut self, record: TypeId) -> Option<(Identity, FlowRecordContract)> {
+        let (contract, is_cacheable) = self.compute_cacheable(|checker| {
+            let contract = checker.materialized_flow_record_contract(record)?;
+            Some((checker.type_identity(record), contract))
+        });
+        if is_cacheable && !self.results_are_provisional() { contract } else { None }
+    }
+
+    fn materialized_flow_record_contract(&mut self, record: TypeId) -> Option<FlowRecordContract> {
+        let TypeData::Synth(shape) = self.data(record) else { return None };
+        if shape.spread_rank != u32::MAX - 1 || !shape.created_from.is_some_and(|(source, _)| source.is_never()) {
+            return None;
+        }
+        let mut fields = Vec::with_capacity(shape.props.len());
+        for prop in shape.props.iter() {
+            let PropSource::Type(ty) = prop.source else { return None };
+            fields.push((Box::<[u8]>::from(self.atoms().bytes(prop.name)), prop.flags, self.type_identity(prop.name_type), self.type_identity(ty)));
+        }
+        fields.sort_unstable_by(|left, right| left.0.cmp(&right.0));
+        let mut indexes = Vec::with_capacity(shape.index.len());
+        for info in shape.index.iter() {
+            indexes.push(FlowIndexContract {
+                key: self.type_identity(info.key),
+                value: self.type_identity(info.value),
+                readonly: info.readonly,
+                is_enum_number_index_info: info.is_enum_number_index_info,
+                declaration: info.declaration,
+                components: self.types().components(info.components).to_vec(),
+            });
+        }
+        Some(FlowRecordContract { fields, indexes, declared_only: self.is_declared_only_record(record) })
+    }
+
+    pub fn record_flow_layout(&mut self, source: TypeId, target: TypeId) {
+        self.aot.flows.recorded.add_pair(NoteKind::FlowLayout, source, target);
     }
 
     pub fn record_cast(&mut self, sources: &[TypeId], target: TypeId, may_be_plain: bool, is_trusted: bool, may_convert: bool, is_guard: bool) {
@@ -3263,6 +3674,15 @@ impl<'p, 's> Checker<'p, 's> {
             if first.as_ref().is_none_or(|known| gave_up.rank < known.rank) {
                 *first = Some(gave_up);
             }
+        }
+        // Every worker reports its boundary before skipping work discarded by the retry.
+        let is_last = search.barrier.wait();
+        if search.gave_up.lock().is_some() {
+            if is_last {
+                *search.continues_past_sources.0.lock() = Some(false);
+                search.continues_past_sources.1.notify_all();
+            }
+            return false;
         }
         for file in own(&files) {
             self.add_inspected_casts(file, looked_at);
@@ -5582,7 +6002,10 @@ impl<'p, 's> Checker<'p, 's> {
                 continue;
             }
             let is_written = self.is_program_declared_record(from);
-            let is_declared_only = !is_written && self.is_declared_only_record(from);
+            // A structural view of globalThis also carries its declared host properties.
+            let is_declared_only = !is_written
+                && (self.is_declared_only_record(from)
+                    || matches!(self.data(from), TypeData::Anon { origin: Origin::GlobalThis, .. }));
             let mut from_summary = None;
             let visited: Option<Vec<u32>> = (is_large && is_written).then(|| {
                 let mut numbers = taking.clone();

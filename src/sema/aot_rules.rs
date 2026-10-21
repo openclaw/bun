@@ -44,7 +44,7 @@ pub static RULES: [RuleInfo; Rule::COUNT] = [
     RuleInfo {
         rule: Rule::UntypedFile,
         name: "untyped-file",
-        codes: &[100009, 100010, 100011],
+        codes: &[100009, 100010, 100011, 100107],
         default: Severity::Warn,
         help: "a TypeScript file or package is compiled without its types",
     },

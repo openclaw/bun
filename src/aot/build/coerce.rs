@@ -429,6 +429,9 @@ impl<'c, 'p, 's> FileBuild<'c, 'p, 's> {
             value = self.coerce_to(fx, value, Ty { id: own, checked: have.checked }, CoerceReason::Claim);
             have.id = self.ty(fx, value);
         }
+        if why == CoerceReason::Flow {
+            self.record_flow_layouts(have.id, want.id);
+        }
         if self.is_within(have, want) {
             let described = self.out.tys.get(have.id);
             let has_no_layout = described.has_objects() && !described.parts.iter().any(|part| matches!(part, Part::Class(_)));
@@ -548,6 +551,15 @@ impl<'c, 'p, 's> FileBuild<'c, 'p, 's> {
             fx.checked.insert(held, want.checked);
         }
         held
+    }
+
+    fn record_flow_layouts(&mut self, source: TyId, target: TyId) {
+        let (Some(source), Some(target)) = (self.out.tys.get(source).single_layout(), self.out.tys.get(target).single_layout()) else { return };
+        if self.out.layouts[source.idx()].kind != LayoutKind::Record || self.out.layouts[target.idx()].kind != LayoutKind::Record {
+            return;
+        }
+        let (Some(&source), Some(&target)) = (self.layout_types.get(&source), self.layout_types.get(&target)) else { return };
+        self.c.record_flow_layout(source, target);
     }
 
     pub(crate) fn coerce(&mut self, fx: &mut Fx, value: V, tries: Ty, result: Ty, asserts: CoerceReason) -> V {
@@ -1039,10 +1051,13 @@ impl<'c, 'p, 's> FileBuild<'c, 'p, 's> {
         let operation_type = self.ty(fx, value);
         if fx.is_typed
             && operation_type.is_some()
-            && self.out.tys.get(operation_type).any_object
             && matches!(fx.b.func.op(value), Some(Op::CallDirect { .. } | Op::Call { .. } | Op::CallMethod { .. }))
-            && let Some(created) = self.c.generic_call_allocation(fx.file, e)
+            && let Some(mut created) = self.c.generic_call_allocation(fx.file, e)
         {
+            if !self.out.tys.get(operation_type).any_object {
+                created.retain_open_layouts();
+                created.is_object = false;
+            }
             let allocated_as = self.c.type_of_expr(fx.file, e);
             self.c.record_generic_function_result(&created, allocated_as);
             if let Some(sink) = fx.sink
@@ -1193,7 +1208,7 @@ impl<'c, 'p, 's> FileBuild<'c, 'p, 's> {
                     | ExprKind::Cond { .. }
                     | ExprKind::Binary { op: hir::BinOp::Comma | hir::BinOp::And | hir::BinOp::Or | hir::BinOp::Nullish, .. }
             );
-            if !is_allocated_for_other_type && matches!(fx.b.func.op(value), Some(Op::PropGet { .. })) {
+            if !is_allocated_for_other_type && !is_returned_argument && matches!(fx.b.func.op(value), Some(Op::PropGet { .. })) {
                 self.mark_read_unchecked(fx, value);
             }
             if fx.is_typed && !is_allocated_for_other_type && !is_returned_argument && self.is_checked_at_creation(fx, value) {
@@ -1382,11 +1397,15 @@ impl<'c, 'p, 's> FileBuild<'c, 'p, 's> {
         }
         let checked = self.value_type(fx, e);
         let own = self.ty_of(checked);
+        // An annotated store must retain a local's tested view before converting it to the destination type.
+        let is_narrowed_local = matches!(self.hir(fx.file)[e].kind, ExprKind::Ident(_))
+            && self.c.reference_read(fx.file, e).is_some_and(|read| read.is_narrowing_reliable && read.declared != checked);
         let described = self.out.tys.get(own);
         own != self.out.tys.anything
             && described.has_objects()
             && !described.any_object
-            && (!self.cast_may_allocate(own)
+            && (is_narrowed_local
+                || !self.cast_may_allocate(own)
                 || matches!(self.hir(fx.file)[e].kind, ExprKind::Dot { .. } | ExprKind::Index { .. }) && matches!((described.single_layout(), self.out.tys.get(want).single_layout()), (Some(read_as), Some(supertypes_of)) if read_as != supertypes_of))
     }
 

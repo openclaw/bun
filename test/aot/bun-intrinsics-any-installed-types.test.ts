@@ -53,7 +53,7 @@ const typesThatDeclareTheGlobal = {
   "types/bun/bun.ns.d.ts": `import * as BunModule from "bun";\ndeclare global { export import Bun = BunModule; }\n`,
 };
 
-async function buildAndRun(files: Record<string, string>) {
+async function buildAndRun(files: Record<string, string>, includeBuildOutput = false) {
   using dir = tempDir("aot-global-of-bun", files);
   const outfile = join(String(dir), "out" + (isWindows ? ".exe" : ""));
   await using build = Bun.spawn({ cmd: [bunExe(), "build", "--compile", "--aot", "./main.ts", "--outfile", outfile], cwd: String(dir), env: bunEnv, stdout: "pipe", stderr: "pipe" });
@@ -61,7 +61,7 @@ async function buildAndRun(files: Record<string, string>) {
   if (built) return { said, built };
   await using ran = Bun.spawn({ cmd: [outfile], cwd: String(dir), env: bunEnv, stdout: "pipe", stderr: "pipe" });
   const [stdout, stderr, exitCode] = await Promise.all([ran.stdout.text(), ran.stderr.text(), ran.exited]);
-  return { stdout, stderr, exitCode };
+  return { stdout, stderr, exitCode, ...(includeBuildOutput ? { said } : {}) };
 }
 
 for (const [world, files] of Object.entries({ ...worlds, "a bun-types that declares the global too": typesThatDeclareTheGlobal })) {
@@ -85,6 +85,72 @@ test("without the types the build goes on saying how to get them", async () => {
     const [said, built] = await Promise.all([build.stderr.text(), build.exited]);
     expect({ said, built }).toEqual({ said: expect.stringContaining("Bun's type definitions (console, fetch, Bun, bun:test) are not installed. Run: bun add -d @types/bun"), built: 0 });
   }
+}, 120_000);
+
+test("without installed types the partial Bun namespace accepts structural runtime contracts", async () => {
+  const main = `
+declare const console: { log(...values: unknown[]): void };
+type Runtime = {
+  Transpiler: new (options: { loader: "tsx" }) => { transformSync(source: string): string };
+  plugin(options: { name: string }): void;
+};
+const runtime: Runtime | undefined = Reflect.get(globalThis, "Bun");
+console.log(typeof runtime!.Transpiler, typeof runtime!.plugin);
+console.log(JSON.parse<{ n: number }>('{"n":42}').n);
+`;
+  expect(await buildAndRun({ ...worlds["no types at all"], "main.ts": main })).toEqual({
+    stdout: "function function\n42\n", stderr: "", exitCode: 0,
+  });
+}, 120_000);
+
+test("the partial Bun namespace still checks members that it declares", async () => {
+  expect(await buildAndRun({
+    ...worlds["no types at all"],
+    "main.ts": `const runtime: { validate: number } = Reflect.get(globalThis, "Bun");\n`,
+  })).toEqual({ said: expect.stringContaining("TS2322"), built: 1 });
+}, 120_000);
+
+test("an absent required member of the partial Bun namespace is checked at runtime", async () => {
+  const main = `
+declare const console: { log(...values: unknown[]): void };
+try {
+  const runtime: { __aotMissingNumber: number } = Reflect.get(globalThis, "Bun");
+  console.log(runtime.__aotMissingNumber + 1);
+} catch (error) {
+  console.log((error as Error).name);
+}
+`;
+  expect(await buildAndRun({ ...worlds["no types at all"], "main.ts": main })).toEqual({
+    stdout: "TypeError\n", stderr: "", exitCode: 0,
+  });
+}, 120_000);
+
+test("installed or merged Bun declarations keep structural runtime contracts strict", async () => {
+  const main = `const runtime: { Transpiler: unknown; plugin: unknown } = Reflect.get(globalThis, "Bun");\n`;
+  for (const files of [typesThatDeclareTheGlobal, {
+    ...worlds["no types at all"],
+    "stranger.d.ts": `declare module "bun" { function inspect(value: unknown): string; }\n`,
+    "main.ts": `/// <reference path="./stranger.d.ts" />\n` + main,
+  }]) {
+    expect(await buildAndRun({ "main.ts": main, ...files })).toEqual({
+      said: expect.stringContaining("TS2739"), built: 1,
+    });
+  }
+  expect(await buildAndRun({
+    ...worlds["the bun-types of this repository"],
+    "main.ts": `const runtime: { __aotMissingOne: unknown; __aotMissingTwo: unknown } = Reflect.get(globalThis, "Bun");\n`,
+  })).toEqual({ said: expect.stringContaining("TS2739"), built: 1 });
+}, 120_000);
+
+test("an undeclared Bun property retains the missing-types warning and runtime value", async () => {
+  const result = await buildAndRun({
+    ...worlds["no types at all"],
+    "main.ts": `declare const console: { log(...values: unknown[]): void };\nconsole.log(typeof Bun.__aotUndeclaredRuntimeMember);\n`,
+  }, true);
+  expect(result).toEqual({
+    stdout: "undefined\n", stderr: "", exitCode: 0,
+    said: expect.stringContaining("Bun's type definitions (console, fetch, Bun, bun:test) are not installed. Run: bun add -d @types/bun"),
+  });
 }, 120_000);
 
 for (const [world, files] of Object.entries(worlds)) {

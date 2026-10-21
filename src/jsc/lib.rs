@@ -431,6 +431,8 @@ pub mod any_promise;
 pub mod bytecode_order_recorder;
 #[path = "CachedBytecode.rs"]
 pub mod cached_bytecode;
+#[path = "AOTNativeIrExport.rs"]
+mod aot_native_ir_export;
 #[path = "DOMFormData.rs"]
 pub mod dom_form_data;
 #[path = "host_object.rs"]

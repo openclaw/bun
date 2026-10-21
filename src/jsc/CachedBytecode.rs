@@ -465,10 +465,13 @@ pub(crate) fn __bun_jsc_bytecode_link_encoder_set_typed_program(
     program: &[u8],
     modules: &[u32],
     replaced_strings: &[u8],
-) -> bool {
+) -> Result<bool, String> {
+    if let Some(capture) = crate::aot_native_ir_export::Capture::start(program)? {
+        capture.replacements(replaced_strings)?;
+    }
     // SAFETY: `encoder` is live. C++ copies `modules` and `replaced_strings`. What it reads from
     // `program` keeps pointing into it: the caller holds those bytes until `finish`.
-    unsafe {
+    Ok(unsafe {
         Bun__BytecodeLinkEncoder__setTypedProgram(
             encoder.as_ptr(),
             program.as_ptr(),
@@ -478,7 +481,7 @@ pub(crate) fn __bun_jsc_bytecode_link_encoder_set_typed_program(
             replaced_strings.as_ptr(),
             replaced_strings.len(),
         )
-    }
+    })
 }
 
 #[unsafe(no_mangle)]
@@ -507,16 +510,26 @@ pub fn start_typed_program(program: &[u8], waits_for_strings: bool) -> bun_ast::
         .stack_size(64 << 20)
         .spawn(move || {
             bun_core::Output::Source::configure_named_thread(bun_core::zstr!("AOT engine"));
+            // SAFETY: the same EarlyEngine lifetime that covers JSC's read covers this capture.
+            let program = unsafe { core::slice::from_raw_parts(address as *const u8, size) };
+            let capture = crate::aot_native_ir_export::Capture::start(program)?;
             // SAFETY: `EarlyEngine` joins this thread when it is finished or dropped, and whoever
             // holds it drops it ahead of the bytes: see `ProgramFacts::engine`.
             let prepared = unsafe { Bun__AOT__readTypedProgram(address as *const u8, size) };
             let strings = if waits_for_strings { receiver.recv().ok() } else { Some(Vec::new()) };
             if let Some(strings) = strings {
+                if let Some(capture) = capture {
+                    if let Err(error) = capture.replacements(&strings) {
+                        // SAFETY: this thread owns `prepared` and will not return it on failure.
+                        unsafe { Bun__AOT__discardTypedProgram(prepared) };
+                        return Err(error);
+                    }
+                }
                 // SAFETY: `prepared` is never null and only this thread has it. C++ copies what it
                 // takes from `strings`.
                 unsafe { Bun__AOT__optimizeTypedProgram(prepared, strings.as_ptr(), strings.len()) };
             }
-            prepared as usize
+            Ok(prepared as usize)
         })
         .expect("failed to spawn the AOT engine thread");
     // SAFETY: `EarlyEngine` calls this with what the thread returned, once, and only if nobody took

@@ -353,8 +353,6 @@ extern "C" void JSCInitialize(const char* envp[], size_t envc, void (*onCrash)(c
             // and trip JSValue::synthesizePrototype's isSymbol() debug assert.
             JSC::Options::exposeInternalModuleLoader() = false;
             JSC::Options::useSharedArrayBuffer() = true;
-            if (useAOT)
-                JSC::Options::useMiniVMModeWithoutJIT() = false;
             JSC::Options::useJITCage() = false;
             JSC::Options::useShadowRealm() = true;
             JSC::Options::useV8DateParser() = true;
@@ -724,8 +722,7 @@ extern "C" JSC::JSGlobalObject* Zig__GlobalObject__create(void* console_client, 
                 // Same exotic object as the main thread so writes inside the
                 // worker coerce to string, reject symbol keys, and validate
                 // defineProperty like Node's EnvSetter/EnvDefiner.
-                auto* envStructure = Bun::JSEnvironmentVariableMap::createStructure(vm, globalObject, globalObject->objectPrototype());
-                JSC::JSObject* env = Bun::JSEnvironmentVariableMap::create(vm, envStructure);
+                JSC::JSObject* env = Bun::createSharedEnvironmentVariablesMap(globalObject).getObject();
 #endif
                 size_t i = 0;
                 for (auto k : map) {

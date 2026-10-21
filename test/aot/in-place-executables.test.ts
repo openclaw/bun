@@ -32,6 +32,58 @@ async function run(cwd: string, cmd: string[], env = bunEnv) {
 
 const build = (app: string, ...entryPoints: string[]) => run(app, [bunExe(), "build", "--compile", "--aot", "--compile-in-place", ...entryPoints, "--outfile", "../built.exe"]);
 
+test.each([
+  ["default", [], false],
+  ["explicit keep", ["--compile-function-source"], true],
+  ["explicit omission", ["--no-compile-function-source"], false],
+] as const)(
+  "in-place function text: %s",
+  async (_name, flags, keepsSource) => {
+    using dir = tempDir("aot-in-place-function-source", {
+      "app/main.cjs": `const { Worker } = require("node:worker_threads");
+function double(value) { return value * 2; }
+const source = double.toString();
+console.log(source.includes("[native code]"));
+if (process.argv[2] === "worker") {
+  const worker = new Worker(\`const { parentPort } = require("node:worker_threads"); parentPort.postMessage((\${source})(21)); parentPort.close();\`, { eval: true });
+  worker.on("message", value => console.log(value));
+  worker.on("error", error => { console.error(error); process.exitCode = 1; });
+}
+`,
+    });
+    const app = join(String(dir), "app");
+    const built = await build(app, "./main.cjs", ...flags);
+    expect({ stderr: built.exitCode ? built.stderr : "", exitCode: built.exitCode }).toEqual({
+      stderr: "",
+      exitCode: 0,
+    });
+    expect(await run(String(dir), ["./built.exe"])).toEqual({ stdout: "false\n", stderr: "", exitCode: 0 });
+    renameSync(app, join(String(dir), "moved-away"));
+    const args = keepsSource ? ["worker"] : [];
+    expect(await run(String(dir), ["./built.exe", ...args])).toEqual({
+      stdout: keepsSource ? "false\n42\n" : "true\n",
+      stderr: "",
+      exitCode: 0,
+    });
+  },
+  120_000,
+);
+
+test("compile-run function text stays file-backed by default", async () => {
+  using dir = tempDir("aot-compile-run-function-source", {
+    "app/main.cjs": `const { renameSync } = require("node:fs");
+function double(value) { return value * 2; }
+renameSync(__dirname, __dirname + "-moved");
+console.log(double.toString().includes("[native code]"));
+`,
+  });
+  expect(await run(join(String(dir), "app"), [bunExe(), "run", "--debug-aot", "./main.cjs"])).toEqual({
+    stdout: "true\n",
+    stderr: "",
+    exitCode: 0,
+  });
+}, 120_000);
+
 test("what is given as one more entry point is compiled code to whoever asks for it by its path", async () => {
   using dir = tempDir("aot-in-place", files);
   const app = join(String(dir), "app");

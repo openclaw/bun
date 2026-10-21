@@ -1,0 +1,42 @@
+---
+title: "OpenClaw fork diagnostics"
+description: "Capture exact compiler inputs and measure native typed-code coverage in the paired Bun and WebKit fork"
+---
+
+These diagnostics belong to the `openclaw/aot-typed-2` Bun and WebKit branches. Build them as a matched pair. Their typed-program format is version 39, with 64-bit section offsets and a 324-byte header. The older fork and upstream both used version 38 for different layouts; neither is a compatible input.
+
+This branch pins a fork commit with no published prebuilt artifact. Build WebKit locally with `BUN_WEBKIT_PATH` pointing to the matching `openclaw/aot-typed-2` checkout and use Bun’s local build profile.
+
+Use the regular [`--aot` commands](/bundler/aot) to compile a checked program. The fork preserves [`--aot-explain=json`](/bundler/aot-reports), which reports typed property-access sites and their causes. Property-access sites, native bytes, and native entries have different denominators.
+
+## Overlapping object views
+
+Flow narrowing can leave one object visible through several overlapping record types. The fork retains their shared field contracts across reached functions and preserves object identity when moving between these views. Generated records are interned by their exact contract, including field and index metadata. Equivalent nested anonymous records reuse representatives only after exact field and type-identity checks. Settled plain-data unions can discard redundant ordered projections while retaining the original remaining arms.
+
+Layout construction is bounded to 1,024 records and 65,536 comparisons per connected family. If the family exceeds those limits, or the compiler cannot represent a required intersection, native compilation can retry the contributing TypeScript files without type specialization. The executable still uses native code. The `untyped-file` rule owns this fallback: `--aot-deny=untyped-file` refuses it, while `--aot-allow=untyped-file` suppresses its warning. Baselines apply through the same rule. Genuine source errors and checked execution are not made successful by this native fallback. Explicit typed parsing and validation still use their type arguments in fallback files. Their success and failure results retain the declared union at control-flow joins. Generated records beyond the native nesting limit use the same bounded fallback; checked execution and audit metadata do not require native layouts.
+
+`--aot-explain=json` reports these files with the `flow-layout` cause and the original compiler limitation. This cause survives retries and package-wide fallback, so it is distinct from JavaScript dependencies and source type errors. Native coverage measurements include the resulting bodies as untyped.
+
+## Exact compiler inputs
+
+Set `BUN_AOT_NATIVE_IR_EXPORT` to an existing absolute directory when compiling. Bun creates three files per native compiler invocation:
+
+| File                            | Contents                                                                      |
+| ------------------------------- | ----------------------------------------------------------------------------- |
+| `<pid>-<sequence>.ir`           | The typed program handed to WebKit, before optimization                       |
+| `<pid>-<sequence>.replacements` | Ordered string replacements for emitted assets                                |
+| `<pid>-<sequence>.json`         | File names, byte lengths, SHA-256 hashes, process identity, and capture phase |
+
+The JSON receipt is written after both input files. Its `complete` field describes the capture, not compilation success. Files use exclusive creation and mode `0600` on POSIX. A missing, invalid, or unwritable destination fails the build; existing files are preserved. With the variable unset, Bun creates no capture files.
+
+## Native coverage
+
+Set `BUN_JSC_countAOTNativeEntries=1` while compiling to instrument each emitted native function body. `BUN_JSC_aotMapFilePath` names the native map containing body identities and final byte lengths.
+
+When running the resulting executable, set `BUN_JSC_aotTypeCoverageCountsPath` to an output prefix. `%p` expands to the process ID and `%v` to the VM ID; without `%v`, the writer appends `-vm-<id>`. Each VM owns its `.native-entries` snapshot. The snapshot includes the image identity, instrumentation completeness, body kind, byte length, and entry count.
+
+Native-entry snapshots start with zero counts and the `partial` phase. Normal VM destruction publishes final counts with the `final` phase. Garbage collections update enabled operation counters without rewriting the native-entry table. A killed process may leave only a partial snapshot; treat that run as incomplete. Set `BUN_DESTRUCT_VM_ON_EXIT=1` for a command-line measurement that requires the normal destruction path.
+
+`BUN_JSC_useAOTOperationCounters=1` separately enables `.operations` and `.allocations` snapshots. These count runtime operations and allocations. Native entries count calls into bodies, not CPU time or instructions. Reached native bytes count each body with a nonzero entry count once; they do not weight its bytes by call count.
+
+The fork's regression tests cover worker snapshot ownership, frame completeness, final body sizes, callback counts, absent instrumentation, export failures, and exact captured-input hashes. Use the matched compiler to run `test/aot/native-entry-counts.test.ts`, `test/aot/native-ir-export.test.ts`, and `test/aot/typed-program-format.test.ts`.

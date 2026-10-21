@@ -1628,7 +1628,7 @@ pub mod bv2_impl {
                 program: &[u8],
                 modules: &[u32],
                 replaced_strings: &[u8],
-            ) -> bool;
+            ) -> Result<bool, String>;
             safe fn __bun_jsc_bytecode_link_encoder_set_prepared_typed_program(
                 encoder: core::ptr::NonNull<BytecodeLinkEncoder>,
                 prepared: usize,
@@ -1844,7 +1844,7 @@ pub mod bv2_impl {
                 ok
             }
             /// `replaced_strings`: pairs of a string of the program and what to put in its place, each a length in four bytes and the bytes.
-            pub(crate) fn set_typed_program(&mut self, program: &[u8], modules: &[u32], replaced_strings: &[u8]) -> bool {
+            pub(crate) fn set_typed_program(&mut self, program: &[u8], modules: &[u32], replaced_strings: &[u8]) -> Result<bool, String> {
                 __bun_jsc_bytecode_link_encoder_set_typed_program(self.encoder, program, modules, replaced_strings)
             }
             pub(crate) fn set_prepared_typed_program(&mut self, prepared: usize, modules: &[u32]) -> bool {
@@ -2904,7 +2904,7 @@ pub mod bv2_impl {
             }
             let mut react_compiler_candidates = if analyze.is_some() { self.react_compiler_candidates() } else { Vec::new() };
             let (printed_react_compiler_outputs, react_compiler_outputs) = std::sync::mpsc::channel();
-            let keeps_function_sources = analyze.is_some() && self.transpiler.options.compile_function_source && !self.transpiler.options.preserve_source_paths;
+            let keeps_function_sources = analyze.is_some() && self.transpiler.options.compile_function_source;
             let mut function_sources_to_print = analyze.is_some().then(|| self.function_sources_to_print());
             let kinds_as_run = match &mut function_sources_to_print {
                 Some((as_run, lists)) => self.kinds_as_run(as_run.as_deref_mut(), lists),
