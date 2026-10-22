@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Retry independent unsupported Flow layouts together, avoiding a full program analysis for each failed family.
 - Index per-file AOT parser options while preserving normalized-path and deferred-source precedence.
 - Build the native toolchain from paths containing spaces without quoting compilation database arguments.
 

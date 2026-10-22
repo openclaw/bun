@@ -1,6 +1,6 @@
 import { expect } from "bun:test";
 import { describe, test, unsupported } from "./supported";
-import { bunEnv, bunExe, isWindows, tempDirWithBunTypes as tempDir } from "harness";
+import { bunEnv, bunExe, isASAN, isDebug, isWindows, tempDirWithBunTypes as tempDir } from "harness";
 import { existsSync, readFileSync, readdirSync, renameSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { built, slot, spawned } from "./run-programs";
@@ -96,6 +96,49 @@ test("method intersections use bounded fallback instead of missing a required Fl
   expect(built.stdout).toContain('"code":"flow-layout"');
   expect(ran).toEqual({ exitCode: 0, stdout: "b 7\nc 7\n", stderr: "" });
 }, 120_000);
+
+test.skipIf(isASAN || isDebug)("independent Flow failures compile within a bounded time", async () => {
+  const family = fixture("flow-independent-family")["source/family.ts"];
+  const files: Record<string, string> = {
+    "source/control.ts": `export function control(value: number): number {
+      const data = { controlLeft: value, controlRight: value + 2 };
+      return data.controlLeft + data.controlRight;
+    }`,
+  };
+  const imports = ['import { control } from "./control.ts";'];
+  const calls: string[] = [];
+  for (let index = 0; index < 256; index++) {
+    const name = `family${index}`;
+    files[`source/${name}.ts`] = family.replaceAll("family", name);
+    imports.push(`import { runFamily as run${index} } from "./${name}.ts";`);
+    calls.push(`if (run${index}() !== "b:7,c:7") throw new Error("${name}");`);
+  }
+  files["source/main.ts"] = [...imports, ...calls, 'console.log("256 families", control(20));'].join("\n");
+  using dir = tempDir("independent-flow-failures", files);
+  const cwd = String(dir);
+  const executable = join(cwd, isWindows ? "app.exe" : "app");
+  // Rechecking the whole project once per failed family exceeds this budget.
+  const compiled = await spawned(
+    [bunExe(), "build", "--compile", "--aot", "--aot-explain=json", "main.ts", "--outfile", executable],
+    join(cwd, "source"),
+    bunEnv,
+    10_000,
+  );
+  expect(compiled.signal).toBeNull();
+  expect(compiled.exitCode).toBe(0);
+  expect(compiled.stderr).toContain("no supported data-field representation");
+  for (let index = 0; index < 256; index++) {
+    expect(compiled.stdout).toContain(`"file":"family${index}.ts"`);
+  }
+  expect(compiled.stdout).not.toContain('"file":"control.ts"');
+  renameSync(join(cwd, "source"), join(cwd, "hidden-source"));
+  const ran = await spawned([executable], cwd, {
+    ...bunEnv,
+    BUN_JSC_useJIT: "0",
+    BUN_JSC_crashIfInterpreterIsUsed: "1",
+  });
+  expect(ran).toEqual({ exitCode: 0, signal: null, stdout: "256 families 42\n", stderr: "" });
+}, 30_000);
 
 test("package fallback retains the Flow reason for every demoted module", async () => {
   const files = Object.fromEntries(

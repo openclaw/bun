@@ -19,9 +19,21 @@ pub struct Exhausted {
     pub what: Cow<'static, str>,
 }
 
+#[derive(Default)]
 pub(super) struct Failure {
     pairs: Vec<(Identity, Identity)>,
     reasons: Vec<&'static str>,
+}
+
+impl Failure {
+    fn extend(&mut self, other: Self) {
+        self.pairs.extend(other.pairs);
+        for reason in other.reasons {
+            if !self.reasons.contains(&reason) {
+                self.reasons.push(reason);
+            }
+        }
+    }
 }
 
 #[derive(Default)]
@@ -278,26 +290,24 @@ pub(super) fn make_pairs<'s>(
                 let missing_contract = both.is_some() && !redefined && !too_nested && generated.is_none();
                 pair_unknown += usize::from(unknown);
                 if unsupported.is_some() || unknown || missing_contract || redefined || too_nested {
-                    if failure.is_none() {
-                        let mut reasons = Vec::new();
-                        reasons.extend(unsupported);
-                        if unknown {
-                            reasons.push("an auxiliary relation exceeded its analysis limit");
-                        }
-                        if missing_contract {
-                            reasons.push("a materialized record contract could not be resolved");
-                        }
-                        if redefined {
-                            reasons.push("a generated Flow record may be redefined");
-                        }
-                        if too_nested {
-                            reasons.push("a generated Flow record exceeds the nesting limit");
-                        }
-                        failure = Some(Failure {
-                            pairs: vec![(left, right)],
-                            reasons,
-                        });
+                    let mut reasons = Vec::new();
+                    reasons.extend(unsupported);
+                    if unknown {
+                        reasons.push("an auxiliary relation exceeded its analysis limit");
                     }
+                    if missing_contract {
+                        reasons.push("a materialized record contract could not be resolved");
+                    }
+                    if redefined {
+                        reasons.push("a generated Flow record may be redefined");
+                    }
+                    if too_nested {
+                        reasons.push("a generated Flow record exceeds the nesting limit");
+                    }
+                    failure.get_or_insert_with(Failure::default).extend(Failure {
+                        pairs: vec![(left, right)],
+                        reasons,
+                    });
                 }
                 results.push((left, right, generated));
             }
@@ -375,8 +385,9 @@ pub(super) fn make_pairs<'s>(
                 accepted.push(record);
                 batch.notes.append(notes);
                 batch.results.extend(results);
-                if batch.failure.is_none() {
-                    batch.failure = failure;
+                if let Some(failure) = failure {
+                    // Only validated tasks contribute failures to the next whole-program attempt.
+                    batch.failure.get_or_insert_with(Failure::default).extend(failure);
                 }
             }
         }
