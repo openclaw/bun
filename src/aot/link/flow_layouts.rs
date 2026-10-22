@@ -26,7 +26,7 @@ pub(super) struct Failure {
 }
 
 impl Failure {
-    fn extend(&mut self, other: Self) {
+    pub(super) fn extend(&mut self, other: Self) {
         self.pairs.extend(other.pairs);
         for reason in other.reasons {
             if !self.reasons.contains(&reason) {
@@ -157,6 +157,13 @@ impl Closure {
                 failure.reasons.join("; ")
             )
             .into(),
+        }
+    }
+
+    // After the first failed batch, the caller freezes the closure and only drains known pairs.
+    pub(super) fn exclude_failed(&mut self, failure: &Failure) {
+        for &(left, _) in &failure.pairs {
+            self.dirty[self.family_of[&left]] = false;
         }
     }
 
@@ -422,6 +429,58 @@ mod tests {
         });
         assert_eq!(exhausted.contributors, vec![FileId(2), FileId(7)]);
         assert!(exhausted.what.contains("auxiliary relation"));
+    }
+
+    #[test]
+    fn failed_families_leave_later_known_batches_available() {
+        let mut closure = Closure::default();
+        for (base, file) in [(1, FileId(7)), (1000, FileId(2))] {
+            for identity in base + 1..=base + 96 {
+                let family = closure.join([base, 0], [identity, 0]);
+                closure.contributors[family].insert(file);
+                closure.generators.extend([[base, 0], [identity, 0]]);
+            }
+        }
+        let healthy = closure.join([3000, 0], [3001, 0]);
+        closure.generators.extend([[3000, 0], [3001, 0]]);
+        closure.contributors[healthy].insert(FileId(99));
+
+        let first = closure.pending().unwrap();
+        assert_eq!(first.len(), PAIRS_PER_BATCH);
+        let first_family = closure.family_of[&first[0].0];
+        assert!(
+            first
+                .iter()
+                .all(|pair| closure.family_of[&pair.0] == first_family)
+        );
+        let mut failure = Failure {
+            pairs: first,
+            reasons: vec!["a Flow intersection has no supported data-field representation"],
+        };
+        closure.exclude_failed(&failure);
+        let second = closure.pending().unwrap();
+        assert_eq!(second.len(), PAIRS_PER_BATCH);
+        assert!(
+            second
+                .iter()
+                .all(|pair| closure.family_of[&pair.0] != first_family)
+        );
+        let next = Failure {
+            pairs: second,
+            reasons: vec!["a Flow intersection has no supported data-field representation"],
+        };
+        closure.exclude_failed(&next);
+        failure.extend(next);
+        let remaining = closure.pending().unwrap();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(closure.family_of[&remaining[0].0], healthy);
+        assert!(closure.pending().unwrap().is_empty());
+        let exhausted = closure.failed(failure);
+        assert_eq!(exhausted.contributors, vec![FileId(2), FileId(7)]);
+        assert_eq!(
+            exhausted.what,
+            "a cross-function Flow task where a Flow intersection has no supported data-field representation"
+        );
     }
 
     #[test]

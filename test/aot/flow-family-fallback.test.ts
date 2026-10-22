@@ -140,6 +140,100 @@ test.skipIf(isASAN || isDebug)("independent Flow failures compile within a bound
   expect(ran).toEqual({ exitCode: 0, signal: null, stdout: "256 families 42\n", stderr: "" });
 }, 30_000);
 
+test.skipIf(isASAN || isDebug)(
+  "independent unsupported Flow families span multiple pair batches",
+  async () => {
+    const views = 96;
+    const kinds = ["keep", ...Array.from({ length: views }, (_, index) => `k${index}`)];
+    const union = (items: string[]) => items.map(item => JSON.stringify(item)).join(" | ");
+    const family = (name: "left" | "right") => {
+      const lines = [
+        `type Kind = ${union(kinds)};`,
+        `type Base = { kind: Kind; familyBrand: "${name}"; familyRead(): number };`,
+      ];
+      for (let index = 0; index < views; index++) {
+        lines.push(
+          `type View${index} = { kind: ${union(kinds.filter(kind => kind !== `k${index}`))}; familyBrand: "${name}"; familyRead(): number };`,
+          `function isView${index}(value: Base): value is View${index} { return value.kind !== "k${index}"; }`,
+          `function visit${index}(value: Base): number {`,
+          `  if (isView${index}(value)) { const narrowed: View${index} = value; return narrowed.familyRead(); }`,
+          "  return 0;",
+          "}",
+        );
+      }
+      lines.push(
+        `export function run${name === "left" ? "Left" : "Right"}(): number {`,
+        `  const value: Base = { kind: "keep", familyBrand: "${name}", familyRead() { return 7; } };`,
+        "  let sum = 0;",
+        ...Array.from({ length: views }, (_, index) => `  sum += visit${index}(value);`),
+        "  return sum;",
+        "}",
+      );
+      return lines.join("\n") + "\n";
+    };
+    using dir = tempDir("independent-wide-flow-families", {
+      "source/left.ts": family("left"),
+      "source/right.ts": family("right"),
+      "source/control.ts": `export function control(value: number): number {
+  const data: { controlLeft: number; controlRight: number } = { controlLeft: value, controlRight: value + 2 };
+  return data.controlLeft + data.controlRight;
+}
+`,
+      "source/main.ts": [
+        'import { runLeft } from "./left.ts";',
+        'import { runRight } from "./right.ts";',
+        'import { control } from "./control.ts";',
+        'console.log("left", runLeft());',
+        'console.log("right", runRight());',
+        'console.log("healthy", control(20));',
+        "",
+      ].join("\n"),
+    });
+    const cwd = String(dir);
+    const executable = join(cwd, isWindows ? "app.exe" : "app");
+    const compiled = await spawned(
+      [
+        bunExe(),
+        "build",
+        "--compile",
+        "--aot",
+        "--compile-function-source",
+        "--aot-explain=json",
+        "main.ts",
+        "--outfile",
+        executable,
+      ],
+      join(cwd, "source"),
+      bunEnv,
+      10_000,
+    );
+    expect(compiled.signal).toBeNull();
+    expect(compiled.exitCode).toBe(0);
+    expect(compiled.stdout).toMatch(/^\{"percent":[^,\n]+,"typed":[1-9][0-9]*,/);
+    const explanations = compiled.stdout.split("\n");
+    for (const file of ["left.ts", "right.ts"]) {
+      const explanation = explanations.find(
+        line => line.includes('"code":"flow-layout"') && line.includes(`"file":"${file}"`),
+      );
+      expect(explanation).toContain("a Flow intersection has no supported data-field representation");
+    }
+    expect(compiled.stdout).not.toContain('"code":"flow-layout","file":"control.ts"');
+    renameSync(join(cwd, "source"), join(cwd, "hidden-source"));
+    const ran = await spawned(
+      [executable],
+      cwd,
+      {
+        ...bunEnv,
+        BUN_JSC_useJIT: "0",
+        BUN_JSC_crashIfInterpreterIsUsed: "1",
+      },
+      5_000,
+    );
+    expect(ran).toEqual({ exitCode: 0, signal: null, stdout: "left 672\nright 672\nhealthy 42\n", stderr: "" });
+  },
+  30_000,
+);
+
 test("package fallback retains the Flow reason for every demoted module", async () => {
   const files = Object.fromEntries(
     Object.entries(cap()).map(([path, text]) => [path.replace("source/", "source/node_modules/capped/"), text]),

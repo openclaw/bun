@@ -3289,7 +3289,27 @@ fn link_with_helper_threads<'scope>(
             };
             let mut batch = flow_layouts::make_pairs(checked, &requests, kinds_declared, requires_native_layouts, in_parallel);
             times.add("flow layouts", &mut since);
-            if let Some(failure) = batch.failure.take() {
+            if let Some(mut failure) = batch.failure.take() {
+                // Keep the closure fixed: only collect failures from its remaining known pairs.
+                flow_layouts.exclude_failed(&failure);
+                loop {
+                    let pairs = match flow_layouts.pending() {
+                        Ok(pairs) if !pairs.is_empty() => pairs,
+                        // Existing caps bound this best-effort drain; retain the first failure.
+                        _ => break,
+                    };
+                    let requests: Option<Vec<_>> = pairs.iter().map(|&(left, right)| Some((left, *types.get(&left)?, right, *types.get(&right)?))).collect();
+                    let Some(requests) = requests else {
+                        problems.push(Problem { file: nowhere, pos: 0, what: "a Flow layout type that no task has kept".into() });
+                        break;
+                    };
+                    let mut batch = flow_layouts::make_pairs(checked, &requests, kinds_declared, requires_native_layouts, in_parallel);
+                    times.add("flow layouts", &mut since);
+                    if let Some(next) = batch.failure.take() {
+                        flow_layouts.exclude_failed(&next);
+                        failure.extend(next);
+                    }
+                }
                 flow_family_exhausted = Some((nowhere, flow_layouts.failed(failure)));
                 break;
             }
