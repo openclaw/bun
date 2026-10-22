@@ -2124,12 +2124,12 @@ fn check_provided_once<R>(
         disk.bundled_libs = Some(libs);
     }
     let script_kinds = paths_of(&disk, request.script_kinds.iter().map(|(path, _)| path.as_slice()).collect());
-    disk.script_kinds = script_kinds.into_iter().zip(request.script_kinds.iter().map(|&(_, kind)| kind)).collect();
+    disk.script_kinds = host::first_by_path(script_kinds.into_iter().zip(request.script_kinds.iter().map(|&(_, kind)| kind)));
     disk.script_kinds_by_extension = request.script_kinds_by_extension.to_vec();
     let file_jsx_options = paths_of(&disk, provided.file_jsx_options.iter().map(|(path, _)| path.as_slice()).collect());
-    disk.file_jsx_options = file_jsx_options.into_iter().zip(provided.file_jsx_options.into_iter().map(|(_, of_file)| of_file)).collect();
+    disk.file_jsx_options = host::first_by_path(file_jsx_options.into_iter().zip(provided.file_jsx_options.into_iter().map(|(_, of_file)| of_file)));
     let file_class_options = paths_of(&disk, provided.file_class_options.iter().map(|(path, _)| path.as_slice()).collect());
-    disk.file_class_options = file_class_options.into_iter().zip(provided.file_class_options.into_iter().map(|(_, of_file)| of_file)).collect();
+    disk.file_class_options = host::first_by_path(file_class_options.into_iter().zip(provided.file_class_options.into_iter().map(|(_, of_file)| of_file)));
     disk.is_without_bundler = provided.is_without_bundler;
     disk.lowers_like_the_runtime = provided.lowers_like_the_runtime;
     // Work outside a parallel region runs on this thread.

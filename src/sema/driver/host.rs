@@ -455,7 +455,7 @@ pub struct Disk {
     /// What is in `BUNDLED_LIBS`.
     pub bundled_libs: Option<BundledLibs>,
     /// `Host::script_kind`, by `tspath.Path`.
-    pub(crate) script_kinds: Vec<(Vec<u8>, ScriptKind)>,
+    pub(crate) script_kinds: FxHashMap<Vec<u8>, ScriptKind>,
     /// `Request::script_kinds_by_extension`
     pub(crate) script_kinds_by_extension: Vec<(Vec<u8>, ScriptKind)>,
     pub(crate) before_read: Option<BeforeRead>,
@@ -465,8 +465,8 @@ pub struct Disk {
     paths: bun_threading::Guarded<FxHashSet<Arc<Paths>>>,
     pub(crate) scripts_of_page: Option<ScriptsOfPage>,
     /// `Provided::file_jsx_options`, by `tspath.Path`.
-    pub(crate) file_jsx_options: Vec<(Vec<u8>, FileJsxOptions)>,
-    pub(crate) file_class_options: Vec<(Vec<u8>, ClassOptions)>,
+    pub(crate) file_jsx_options: FxHashMap<Vec<u8>, FileJsxOptions>,
+    pub(crate) file_class_options: FxHashMap<Vec<u8>, ClassOptions>,
     pub(crate) is_without_bundler: bool,
     pub(crate) lowers_like_the_runtime: bool,
     lowering_of_every_file: OnceLock<Option<Arc<(FileJsxOptions, ClassOptions)>>>,
@@ -525,15 +525,25 @@ fn say_as_pragmas<'s>(pragmas: &mut hir::JsxPragmas, of_file: &FileJsxOptions, a
     }
 }
 
+/// Paths have already been normalized; the first supplied setting wins even when paths alias.
+pub(crate) fn first_by_path<T>(entries: impl IntoIterator<Item = (Vec<u8>, T)>) -> FxHashMap<Vec<u8>, T> {
+    let entries = entries.into_iter();
+    let mut by_path = FxHashMap::with_capacity_and_hasher(entries.size_hint().0, Default::default());
+    for (path, value) in entries {
+        by_path.entry(path).or_insert(value);
+    }
+    by_path
+}
+
 struct InstalledSources {
     already_read: AlreadyRead,
     deferred_read: bun_threading::Guarded<Option<DeferredRead>>,
     deferred_read_sources: OnceLock<AlreadyRead>,
     in_memory: FxHashMap<Vec<u8>, InMemory>,
     directories: FxHashMap<Vec<u8>, Directory>,
-    script_kinds: Vec<(Vec<u8>, ScriptKind)>,
-    file_jsx_options: Vec<(Vec<u8>, FileJsxOptions)>,
-    file_class_options: Vec<(Vec<u8>, ClassOptions)>,
+    script_kinds: FxHashMap<Vec<u8>, ScriptKind>,
+    file_jsx_options: FxHashMap<Vec<u8>, FileJsxOptions>,
+    file_class_options: FxHashMap<Vec<u8>, ClassOptions>,
     import_constants: FxHashMap<(Vec<u8>, Vec<u8>), Vec<u8>>,
     entry_points: Vec<Vec<u8>>,
     code: FxHashSet<Vec<u8>>,
@@ -1006,12 +1016,12 @@ impl Disk {
             non_utf8: bun_threading::Guarded::new(FxHashSet::default()),
             times: Default::default(),
             bundled_libs: None,
-            script_kinds: Vec::new(),
+            script_kinds: FxHashMap::default(),
             script_kinds_by_extension: Vec::new(),
             before_read: None,
             scripts_of_page: None,
-            file_jsx_options: Vec::new(),
-            file_class_options: Vec::new(),
+            file_jsx_options: FxHashMap::default(),
+            file_class_options: FxHashMap::default(),
             is_without_bundler: false,
             lowers_like_the_runtime: false,
             lowering_of_every_file: OnceLock::new(),
@@ -1046,6 +1056,15 @@ impl Disk {
             by_directory: bun_threading::Guarded::new(FxHashMap::default()),
             by_config: bun_threading::Guarded::new(FxHashMap::default()),
         });
+    }
+
+    fn jsx_options(&self, path: &[u8]) -> Option<&FileJsxOptions> {
+        let deferred = self.deferred.get().map(|deferred| &deferred.file_jsx_options);
+        if self.file_jsx_options.is_empty() && deferred.is_none_or(FxHashMap::is_empty) {
+            return None;
+        }
+        let key = to_path(path, self.case_sensitive);
+        self.file_jsx_options.get(&*key).or_else(|| deferred?.get(&*key))
     }
 
     fn lowering_of(&self, path: &[u8]) -> Option<Arc<(FileJsxOptions, ClassOptions)>> {
@@ -1092,9 +1111,9 @@ impl Disk {
             is_commonjs_code: sources.code.iter().zip(&code).filter_map(|(given, path)| Some((path.clone(), *sources.code_kinds.get(given)?))).collect(),
             code: code.into_iter().collect(),
             entry_points: sources.paths.iter().map(|path| path_of(path)).collect(),
-            script_kinds: sources.script_kinds.iter().map(|(path, kind)| (path_of(path), *kind)).collect(),
-            file_jsx_options: sources.file_jsx_options.into_iter().map(|(path, of_file)| (path_of(&path), of_file)).collect(),
-            file_class_options: sources.file_class_options.into_iter().map(|(path, of_file)| (path_of(&path), of_file)).collect(),
+            script_kinds: first_by_path(sources.script_kinds.iter().map(|(path, kind)| (path_of(path), *kind))),
+            file_jsx_options: first_by_path(sources.file_jsx_options.into_iter().map(|(path, of_file)| (path_of(&path), of_file))),
+            file_class_options: first_by_path(sources.file_class_options.into_iter().map(|(path, of_file)| (path_of(&path), of_file))),
             import_constants: sources.import_constants.into_iter().collect(),
             already_read: match self.case_sensitive {
                 true => sources.already_read,
@@ -2358,13 +2377,13 @@ impl Host for Disk {
         if path.starts_with(bun_builtin_syntax::VIRTUAL_ROOT) {
             return (!is_declaration_file_name(path)).then_some(ScriptKind::Ts);
         }
-        let deferred = self.deferred.get().map_or(&[][..], |deferred| &deferred.script_kinds[..]);
-        if self.script_kinds.is_empty() && self.script_kinds_by_extension.is_empty() && deferred.is_empty() {
+        let deferred = self.deferred.get().map(|deferred| &deferred.script_kinds);
+        if self.script_kinds.is_empty() && self.script_kinds_by_extension.is_empty() && deferred.is_none_or(FxHashMap::is_empty) {
             return None;
         }
         let key = to_path(path, self.case_sensitive);
-        if let Some(found) = self.script_kinds.iter().chain(deferred).find(|it| it.0 == *key) {
-            return Some(found.1);
+        if let Some(found) = self.script_kinds.get(&*key).or_else(|| deferred?.get(&*key)) {
+            return Some(*found);
         }
         // A declaration file, and what is installed, is what its name says.
         if is_declaration_file_name(path) || contains(path, b"/node_modules/") {
@@ -2394,11 +2413,7 @@ impl Host for Disk {
             options.bind.uses_ecmascript_bindings,
         );
         self.spent(Phase::Parse, began.elapsed());
-        let deferred_jsx_options = self.deferred.get().map_or(&[][..], |deferred| &deferred.file_jsx_options[..]);
-        if !(self.file_jsx_options.is_empty() && deferred_jsx_options.is_empty())
-            && let key = to_path(path, self.case_sensitive)
-            && let Some((_, of_file)) = self.file_jsx_options.iter().chain(deferred_jsx_options).find(|it| it.0 == *key)
-        {
+        if let Some(of_file) = self.jsx_options(path) {
             say_as_pragmas(&mut file.jsx_pragmas, of_file, atoms);
         } else if self.is_without_bundler && !file.jsx.is_empty() {
             bun_sema_parser::read_jsx_pragmas_of_every_comment(&mut file, text, atoms);
@@ -2426,16 +2441,15 @@ impl Host for Disk {
             || self.is_early_pass && self.shared_directory_cache.as_ref().is_some_and(|cache| cache.early_parse_state.load(Ordering::Acquire) == EARLY_PARSE_PAUSE_REQUESTED)
     }
     fn uses_default_parse_settings(&self, path: &[u8]) -> bool {
-        let deferred = self.deferred.get().map_or(&[][..], |deferred| &deferred.file_jsx_options[..]);
-        (self.file_jsx_options.is_empty() && deferred.is_empty() || !self.file_jsx_options.iter().chain(deferred).any(|it| it.0 == *to_path(path, self.case_sensitive))) && self.class_options(path).is_none() && !self.is_without_bundler
+        self.jsx_options(path).is_none() && self.class_options(path).is_none() && !self.is_without_bundler
     }
     fn class_options(&self, path: &[u8]) -> Option<ClassOptions> {
-        let deferred = self.deferred.get().map_or(&[][..], |deferred| &deferred.file_class_options[..]);
-        if self.file_class_options.is_empty() && deferred.is_empty() {
+        let deferred = self.deferred.get().map(|deferred| &deferred.file_class_options);
+        if self.file_class_options.is_empty() && deferred.is_none_or(FxHashMap::is_empty) {
             return self.lowering_of(path).filter(|_| !is_javascript_file(self, path)).map(|own| own.1);
         }
         let key = to_path(path, self.case_sensitive);
-        self.file_class_options.iter().chain(deferred).find(|it| it.0 == *key).map(|it| it.1)
+        self.file_class_options.get(&*key).or_else(|| deferred?.get(&*key)).copied()
     }
     fn parse_package_json(&self, arena: &Arena, text: &[u8]) -> Option<Json> {
         parse_package_json(arena, text)
@@ -2474,6 +2488,85 @@ impl Host for Disk {
         match shares {
             Some(shares) => crate::for_each_with_a_share(&self.caches, &shares, count, run, work),
             None => crate::for_each_parallel_in_runs(&self.caches, self.threads, count, run, work),
+        }
+    }
+}
+
+#[cfg(test)]
+mod file_options_tests {
+    use super::*;
+
+    fn jsx(classic: bool) -> FileJsxOptions {
+        FileJsxOptions { is_classic: classic, factory: Vec::new(), fragment: Vec::new(), import_source: Vec::new(), overrides_pragmas: true }
+    }
+
+    fn classes(decorators: bool) -> ClassOptions {
+        ClassOptions { use_define_for_class_fields: true, experimental_decorators: decorators, emit_decorator_metadata: false }
+    }
+
+    #[test]
+    fn normalized_duplicates_keep_the_first_setting() {
+        let entries = [(b"/src/Widget.ts".as_slice(), 1), (b"/SRC/widget.ts".as_slice(), 2)];
+        let insensitive = first_by_path(entries.iter().map(|(path, value)| (to_path(path, false).into_owned(), *value)));
+        assert_eq!(insensitive.len(), 1);
+        assert_eq!(insensitive.get(b"/src/widget.ts".as_slice()), Some(&1));
+        let sensitive = first_by_path(entries.iter().map(|(path, value)| (to_path(path, true).into_owned(), *value)));
+        assert_eq!(sensitive.len(), 2);
+    }
+
+    #[test]
+    fn early_settings_precede_deferred_settings_and_late_settings_become_visible() {
+        let early = b"/file-options-early.tsx".to_vec();
+        let late = b"/file-options-late.tsx".to_vec();
+        let mut disk = Disk::with_already_read(1, AlreadyRead::default(), b"/");
+        disk.case_sensitive = true;
+        disk.script_kinds_by_extension = vec![(b".widget".to_vec(), ScriptKind::Jsx), (b".widget".to_vec(), ScriptKind::Ts)];
+        assert_eq!(disk.script_kind(b"/other.widget"), Some(ScriptKind::Jsx));
+        assert_eq!(disk.script_kind(b"/node_modules/other.widget"), None);
+        assert_eq!(disk.script_kind(b"/other.d.ts"), None);
+        disk.script_kinds = first_by_path([(early.clone(), ScriptKind::Tsx), (early.clone(), ScriptKind::Js)]);
+        disk.file_jsx_options = first_by_path([(early.clone(), jsx(true)), (early.clone(), jsx(false))]);
+        disk.file_class_options = first_by_path([(early.clone(), classes(true)), (early.clone(), classes(false))]);
+        assert!(disk.uses_default_parse_settings(&late));
+        disk.install_deferred_sources(b"/", DeferredSources {
+            script_kinds: vec![(early.clone(), ScriptKind::Js), (late.clone(), ScriptKind::Tsx), (late.clone(), ScriptKind::Js)],
+            file_jsx_options: vec![(early.clone(), jsx(false)), (late.clone(), jsx(false)), (late.clone(), jsx(true))],
+            file_class_options: vec![(early.clone(), classes(false)), (late.clone(), classes(false)), (late.clone(), classes(true))],
+            ..Default::default()
+        });
+        assert_eq!(disk.script_kind(&early), Some(ScriptKind::Tsx));
+        assert_eq!(disk.script_kind(&late), Some(ScriptKind::Tsx));
+        assert_eq!(disk.class_options(&early), Some(classes(true)));
+        assert_eq!(disk.class_options(&late), Some(classes(false)));
+        assert!(!disk.uses_default_parse_settings(&early));
+        assert!(!disk.uses_default_parse_settings(&late));
+        let session = bun_sema::session::Session::new();
+        let atoms = Interner::new_in(&session);
+        for (path, classic) in [(&early, true), (&late, false)] {
+            let file = disk.parse(session.arena(), path, b"const element = <div />;", &atoms, ParseOptions::default());
+            assert_eq!(file.jsx_pragmas.classic, Some(classic));
+        }
+    }
+
+    #[test]
+    fn class_lowering_fallback_requires_both_setting_maps_to_be_empty() {
+        let path = b"/file-options-target.ts";
+        for deferred in [false, true] {
+            let mut disk = Disk::with_already_read(1, AlreadyRead::default(), b"/");
+            disk.case_sensitive = true;
+            disk.lower_every_file_as((jsx(false), classes(true)), &Default::default());
+            assert_eq!(disk.class_options(path), Some(classes(true)));
+            assert_eq!(disk.class_options(b"/file-options-target.js"), None);
+            if deferred {
+                disk.install_deferred_sources(b"/", DeferredSources {
+                    file_class_options: vec![(b"/another.ts".to_vec(), classes(false))],
+                    ..Default::default()
+                });
+            } else {
+                disk.file_class_options = first_by_path([(b"/another.ts".to_vec(), classes(false))]);
+            }
+            assert_eq!(disk.class_options(path), None);
+            assert!(disk.uses_default_parse_settings(path));
         }
     }
 }

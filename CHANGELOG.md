@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Index per-file AOT parser options while preserving normalized-path and deferred-source precedence.
+- Build the native toolchain from paths containing spaces without quoting compilation database arguments.
+
 - Preserve constant-symbol field names when a base constructor exposes a partially initialized typed instance.
 - Keep stateless typed functions free of VM state when native-entry counters are enabled.
 - Preserve typed validation results across native fallback joins, prune redundant plain-data Flow union arms, and retry generated layouts that exceed native nesting limits.

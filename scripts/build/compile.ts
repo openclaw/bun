@@ -223,6 +223,8 @@ export function registerCompileRules(n: Ninja, cfg: Config): void {
 export interface CompileOpts {
   /** Compiler flags (including -I, -D — caller assembles). */
   flags: string[];
+  /** Raw include directory paths; quoted for the shell, kept raw in compile_commands.json. */
+  includes?: string[];
   /** PCH to use (absolute path to .pch/.gch output). */
   pch?: string;
   /** Original header the PCH was built from (needed for clang-cl /Yu). */
@@ -325,7 +327,8 @@ function compile(n: Ninja, cfg: Config, src: string, opts: CompileOpts, lang: "c
     implicitInputs,
     ...(opts.pool !== undefined ? { pool: opts.pool } : {}),
   };
-  const flags = opts.flags.join(" ");
+  const includeFlags = (opts.includes ?? []).map(dir => `-I${quote(dir, cfg.host.os === "windows")}`);
+  const flags = [...opts.flags, ...includeFlags].join(" ");
   if (lang === "cc") {
     n.build({ ...node, rule: "cc", vars: { cflags: flags } });
   } else if (opts.pch === undefined) {
@@ -347,6 +350,7 @@ function compile(n: Ninja, cfg: Config, src: string, opts: CompileOpts, lang: "c
     arguments: [
       lang === "cxx" ? cfg.cxx : cfg.cc,
       ...opts.flags,
+      ...(opts.includes ?? []).map(dir => `-I${dir}`),
       ...(opts.pch !== undefined ? ["-include-pch", n.rel(opts.pch)] : []),
       "-c",
       absSrc,
@@ -379,6 +383,7 @@ export function pch(
   header: string,
   opts: {
     flags: string[];
+    includes?: string[];
     /**
      * Files whose change must invalidate the PCH. Typically: dep output
      * libs (libJavaScriptCore.a etc.).
@@ -444,7 +449,8 @@ export function pch(
     implicitInputs: [absHeader, wrapperHeader, toolIdentityFile(cfg, "cxx"), ...(opts.implicitInputs ?? [])],
     orderOnlyInputs: [pchDirStamp(cfg), ...(opts.orderOnlyInputs ?? [])],
   };
-  const vars = { cxxflags: opts.flags.join(" "), pch_header: n.rel(wrapperHeader) };
+  const includeFlags = (opts.includes ?? []).map(dir => `-I${quote(dir, cfg.host.os === "windows")}`);
+  const vars = { cxxflags: [...opts.flags, ...includeFlags].join(" "), pch_header: n.rel(wrapperHeader) };
   if (cfg.windows) {
     n.build({
       ...node,
@@ -536,7 +542,9 @@ export function link(n: Ninja, cfg: Config, out: string, objects: string[], opts
     toolIdentityFile(cfg, "cxx"),
     ...(cfg.ld !== "" ? [toolIdentityFile(cfg, "ld")] : []),
     ...(opts.implicitInputs ?? []),
-    ...(opts.islands && cfg.islands ? [islandsScript(cfg), islandsLayoutScript(cfg), islandsCoffScript(cfg), islandsDoors(cfg)] : []),
+    ...(opts.islands && cfg.islands
+      ? [islandsScript(cfg), islandsLayoutScript(cfg), islandsCoffScript(cfg), islandsDoors(cfg)]
+      : []),
     ...lazyInputs,
   ];
   // lld-link writes the exe's import library under obj/ (flags.ts /IMPLIB)
@@ -642,13 +650,13 @@ export function registerDirStamps(n: Ninja, cfg: Pick<Config, "host" | "buildDir
     outputs: [objectDirStamp(cfg)],
     rule: "mkdir_stamp",
     inputs: [],
-    vars: { dir: n.rel(objDir) },
+    vars: { dir: quote(n.rel(objDir), cfg.host.os === "windows") },
   });
 
   n.build({
     outputs: [pchDirStamp(cfg)],
     rule: "mkdir_stamp",
     inputs: [],
-    vars: { dir: n.rel(pchDir) },
+    vars: { dir: quote(n.rel(pchDir), cfg.host.os === "windows") },
   });
 }

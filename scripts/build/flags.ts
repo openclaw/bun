@@ -1196,7 +1196,7 @@ export const linkerFlags: Flag[] = [
     desc: "Suppress all linker warnings (workaround: no selective suppress for alignment warnings as of 2025-07)",
   },
   {
-    flag: c => ["-dead_strip", "-dead_strip_dylibs", `-Wl,-map,${linkerMapPath(c)}`],
+    flag: c => ["-dead_strip", "-dead_strip_dylibs", quote(`-Wl,-map,${linkerMapPath(c)}`, c.host.os === "windows")],
     when: c => c.darwin && c.release,
     desc: "Dead-code strip + emit linker map",
   },
@@ -1208,7 +1208,7 @@ export const linkerFlags: Flag[] = [
     // and the dSYM empty. -object_path_lto persists the LTO-codegen'd object
     // at a stable path inside the build dir and points the debug map at it.
     // The link holds bitcode with `lto` off too: the Rust crates (linkLtoIsRustOnly).
-    flag: c => `-Wl,-object_path_lto,${c.buildDir}/${bunExeName(c)}.lto.o`,
+    flag: c => quote(`-Wl,-object_path_lto,${c.buildDir}/${bunExeName(c)}.lto.o`, c.host.os === "windows"),
     when: c => c.darwin && (c.lto || linkLtoIsRustOnly(c)),
     desc: "Persist the LTO-generated object so dsymutil can extract its DWARF into the dSYM",
   },
@@ -1218,7 +1218,7 @@ export const linkerFlags: Flag[] = [
     // starting up, and Apple's linker sorts them to the front of __text. Where
     // the file comes from is the same as on linux (see that entry). Unknown
     // names are silently skipped, so a stale file only costs part of the win.
-    flag: c => `-Wl,-order_file,${orderFilePath(c)}`,
+    flag: c => quote(`-Wl,-order_file,${orderFilePath(c)}`, c.host.os === "windows"),
     when: c => c.darwin && usesOrderFile(c),
     desc: "Sort startup-hot functions to the front of __text (cuts resident binary pages)",
   },
@@ -1462,7 +1462,7 @@ export const linkerFlags: Flag[] = [
     desc: "Write the exe's import library under obj/",
   },
   {
-    flag: c => ["-exported_symbols_list", `${c.cwd}/src/symbols.txt`],
+    flag: c => ["-exported_symbols_list", quote(`${c.cwd}/src/symbols.txt`, c.host.os === "windows")],
     when: c => c.darwin,
     desc: "Exported symbol list",
   },
