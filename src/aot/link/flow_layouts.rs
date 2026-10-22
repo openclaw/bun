@@ -445,7 +445,9 @@ mod tests {
         closure.generators.extend([[3000, 0], [3001, 0]]);
         closure.contributors[healthy].insert(FileId(99));
 
-        let first = closure.pending().unwrap();
+        let first = closure
+            .pending()
+            .unwrap_or_else(|error| panic!("{}", error.what));
         assert_eq!(first.len(), PAIRS_PER_BATCH);
         let first_family = closure.family_of[&first[0].0];
         assert!(
@@ -458,7 +460,9 @@ mod tests {
             reasons: vec!["a Flow intersection has no supported data-field representation"],
         };
         closure.exclude_failed(&failure);
-        let second = closure.pending().unwrap();
+        let second = closure
+            .pending()
+            .unwrap_or_else(|error| panic!("{}", error.what));
         assert_eq!(second.len(), PAIRS_PER_BATCH);
         assert!(
             second
@@ -471,10 +475,17 @@ mod tests {
         };
         closure.exclude_failed(&next);
         failure.extend(next);
-        let remaining = closure.pending().unwrap();
+        let remaining = closure
+            .pending()
+            .unwrap_or_else(|error| panic!("{}", error.what));
         assert_eq!(remaining.len(), 1);
         assert_eq!(closure.family_of[&remaining[0].0], healthy);
-        assert!(closure.pending().unwrap().is_empty());
+        assert!(
+            closure
+                .pending()
+                .unwrap_or_else(|error| panic!("{}", error.what))
+                .is_empty()
+        );
         let exhausted = closure.failed(failure);
         assert_eq!(exhausted.contributors, vec![FileId(2), FileId(7)]);
         assert_eq!(
