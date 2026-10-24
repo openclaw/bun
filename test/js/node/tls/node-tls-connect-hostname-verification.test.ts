@@ -12,6 +12,8 @@ import {
   expected as expectedServername,
   observe as observeServername,
   cases as servernameCases,
+  observePending,
+  pendingCases,
 } from "./node-tls-servername-fixture.mjs";
 
 // Server presents a cert for CN=agent1 (no SAN), signed by ca1.
@@ -616,6 +618,14 @@ describe("TLS servername selection", () => {
   for (const scenario of servernameCases) {
     test(`${scenario.transport} host=${scenario.host} servername=${String(scenario.servername)}`, async () => {
       assert.deepStrictEqual(await observeServername(scenario), expectedServername(scenario));
+    });
+  }
+  for (const scenario of pendingCases) {
+    test(`pre-connect setServername=${JSON.stringify(scenario.servername)} autoSelectFamily=${scenario.autoSelectFamily}`, async () => {
+      assert.deepStrictEqual(await observePending(scenario), {
+        servername: scenario.servername || false,
+        clientServername: scenario.servername || false,
+      });
     });
   }
 });

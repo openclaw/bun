@@ -293,7 +293,7 @@ On POSIX, piped and terminal `process.stdout` and `process.stderr` expose `_hand
 
 ### [`node:tls`](https://nodejs.org/api/tls.html)
 
-`tls.connect()` sends SNI only for an explicit nonempty `servername`; omitted, `undefined`, `null`, and empty values send no SNI. Certificate identity checks still use the explicit servername or connection host. Established Node TLS sockets report `servername: false` when no SNI was sent. HTTPS agents and HTTP/2 choose their own host-derived names, excluding IP hosts. Explicit IP servernames remain rejected, unlike Node.js 24, which sends them with deprecation warning `DEP0123`.
+`tls.connect()` sends SNI only for an explicit nonempty `servername`; omitted, `undefined`, `null`, and empty values send no SNI. A name set with `tlsSocket.setServername()` before connecting is preserved, including with `autoSelectFamily`. Certificate identity checks still use the explicit servername or connection host. Established Node TLS sockets report `servername: false` when no SNI was sent. HTTPS agents and HTTP/2 choose their own host-derived names, excluding IP hosts. Explicit IP servernames remain rejected, unlike Node.js 24, which sends them with deprecation warning `DEP0123`.
 
 Native `fetch()` uses `tls.setDefaultCACertificates()` overrides for new TLS connections. Explicit request or `FetchSession` CAs take precedence; an empty CA list trusts no certificates. Overrides are local to the calling thread, like Node.
 
