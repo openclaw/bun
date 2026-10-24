@@ -1,8 +1,8 @@
 // A module whose bytes stand in the program as base64 text is compiled when the program is built, however the program decodes the text and whichever call makes the module: no function of it is interpreted.
 // Text that only starts as a module does gets no code, and text of under 64 characters is not looked at: that module is interpreted. Each of them behaves as in plain Bun.
-// STATISTIC: WebAssemblyModulesFoundInText = 3
+// STATISTIC: WebAssemblyModulesFoundInText = 7
 // STATISTIC: WebAssemblyModulesInTextDeclined = 1
-// STATISTIC: WasmFunctionsCompiled = 6
+// STATISTIC: WasmFunctionsCompiled = 10
 // STATISTIC: WasmFunctionsInterpreted = 0
 function bytesOf(text: string): Uint8Array<ArrayBuffer> {
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -79,4 +79,27 @@ console.log("sentence", sentence.length, outcomeOf(() => Uint8Array.fromBase64(s
 // (func (export "add") (param i32 i32) (result i32) local.get 0 local.get 1 i32.add)
 const shortText = "AGFzbQEAAAABBwFgAn9/AX8DAgEABwcBA2FkZAAACgkBBwAgACABags=";
 console.log("short", shortText.length, (new WebAssembly.Instance(new WebAssembly.Module(bytesOf(shortText)), {}).exports.add as Binary)(22, 23));
+// Each module reads mutable memory before i8x16, i16x8, i32x4 or i64x2.bitmask. The masks must survive a relocated image.
+const bitmasks = [
+  { text: "AGFzbQEAAAABBgFgAX8BfwMCAQAFAwEAAQcQAgNydW4AAAZtZW1vcnkCAAoMAQoAIAD9AAQA/WQL", laneBytes: 1, lanes: 16 },
+  { text: "AGFzbQEAAAABBgFgAX8BfwMCAQAFAwEAAQcQAgNydW4AAAZtZW1vcnkCAAoNAQsAIAD9AAQA/YQBCw==", laneBytes: 2, lanes: 8 },
+  { text: "AGFzbQEAAAABBgFgAX8BfwMCAQAFAwEAAQcQAgNydW4AAAZtZW1vcnkCAAoNAQsAIAD9AAQA/aQBCw==", laneBytes: 4, lanes: 4 },
+  { text: "AGFzbQEAAAABBgFgAX8BfwMCAQAFAwEAAQcQAgNydW4AAAZtZW1vcnkCAAoNAQsAIAD9AAQA/cQBCw==", laneBytes: 8, lanes: 2 },
+];
+for (const { text, laneBytes, lanes } of bitmasks) {
+  const { memory, run } = new WebAssembly.Instance(new WebAssembly.Module(bytesOf(text))).exports;
+  if (!(memory instanceof WebAssembly.Memory) || typeof run !== "function")
+    throw new Error("missing SIMD exports");
+  const input = new Uint8Array(memory.buffer, 0, 16);
+  const all = (1 << lanes) - 1;
+  const masks = [0, all, 0xaaaa & all, 0x5555 & all];
+  for (let lane = 0; lane < lanes; lane++) masks.push(1 << lane);
+  for (const expected of masks) {
+    input.fill(0);
+    for (let lane = 0; lane < lanes; lane++)
+      input[(lane + 1) * laneBytes - 1] = expected & (1 << lane) ? 0x80 : 0x7f;
+    const actual = run(0);
+    if (actual !== expected) throw new Error(`SIMD ${lanes} lanes: expected ${expected}, got ${actual}`);
+  }
+}
 export {};
