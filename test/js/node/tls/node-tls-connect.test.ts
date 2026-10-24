@@ -6152,13 +6152,11 @@ describe("a setServername() made before TLSSocket#connect() is the SNI of the ha
     }
   }
 
-  // Known inherited gap: pre-connect setServername is lost; see the separate TLS SNI follow-up.
-  it.failing("on a host and port connect", async () => {
+  it("on a host and port connect", async () => {
     expect(await names(port => ({ port, host: "127.0.0.1" }))).toEqual({ client: NAME, server: NAME });
   });
 
-  // Known inherited gap: pre-connect setServername is lost; see the separate TLS SNI follow-up.
-  it.failing("on an autoSelectFamily connect, instead of a name derived from the host", async () => {
+  it("on an autoSelectFamily connect, instead of a name derived from the host", async () => {
     const lookup = ((_host, _options, callback) =>
       callback(null, [
         { address: "127.0.0.1", family: 4 },
