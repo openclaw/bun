@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Resolve literal embedded module paths against prepared AOT entry points, including TypeScript and custom output names.
+
 - Add `Bun.Terminal.pause()` and `resume()` for PTY output backpressure without blocking the event loop.
 
 - Add opt-in native Worker VM lifecycle tracing with `BUN_WORKER_VM_TRACE`.
