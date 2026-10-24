@@ -201,6 +201,9 @@ pub mod linker_context {
     #[path = "generateChunksInParallel.rs"]
     pub mod generate_chunks_in_parallel;
 
+    #[path = "chunkHashComponents.rs"]
+    pub(crate) mod chunk_hash_components;
+
     #[path = "generateCodeForFileInChunkJS.rs"]
     pub mod generate_code_for_file_in_chunk_js;
 
