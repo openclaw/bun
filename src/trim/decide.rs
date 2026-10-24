@@ -8,11 +8,13 @@ use crate::model::{
 };
 use crate::settings::collect_requirements;
 
-const ALWAYS_ENTERED: [Feature; 4] = [
+const ALWAYS_ENTERED: [Feature; 5] = [
     Feature::Bunfig,
     Feature::CliOptions,
     Feature::CrashReport,
     Feature::Profilers,
+    // Realm bootstrap links metadata for builtins without a compiled implementation.
+    Feature::BuiltinSourceText,
 ];
 
 const ENGINE_FEATURES_OUTSIDE_LANGUAGE: [Feature; 3] =
@@ -424,9 +426,12 @@ mod tests {
     fn evaluated_text_retains_language_and_get_builtin_module() {
         let used = UsedFeatures::with_cause(UnseenCodeCause::EvaluatesText);
         let decision = decide_request(&used, &removing_unused());
+        assert_eq!(
+            decision.reason_of(Feature::BuiltinSourceText),
+            Some(RetainReason::AlwaysEntered),
+        );
         for feature in [
             Feature::Interpreter,
-            Feature::BuiltinSourceText,
             Feature::RegExp,
             Feature::StringNormalize,
             Feature::DataView,
@@ -545,6 +550,18 @@ mod tests {
         let used = using(&[Feature::Sql]);
         let closed = decide_request(&used, &removing_unused());
         assert!(interpreter.is_subset_of(&closed.unused));
+        assert!(!closed.unused.contains(Feature::BuiltinSourceText));
+
+        let forced = decide_request(
+            &used,
+            &TrimRequest {
+                removes_unused: true,
+                remove: vec![TrimFeature::Interpreter],
+                ..Default::default()
+            },
+        );
+        assert!(interpreter.is_subset_of(&forced.unused));
+        assert!(!forced.unused.contains(Feature::BuiltinSourceText));
 
         let evaluating_text = UsedFeatures::with_cause(UnseenCodeCause::EvaluatesText);
         let open = decide_request(&evaluating_text, &removing_unused());

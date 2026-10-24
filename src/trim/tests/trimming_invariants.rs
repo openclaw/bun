@@ -55,11 +55,12 @@ const PE_X86_64: Target = Target {
     format: ExecutableFormat::Pe,
     architecture: Architecture::X86_64,
 };
-const ALWAYS_ENTERED: [Feature; 4] = [
+const ALWAYS_ENTERED: [Feature; 5] = [
     Feature::Bunfig,
     Feature::CliOptions,
     Feature::CrashReport,
     Feature::Profilers,
+    Feature::BuiltinSourceText,
 ];
 
 fn image_over(bytes: &[u8]) -> impl FnMut(usize, &mut [u8]) -> bool {
