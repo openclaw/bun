@@ -332,3 +332,5 @@
 - Close Worker-owned FileHandles and tracked fs descriptors on termination or natural exit, after pending filesystem work returns. Adapts [oven-sh/bun#34260](https://github.com/oven-sh/bun/pull/34260); thanks robobun.
 
 - Settle child IPC send callbacks after peer disconnection, preserving immediate write errors and completing queued sends at channel close. Adapts [oven-sh/bun#43000](https://github.com/oven-sh/bun/pull/43000); thanks robobun.
+
+- Reduce nested-object Worker `postMessage` and `structuredClone` overhead by avoiding transient value-string atomization and discarded flat-object string copies, while preserving stored and cross-process serialized bytes.

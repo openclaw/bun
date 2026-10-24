@@ -86,6 +86,7 @@
 #include <wtf/MainThread.h>
 #include <wtf/RunLoop.h>
 #include <wtf/Vector.h>
+#include <wtf/text/StringHash.h>
 #include <wtf/threads/BinarySemaphore.h>
 
 #include "ZigGlobalObject.h"
@@ -1645,8 +1646,12 @@ private:
 
     void write(const Identifier& ident)
     {
-        const String& str = ident.string();
-        StringConstantPool::AddResult addResult = m_constantPool.add(ident.impl(), m_constantPool.size());
+        writeString(ident.string());
+    }
+
+    void writeString(const String& str)
+    {
+        StringConstantPool::AddResult addResult = m_constantPool.add(str, m_constantPool.size());
         if (!addResult.isNewEntry) {
             write(StringPoolTag);
             writeStringIndex(addResult.iterator->value);
@@ -1682,8 +1687,11 @@ private:
 
     void write(const String& str)
     {
+        // Stored and cross-process bytes retain the canonical atom's string encoding.
         if (str.isNull())
             write(m_emptyIdentifier);
+        else if (m_context == SerializationContext::WorkerPostMessage && m_forStorage == SerializationForStorage::No && m_forTransfer == SerializationForCrossProcessTransfer::No)
+            writeString(str);
         else
             write(Identifier::fromString(m_lexicalGlobalObject->vm(), str));
     }
@@ -1693,7 +1701,7 @@ private:
         bool isNull = str.isNull();
         write(isNull);
         if (!isNull)
-            write(Identifier::fromString(m_lexicalGlobalObject->vm(), str));
+            write(str);
     }
 
     void write(const Vector<uint8_t>& vector)
@@ -1983,7 +1991,7 @@ private:
     ObjectPool m_objectPool;
     ObjectPool m_transferredMessagePorts;
     ObjectPool m_transferredArrayBuffers;
-    typedef HashMap<RefPtr<UniquedStringImpl>, uint32_t, IdentifierRepHash> StringConstantPool;
+    typedef HashMap<String, uint32_t> StringConstantPool;
     StringConstantPool m_constantPool;
     Identifier m_emptyIdentifier;
     SerializationContext m_context;
@@ -4705,10 +4713,10 @@ ExceptionOr<Ref<SerializedScriptValue>> SerializedScriptValue::create(JSGlobalOb
                         canUseObjectFastPath = false;
                         return false;
                     }
-                    properties.append({ Bun::threadShareableCopy(*entry.key()), Bun::toCrossThreadShareable(stringValue) });
+                    properties.append({ String(entry.key()), WTF::move(stringValue) });
                 } else {
                     // Primitive values are safe to share across threads.
-                    properties.append({ Bun::threadShareableCopy(*entry.key()), value });
+                    properties.append({ String(entry.key()), value });
                 }
 
                 return true;
@@ -4716,6 +4724,12 @@ ExceptionOr<Ref<SerializedScriptValue>> SerializedScriptValue::create(JSGlobalOb
             RETURN_IF_EXCEPTION(scope, Exception { ExistingExceptionError });
 
             if (canUseObjectFastPath) {
+                // A rejected flat-object probe must not pay for cross-thread copies.
+                for (auto& property : properties) {
+                    property.propertyName = Bun::threadShareableCopy(*property.propertyName.impl());
+                    if (auto* string = std::get_if<String>(&property.value))
+                        *string = Bun::toCrossThreadShareable(*string);
+                }
                 return SerializedScriptValue::createObjectFastPath(WTF::FixedVector<SimpleInMemoryPropertyTableEntry>(WTF::move(properties)));
             }
         }
