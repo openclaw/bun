@@ -238,6 +238,63 @@ describe.concurrent("the code size map", () => {
   );
 
   test(
+    "generated helper entry counters are mapped without a source attribution",
+    () =>
+      slot(async () => {
+        using dir = tempDir("aot-generated-entry-counters", {
+          "app.ts": `
+            function copy(values: Iterable<number>): number[] { return [...values]; }
+            const values: Iterable<number> = JSON.parse(process.argv[2] ?? '[1,2,3]');
+            console.log(copy(values).join(','));
+          `,
+          mapped: {},
+        });
+        const folder = String(dir);
+        const mapFile = join(folder, "generated.map");
+        const countsFile = join(folder, "generated.counts");
+        const executable = await build(folder, "mapped", ["--aot-count-branches"], mapFile);
+        expect(
+          await spawned([executable], folder, {
+            ...env,
+            BUN_DESTRUCT_VM_ON_EXIT: "1",
+            BUN_JSC_aotCountsPath: countsFile,
+          }),
+        ).toMatchObject({ stdout: "1,2,3\n", stderr: "", exitCode: 0, signal: null });
+        const mappedCounters = new Set<number>();
+        const generatedEntries: number[] = [];
+        let current: string[] = [];
+        let generatedBodies = 0;
+        for (const line of readFileSync(mapFile, "utf8").split("\n")) {
+          const fields = line.split("\t");
+          if (fields[0] === "F") {
+            current = fields;
+            if (current[4] === "0") generatedBodies++;
+          } else if (fields[0] === "QE") {
+            const counter = Number(fields[1]);
+            mappedCounters.add(counter);
+            if (current[4] === "0") {
+              expect(fields.slice(2)).toEqual(["-", current[11], ""]);
+              expect(current[10]).toBe("");
+              expect(["typed", "untyped"]).not.toContain(current[8]);
+              generatedEntries.push(counter);
+            }
+          } else if (fields[0] === "Q") {
+            mappedCounters.add(Number(fields[1]));
+            mappedCounters.add(Number(fields[2]));
+          }
+        }
+        const counts = parseCounts(readFileSync(countsFile, "utf8"));
+        expect([...counts.byCounter].filter(([counter, amount]) => amount > 0 && !mappedCounters.has(counter))).toEqual(
+          [],
+        );
+        expect(generatedBodies).toBeGreaterThan(0);
+        expect(generatedEntries).toHaveLength(generatedBodies);
+        expect(generatedEntries.some(counter => (counts.byCounter.get(counter) ?? 0) > 0)).toBe(true);
+      }),
+    300_000,
+  );
+
+  test(
     "every byte of a function is in one range, and the totals by label agree with the ranges",
     () =>
       slot(async () => {
