@@ -79,8 +79,9 @@ pub fn init() {
     };
     trace
         .write(&format!(
-            "{{\"version\":1,\"event\":\"trace-ready\",\"pid\":{},\"nativeTid\":{}}}\n",
+            "{{\"version\":1,\"event\":\"trace-ready\",\"pid\":{},\"parentPid\":{},\"nativeTid\":{}}}\n",
             std::process::id(),
+            bun_io::ParentDeathWatchdog::parent_pid(),
             bun_core::thread_id::current(),
         ))
         .unwrap_or_else(|err| fail(err, &trace.path));

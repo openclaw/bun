@@ -13,7 +13,7 @@ const perRound = slow ? 12 : 32;
 const timeout = slow ? 60_000 : 20_000;
 
 describe("BUN_WORKER_VM_TRACE", () => {
-  async function readTrace(path: string, pid: number) {
+  async function readTrace(path: string, pid: number, parentPid = process.pid) {
     const text = await Bun.file(path).text();
     expect(text.endsWith("\n")).toBe(true);
     const records = text
@@ -27,7 +27,7 @@ describe("BUN_WORKER_VM_TRACE", () => {
       expect(Number.isSafeInteger(record.nativeTid)).toBe(true);
       expect(record.nativeTid).toBeGreaterThan(0);
     }
-    expect(records[0]).toEqual({ version: 1, event: "trace-ready", pid, nativeTid: records[0].nativeTid });
+    expect(records[0]).toEqual({ version: 1, event: "trace-ready", pid, parentPid, nativeTid: records[0].nativeTid });
     return records;
   }
 
@@ -231,7 +231,11 @@ describe("BUN_WORKER_VM_TRACE", () => {
       [`trace-${proc.pid}-${proc.pid}.jsonl`, `trace-${childPid}-${childPid}.jsonl`].sort(),
     );
     for (const pid of [proc.pid, childPid]) {
-      const records = await readTrace(join(String(dir), `trace-${pid}-${pid}.jsonl`), pid);
+      const records = await readTrace(
+        join(String(dir), `trace-${pid}-${pid}.jsonl`),
+        pid,
+        pid === proc.pid ? process.pid : proc.pid,
+      );
       expect(records.length).toBe(2);
       expect(records.at(-1).complete).toBe(1);
     }

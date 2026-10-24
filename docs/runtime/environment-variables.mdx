@@ -242,6 +242,8 @@ Bun reads this setting once at process startup, before user code. Child processe
 
 Every record contains `version: 1`, `event`, `pid`, and `nativeTid`. `nativeTid` is the operating system's thread ID, distinct from a Worker context ID.
 
+The `trace-ready` record also contains `parentPid`, the process's parent ID at startup. It is `0` if the operating system reports no parent or the ID is unavailable.
+
 | Event            | Meaning                                                                                    |
 | ---------------- | ------------------------------------------------------------------------------------------ |
 | `trace-ready`    | The trace file is open, including for commands that create no Workers.                     |
