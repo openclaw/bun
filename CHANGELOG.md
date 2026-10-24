@@ -4,6 +4,8 @@
 
 - Back out Error.cause serialization (#192, #194) pending a performance-neutral design.
 
+- Back out Buffer trailer reservation (#195) for its small-payload serialization cost, pending a design that charges only large-Buffer paths.
+
 - Avoid an extra payload copy when structured cloning or messaging a Buffer or ArrayBuffer inside a container, without changing serialized bytes.
 
 - Sync oven-sh/bun through `ad4089bf49d9f4c3ab7c8d95a58f3e0f0f186054`, including lint, format, binding, WebSocket and SQL updates, while retaining the fork runtime and CI contracts.
