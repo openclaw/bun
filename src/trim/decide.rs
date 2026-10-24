@@ -327,7 +327,7 @@ mod tests {
 
     #[test]
     fn used_feature_retains_requirements_transitively() {
-        let [first, second, third] = [Feature::ALL[0], Feature::ALL[1], Feature::ALL[2]];
+        let [first, second, third] = [Feature::Jit, Feature::Interpreter, Feature::RegExp];
         let requirements = references(&[(first, second), (second, third)]);
         let decision = decide_with_edges(&using(&[first]), &removing_unused(), &requirements);
         for feature in [first, second, third] {
