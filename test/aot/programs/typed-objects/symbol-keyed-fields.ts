@@ -88,3 +88,27 @@ console.log(JSON.stringify([named[kCallback].name, named[kNoDescription].name, n
 const { [kSame]: first, x } = literal;
 console.log(first, x, derived?.[kSame], (derived as Derived | undefined)?.[kSameAgain], kSame in literal, kHandle in literal);
 console.log(delete literal[kSameAgain], kSameAgain in literal, Reflect.ownKeys(literal).map(String).join());
+
+// A base that exposes this requires field-order metadata across a symbol initializer that runs code.
+const kInitialization = Symbol("initialization");
+let escapedBeforeFields: object | undefined;
+class EscapingBase {
+  constructor() {
+    escapedBeforeFields = this;
+  }
+}
+function initializeFlag(): boolean {
+  return false;
+}
+class StagedSymbolField extends EscapingBase {
+  [kInitialization] = initializeFlag();
+  after = 1;
+}
+const staged = new StagedSymbolField();
+console.log(
+  escapedBeforeFields === staged,
+  Object.hasOwn(staged, kInitialization),
+  staged[kInitialization],
+  Object.getOwnPropertySymbols(staged)[0] === kInitialization,
+  Object.keys(staged).join(),
+);
