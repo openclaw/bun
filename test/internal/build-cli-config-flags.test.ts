@@ -3,8 +3,11 @@
  * gives it. Driven through the script itself; each case ends in argument parsing, before anything is configured.
  */
 import { expect, test } from "bun:test";
-import { bunEnv, bunExe } from "harness";
-import { join } from "node:path";
+import { bunEnv, bunExe, isWindows, tempDir } from "harness";
+import { mkdirSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { reconfigureCodegen } from "../../scripts/build/configure.ts";
+import { readManifest } from "../../scripts/build/ninja.ts";
 
 const buildScript = join(import.meta.dirname, "..", "..", "scripts", "build.ts");
 
@@ -50,3 +53,29 @@ test.concurrent("every spelling of a field is accepted", async () => {
   expect(stderr).toStartWith("Usage: bun scripts/build.ts");
   expect(exitCode).toBe(0);
 });
+
+test.skipIf(isWindows || Bun.which("ninja") === null)(
+  "external build reconfiguration stays with its source checkout",
+  async () => {
+    using dir = tempDir("build-reconfigure-source", {
+      "package.json": JSON.stringify({ name: "bun", private: true }),
+    });
+    const buildDir = join(String(dir), "build 'quoted' $literal");
+    mkdirSync(buildDir, { recursive: true });
+    await reconfigureCodegen({ overrides: { mode: "codegen", buildDir } });
+    const manifest = join(buildDir, "build.ninja");
+    const expanded = Bun.spawnSync([Bun.which("ninja")!, "-f", manifest, "-t", "commands", "-s", "build.ninja"], {
+      cwd: buildDir,
+      env: bunEnv,
+    });
+    expect(expanded.stderr.toString()).toBe("");
+    expect(expanded.exitCode).toBe(0);
+    const regenerated = Bun.spawnSync(["/bin/sh", "-c", expanded.stdout.toString()], { cwd: buildDir, env: bunEnv });
+    expect(regenerated.stderr.toString()).toBe("");
+    expect(regenerated.exitCode).toBe(0);
+    const regen = readManifest(readFileSync(manifest, "utf8")).edges.find(edge => edge.rule === "regen")!;
+    expect(regen.implicitInputs.map(path => resolve(buildDir, path))).toContain(
+      join(process.cwd(), "scripts", "build", "flags.ts"),
+    );
+  },
+);

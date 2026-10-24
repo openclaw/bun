@@ -67,8 +67,8 @@ void invalidateLiveDateInstanceCaches(JSC::VM&);
 // together; every caller that changes the time zone override uses this instead.
 void resetDateCachesAfterTimeZoneChange(JSC::VM&);
 
-// worker_threads SHARE_ENV: a `process.env` whose reads/writes/enumeration go
-// through the SharedEnvStore of the tree its global belongs to.
+// A process.env view that uses local properties until its global joins a
+// worker_threads SHARE_ENV tree, then reads/writes/enumerates the shared store.
 JSC::JSValue createSharedEnvironmentVariablesMap(Zig::GlobalObject* globalObject);
 
 // True for both process.env implementations that are non-JSFinalObject
@@ -77,7 +77,7 @@ JSC::JSValue createSharedEnvironmentVariablesMap(Zig::GlobalObject* globalObject
 bool isProcessEnvClassInfo(const JSC::ClassInfo*);
 
 // SHARE_ENV store for a worker spawned from `globalObject`: the spawner's existing store,
-// else a fresh one seeded from its `process.env` (then swapped to a write-through view).
+// else a fresh one seeded from its `process.env` (then used by its live view).
 // Returns null if seeding threw.
 RefPtr<SharedEnvStore> ensureSharedEnvStoreForWorker(Zig::GlobalObject* globalObject);
 

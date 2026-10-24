@@ -1867,6 +1867,23 @@ describe("env: SHARE_ENV shares the spawning thread's env, not a process-wide on
     });
   });
 
+  // Windows still replaces its case-insensitive Proxy when founding a shared tree.
+  it.skipIf(process.platform === "win32")("preserves env references across the first shared worker", async () => {
+    expect(await run("references")).toEqual({
+      sameProcessEnv: true,
+      sameBunEnv: true,
+      first: { before: "before", descriptor: "descriptor" },
+      afterFirst: { value: "worker", deleted: null, indexed: null, child: "child" },
+      second: { after: "after", before: null },
+      afterDeleted: null,
+      child: "child",
+      childListed: true,
+      deletedListed: false,
+      descriptor: { value: "child", writable: true, enumerable: true, configurable: true },
+      inheritedOwn: true,
+    });
+  });
+
   // Node's EnvDefiner rejects an accessor descriptor on process.env for every env
   // store, so the SHARE_ENV map must answer exactly like the regular one. An
   // accessor is also unrepresentable here: it would land on the base object while
@@ -2082,8 +2099,8 @@ describe("env: SHARE_ENV shares the spawning thread's env, not a process-wide on
     });
   });
 
-  // Founding a tree replaces process.env; Bun.env is reified from the same object
-  // at startup and must not be left observing the orphaned pre-swap env.
+  // Bun.env can be reified before the tree exists; both exports must keep
+  // observing the same live environment.
   it("keeps Bun.env pointing at process.env after founding a tree", async () => {
     const proc = Bun.spawn({
       cmd: [
@@ -2254,13 +2271,10 @@ test("process.debugPort defaults to 9229 on the main thread", async () => {
   expect(exitCode).toBe(0);
 });
 
-// Founding a SHARE_ENV tree replaces the founding thread's process.env object. If the
-// replacement were orphaned, the founder's later writes would go nowhere. child_process
-// enumerates the JS process.env (a var deleted from the map is invisible to the child),
-// so this guards the swap -- it cannot observe Windows' SetEnvironmentVariableW, which
-// has no JS-visible reader.
+// child_process enumerates the JS environment, so this checks that the founder's
+// later writes and deletes still reach child processes after the shared tree exists.
 
-test("the SHARE_ENV founding thread's process.env stays live after the swap", async () => {
+test("the SHARE_ENV founding thread's process.env stays live after sharing", async () => {
   await using proc = Bun.spawn({
     cmd: [
       bunExe(),
