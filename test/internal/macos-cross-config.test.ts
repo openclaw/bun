@@ -31,7 +31,7 @@ function mockToolchain(overrides: Partial<Toolchain> = {}): Toolchain {
     clangVersion: "23.1.1",
     clangResourceDir: "/fake/llvm/lib/clang/23",
     ar: "/fake/llvm/bin/llvm-ar",
-    ld: "/fake/llvm/bin/ld.lld",
+    ld: isMacOS ? "" : "/fake/llvm/bin/ld.lld",
     ld64Lld: "/fake/llvm/bin/ld64.lld",
     rustLlvmVersion: "23.1.1",
     rustSysroot: undefined,

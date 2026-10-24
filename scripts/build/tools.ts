@@ -608,13 +608,11 @@ export function resolveLlvmToolchain(
     ld = ""; // darwin: unused
   }
 
-  // ld64.lld: lld's Mach-O port. Only used when a non-darwin host
-  // cross-compiles FOR darwin (resolveConfig swaps it in as cfg.ld); the
-  // target isn't known here, so resolve it opportunistically — it ships in
-  // the same LLVM install as ld.lld, and the lookup is a handful of stats.
+  // ld64.lld makes darwin cross builds and native trimmable builds. Resolve
+  // it opportunistically: the chosen build determines whether it is required.
   let ld64Lld: string | undefined;
-  if (os !== "darwin" && os !== "windows") {
-    ld64Lld = findLlvmTool("ld64.lld", paths, os, { checkVersion: false, required: false })?.path;
+  if (os !== "windows") {
+    ld64Lld = findLlvmTool("ld64.lld", paths, os, { checkVersion: os === "darwin", required: false })?.path;
   }
 
   // strip: GNU strip on Linux (more features), llvm-strip elsewhere.
