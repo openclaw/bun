@@ -216,6 +216,15 @@ describe.concurrent("the code size map", () => {
               ),
             ).toBe(true);
             expect(map.entries.some(entry => (counts.byCounter.get(entry.counter) ?? 0) > 0)).toBe(true);
+            const mappedCounters = new Set(
+              readFileSync(mapFile, "utf8")
+                .split("\n")
+                .flatMap(line => {
+                  const [kind, first, second] = line.split("\t");
+                  return kind === "QE" ? [Number(first)] : kind === "Q" ? [Number(first), Number(second)] : [];
+                }),
+            );
+            expect([...counts.byCounter].filter(([counter, amount]) => amount > 0 && !mappedCounters.has(counter))).toEqual([]);
             expect(counts.accessesByName).toBeGreaterThan(0);
           } else {
             expect(map.branches).toEqual([]);
