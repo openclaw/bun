@@ -10,10 +10,10 @@ import { describe, test } from "node:test";
 import tls from "node:tls";
 import {
   expected as expectedServername,
-  observe as observeServername,
-  cases as servernameCases,
   observePending,
+  observe as observeServername,
   pendingCases,
+  cases as servernameCases,
 } from "./node-tls-servername-fixture.mjs";
 
 // Server presents a cert for CN=agent1 (no SAN), signed by ca1.

@@ -18,6 +18,7 @@ export const cases = [
   ...["socket", "context"].flatMap(transport =>
     [undefined, null, "", "files.proxy.test"].map(servername => ({ host: "127.0.0.1", servername, transport })),
   ),
+  ...[false, 0].map(servername => ({ host: "127.0.0.1", servername, transport: "context" })),
   ...["https", "http2"].flatMap(transport =>
     ["127.0.0.1", "localhost"].flatMap(host =>
       [undefined, null, "", "files.proxy.test"].map(servername => ({ host, servername, transport })),
