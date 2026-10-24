@@ -435,14 +435,14 @@ describe("NODE_OPTIONS environment variable", () => {
   });
 
   // bunx's internal install child re-enters which() with argv0 = bunx and
-  // BUN_INTERNAL_BUNX_INSTALL=true; the "add" keyword must still be found
+  // BUN_INTERNAL_BUNX_INSTALL set to its install directory; "add" must still be found
   // after the injected window or the child loops as bunx (#39377 class).
   test.skipIf(isWindows)("bunx internal add dispatch still finds the keyword", async () => {
     using dir = tempDir("node-options-bunx", {});
     symlinkSync(bunExe(), `${String(dir)}/bunx`);
     await using proc = Bun.spawn({
       cmd: [`${String(dir)}/bunx`, "add", "--help"],
-      env: { ...bunEnv, NODE_OPTIONS: "--title=from-env", BUN_INTERNAL_BUNX_INSTALL: "true" },
+      env: { ...bunEnv, NODE_OPTIONS: "--title=from-env", BUN_INTERNAL_BUNX_INSTALL: String(dir) },
       cwd: String(dir),
       stdout: "pipe",
       stderr: "pipe",

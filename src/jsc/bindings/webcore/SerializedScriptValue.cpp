@@ -30,9 +30,9 @@
 #include "BunString.h"
 // #include "BlobRegistry.h"
 // #include "ByteArrayPixelBuffer.h"
+#include "CryptoAlgorithmChaCha20Poly1305.h"
 #include "CryptoKeyAES.h"
 #include "CryptoKeyAKP.h"
-#include <openssl/err.h>
 #include "CryptoKeyEC.h"
 #include "CryptoKeyHMAC.h"
 #include "CryptoKeyOKP.h"
@@ -45,6 +45,7 @@
 #include "JSDOMException.h"
 #include "JSDOMGlobalObject.h"
 #include "JSMessagePort.h"
+#include "OpenSSLUtilities.h"
 #include "ScriptExecutionContext.h"
 #include "WebCoreJSClientData.h"
 #include <JavaScriptCore/BigIntObject.h>
@@ -91,7 +92,8 @@
 #include "ZigGlobalObject.h"
 #include "JSEnvironmentVariableMap.h"
 #include "blob.h"
-#include "ZigGeneratedClasses.h"
+#include "GeneratedBlob.h"
+#include "GeneratedBlockList.h"
 #include "JSX509Certificate.h"
 #include "ncrypto.h"
 #include "JSKeyObject.h"
@@ -200,10 +202,16 @@ enum SerializationTag {
     ErrorTag = 255
 };
 
-// Releases the +1 taken by `BlockList::on_structured_clone_serialize` so the
+class CloneSerializer;
+
+extern "C" void Blob__onStructuredCloneSerialize(void* blob, CloneSerializer*);
+extern "C" JSC::EncodedJSValue Blob__onStructuredCloneDeserialize(JSC::JSGlobalObject*, const uint8_t** ptr, const uint8_t* end);
+extern "C" void BlockList__onStructuredCloneSerialize(void* blockList, CloneSerializer*);
+extern "C" JSC::EncodedJSValue BlockList__onStructuredCloneDeserialize(JSC::JSGlobalObject*, const uint8_t** ptr, const uint8_t* end);
+// Releases the +1 taken by `BlockList__onStructuredCloneSerialize` so the
 // shared backing is freed once the SerializedScriptValue holding the raw
 // pointer is gone.
-extern "C" SYSV_ABI void BlockList__onStructuredCloneDestroy(void*);
+extern "C" void BlockList__onStructuredCloneDestroy(void*);
 
 enum ArrayBufferViewSubtag {
     DataViewTag = 0,
@@ -375,8 +383,6 @@ enum class CryptoAlgorithmIdentifierTag {
     ML_KEM_768 = 31,
     ML_KEM_1024 = 32,
 };
-
-const uint8_t cryptoAlgorithmIdentifierTagMaximumValue = 32;
 
 static unsigned countUsages(CryptoKeyUsageBitmap usages)
 {
@@ -1410,24 +1416,31 @@ private:
             }
 
             // write bun types
-            auto _cloneable = StructuredCloneableSerialize::fromJS(value);
-            if (_cloneable) {
-                if (!startObjectInternal(obj)) // handle duplicates
+            if (auto* blob = dynamicDowncast<Bun::Bindgen::Generated::JSBlob>(obj)) {
+                if (!startObjectInternal(blob)) // handle duplicates
                     return true;
-                auto cloneable = _cloneable.value();
-                const bool isTransferCompatible = m_forTransfer == SerializationForCrossProcessTransfer::Yes ? cloneable.isForTransfer : true;
-                const bool isStorageCompatible = m_forStorage == SerializationForStorage::Yes ? cloneable.isForStorage : true;
-                if (!isTransferCompatible || !isStorageCompatible) {
+                // TODO: a Blob backed by a file descriptor should not be stored either.
+                if (m_forTransfer == SerializationForCrossProcessTransfer::Yes) {
                     write(ObjectTag);
                     write(TerminatorTag);
                     return true;
                 }
-                StructuredCloneableSerialize to_write = WTF::move(_cloneable.value());
-                write(to_write.tag);
-                to_write.write(this, m_lexicalGlobalObject);
-                RETURN_IF_EXCEPTION(scope, false);
-                if (to_write.tag == Bun__nodenet_BlockList)
-                    m_serializedBlockListRefs.append(to_write.impl);
+                write(Bun__BlobTag);
+                Blob__onStructuredCloneSerialize(blob->wrapped(), this);
+                return true;
+            }
+
+            if (auto* blockList = dynamicDowncast<Bun::Bindgen::Generated::JSBlockList>(obj)) {
+                if (!startObjectInternal(blockList)) // handle duplicates
+                    return true;
+                if (m_forTransfer == SerializationForCrossProcessTransfer::Yes || m_forStorage == SerializationForStorage::Yes) {
+                    write(ObjectTag);
+                    write(TerminatorTag);
+                    return true;
+                }
+                write(Bun__nodenet_BlockList);
+                BlockList__onStructuredCloneSerialize(blockList->wrapped(), this);
+                m_serializedBlockListRefs.append(blockList->wrapped());
                 return true;
             }
 
@@ -1979,12 +1992,17 @@ private:
             write(*downcast<CryptoKeyRSA>(*key).exportData());
             break;
         }
-        case CryptoKeyClass::OKP:
+        case CryptoKeyClass::OKP: {
+            auto& okpKey = downcast<CryptoKeyOKP>(*key);
             write(CryptoKeyClassSubtag::OKP);
             write(key->algorithmIdentifier());
-            write(downcast<CryptoKeyOKP>(*key).namedCurve());
-            write(downcast<CryptoKeyOKP>(*key).platformKey());
+            write(okpKey.namedCurve());
+            // X25519 public and private keys are both 32 bytes, so write which one this is.
+            if (okpKey.namedCurve() == CryptoKeyOKP::NamedCurve::X25519)
+                write(key->type() == CryptoKey::Type::Public ? CryptoKeyAsymmetricTypeSubtag::Public : CryptoKeyAsymmetricTypeSubtag::Private);
+            write(okpKey.platformKey());
             break;
+        }
         }
     }
 #endif
@@ -2006,9 +2024,9 @@ private:
     SerializationForCrossProcessTransfer m_forTransfer;
 };
 
-SYSV_ABI void SerializedScriptValue::writeBytesForBun(CloneSerializer* ctx, const uint8_t* data, uint32_t size)
+extern "C" void WebCore__CloneSerializer__write(CloneSerializer* serializer, const uint8_t* data, uint32_t length)
 {
-    ctx->write(data, size);
+    serializer->write(data, length);
 }
 
 SerializationReturnCode CloneSerializer::serialize(JSValue in)
@@ -2906,101 +2924,104 @@ private:
         uint8_t algorithmTag;
         if (!read(algorithmTag))
             return false;
-        if (algorithmTag > cryptoAlgorithmIdentifierTagMaximumValue)
-            return false;
         switch (static_cast<CryptoAlgorithmIdentifierTag>(algorithmTag)) {
         case CryptoAlgorithmIdentifierTag::RSAES_PKCS1_v1_5:
             result = CryptoAlgorithmIdentifier::RSAES_PKCS1_v1_5;
-            break;
+            return true;
         case CryptoAlgorithmIdentifierTag::RSASSA_PKCS1_v1_5:
             result = CryptoAlgorithmIdentifier::RSASSA_PKCS1_v1_5;
-            break;
+            return true;
         case CryptoAlgorithmIdentifierTag::RSA_PSS:
             result = CryptoAlgorithmIdentifier::RSA_PSS;
-            break;
+            return true;
         case CryptoAlgorithmIdentifierTag::RSA_OAEP:
             result = CryptoAlgorithmIdentifier::RSA_OAEP;
-            break;
+            return true;
         case CryptoAlgorithmIdentifierTag::ECDSA:
             result = CryptoAlgorithmIdentifier::ECDSA;
-            break;
+            return true;
         case CryptoAlgorithmIdentifierTag::ECDH:
             result = CryptoAlgorithmIdentifier::ECDH;
-            break;
+            return true;
         case CryptoAlgorithmIdentifierTag::AES_CTR:
             result = CryptoAlgorithmIdentifier::AES_CTR;
-            break;
+            return true;
         case CryptoAlgorithmIdentifierTag::AES_CBC:
             result = CryptoAlgorithmIdentifier::AES_CBC;
-            break;
+            return true;
         case CryptoAlgorithmIdentifierTag::AES_GCM:
             result = CryptoAlgorithmIdentifier::AES_GCM;
-            break;
+            return true;
         case CryptoAlgorithmIdentifierTag::AES_CFB:
             result = CryptoAlgorithmIdentifier::AES_CFB;
-            break;
+            return true;
         case CryptoAlgorithmIdentifierTag::AES_KW:
             result = CryptoAlgorithmIdentifier::AES_KW;
-            break;
+            return true;
         case CryptoAlgorithmIdentifierTag::HMAC:
             result = CryptoAlgorithmIdentifier::HMAC;
-            break;
+            return true;
         case CryptoAlgorithmIdentifierTag::SHA_1:
             result = CryptoAlgorithmIdentifier::SHA_1;
-            break;
+            return true;
         case CryptoAlgorithmIdentifierTag::SHA_224:
             result = CryptoAlgorithmIdentifier::SHA_224;
-            break;
+            return true;
         case CryptoAlgorithmIdentifierTag::SHA_256:
             result = CryptoAlgorithmIdentifier::SHA_256;
-            break;
+            return true;
         case CryptoAlgorithmIdentifierTag::SHA_384:
             result = CryptoAlgorithmIdentifier::SHA_384;
-            break;
+            return true;
         case CryptoAlgorithmIdentifierTag::SHA_512:
             result = CryptoAlgorithmIdentifier::SHA_512;
-            break;
+            return true;
         case CryptoAlgorithmIdentifierTag::SHA3_256:
             result = CryptoAlgorithmIdentifier::SHA3_256;
-            break;
+            return true;
         case CryptoAlgorithmIdentifierTag::SHA3_384:
             result = CryptoAlgorithmIdentifier::SHA3_384;
-            break;
+            return true;
         case CryptoAlgorithmIdentifierTag::SHA3_512:
             result = CryptoAlgorithmIdentifier::SHA3_512;
-            break;
+            return true;
         case CryptoAlgorithmIdentifierTag::HKDF:
             result = CryptoAlgorithmIdentifier::HKDF;
-            break;
+            return true;
         case CryptoAlgorithmIdentifierTag::PBKDF2:
             result = CryptoAlgorithmIdentifier::PBKDF2;
-            break;
+            return true;
         case CryptoAlgorithmIdentifierTag::ED25519:
             result = CryptoAlgorithmIdentifier::Ed25519;
-            break;
+            return true;
         case CryptoAlgorithmIdentifierTag::X25519:
             result = CryptoAlgorithmIdentifier::X25519;
-            break;
+            return true;
         case CryptoAlgorithmIdentifierTag::CHACHA20_POLY1305:
             result = CryptoAlgorithmIdentifier::ChaCha20_Poly1305;
-            break;
+            return true;
         case CryptoAlgorithmIdentifierTag::ML_DSA_44:
             result = CryptoAlgorithmIdentifier::ML_DSA_44;
-            break;
+            return true;
         case CryptoAlgorithmIdentifierTag::ML_DSA_65:
             result = CryptoAlgorithmIdentifier::ML_DSA_65;
-            break;
+            return true;
         case CryptoAlgorithmIdentifierTag::ML_DSA_87:
             result = CryptoAlgorithmIdentifier::ML_DSA_87;
-            break;
+            return true;
         case CryptoAlgorithmIdentifierTag::ML_KEM_768:
             result = CryptoAlgorithmIdentifier::ML_KEM_768;
-            break;
+            return true;
         case CryptoAlgorithmIdentifierTag::ML_KEM_1024:
             result = CryptoAlgorithmIdentifier::ML_KEM_1024;
-            break;
+            return true;
         }
-        return true;
+        return false;
+    }
+
+    bool readHashAlgorithm(CryptoAlgorithmIdentifier& result)
+    {
+        return read(result) && digestAlgorithm(result);
     }
 
     bool read(CryptoKeyClassSubtag& result)
@@ -3065,7 +3086,7 @@ private:
         if (!read(keyData))
             return false;
         CryptoAlgorithmIdentifier hash;
-        if (!read(hash))
+        if (!readHashAlgorithm(hash))
             return false;
         result = CryptoKeyHMAC::importRaw(0, hash, WTF::move(keyData), extractable, usages);
         return true;
@@ -3093,11 +3114,12 @@ private:
         if (!CryptoKeyRSA::isValidRSAAlgorithm(algorithm))
             return false;
 
+        // Only an RSAES-PKCS1-v1_5 key has no hash, and nothing can create one.
         int32_t isRestrictedToHash;
-        CryptoAlgorithmIdentifier hash = CryptoAlgorithmIdentifier::SHA_1;
-        if (!read(isRestrictedToHash))
+        if (!read(isRestrictedToHash) || !isRestrictedToHash)
             return false;
-        if (isRestrictedToHash && !read(hash))
+        CryptoAlgorithmIdentifier hash;
+        if (!readHashAlgorithm(hash))
             return false;
 
         CryptoKeyAsymmetricTypeSubtag type;
@@ -3207,8 +3229,6 @@ private:
         CryptoAlgorithmIdentifier algorithm;
         if (!read(algorithm))
             return false;
-        if (!CryptoKeyOKP::isValidOKPAlgorithm(algorithm))
-            return false;
         CryptoKeyOKP::NamedCurve namedCurve;
         if (!read(namedCurve))
             return false;
@@ -3217,10 +3237,19 @@ private:
             if (algorithm != CryptoAlgorithmIdentifier::Ed25519)
                 return false;
             break;
-        case CryptoKeyOKP::NamedCurve::X25519:
+        case CryptoKeyOKP::NamedCurve::X25519: {
             if (algorithm != CryptoAlgorithmIdentifier::X25519)
                 return false;
-            break;
+            // Records from Bun <= 1.4.3 don't have a type subtag, so they fail its range check. No release could read them anyway.
+            CryptoKeyAsymmetricTypeSubtag type;
+            if (!read(type))
+                return false;
+            Vector<uint8_t> keyData;
+            if (!read(keyData))
+                return false;
+            result = CryptoKeyOKP::create(algorithm, namedCurve, type == CryptoKeyAsymmetricTypeSubtag::Public ? CryptoKeyType::Public : CryptoKeyType::Private, WTF::move(keyData), extractable, usages);
+            return true;
+        }
         }
         Vector<uint8_t> keyData;
         if (!read(keyData))
@@ -3239,6 +3268,8 @@ private:
             return false;
         Vector<uint8_t> keyData;
         if (!read(keyData))
+            return false;
+        if (algorithm == CryptoAlgorithmIdentifier::ChaCha20_Poly1305 && keyData.size() * 8 != CryptoAlgorithmChaCha20Poly1305::s_keyLengthBits)
             return false;
         result = CryptoKeyRaw::create(algorithm, WTF::move(keyData), usages, extractable);
         return true;
@@ -3265,15 +3296,15 @@ private:
             result = CryptoKeyAKP::importPkcs8(algorithm, WTF::move(keyData), extractable, usages, nullptr);
             break;
         }
-        // A corrupt payload leaves the BoringSSL parse error in the queue;
-        // nothing here attaches it as a cause, so clear it.
-        if (!result)
-            ERR_clear_error();
-        return !!result;
+        return true;
     }
 
     bool readCryptoKey(JSValue& cryptoKey)
     {
+        // A corrupt payload leaves the BoringSSL parse error in the queue;
+        // nothing here attaches it as a cause, so clear it.
+        ncrypto::ClearErrorOnReturn clearErrorOnReturn;
+
         uint32_t keyFormatVersion;
         if (!read(keyFormatVersion) || keyFormatVersion > currentKeyFormatVersion)
             return false;
@@ -3365,6 +3396,8 @@ private:
                 return false;
             break;
         }
+        if (!result)
+            return false;
         cryptoKey = getJSValue(result.get());
         return true;
     }
@@ -3384,6 +3417,18 @@ private:
     JSValue getJSValue(T&& nativeObj)
     {
         return toJS(m_lexicalGlobalObject, uncheckedDowncast<JSDOMGlobalObject>(m_globalObject), std::forward<T>(nativeObj));
+    }
+
+    JSValue readBunType(JSC::EncodedJSValue (*deserialize)(JSC::JSGlobalObject*, const uint8_t** ptr, const uint8_t* end))
+    {
+        JSValue deserialized = JSValue::decode(deserialize(m_lexicalGlobalObject, &m_ptr, m_end));
+        // Empty: the record was malformed, or Rust threw (the caller checks its scope first).
+        if (deserialized.isEmpty()) {
+            fail();
+            return JSValue();
+        }
+        addTerminalToObjectPool(deserialized);
+        return deserialized;
     }
 
     JSValue readX509Certificate()
@@ -3590,18 +3635,6 @@ private:
         // if (!isTypeExposedToGlobalObject(*m_globalObject, tag))
         //     return JSValue();
 
-        // read bun types
-        if (auto value = StructuredCloneableDeserialize::fromTagDeserialize(tag, m_lexicalGlobalObject, m_ptr, m_end)) {
-            JSValue deserialized = JSValue::decode(value.value());
-            // Empty: the record was malformed, or the hook threw (the caller checks its scope first).
-            if (deserialized.isEmpty()) {
-                fail();
-                return JSValue();
-            }
-            addTerminalToObjectPool(deserialized);
-            return deserialized;
-        }
-
         switch (tag) {
         case UndefinedTag:
             return jsUndefined();
@@ -3662,7 +3695,8 @@ private:
             double d;
             if (!read(d))
                 return JSValue();
-            DateInstance* obj = DateInstance::create(m_lexicalGlobalObject->vm(), m_globalObject->dateStructure(), d);
+            // timeClip() preserves a NaN's payload and getTime() boxes the number as-is, so purify it here.
+            DateInstance* obj = DateInstance::create(m_lexicalGlobalObject->vm(), m_globalObject->dateStructure(), purifyNaN(d));
             addTerminalToObjectPool(obj);
             return obj;
         }
@@ -3922,6 +3956,12 @@ private:
 #endif
         case DOMExceptionTag:
             return readDOMException();
+
+        case Bun__BlobTag:
+            return readBunType(Blob__onStructuredCloneDeserialize);
+
+        case Bun__nodenet_BlockList:
+            return readBunType(BlockList__onStructuredCloneDeserialize);
 
         case Bun__X509CertificateTag:
             return readX509Certificate();
@@ -4277,8 +4317,11 @@ size_t SerializedScriptValue::computeMemoryCost() const
 #if ENABLE(WEBASSEMBLY)
     // We are not supporting WebAssembly Module memory estimation yet.
     if (m_wasmMemoryHandlesArray) {
-        for (auto& content : *m_wasmMemoryHandlesArray)
-            cost += content->sizeInBytes(std::memory_order_relaxed);
+        // A shared memory with a maximum of zero has null contents.
+        for (auto& content : *m_wasmMemoryHandlesArray) {
+            if (content)
+                cost += content->sizeInBytes(std::memory_order_relaxed);
+        }
     }
 #endif
 
@@ -4343,6 +4386,9 @@ size_t SerializedScriptValue::computeMemoryCost() const
 
 static void markObjectWithPrivateName(VM& vm, JSObject& object, const Identifier& privateName)
 {
+    // A WebAssembly GC object's Structure can't transition, and these objects aren't cloneable or transferable anyway.
+    if (object.type() == WebAssemblyGCObjectType)
+        return;
     if (object.getDirect(vm, privateName))
         return;
     object.putDirect(vm, privateName, jsBoolean(true), PropertyAttribute::ReadOnly | PropertyAttribute::DontEnum | PropertyAttribute::DontDelete | 0);

@@ -113,7 +113,6 @@ private:
     struct PendingServerName {
         std::string hostname;
         struct ssl_ctx_st *ctx;
-        HttpRouter<typename HttpContextData<SSL>::RouterData> *router;
     };
     std::vector<PendingServerName> pendingServerNames;
     std::vector<unsigned char> alpnProtocols;
@@ -166,13 +165,12 @@ public:
             if (httpContext->getSocketContextData()->http2Context) {
                 us_ssl_ctx_enable_http2_alpn(domainCtx, httpContext->getSocketContextData()->allowHttp1);
             }
-            auto *domainRouter = new HttpRouter<typename HttpContextData<SSL>::RouterData>();
             forEachListenSocket([&](us_listen_socket_t *ls) {
-                us_listen_socket_add_server_name(ls, hostname_pattern.c_str(), domainCtx, domainRouter);
+                us_listen_socket_add_server_name(ls, hostname_pattern.c_str(), domainCtx);
             });
             /* Queue for any listeners not yet created. We hold one SSL_CTX ref;
              * each listen socket took its own via SSL_CTX_up_ref. */
-            pendingServerNames.push_back({hostname_pattern, domainCtx, domainRouter});
+            pendingServerNames.push_back({hostname_pattern, domainCtx});
             if (success) *success = true;
         }
 
@@ -318,7 +316,6 @@ public:
              * destroying us — httpContext->free() above only deinit()'s. */
             for (auto &p : pendingServerNames) {
                 us_internal_ssl_ctx_unref(p.ctx);
-                delete p.router;
             }
             us_internal_ssl_ctx_unref(sslCtx);
         }
@@ -712,24 +709,6 @@ public:
         return std::move(*this);
     }
 
-    /* Browse to a server name, changing the router to this domain */
-    TemplatedApp &&domain(const std::string &serverName) {
-        HttpContextData<SSL> *httpContextData = httpContext->getSocketContextData();
-
-        /* The last registration of a name is the one the SNI tree points at */
-        void *domainRouter = nullptr;
-        for (auto p = pendingServerNames.rbegin(); p != pendingServerNames.rend(); ++p) {
-            if (p->hostname == serverName) { domainRouter = p->router; break; }
-        }
-        if (domainRouter) {
-            httpContextData->currentRouter = (decltype(httpContextData->currentRouter)) domainRouter;
-        } else {
-            httpContextData->currentRouter = &httpContextData->router;
-        }
-
-        return std::move(*this);
-    }
-
     TemplatedApp &&get(std::string_view pattern, MoveOnlyFunction<void(HttpResponse<SSL> *, HttpRequest *)> &&handler) {
         if (httpContext) {
             httpContext->onHttp("GET", pattern, std::move(handler));
@@ -816,7 +795,7 @@ private:
         if (!ls) return nullptr;
         if constexpr (SSL) {
             for (auto &p : pendingServerNames) {
-                us_listen_socket_add_server_name(ls, p.hostname.c_str(), p.ctx, p.router);
+                us_listen_socket_add_server_name(ls, p.hostname.c_str(), p.ctx);
             }
             if (httpContext->getSocketContextData()->missingServerNameHandler) {
                 us_listen_socket_on_server_name(ls, &onMissingServerName);

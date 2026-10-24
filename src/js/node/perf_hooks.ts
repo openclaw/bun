@@ -116,7 +116,7 @@ function createPerformanceNodeTiming() {
   return object;
 }
 
-const getLoopELU = $newRustFunction("bun.rs", "getLoopELU", 0);
+const getLoopELU = $bindgen("BunObjectInternals.bind.ts", "getLoopELU");
 const { internalEventLoopUtilization } = require("internal/perf/event_loop_utilization");
 
 function eventLoopUtilization(utilization1, utilization2) {

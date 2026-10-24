@@ -1,20 +1,23 @@
 //! Native bindings for `internal/modules/customization_hooks.ts`
 //! (`module.registerHooks()`).
 
+use bun_jsc::bindgen::{JsLocal, JsScope};
 use bun_jsc::bun_string_jsc::StringJsc;
 use bun_jsc::virtual_machine::ResolveMode;
-use bun_jsc::{CallFrame, JSGlobalObject, JSValue, JsResult};
+use bun_jsc::{JSValue, JsResult};
 
 /// `setModuleHooksCounts(resolveCount, loadCount)` — mirrors the JS-side hook
 /// counts into the `VirtualMachine`; loadCount includes pending resolve results
 /// so deregistration cannot discard an in-flight module's format or attributes.
-#[bun_jsc::host_fn]
 pub(crate) fn set_module_hooks_counts(
-    global: &JSGlobalObject,
-    frame: &CallFrame,
+    cx: &mut JsScope<'_>,
+    arg0: JsLocal<'_>,
+    arg1: JsLocal<'_>,
 ) -> JsResult<JSValue> {
-    let resolve_count = frame.argument(0).to_int32();
-    let load_count = frame.argument(1).to_int32();
+    let global = cx.global();
+    let arguments = [arg0.to_js(), arg1.to_js()];
+    let resolve_count = arguments[0].to_int32();
+    let load_count = arguments[1].to_int32();
     let vm = global.bun_vm_ptr();
     // SAFETY: per-thread VM is live (host functions run on the JS thread).
     unsafe {
@@ -28,12 +31,13 @@ pub(crate) fn set_module_hooks_counts(
     Ok(JSValue::UNDEFINED)
 }
 
-#[bun_jsc::host_fn]
 pub(crate) fn get_builtin_specifier_for_hooks(
-    global: &JSGlobalObject,
-    frame: &CallFrame,
+    cx: &mut JsScope<'_>,
+    arg0: JsLocal<'_>,
 ) -> JsResult<JSValue> {
-    let name = frame.argument(0).to_utf8(global)?;
+    let global = cx.global();
+    let arguments = [arg0.to_js()];
+    let name = arguments[0].to_utf8(global)?;
     if bun_jsc::module_loader::exposed_internal_tag(name.slice()).is_some() {
         return bun_jsc::bun_string_jsc::create_utf8_for_js(global, name.slice());
     }
@@ -46,12 +50,13 @@ pub(crate) fn get_builtin_specifier_for_hooks(
     Ok(JSValue::UNDEFINED)
 }
 
-#[bun_jsc::host_fn]
 pub(crate) fn get_default_conditions_for_hooks(
-    global: &JSGlobalObject,
-    frame: &CallFrame,
+    cx: &mut JsScope<'_>,
+    arg0: JsLocal<'_>,
 ) -> JsResult<JSValue> {
-    let is_esm = frame.argument(0).is_truthy();
+    let global = cx.global();
+    let arguments = [arg0.to_js()];
+    let is_esm = arguments[0].is_truthy();
     let vm = global.bun_vm();
     let map = if is_esm {
         &vm.transpiler.resolver.opts.conditions.import
@@ -81,16 +86,29 @@ pub(crate) fn get_default_conditions_for_hooks(
     })
 }
 
-#[bun_jsc::host_fn]
 pub(crate) fn default_resolve_for_hooks(
-    global: &JSGlobalObject,
-    frame: &CallFrame,
+    cx: &mut JsScope<'_>,
+    arg0: JsLocal<'_>,
+    arg1: JsLocal<'_>,
+    arg2: JsLocal<'_>,
+    arg3: JsLocal<'_>,
+    arg4: JsLocal<'_>,
+    arg5: JsLocal<'_>,
 ) -> JsResult<JSValue> {
-    let specifier = frame.argument(0).to_bun_string(global)?;
-    let referrer = frame.argument(1).to_bun_string(global)?;
-    let is_esm = frame.argument(2).is_truthy();
-    let is_user_require_resolve = frame.argument(3).is_truthy();
-    let conditions = frame.argument(4);
+    let global = cx.global();
+    let arguments = [
+        arg0.to_js(),
+        arg1.to_js(),
+        arg2.to_js(),
+        arg3.to_js(),
+        arg4.to_js(),
+        arg5.to_js(),
+    ];
+    let specifier = arguments[0].to_bun_string(global)?;
+    let referrer = arguments[1].to_bun_string(global)?;
+    let is_esm = arguments[2].is_truthy();
+    let is_user_require_resolve = arguments[3].is_truthy();
+    let conditions = arguments[4];
     let mut condition_map = None;
     if conditions.is_array() {
         let mut map = bun_resolver::package_json::ConditionsMap::default();
@@ -134,7 +152,7 @@ pub(crate) fn default_resolve_for_hooks(
         }
     }
 
-    if frame.argument(5).is_truthy() {
+    if arguments[5].is_truthy() {
         // Resolve the installed package without the VM's replacement aliases.
         let parent = if referrer.starts_with_ascii(b"file:") {
             bun_url::path_from_file_url(&referrer)
@@ -187,12 +205,13 @@ pub(crate) fn default_resolve_for_hooks(
     )
 }
 
-#[bun_jsc::host_fn]
 pub(crate) fn get_package_type_for_hooks(
-    global: &JSGlobalObject,
-    frame: &CallFrame,
+    cx: &mut JsScope<'_>,
+    arg0: JsLocal<'_>,
 ) -> JsResult<JSValue> {
-    let filename = frame.argument(0).to_utf8(global)?;
+    let global = cx.global();
+    let arguments = [arg0.to_js()];
+    let filename = arguments[0].to_utf8(global)?;
     let dir = bun_resolver::fs::PathName::init(filename.slice()).dir;
     let vm = global.bun_vm_ptr();
     // SAFETY: the resolver belongs to the live VM on its JS thread.

@@ -49,3 +49,5 @@ export const TLSOptions = b.dictionary(
   },
   { fromJS: true },
 );
+
+export const setDefaultCACertificates = b.fn({ args: { options: b.any }, returns: b.any, capability: "js", throws: true, rustPath: "crate::socket::ssl_config::set_default_ca_certificates" });

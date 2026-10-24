@@ -1272,6 +1272,41 @@ describe("copyFileSync", () => {
   }
 });
 
+// On Windows, each work-pool thread converts the destination path in its own buffer, so each new thread is another
+// chance to crash. The child raises the thread cap and follows every copy with a 1 MiB read to keep the pool
+// spawning threads.
+it.concurrent("copyFile to an empty destination path fails with ENOENT in the promise and callback APIs", async () => {
+  using dir = tempDir("fs-copyfile-empty-dest", { "src.txt": "x", "srcdir/.keep": "" });
+  const script = `
+    const fs = require("fs");
+    fs.writeFileSync("big.bin", Buffer.alloc(1 << 20));
+    const busy = [];
+    const code = promise => {
+      busy.push(fs.promises.readFile("big.bin"));
+      return promise.then(() => "resolved", e => e.code);
+    };
+    const codes = [];
+    for (let i = 0; i < 32; i++) {
+      codes.push(code(fs.promises.copyFile("src.txt", "")));
+      codes.push(code(new Promise((resolve, reject) => fs.copyFile("src.txt", "", e => (e ? reject(e) : resolve())))));
+    }
+    console.log([...new Set(await Promise.all(codes))].join());
+    console.log(await code(fs.promises.copyFile("srcdir", "")));
+    await Promise.all(busy);
+  `;
+  await using proc = Bun.spawn({
+    cmd: [bunExe(), "-e", script],
+    env: { ...bunEnv, UV_THREADPOOL_SIZE: "32" },
+    cwd: String(dir),
+    stdout: "pipe",
+    stderr: "inherit",
+  });
+  const [stdout, exitCode] = await Promise.all([proc.stdout.text(), proc.exited]);
+  // An error for the source is still reported first.
+  expect(stdout).toBe(`ENOENT\n${isWindows ? "EPERM" : "ENOTSUP"}\n`);
+  expect(exitCode).toBe(0);
+});
+
 describe("mkdirSync", () => {
   it("should create a directory", () => {
     const now = Date.now().toString();
@@ -4124,6 +4159,61 @@ it.if(isPosix)("realpath reads its path the way Node does", async () => {
     row("/e\\", "/e\\"),
     row("/e\\/z", "/e\\/z"),
   ]);
+  expect(exitCode).toBe(0);
+});
+
+it.if(isLinux)("realpath.native throws ENOENT for a working directory that was removed", async () => {
+  using dir = tempDir("fs-realpath-removed-cwd", {});
+
+  const script = `
+    import fs from "node:fs";
+    import { promisify } from "node:util";
+    const root = process.cwd();
+    const impls = [fs.realpathSync.native, promisify(fs.realpath.native), fs.promises.realpath];
+    async function run(path) {
+      const results = [];
+      for (const impl of impls) {
+        try {
+          results.push((await impl(path)).slice(root.length));
+        } catch (err) {
+          results.push(err.code + " " + err.path);
+        }
+      }
+      return results;
+    }
+    const out = [];
+    fs.mkdirSync("gone/sub", { recursive: true });
+    process.chdir("gone/sub");
+    fs.rmSync(root + "/gone", { recursive: true });
+    out.push(await run("."), await run("./"), await run(".."), await run("../.."));
+    fs.mkdirSync(root + "/gone/sub (deleted)", { recursive: true });
+    out.push(await run("."));
+    process.chdir(root + "/gone/sub (deleted)");
+    out.push(await run("."));
+    // With the suffix, this name is longer than a name can be.
+    const long = root + "/" + Buffer.alloc(250, "x").toString();
+    fs.mkdirSync(long);
+    process.chdir(long);
+    fs.rmdirSync(long);
+    out.push(await run("."));
+    console.log(JSON.stringify(out));
+  `;
+
+  await using proc = Bun.spawn({
+    cmd: [bunExe(), "-e", script],
+    env: bunEnv,
+    cwd: String(dir),
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+
+  expect(stderr).toBe("");
+  expect(JSON.parse(stdout)).toEqual(
+    ["ENOENT .", "ENOENT ./", "ENOENT ..", "", "ENOENT .", "/gone/sub (deleted)", "ENOENT ."].map(result =>
+      Array(3).fill(result),
+    ),
+  );
   expect(exitCode).toBe(0);
 });
 
@@ -7967,6 +8057,160 @@ it("fs.promises.stat reads a Buffer path captured at call time when its resizabl
   expect(exitCode).toBe(0);
 });
 
+// The reader drains the fifo one pipe buffer at a time, so the pool thread is still inside `write(2)`
+// when the memory grows and frees its old block.
+it.skipIf(isWindows)(
+  "fs.write sends the bytes the caller passed when a WebAssembly.Memory grows mid-write",
+  async () => {
+    using dir = tempDir("fs-write-wasm", {});
+    const fifoPath = join(String(dir), "w.fifo");
+    mkfifo(fifoPath);
+
+    await using proc = Bun.spawn({
+      cmd: [
+        bunExe(),
+        "-e",
+        `
+        import fs from "node:fs";
+        const PAGES = 16; // 1 MB, which is 16 pipe buffers
+        const TOTAL = PAGES * 65536;
+        const newMemory = () => new WebAssembly.Memory({ initial: PAGES, maximum: PAGES + 8 });
+
+        const mem = newMemory();
+        const view = new Uint8Array(mem.buffer).fill(0x41);
+
+        // O_RDWR keeps the open from blocking and lets this process drain the fifo itself.
+        const fd = fs.openSync(process.env.FIFO_PATH, fs.constants.O_RDWR);
+        const written = Promise.withResolvers();
+        fs.write(fd, view, 0, TOTAL, null, (err, n) => written.resolve(err ? err.code : n));
+
+        const chunk = Buffer.alloc(65536);
+        const expected = Buffer.alloc(65536, 0x41);
+        const read = () =>
+          new Promise((resolve, reject) =>
+            fs.read(fd, chunk, 0, chunk.length, null, (err, n) => (err ? reject(err) : resolve(n))),
+          );
+
+        // Read one pipe buffer. The pool thread is still inside write(2) with the rest.
+        let drained = await read();
+        let foreignChunks = 0;
+        mem.grow(2);
+        // Claim the freed block so that reading it can't return the caller's bytes.
+        const claim = Array.from({ length: 4 }, () => {
+          const memory = newMemory();
+          new Uint8Array(memory.buffer).fill(0xee);
+          return memory;
+        });
+
+        while (drained < TOTAL) {
+          const n = await read();
+          if (!n) break;
+          if (Buffer.compare(chunk.subarray(0, n), expected.subarray(0, n)) !== 0) foreignChunks++;
+          drained += n;
+        }
+        console.log(JSON.stringify({ drained, foreignChunks, written: await written.promise }));
+        process.exit(0);
+      `,
+      ],
+      // Without fast memory, `grow()` moves the block on every platform.
+      env: { ...bunEnv, BUN_JSC_useWasmFastMemory: "0", FIFO_PATH: fifoPath },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect(stdout.trim()).toBe(JSON.stringify({ drained: 1048576, foreignChunks: 0, written: 1048576 }));
+    expect(stderr).toBe("");
+    expect(exitCode).toBe(0);
+  },
+);
+
+it.skipIf(isWindows)("async fs.readv and fs.writev stay off a WebAssembly.Memory block that grow() freed", async () => {
+  using dir = tempDir("fs-vector-wasm", {});
+  const fifoPath = join(String(dir), "v.fifo");
+  mkfifo(fifoPath);
+
+  await using proc = Bun.spawn({
+    cmd: [
+      bunExe(),
+      "-e",
+      `
+        import fs from "node:fs";
+        const TOTAL = 16 * 65536; // 1 MB, which is 16 pipe buffers
+        const newMemory = () => new WebAssembly.Memory({ initial: 16, maximum: 24 });
+        const claimFreedBlock = () => Array.from({ length: 4 }, () => Buffer.from(newMemory().buffer).fill(0xee));
+        const fd = fs.openSync(process.env.FIFO_PATH, fs.constants.O_RDWR);
+        const call = (fn, ...args) =>
+          new Promise((resolve, reject) => fn(fd, ...args, (err, n) => (err ? reject(err) : resolve(n))));
+
+        // The fifo is empty, so the pool thread waits in readv(2) until the memory has grown.
+        let mem = newMemory();
+        const plain = Buffer.alloc(2);
+        const read = call(fs.readv, [new Uint8Array(mem.buffer, 16, 4), plain, new Uint8Array(mem.buffer, 64, 8)], null);
+        mem.grow(1);
+        const claimed = claimFreedBlock();
+        fs.writeSync(fd, "0123456789");
+        const bytesRead = await read;
+        const got = [Buffer.from(mem.buffer, 16, 4), plain, Buffer.from(mem.buffer, 64, 8)].map(String);
+        const untouched = claimed.every(bytes => bytes.equals(Buffer.alloc(TOTAL, 0xee)));
+
+        // After one pipe buffer is read, the pool thread is still inside writev(2) with the rest.
+        mem = newMemory();
+        const written = call(fs.writev, [new Uint8Array(mem.buffer).fill(0x41)], null);
+        const chunk = Buffer.alloc(65536);
+        let drained = await call(fs.read, chunk, 0, chunk.length, null);
+        mem.grow(1);
+        claimed.push(...claimFreedBlock());
+        let foreignChunks = 0;
+        while (drained < TOTAL) {
+          const n = await call(fs.read, chunk, 0, chunk.length, null);
+          if (!chunk.subarray(0, n).equals(Buffer.alloc(n, 0x41))) foreignChunks++;
+          drained += n;
+        }
+        console.log(JSON.stringify({ bytesRead, got, untouched, foreignChunks, written: await written }));
+        process.exit(0);
+      `,
+    ],
+    // Without fast memory, \`grow()\` moves the block on every platform.
+    env: { ...bunEnv, BUN_JSC_useWasmFastMemory: "0", FIFO_PATH: fifoPath },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect(JSON.parse(stdout)).toEqual({
+    bytesRead: 10,
+    got: ["0123", "45", "6789\0\0\0\0"],
+    untouched: true,
+    foreignChunks: 0,
+    written: 1048576,
+  });
+  expect(stderr).toBe("");
+  expect(exitCode).toBe(0);
+});
+
+it("async fs.write copies only the bytes it writes out of a WebAssembly.Memory or a resizable ArrayBuffer", async () => {
+  using dir = tempDir("fs-write-slice", {});
+  const size = 64 * 1024 * 1024;
+  for (const buffer of [
+    new WebAssembly.Memory({ initial: size / 65536 }).buffer,
+    new ArrayBuffer(size, { maxByteLength: size * 2 }),
+  ]) {
+    const view = new Uint8Array(buffer).fill(0x41, 4096, 4196);
+    const path = join(String(dir), "out");
+    const fd = fs.openSync(path, "w");
+    const { promise, resolve, reject } = Promise.withResolvers<number>();
+    const before = process.memoryUsage.rss();
+    fs.write(fd, view, 4096, 100, 0, (err, written) => (err ? reject(err) : resolve(written)));
+    // The copy lives until the callback runs.
+    const copied = process.memoryUsage.rss() - before;
+    expect(await promise).toBe(100);
+    fs.closeSync(fd);
+    expect(fs.readFileSync(path)).toEqual(Buffer.alloc(100, 0x41));
+    expect(copied).toBeLessThan(size / 2);
+  }
+});
+
 // A sync call reads the path after the option getters ran. It reads the bytes captured at call time
 // when a getter shrinks the buffer.
 it("sync fs calls read a Buffer path captured at call time when an option getter shrinks its resizable ArrayBuffer", async () => {
@@ -8585,6 +8829,70 @@ describe("fs.Utf8Stream", () => {
       });
     });
     await done;
+  });
+});
+
+describe.if(isPosix)("fs.read into a view over a WebAssembly.Memory that grows during the read", () => {
+  // The fifo is empty, so the pool thread waits in read(2) until the memory has grown.
+  async function run(view: string, env: Record<string, string>, result = "view") {
+    using dir = tempDir("fs-read-wasm-grow", {
+      "run.mjs": `
+        import fs from "node:fs";
+        const fd = fs.openSync(process.argv[2], fs.constants.O_RDWR);
+        const mem = new WebAssembly.Memory({ initial: 1, maximum: 4 });
+        const view = new Uint8Array(${view});
+        view.fill(0x2e);
+        const { promise, resolve } = Promise.withResolvers();
+        fs.read(fd, view, 64, 4096, null, (err, bytesRead) => resolve({ err, bytesRead }));
+        mem.grow(1);
+        fs.writeSync(fd, Buffer.alloc(100, 0x41));
+        const { err, bytesRead } = await promise;
+        const result = ${result};
+        const bytes = result.byteLength ? Buffer.from(result).subarray(0, 65536) : Buffer.alloc(0);
+        console.log(JSON.stringify({
+          err: err?.code ?? null,
+          bytesRead,
+          first: bytes.indexOf(0x41),
+          count: bytes.filter(b => b === 0x41).length,
+          untouched: bytes.filter(b => b === 0x2e).length,
+        }));
+        fs.closeSync(fd);
+      `,
+    });
+    const fifo = join(String(dir), "fifo");
+    mkfifo(fifo, 0o666);
+    await using proc = Bun.spawn({
+      cmd: [bunExe(), "run.mjs", fifo],
+      // Without fast memory, grow() moves the block and frees the old one.
+      env: { ...bunEnv, BUN_JSC_useWasmFastMemory: "0", ...env },
+      cwd: String(dir),
+      stderr: "inherit",
+    });
+    const [stdout, exitCode] = await Promise.all([proc.stdout.text(), proc.exited]);
+    return { stdout: JSON.parse(stdout), exitCode };
+  }
+
+  it.concurrent("writes the bytes into a view that tracks the memory", async () => {
+    expect(await run("mem.toResizableBuffer()", {})).toEqual({
+      stdout: { err: null, bytesRead: 100, first: 64, count: 100, untouched: 65436 },
+      exitCode: 0,
+    });
+  });
+
+  it.concurrent("doesn't read into a detached view's freed block", async () => {
+    // Without the Gigacage, the freed block is unmapped and read(2) into it fails with EFAULT.
+    expect(await run("mem.buffer", { Malloc: "1" })).toEqual({
+      stdout: { err: null, bytesRead: 100, first: -1, count: 0, untouched: 0 },
+      exitCode: 0,
+    });
+  });
+
+  it.concurrent.each(["0", "1"])("writes the bytes into the grown memory, useWasmFastMemory=%s", async fastMemory => {
+    const env = { BUN_JSC_useWasmFastMemory: fastMemory };
+    expect(await run("mem.buffer, 16, 8192", env, "new Uint8Array(mem.buffer)")).toEqual({
+      stdout: { err: null, bytesRead: 100, first: 80, count: 100, untouched: 8092 },
+      exitCode: 0,
+    });
   });
 });
 

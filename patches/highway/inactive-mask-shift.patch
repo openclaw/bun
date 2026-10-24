@@ -1,0 +1,19 @@
+# Clang 23 diagnoses a shift by 64 in the inactive branch for AVX-512 byte masks.
+# Discard that branch during template instantiation; the active mask is unchanged.
+# Upstream source: google/highway@2607d3b5b0113992fe84d3848859eae13b3b52c1.
+--- a/hwy/ops/x86_128-inl.h
++++ b/hwy/ops/x86_128-inl.h
+@@ -12776,8 +12776,11 @@ namespace detail {
+ // are 8 or fewer valid bits.
+ template <class D>
+ constexpr uint64_t OnlyActive(D d, uint64_t mask_bits) {
+-  return (d.MaxBytes() >= 16) ? mask_bits
+-                              : mask_bits & ((1ull << d.MaxLanes()) - 1);
++  if constexpr (D{}.MaxBytes() >= 16) {
++    return mask_bits;
++  } else {
++    return mask_bits & ((1ull << d.MaxLanes()) - 1);
++  }
+ }
+ 
+ }  // namespace detail

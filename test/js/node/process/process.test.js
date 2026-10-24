@@ -690,6 +690,103 @@ it("process.env is spreadable and editable", () => {
   expect(eval(`globalThis.process.env.USER = "${orig}"`)).toBe(String(orig));
 });
 
+it("process.env coerces the value to a string every time the same assignment runs", () => {
+  const computedKey = "BUN_TEST_ENV_REPEATED_BYVAL";
+  process.env.BUN_TEST_ENV_REPEATED_EXISTING = "preset";
+  try {
+    const fresh = [];
+    const existing = [];
+    const byVal = [];
+    const byIndex = [];
+    for (let i = 0; i < 4; i++) {
+      process.env.BUN_TEST_ENV_REPEATED_FRESH = i;
+      fresh.push(process.env.BUN_TEST_ENV_REPEATED_FRESH);
+      process.env.BUN_TEST_ENV_REPEATED_EXISTING = i;
+      existing.push(process.env.BUN_TEST_ENV_REPEATED_EXISTING);
+      process.env[computedKey] = i;
+      byVal.push(process.env[computedKey]);
+      process.env[700] = i;
+      byIndex.push(process.env[700]);
+    }
+    // First store to an adjacent index.
+    process.env[701] = 7;
+    const expected = ["0", "1", "2", "3"];
+    expect({ fresh, existing, byVal, byIndex, neighbor: process.env[701] }).toEqual({
+      fresh: expected,
+      existing: expected,
+      byVal: expected,
+      byIndex: expected,
+      neighbor: "7",
+    });
+  } finally {
+    delete process.env.BUN_TEST_ENV_REPEATED_FRESH;
+    delete process.env.BUN_TEST_ENV_REPEATED_EXISTING;
+    delete process.env[computedKey];
+    delete process.env[700];
+    delete process.env[701];
+  }
+});
+
+it.concurrent("process.env coerces the value to a string in every JIT tier", async () => {
+  await using proc = Bun.spawn({
+    cmd: [
+      bunExe(),
+      "-e",
+      `
+        function setPort(n) { process.env.PORT = n; return process.env.PORT; }
+        let result = "all strings";
+        for (let i = 0; i < 20000; i++) {
+          const value = setPort(3000 + (i % 10));
+          if (typeof value !== "string") {
+            result = "call " + i + " read back a " + typeof value;
+            break;
+          }
+        }
+        console.log(result);
+      `,
+    ],
+    // Compiling on the main thread makes every run reach the last tier at the same call.
+    env: { ...bunEnv, BUN_JSC_useConcurrentJIT: "0" },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect({ stdout, stderr: exitCode === 0 ? "" : stderr, exitCode }).toEqual({
+    stdout: "all strings\n",
+    stderr: "",
+    exitCode: 0,
+  });
+});
+
+it.concurrent("process.env stores the value when its toString() modifies process.env", async () => {
+  await using proc = Bun.spawn({
+    cmd: [
+      bunExe(),
+      "-e",
+      `
+        process.env.SAME = { toString() { process.env.SAME = "inner"; return "same" } };
+        console.log("same", process.env.SAME);
+        process.env.ADD = "0";
+        process.env.ADD = { toString() { process.env.ADDED = "1"; return "add" } };
+        console.log("add", process.env.ADD, process.env.ADDED);
+        process.env.DEL = "0";
+        process.env.DOOMED = "0";
+        process.env.DEL = { toString() { delete process.env.DOOMED; return "del" } };
+        console.log("del", process.env.DEL, String(process.env.DOOMED));
+      `,
+    ],
+    env: bunEnv,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect({ stdout, stderr: exitCode === 0 ? "" : stderr, exitCode }).toEqual({
+    stdout: "same same\nadd add 1\ndel del undefined\n",
+    stderr: "",
+    exitCode: 0,
+  });
+});
+
 it("process.env reads are never stale after a write (JIT inline-cache soundness)", async () => {
   // Check same-key replacement, delete-then-set, and writes after a hot read loop.
   // Spawned so the subprocess gets its own tier-up.
@@ -968,6 +1065,36 @@ it("process.binding", () => {
   expect(() => process.binding(Object.freeze({ __proto__: null }))).toThrow();
 });
 
+it("spreading a process.binding() object passes exception check validation", async () => {
+  // Release builds ignore BUN_JSC_validateExceptionChecks, so there this only checks that every key is copied.
+  await using proc = Bun.spawn({
+    cmd: [
+      bunExe(),
+      "-e",
+      `const missing = [];
+       for (const name of ["buffer", "config", "constants", "crypto/x509", "fs", "http_parser", "natives", "tty_wrap", "util", "uv"]) {
+         const binding = process.binding(name);
+         const spread = { ...binding };
+         for (const key of Object.keys(binding)) {
+           if (!(key in spread) || spread[key] !== binding[key]) missing.push(name + "." + key);
+         }
+       }
+       const { methods, allMethods } = process.binding("http_parser");
+       const { statValues, bigintStatValues } = process.binding("fs");
+       console.log(JSON.stringify({ missing, methods: methods.length, allMethods: allMethods.length, statValues: statValues.length, bigintStatValues: bigintStatValues.length }));`,
+    ],
+    env: { ...bunEnv, BUN_JSC_validateExceptionChecks: "1" },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect({ stdout: stdout.trim(), stderr, exitCode }).toEqual({
+    stdout: JSON.stringify({ missing: [], methods: 35, allMethods: 47, statValues: 36, bigintStatValues: 36 }),
+    stderr: "",
+    exitCode: 0,
+  });
+});
+
 it("process.argv in testing", () => {
   expect(process.argv).toBeInstanceOf(Array);
   expect(process.argv[0]).toBe(process.execPath);
@@ -1058,7 +1185,7 @@ describe.concurrent(() => {
     });
 
     let [out, exited] = await Promise.all([new Response(subprocess.stdout).text(), subprocess.exited]);
-    expect(out.trim()).toEqual(bunEnv.BUN_TEST_NODE_VERSION ?? "v26.3.0");
+    expect(out.trim()).toEqual(bunEnv.BUN_TEST_NODE_VERSION ?? "v26.12.1");
     expect(exited).toBe(0);
   });
 
@@ -1943,17 +2070,21 @@ describe.concurrent(() => {
     expect(() => process.dlopen({ module: { exports: Symbol("123") } }, Symbol("badddd"))).toThrow();
   });
 
-  it("dlopen rejects over-length paths with ERR_DLOPEN_FAILED", async () => {
-    // Spawn so an unfixed build crashing doesn't take the whole suite down.
+  it.each([
     // On Windows the path is widened into a 32767-unit WPathBuffer; an
     // over-length path must come back as an error, not a Rust panic across
-    // the extern "C" boundary. POSIX already surfaces dlerror() here.
+    // the extern "C" boundary.
+    ["longer than the Windows path buffer", 40000],
+    // glibc's dlopen() uses alloca() to copy a name without a "/" onto the stack.
+    ["longer than the stack", 16 * 1024 * 1024],
+  ])("dlopen rejects over-length paths with ERR_DLOPEN_FAILED (%s)", async (_, length) => {
+    // Spawn so an unfixed build crashing doesn't take the whole suite down.
     await using proc = Bun.spawn({
       cmd: [
         bunExe(),
         "-e",
         `try {
-          process.dlopen({ exports: {} }, Buffer.alloc(40000, "x").toString());
+          process.dlopen({ exports: {} }, Buffer.alloc(${length}, "x").toString());
           console.log("FAIL: did not throw");
         } catch (e) {
           console.log("CODE:" + e.code);
@@ -1983,6 +2114,36 @@ describe.concurrent(() => {
     expect(() => process.dlopen(mod, "file://asd[kasd[po@[p1o23]1po!-10923-095-@$@8123=-9123=-0==][pc;!")).toThrow(
       "invalid file: URL passed to dlopen",
     );
+  });
+
+  // Macros run inside the crash handler's parse action, and dlopen sets its own action on top of it.
+  it("dlopen works in a macro", async () => {
+    using dir = tempDir("dlopen-macro", {
+      "macro.ts": `export function load() {
+  try {
+    process.dlopen({ exports: {} }, "not-found.node");
+  } catch (e) {
+    return e.code;
+  }
+  return "loaded";
+}
+`,
+      "index.ts": `import { load } from "./macro.ts" with { type: "macro" };
+console.log(load());
+`,
+    });
+    await using proc = Bun.spawn({
+      cmd: [bunExe(), "index.ts"],
+      env: bunEnv,
+      cwd: String(dir),
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect(stderr).toBe("");
+    // Debug builds also log "[macro] call load" to stdout.
+    expect(stdout).toContain("ERR_DLOPEN_FAILED\n");
+    expect(exitCode).toBe(0);
   });
 
   it("process.constrainedMemory()", () => {
@@ -2086,6 +2247,41 @@ describe.concurrent(() => {
     expect(exitCode).toBe(0);
   });
 
+  it("building process.env doesn't run Object.prototype setters for a variable named like an array index", async () => {
+    await using proc = Bun.spawn({
+      cmd: [
+        bunExe(),
+        "-e",
+        `let fired = 0;
+         let caught = null;
+         Object.defineProperty(Object.prototype, "0", {
+           configurable: true,
+           set() {
+             fired++;
+             throw new Error("boom");
+           },
+         });
+         try {
+           process.env;
+         } catch (e) {
+           caught = e.message;
+         }
+         delete Object.prototype[0];
+         const env = process.env;
+         console.log(JSON.stringify({ fired, caught, zero: env[0], named: env.BUN_TEST_LAZY_ENV, cached: Bun.env === env }));`,
+      ],
+      env: { ...bunEnv, "0": "zero", BUN_TEST_LAZY_ENV: "lazy-env-value" },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect({ stderr, exitCode, result: stdout && JSON.parse(stdout) }).toEqual({
+      stderr: "",
+      exitCode: 0,
+      result: { fired: 0, caught: null, zero: "zero", named: "lazy-env-value", cached: true },
+    });
+  });
+
   if (isWindows) {
     it("ownKeys trap windows process.env", () => {
       expect(() => Object.keys(process.env)).not.toThrow();
@@ -2127,6 +2323,107 @@ describe.concurrent(() => {
       } finally {
         delete process.env.BUN_TEST_ENV_PROXY;
       }
+    });
+
+    // On Windows a JS builtin finishes building process.env, and it throws a RangeError near the stack limit.
+    async function firstReadNearStackLimitBuildsRealEnv(entryPoint) {
+      await using proc = Bun.spawn({
+        cmd: [
+          bunExe(),
+          "-e",
+          `const entryPoint = process.argv[1];
+           let reached = false;
+           const readers = {
+             "process.env": () => { reached = true; return process.env; },
+             "Bun.env": () => { reached = true; return Bun.env; },
+             "import.meta.env": () => { reached = true; return import.meta.env; },
+             "Bun.$": () => { reached = true; return Bun.$; },
+             "Bun.sql": () => { reached = true; return Bun.sql; },
+           };
+           const read = readers[entryPoint];
+           let value;
+           let readThrew = 0;
+           function recurse() {
+             try {
+               recurse();
+             } catch {}
+             if (value !== undefined) return;
+             reached = false;
+             try {
+               value = read();
+             } catch {
+               // Ignore a stack overflow thrown by the call to read() itself.
+               if (reached) readThrew++;
+             }
+           }
+           recurse();
+           const result = {
+             retried: readThrew > 0,
+             type: typeof value,
+             envIntact: process.env.BUN_TEST_LAZY_ENV === "lazy-env-value",
+             sameObject: Bun.env === process.env && import.meta.env === process.env,
+           };
+           if (entryPoint.endsWith("env")) result.isEnv = value === process.env;
+           if (entryPoint === "Bun.$") result.echo = (await value({ raw: ["echo $BUN_TEST_LAZY_ENV"] }).text()).trim();
+           console.log(JSON.stringify(result));`,
+          entryPoint,
+        ],
+        env: { ...bunEnv, BUN_TEST_LAZY_ENV: "lazy-env-value" },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+
+      const expected = { retried: true, envIntact: true, sameObject: true };
+      if (entryPoint.endsWith("env")) Object.assign(expected, { type: "object", isEnv: true });
+      else if (entryPoint === "Bun.$") Object.assign(expected, { type: "function", echo: "lazy-env-value" });
+      else Object.assign(expected, { type: "function" });
+      expect({ stderr, exitCode, result: stdout && JSON.parse(stdout) }).toEqual({
+        stderr: "",
+        exitCode: 0,
+        result: expected,
+      });
+    }
+
+    it.each(["process.env", "import.meta.env"])(
+      "%s throws when first read near the stack limit, and the next read builds the real env",
+      firstReadNearStackLimitBuildsRealEnv,
+    );
+
+    // The builtin assigns toJSON to an ordinary object, so this setter runs mid-build.
+    it("reading process.env from user code while it's being built returns the same env object", async () => {
+      await using proc = Bun.spawn({
+        cmd: [
+          bunExe(),
+          "-e",
+          `let inner;
+           Object.defineProperty(Object.prototype, "toJSON", {
+             configurable: true,
+             set(fn) {
+               // Remove the setter first, because the inner build assigns toJSON too.
+               delete Object.prototype.toJSON;
+               inner = process.env;
+               Object.defineProperty(this, "toJSON", { value: fn, writable: true, configurable: true, enumerable: true });
+             },
+           });
+           const outer = Bun.env;
+           console.log(JSON.stringify({
+             reentered: inner !== undefined,
+             oneObject: outer === inner && process.env === inner && import.meta.env === inner,
+             envIntact: inner.BUN_TEST_LAZY_ENV,
+             json: JSON.parse(JSON.stringify(process.env)).BUN_TEST_LAZY_ENV,
+           }));`,
+        ],
+        env: { ...bunEnv, BUN_TEST_LAZY_ENV: "lazy-env-value" },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      expect({ stderr, exitCode, result: stdout && JSON.parse(stdout) }).toEqual({
+        stderr: "",
+        exitCode: 0,
+        result: { reentered: true, oneObject: true, envIntact: "lazy-env-value", json: "lazy-env-value" },
+      });
     });
   }
 
@@ -3159,8 +3456,8 @@ it.each(["stdin", "stdout", "stderr"])("%s stream accessor should handle excepti
 });
 
 it("process.versions", () => {
-  expect(process.versions.node).toEqual("26.3.0");
-  expect(process.versions.v8).toEqual("14.6.202.34-node.20");
+  expect(process.versions.node).toEqual("26.12.1");
+  expect(process.versions.v8).toEqual("14.6.202.34-node.40");
   expect(process.versions.napi).toEqual("10");
   expect(process.versions.modules).toEqual("147");
 });
@@ -3848,4 +4145,70 @@ it("initialized process stdout and stderr preserve platform EOF behavior when th
   });
   const [stdout, stderr, exitCode] = await Promise.all([child.stdout.text(), child.stderr.text(), child.exited]);
   expect({ stdout, stderr, exitCode }).toEqual({ stdout: "stdio lifetime passed\n", stderr: "", exitCode: 0 });
+});
+
+it("native functions that define a property on `this` throw a TypeError when the receiver rejects it", async () => {
+  const src = `
+    // (module (type $s (struct (field (mut i32))))
+    //   (func (export "mk") (result (ref null $s)) struct.new_default $s))
+    const bytes = new Uint8Array([
+      0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
+      0x01, 0x0a, 0x02, 0x5f, 0x01, 0x7f, 0x01, 0x60, 0x00, 0x01, 0x63, 0x00,
+      0x03, 0x02, 0x01, 0x01,
+      0x07, 0x06, 0x01, 0x02, 0x6d, 0x6b, 0x00, 0x00,
+      0x0a, 0x07, 0x01, 0x05, 0x00, 0xfb, 0x01, 0x00, 0x0b,
+    ]);
+    const wasmGCReference = new WebAssembly.Instance(new WebAssembly.Module(bytes)).exports.mk();
+    const requirePrototype = Object.getPrototypeOf(require);
+    const natives = {
+      ppid: o => Object.getOwnPropertyDescriptor(process, "ppid").set.call(o, 7),
+      cache: o => Object.getOwnPropertyDescriptor(requirePrototype, "cache").set.call(o, 7),
+      extensions: o => Object.getOwnPropertyDescriptor(requirePrototype, "extensions").set.call(o, 7),
+      StringDecoder: o => require("node:string_decoder").StringDecoder.call(o, "utf8"),
+      on: o => process.on.call(o, "x", () => {}),
+    };
+    for (const [name, native] of Object.entries(natives)) {
+      for (const receiver of [wasmGCReference, Object.freeze({})]) {
+        try {
+          native(receiver);
+          console.log(name, "no error");
+        } catch (e) {
+          console.log(name, e.constructor.name);
+        }
+      }
+    }
+    process.ppid = "assigned";
+    require.cache = "assigned";
+    console.log(process.ppid, require.cache);
+  `;
+  await using proc = Bun.spawn({
+    cmd: [bunExe(), "-e", src],
+    env: bunEnv,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect({ stdout: stdout.split("\n"), stderr, exitCode }).toEqual({
+    stdout: [
+      ...["ppid", "cache", "extensions", "StringDecoder", "on"].flatMap(name => Array(2).fill(name + " TypeError")),
+      "assigned assigned",
+      "",
+    ],
+    stderr: "",
+    exitCode: 0,
+  });
+});
+
+it("the EventEmitter methods that node:process exports act on process", async () => {
+  const ns = await import("node:process");
+  const { emit, listenerCount } = ns;
+  const received = [];
+  const listener = value => received.push(value);
+  expect(ns.on("namespace-event", listener)).toBe(process);
+  expect(process.listeners("namespace-event")).toEqual([listener]);
+  expect(listenerCount("namespace-event")).toBe(1);
+  expect(emit("namespace-event", "hello")).toBe(true);
+  expect(received).toEqual(["hello"]);
+  expect(ns.off("namespace-event", listener)).toBe(process);
+  expect(process.listenerCount("namespace-event")).toBe(0);
 });

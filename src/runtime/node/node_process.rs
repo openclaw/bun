@@ -1,11 +1,12 @@
 //! Process information and control APIs (`globalThis.process` / `node:process`)
 
+use bun_jsc::bindgen::JsScope;
 use core::ffi::c_char;
 
 use bun_core::EncodedSlice;
 use bun_core::env_var;
 use bun_core::{self, Environment, Global};
-use bun_jsc::{CallFrame, EncodedSliceJsc as _, JSGlobalObject, JSValue, JsResult};
+use bun_jsc::{EncodedSliceJsc as _, JSGlobalObject, JSValue, JsResult};
 
 // Both materialize the array on first access through `Bun__Process__createArgv`
 // / `createExecArgv` below, which return zero with the exception pending.
@@ -176,8 +177,8 @@ pub(crate) fn get_exec_argv(global: &JSGlobalObject) -> JsResult<JSValue> {
     bun_jsc::call_zero_is_throw(global, || Bun__Process__getExecArgv(global))
 }
 
-#[bun_jsc::host_fn(export = "Bun__Process__getActiveResourcesInfo")]
-fn get_active_resources_info(global: &JSGlobalObject, _frame: &CallFrame) -> JsResult<JSValue> {
+pub(crate) fn get_active_resources_info(cx: &mut JsScope<'_>) -> JsResult<JSValue> {
+    let global = cx.global();
     let all = crate::jsc_hooks::timer_all();
     if all.is_null() {
         return JSValue::create_empty_array(global, 0);
@@ -359,7 +360,7 @@ mod _impl {
 
     // The C++ caller
     // (headers.h) declares `EncodedJSValue Bun__Process__createExecArgv(JSGlobalObject*)`,
-    // not a `JSHostFunctionType`. Hand-roll the shim instead of `#[bun_jsc::host_fn]`.
+    // not a `JSHostFunctionType`.
     #[unsafe(no_mangle)]
     extern "C" fn Bun__Process__createExecArgv(global_object: &JSGlobalObject) -> JSValue {
         bun_jsc::to_js_host_fn_result(global_object, create_exec_argv(global_object))
@@ -607,8 +608,7 @@ mod _impl {
     // ───────────────────────────── cwd ─────────────────────────────
 
     // C++ (headers.h) declares
-    // `EncodedJSValue Bun__Process__getCwd(JSGlobalObject*)`. Hand-roll the
-    // shim instead of `#[bun_jsc::host_fn]` (caller is not a JSHostFunction).
+    // `EncodedJSValue Bun__Process__getCwd(JSGlobalObject*)`, not a `JSHostFunctionType`.
     #[unsafe(no_mangle)]
     extern "C" fn Bun__Process__getCwd(global_object: &JSGlobalObject) -> JSValue {
         bun_jsc::to_js_host_fn_result(global_object, get_cwd(global_object))
@@ -676,7 +676,7 @@ mod _impl {
         // path=cwd, dest=target so the
         // resulting Node SystemError carries `path: cwd`, `dest: target` and the
         // `chdir '<cwd>' -> '<target>'` message format (test-process-chdir-errormessage).
-        let prev_cwd: Box<[u8]> = Box::from(fs.top_level_dir);
+        let prev_cwd: Box<[u8]> = Box::from(fs.top_level_dir());
         match vm.set_process_cwd(slice) {
             bun_sys::Result::Ok(()) => {
                 vm.test_isolation_scope(|state| {
@@ -690,7 +690,7 @@ mod _impl {
                 let without_trailing_slash = strings::without_trailing_slash;
                 bun_string_jsc::create_utf8_for_js(
                     global_object,
-                    without_trailing_slash(fs.top_level_dir),
+                    without_trailing_slash(fs.top_level_dir()),
                 )
             }
             bun_sys::Result::Err(e) => {
@@ -716,7 +716,7 @@ mod _impl {
         let mut buf1: Vec<u16> = vec![0u16; k.utf16_byte_length() + 1];
         let mut buf2: Vec<u16> = vec![0u16; v.utf16_byte_length() + 1];
         let len1: usize = if k.is_8bit() {
-            strings::copy_latin1_into_utf16(&mut buf1, k.latin1()).written as usize
+            strings::copy_latin1_into_utf16(&mut buf1, k.latin1()).written
         } else {
             buf1[0..k.length()].copy_from_slice(k.utf16());
             k.length()
@@ -730,7 +730,7 @@ mod _impl {
                     break 'str_ EMPTY_W.as_ptr();
                 }
                 let len2: usize = if v.is_8bit() {
-                    strings::copy_latin1_into_utf16(&mut buf2, v.latin1()).written as usize
+                    strings::copy_latin1_into_utf16(&mut buf2, v.latin1()).written
                 } else {
                     buf2[0..v.length()].copy_from_slice(v.utf16());
                     v.length()

@@ -1367,13 +1367,23 @@ unsafe extern "C" fn Bun__Node__Path_joinWTF(
 ) -> bun_core::String {
     // SAFETY: caller passes a valid slice from C++.
     let rhs = unsafe { bun_core::ffi::slice(rhs_ptr, rhs_len) };
-    let mut buf = [0u8; path_size::<u8>()];
-    let mut buf2 = [0u8; path_size::<u8>()];
     let lhs = lhs.to_utf8();
+    let paths: [&[u8]; 2] = [lhs.slice(), rhs];
+    let buf_len = bun_node_path::join_buf_len::<u8>(cfg!(windows), &paths);
+    let mut fixed = [0u8; path_size::<u8>() * 2];
+    let mut spill = Vec::new();
+    // Fall back to the heap when the joined path is too long for the stack buffer.
+    let scratch: &mut [u8] = if buf_len * 2 <= fixed.len() {
+        &mut fixed
+    } else {
+        spill.resize(buf_len * 2, 0);
+        &mut spill
+    };
+    let (buf, buf2) = scratch.split_at_mut(buf_len);
     #[cfg(windows)]
-    let joined = join_windows_t::<u8>(&[lhs.slice(), rhs], &mut buf, &mut buf2);
+    let joined = join_windows_t::<u8>(&paths, buf, buf2);
     #[cfg(not(windows))]
-    let joined = join_posix_t::<u8>(&[lhs.slice(), rhs], &mut buf, &mut buf2);
+    let joined = join_posix_t::<u8>(&paths, buf, buf2);
     bun_core::String::clone_utf8(joined)
 }
 
@@ -2982,7 +2992,7 @@ where
     while i_i64 > -2 {
         // Backed by expandable buf2, to not conflict with buf2 backed resolvedTail,
         // because path may be long.
-        // Borrowck: `path` may alias paths[], tmp_buf, or buf2,
+        // Borrowck: `path` may alias paths[] or tmp_buf,
         // and the loop body subsequently mutates tmp_buf/buf2 while still indexing
         // `path`. Store as raw (ptr, len) and materialize short-lived slices at use
         // sites; all overlapping moves go through `ptr::copy` (memmove
@@ -3120,13 +3130,10 @@ where
             {
                 // Translated from the following JS code:
                 //   path = `${resolvedDevice}\\`;
-                buf_size = resolved_device_len;
-                memmove(&mut buf2[0..buf_size], &tmp_buf[0..resolved_device_len]);
-                buf_offset = buf_size;
-                buf_size += 1;
-                buf2[buf_offset] = T::from_u8(CHAR_BACKWARD_SLASH);
-                path_ptr = buf2.as_ptr();
-                path_len = buf_size;
+                // Keep buf2's accumulated tail intact; tmp_buf already holds the device.
+                tmp_buf[resolved_device_len] = T::from_u8(CHAR_BACKWARD_SLASH);
+                path_ptr = tmp_buf.as_ptr();
+                path_len = resolved_device_len + 1;
             }
         }
 
@@ -3305,8 +3312,7 @@ where
             }
             buf_size = slice_len;
             if slice_len > 0 {
-                // path may alias buf2 (drive-mismatch fallback); use ptr::copy.
-                // SAFETY: handles overlap.
+                // SAFETY: path_ptr points to a live input or scratch slice of at least len.
                 unsafe {
                     core::ptr::copy(path_ptr.add(root_end), buf2.as_mut_ptr(), slice_len);
                 }

@@ -57,8 +57,6 @@ pub struct ContextData {
     pub worker_preload_require_count: usize,
     pub worker_eval_mode: WorkerEvalMode,
     pub has_loaded_global_config: bool,
-    /// The path of the first bunfig.toml or .npmrc that exists but could not be read.
-    pub unreadable_config: Option<Box<[u8]>>,
 }
 
 impl Default for ContextData {
@@ -103,7 +101,6 @@ impl Default for ContextData {
             worker_preload_require_count: 0,
             worker_eval_mode: WorkerEvalMode::Auto,
             has_loaded_global_config: false,
-            unreadable_config: None,
         }
     }
 }

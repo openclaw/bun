@@ -1,6 +1,7 @@
 use core::sync::atomic::{AtomicBool, Ordering};
 use std::borrow::Cow;
 use std::io::Write as _;
+use std::sync::OnceLock;
 
 use bun_alloc::{AllocError, allocators};
 use bun_collections::VecExt as _;
@@ -105,7 +106,8 @@ pub trait EntryKindResolver {
 pub enum EntryKind {
     Dir,
     File,
-    /// A symlink to nothing; treated like a missing entry, as `stat()` would report it.
+    /// A symlink whose target doesn't exist. It's treated like a missing entry, which is how
+    /// `stat()` reports it.
     Dangling,
 }
 
@@ -132,7 +134,7 @@ pub struct Entry {
     pub mutex: Mutex,
     pub need_stat: AtomicBool,
 
-    abs_path: std::sync::OnceLock<Interned>,
+    abs_path: OnceLock<Interned>,
 }
 
 impl Entry {
@@ -168,6 +170,7 @@ impl Entry {
         self.dir
     }
 
+    /// Returns `Interned::EMPTY` until a fill has been published. Lock-free.
     #[inline]
     pub fn abs_path(&self) -> Interned {
         self.abs_path.get().copied().unwrap_or(Interned::EMPTY)
@@ -275,8 +278,7 @@ impl Entry {
 
 // `entry` is a RAW `*mut Entry`. A safe
 // `&self → &mut Entry` accessor would let two `get()` calls produce coexisting
-// aliased `&mut Entry` (PORTING.md §Forbidden). Callers `unsafe { &mut *entry }`
-// at each write site under the per-entry `Entry.mutex`.
+// aliased `&mut Entry` (PORTING.md §Forbidden).
 pub struct EntryLookup<'a> {
     pub(crate) entry: *mut Entry,
     // tie the lookup's nominal lifetime to the DirEntry it came from
@@ -526,7 +528,7 @@ impl DirEntry {
                     kind: found_kind.unwrap_or(EntryKind::File),
                     fd: Fd::INVALID,
                 }));
-                addr_of_mut!((*p).abs_path).write(std::sync::OnceLock::new());
+                addr_of_mut!((*p).abs_path).write(OnceLock::new());
                 p
             }
         };

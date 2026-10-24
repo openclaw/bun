@@ -119,7 +119,7 @@ function runInNewContext(code, context, options) {
   return createScript(code, options).runInNewContext(context, options);
 }
 
-// Mirrors Node's lib/vm.js getContextOptions, including the order it reads and validates in.
+// Reads and validates options in the same order as getContextOptions in Node's lib/vm.js.
 function getContextOptions(options) {
   if (!options) return {};
   const name = options.contextName;
@@ -137,7 +137,7 @@ function getContextOptions(options) {
     codeGeneration = { strings, wasm };
   }
   if (microtaskMode !== undefined) validateString(microtaskMode, "options.microtaskMode");
-  return { name, origin, codeGeneration, microtaskMode };
+  return { name, origin, codeGeneration, microtaskMode, importModuleDynamically: options.importModuleDynamically };
 }
 
 function createScript(code, options) {

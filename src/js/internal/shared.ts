@@ -442,7 +442,7 @@ function stripTypeScriptTypes(code, options = kEmptyObject) {
   validateString(sourceUrl, "options.sourceUrl");
   validateOneOf(sourceMap, "options.sourceMap", [false, undefined]);
 
-  stripTypeScriptTypesNative ??= $newRustFunction("node_module_binding.rs", "stripTypeScriptTypesNative", 1) as (
+  stripTypeScriptTypesNative ??= $bindgen("node_module_binding.bind.ts", "stripTypeScriptTypesNative") as (
     code: string,
   ) => any;
   const result = stripTypeScriptTypesNative(code);

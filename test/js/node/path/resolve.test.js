@@ -7,6 +7,19 @@ import path from "node:path";
 // import fixtures from "./common/fixtures.js";
 
 describe("path.resolve", () => {
+  test("a drive-root fallback preserves the relative tail", () => {
+    const drive = [..."ABCDEFGHIJKLMNOPQRSTUVWXY"].find(letter => process.env[`=${letter}:`] === undefined);
+    expect(drive).toBeDefined();
+    const originalCwd = process.cwd;
+    process.cwd = () => "Z:\\virtual\\cwd";
+    try {
+      expect(path.win32.resolve(`${drive}:foo`)).toBe(`${drive}:\\foo`);
+      expect(path.win32.resolve(`${drive}:foo`, "bar")).toBe(`${drive}:\\foo\\bar`);
+    } finally {
+      process.cwd = originalCwd;
+    }
+  });
+
   test.each([
     [
       "default",
@@ -319,6 +332,12 @@ describe("path.resolve", () => {
       expect(exitCode).toBe(0);
     },
   );
+
+  test.skipIf(!isWindows)("win32 drive-relative input on another drive resolves against that drive's root", () => {
+    const drive = process.cwd()[0].toUpperCase() === "Z" ? "Y:" : "Z:";
+    expect(path.resolve(drive + "foo")).toBe(drive + "\\foo");
+    expect(path.resolve(drive + "a", "b")).toBe(drive + "\\a\\b");
+  });
 
   test("undefined argument are ignored if absolute path comes first (reverse loop through args)", () => {
     expect(() => {

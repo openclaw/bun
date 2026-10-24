@@ -374,5 +374,6 @@ const errors: ErrorCodeMapping = [
   ["ERR_WORKER_OUT_OF_MEMORY", Error],
   ["ERR_INVALID_TYPESCRIPT_SYNTAX", SyntaxError],
   ["ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX", SyntaxError],
+  ["HPE_INVALID_URL", Error],
 ];
 export default errors;
