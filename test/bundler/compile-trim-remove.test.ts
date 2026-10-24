@@ -126,6 +126,25 @@ describe.skipIf(!canTrim || !!unsupported)("compile.trim.remove", () => {
   const build = (folder: string, entry: string, outfile: string, trim: object) =>
     spawned([bunExe(), "build.mjs", `./${entry}`, join(folder, outfile), JSON.stringify(trim)], folder, bunEnv);
 
+  test.concurrent("starts and runs builtins with the interpreter and builtin source removed", async () => {
+    using dir = tempDirForAotBuilds("compile-trim-without-interpreter", {
+      "build.mjs": buildScript,
+      "entry.ts": `function sum(values: number[]): number { return values.reduce((a, b) => a + b, 0); }
+console.log(JSON.stringify({ sum: sum([1, 2, 3]), regex: /^a.+z$/.test("abz") }));`,
+    });
+    const folder = String(dir);
+    expect(await build(folder, "entry.ts", "cut", { remove: ["interpreter"] })).toMatchObject({
+      stdout: "built\n",
+      exitCode: 0,
+    });
+    expect(
+      await spawned([join(folder, "cut")], folder, { ...bunEnv, BUN_JSC_crashIfInterpreterIsUsed: "1" }),
+    ).toMatchObject({
+      stdout: '{"sum":6,"regex":true}\n',
+      exitCode: 0,
+    });
+  });
+
   test.each(Object.keys(programs))(
     "%s: the names stay, a call says that the feature is not there, and the executable is smaller",
     async entry => {
