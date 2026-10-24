@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Deduplicate ambient type packages shared by AOT source projects so copied timer declarations remain callable.
 - Allow AOT runtime views of Bun without installed type declarations while checking declared member types.
 - Avoid repeated chunk-hash reachability scans when bundling long dependency chains or cycles.
 - Retain built-in startup metadata when trimming the interpreter from AOT executables.

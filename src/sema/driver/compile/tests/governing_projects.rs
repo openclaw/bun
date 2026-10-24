@@ -393,6 +393,51 @@ fn type_reference_uses_governing_type_roots() {
     });
 }
 
+#[test]
+fn ambient_package_copies_in_governing_projects_share_declarations() {
+    let config = r#"{ "compilerOptions": {
+        "noLib": true, "types": ["x"], "typeRoots": ["./types"],
+        "module": "preserve", "moduleResolution": "bundler"
+    } }"#;
+    let manifest = r#"{ "name": "@types/x", "version": "1.0.0", "types": "index.d.ts" }"#;
+    let declarations = "declare function first(callback: () => void): void;
+        declare function second<T extends unknown[]>(callback: (...args: T) => void, ...args: T): object;";
+    let files = [
+        (CONFIG, config),
+        ("lib/tsconfig.json", config),
+        ("types/x/package.json", manifest),
+        ("types/x/index.d.ts", declarations),
+        ("lib/types/x/index.d.ts", declarations),
+        ("lib/a.ts", "export const a: boolean = true;"),
+        (
+            "main.ts",
+            "import { a } from './lib/a.ts';
+            const schedule = a ? first : second;
+            schedule(() => {});",
+        ),
+    ];
+    let different_version = r#"{ "name": "@types/x", "version": "2.0.0", "types": "index.d.ts" }"#;
+    for inner_manifest in [Some(manifest), Some(different_version), None] {
+        let mut files = files.to_vec();
+        if let Some(manifest) = inner_manifest {
+            files.push(("lib/types/x/package.json", manifest));
+        }
+        let shares_declarations = inner_manifest == Some(manifest);
+        with_program(&files, ENTRY_POINTS, 1, |program| {
+            let expected = if shares_declarations {
+                &[][..]
+            } else {
+                &[2349][..]
+            };
+            assert_eq!(check_only(program).codes(), expected);
+            assert_eq!(
+                program.find("types/x/index.d.ts") == program.find("lib/types/x/index.d.ts"),
+                shares_declarations
+            );
+        });
+    }
+}
+
 fn include_reasons(program: &TestProgram<'_, '_>, path: &str) -> Vec<Vec<u8>> {
     let to_file_name = |name: &[u8]| name.to_vec();
     let lines = program
