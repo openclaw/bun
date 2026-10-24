@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Allow AOT runtime views of Bun without installed type declarations while checking declared member types.
 - Avoid repeated chunk-hash reachability scans when bundling long dependency chains or cycles.
 - Retain built-in startup metadata when trimming the interpreter from AOT executables.
 - Add Bun.build branch and arrival instrumentation options for native AOT coverage, matching the CLI counters.
