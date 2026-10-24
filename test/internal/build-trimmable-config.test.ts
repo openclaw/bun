@@ -17,7 +17,7 @@ import {
 import { computeFlags, linkerMapOutputs, linkerMapPath, writesLinkerMap } from "../../scripts/build/flags.ts";
 import { link, registerCompileRules } from "../../scripts/build/compile.ts";
 import { Ninja, readManifest } from "../../scripts/build/ninja.ts";
-import { machoPostlinkImplicitInputs, needsMachoPostlink } from "../../scripts/build/shims.ts";
+import { machoEntitlementsPlist, needsMachoPostlink } from "../../scripts/build/shims.ts";
 import { getProfile, profiles } from "../../scripts/build/profiles.ts";
 
 const buildScript = join(import.meta.dirname, "..", "..", "scripts", "build.ts");
@@ -145,13 +145,22 @@ describe.skipIf(isWindows)("trimmable build config", () => {
         libs: [],
         flags: flags.ldflags,
         trimmable: true,
-        implicitInputs: machoPostlinkImplicitInputs(cfg),
+      });
+      const helper = link(n, cfg, "deps/WebKit/bin/LLIntSettingsExtractor", [], {
+        libs: [],
+        flags: flags.ldflags,
       });
       const manifest = readManifest(n.toString());
       const edge = manifest.edges.find(edge => edge.outputs.includes(n.rel(out)))!;
       expect(edge.rule).toBe("link_trimmable");
       expect(edge.bindings.ldflags).toContain("--ld-path=/fake/llvm/bin/ld64.lld");
       expect(edge.implicitInputs).toContain("macho-postlink");
+      const helperEdge = manifest.edges.find(edge => edge.outputs.includes(n.rel(helper)))!;
+      expect(helperEdge.rule).toBe("link");
+      expect(helperEdge.implicitInputs).toContain("macho-postlink");
+      if (arch === "aarch64") {
+        expect(helperEdge.implicitInputs).toContain(n.rel(machoEntitlementsPlist(cfg)));
+      }
     },
   );
 

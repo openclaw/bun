@@ -15,7 +15,7 @@ import { assert } from "./error.ts";
 import { writeIfChanged } from "./fs.ts";
 import type { BuildNode, Ninja, PoolName, Rule } from "./ninja.ts";
 import { quote } from "./shell.ts";
-import { machoPostlinkCommand } from "./shims.ts";
+import { machoPostlinkCommand, machoPostlinkImplicitInputs } from "./shims.ts";
 import { toolIdentityFile } from "./tools.ts";
 
 // ---------------------------------------------------------------------------
@@ -619,6 +619,7 @@ export function link(n: Ninja, cfg: Config, out: string, objects: string[], opts
   node.implicitInputs = [
     toolIdentityFile(cfg, "cxx"),
     ...(cfg.ld !== "" ? [toolIdentityFile(cfg, "ld")] : []),
+    ...machoPostlinkImplicitInputs(cfg),
     ...(opts.implicitInputs ?? []),
     ...(trimmable ? [...trimScripts(cfg), removableFeaturesJson(cfg), builtinUsesJson(cfg)] : []),
     ...lazyInputs,
