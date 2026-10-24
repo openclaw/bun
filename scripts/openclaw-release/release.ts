@@ -37,6 +37,7 @@ import {
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { releaseAcceptance } from "./acceptance-policy.mjs";
 
 export type TargetName =
   | "darwin-arm64"
@@ -710,6 +711,8 @@ async function main(argv: string[]): Promise<void> {
       rebuild: { type: "string" },
       tag: { type: "string" },
       publish: { type: "boolean", default: false },
+      "acceptance-ref": { type: "string" },
+      event: { type: "string", default: process.env.GITHUB_EVENT_NAME ?? "" },
       "windows-signed": { type: "boolean", default: false },
       main: { type: "string", default: "origin/main" },
       target: { type: "string", multiple: true },
@@ -751,7 +754,19 @@ async function main(argv: string[]): Promise<void> {
           throw new Error(`${facts.commit} is not on ${values.main}; only commits of the fork's main are released`);
         }
       }
+      const acceptance = releaseAcceptance(
+        source,
+        facts.commit,
+        values["acceptance-ref"],
+        values.event,
+        values.publish,
+      );
+      if (acceptance.required && values.publish && !values["windows-signed"]) {
+        throw new Error("Consumer acceptance publication requires all six signed release targets (--windows-signed)");
+      }
       const built = planTargets(values.targets, values.publish, values["windows-signed"]);
+      output("acceptance-ref", acceptance.ref);
+      output("build-release", String(acceptance.build));
       output("matrix", JSON.stringify(matrix(built, values.publish)));
       output("darwin", String(built.some(name => targets[name].os === "darwin")));
       output("windows", String(built.some(name => targets[name].os === "windows")));
