@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Add opt-in native Worker VM lifecycle tracing with `BUN_WORKER_VM_TRACE`.
 - Deduplicate ambient type packages shared by AOT source projects so copied timer declarations remain callable.
 - Allow AOT runtime views of Bun without installed type declarations while checking declared member types.
 - Avoid repeated chunk-hash reachability scans when bundling long dependency chains or cycles.
