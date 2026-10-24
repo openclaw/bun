@@ -4679,10 +4679,25 @@ ExceptionOr<Ref<SerializedScriptValue>> SerializedScriptValue::create(JSGlobalOb
             // ArrayStorage / Undecided / holes forwarding → fall through to normal serialization path
         }
 
+        unsigned simplePropertyCount = 0;
+        if (canUseObjectFastPath) {
+            // Reject nested values before allocating cross-thread string copies.
+            structure->forEachProperty(vm, [&](const PropertyTableEntry& entry) -> bool {
+                JSValue propertyValue = object->getDirect(entry.offset());
+                if (propertyValue.isCell() && !propertyValue.isString()) {
+                    canUseObjectFastPath = false;
+                    return false;
+                }
+                ++simplePropertyCount;
+                return true;
+            });
+        }
+
         if (canUseObjectFastPath) {
             ASSERT(object != nullptr);
 
             WTF::Vector<SimpleInMemoryPropertyTableEntry> properties;
+            properties.reserveInitialCapacity(simplePropertyCount);
 
             structure->forEachProperty(vm, [&](const PropertyTableEntry& entry) -> bool {
                 // Only enumerable, data properties
@@ -4713,10 +4728,10 @@ ExceptionOr<Ref<SerializedScriptValue>> SerializedScriptValue::create(JSGlobalOb
                         canUseObjectFastPath = false;
                         return false;
                     }
-                    properties.append({ String(entry.key()), WTF::move(stringValue) });
+                    properties.append({ Bun::threadShareableCopy(*entry.key()), Bun::toCrossThreadShareable(stringValue) });
                 } else {
                     // Primitive values are safe to share across threads.
-                    properties.append({ String(entry.key()), value });
+                    properties.append({ Bun::threadShareableCopy(*entry.key()), value });
                 }
 
                 return true;
@@ -4724,12 +4739,6 @@ ExceptionOr<Ref<SerializedScriptValue>> SerializedScriptValue::create(JSGlobalOb
             RETURN_IF_EXCEPTION(scope, Exception { ExistingExceptionError });
 
             if (canUseObjectFastPath) {
-                // A rejected flat-object probe must not pay for cross-thread copies.
-                for (auto& property : properties) {
-                    property.propertyName = Bun::threadShareableCopy(*property.propertyName.impl());
-                    if (auto* string = std::get_if<String>(&property.value))
-                        *string = Bun::toCrossThreadShareable(*string);
-                }
                 return SerializedScriptValue::createObjectFastPath(WTF::FixedVector<SimpleInMemoryPropertyTableEntry>(WTF::move(properties)));
             }
         }
