@@ -122,6 +122,27 @@ fn rejects_options_without_executable() {
 
 #[test]
 fn rejects_options_without_aot() {
+    for (key, cli, api) in [
+        (
+            "count-branches",
+            "--aot-count-branches",
+            "compile.aotCountBranches",
+        ),
+        (
+            "count-arrivals",
+            "--aot-count-arrivals",
+            "compile.aotCountArrivals",
+        ),
+    ] {
+        assert_messages(
+            CompileFlags {
+                developer_words: vec![(key, None)],
+                ..executable()
+            },
+            &format!("{cli} requires --aot"),
+            &format!("{api} requires compile.aot: true"),
+        );
+    }
     assert_messages(
         CompileFlags {
             logs_type_mismatches: true,
@@ -581,6 +602,14 @@ fn flags_from_bun_options() {
 #[test]
 fn suggestions_for_compile_keys() {
     assert_eq!(
+        suggest(b"aotCountBranch", COMPILE_AOT_KEYS),
+        Some("aotCountBranches")
+    );
+    assert_eq!(
+        suggest(b"aotCountArrival", COMPILE_AOT_KEYS),
+        Some("aotCountArrivals")
+    );
+    assert_eq!(
         suggest(b"aotLogTypeMismatch", COMPILE_AOT_KEYS),
         Some("aotLogTypeMismatches")
     );
@@ -600,7 +629,7 @@ fn suggestions_for_compile_keys() {
 
 #[test]
 fn misplaced_keys() {
-    let all = "Options that start with \"aot\": aot, aotExplain, aotLogTypeMismatches";
+    let all = "Options that start with \"aot\": aot, aotCountArrivals, aotCountBranches, aotExplain, aotLogTypeMismatches";
     let error = misplaced_key(b"aott", true).expect("rejected");
     assert_eq!(
         text(&error, BuildApi),
@@ -617,6 +646,13 @@ fn misplaced_keys() {
         "\"aotExplain\" goes inside compile. Write compile: { aotExplain: ... }"
     );
     assert!(misplaced_key(b"aot", true).is_none());
+    for key in [
+        b"aotCountBranches".as_slice(),
+        b"aotCountArrivals".as_slice(),
+    ] {
+        assert!(misplaced_key(key, true).is_none());
+        assert!(misplaced_key(key, false).is_some());
+    }
     assert!(misplaced_key(b"outfile", true).is_none());
     assert!(misplaced_key(b"aott", false).is_none());
     assert!(misplaced_key(b"entrypoints", false).is_none());

@@ -417,6 +417,8 @@ pub(crate) mod js_bundler {
     #[derive(Default)]
     struct RawCompileFlags {
         aot: bool,
+        counts_branches: bool,
+        counts_arrivals: bool,
         logs_type_mismatches: bool,
         explain: Vec<Vec<u8>>,
         omits_function_source: bool,
@@ -434,6 +436,12 @@ pub(crate) mod js_bundler {
             let mut raw = RawCompileFlags {
                 aot: compile
                     .get_boolean_loose(global_this, "aot")?
+                    .unwrap_or(false),
+                counts_branches: compile
+                    .get_boolean_strict(global_this, "aotCountBranches")?
+                    .unwrap_or(false),
+                counts_arrivals: compile
+                    .get_boolean_strict(global_this, "aotCountArrivals")?
                     .unwrap_or(false),
                 logs_type_mismatches: compile
                     .get_boolean_loose(global_this, "aotLogTypeMismatches")?
@@ -498,6 +506,13 @@ pub(crate) mod js_bundler {
         }
 
         fn compile_flags<'a>(&'a self, compile: &'a CompileOptions) -> CompileFlags<'a> {
+            let mut developer_words = Vec::new();
+            if self.counts_branches {
+                developer_words.push(("count-branches", None));
+            }
+            if self.counts_arrivals {
+                developer_words.push(("count-arrivals", None));
+            }
             CompileFlags {
                 is_executable: true,
                 aot: self.aot,
@@ -521,7 +536,7 @@ pub(crate) mod js_bundler {
                     logs: self.logs,
                     is_template: false,
                 },
-                developer_words: vec![],
+                developer_words,
                 is_cross_compile: !compile.compile_target.is_this_bun(),
                 exec_argv: &compile.exec_argv.list,
             }

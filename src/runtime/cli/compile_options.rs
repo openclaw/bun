@@ -21,7 +21,13 @@ use crate::cli::command::{Context, Tag};
 
 const MAX_SUGGESTION_DISTANCE: usize = 3;
 const CODE_GENERATION_FLAG: &[u8] = b"--disallow-code-generation-from-strings";
-pub(crate) const COMPILE_AOT_KEYS: &[&str] = &["aot", "aotExplain", "aotLogTypeMismatches"];
+pub(crate) const COMPILE_AOT_KEYS: &[&str] = &[
+    "aot",
+    "aotCountArrivals",
+    "aotCountBranches",
+    "aotExplain",
+    "aotLogTypeMismatches",
+];
 const EXPLAIN_ALLOWED: &str =
     "one of text, json, guards, guards-json, trim, missed-optimizations, allocations, statistics";
 const LOCALES_ALLOWED: &str = "a list of locale tags, like en,de-AT";
@@ -225,6 +231,8 @@ fn write_spelling(option: OptionName, origin: RequestOrigin, out: &mut Vec<u8>) 
         (Name::Report, _) => "--aot-report",
         (Name::ReportDetail, _) => "--aot-report-detail",
         (Name::List, _) => "--aot-list",
+        (Name::Developer("count-branches"), BuildApi) => "compile.aotCountBranches",
+        (Name::Developer("count-arrivals"), BuildApi) => "compile.aotCountArrivals",
         (Name::Developer(key), _) => developer_flag_name(key),
     };
     out.extend_from_slice(spelling.as_bytes());
@@ -583,7 +591,7 @@ pub(crate) fn apply_developer_word<'a>(
         "out" => options.ir_output_path = Some(Box::from(text)),
         _ => {
             let word = option_word(key, value);
-            // Only the command line passes such a word. The engine's table of them names every pass of the compiler.
+            // The engine's table validates both CLI and API instrumentation words.
             let checked = bun_removable_features::removable_body!(AotCompiler, Abort, {
                 engine::check_option_word(&options.option_words, &word)
             });

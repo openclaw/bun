@@ -4003,6 +4003,29 @@ declare module "bun" {
      */
     aot?: boolean;
     /**
+     * With `aot`: count compiled function entries and both sides of each branch.
+     *
+     * Set `BUN_JSC_aotCountsPath` when running the executable to write the counts.
+     * Set `BUN_JSC_aotMapFilePath` when building to map counter IDs to source locations.
+     * Instrumentation adds runtime overhead; leave it off for performance measurements.
+     *
+     * Equivalent CLI flag: `--aot-count-branches`
+     *
+     * @default false
+     */
+    aotCountBranches?: boolean;
+    /**
+     * With `aot`: count the kinds of values reaching property lookups by name.
+     *
+     * Set `BUN_JSC_aotCountsPath` when running the executable to write the counts.
+     * Instrumentation adds runtime overhead; leave it off for performance measurements.
+     *
+     * Equivalent CLI flag: `--aot-count-arrivals`
+     *
+     * @default false
+     */
+    aotCountArrivals?: boolean;
+    /**
      * With `aot`: strip function names and file names from the executable and write a source map
      * next to it.
      *

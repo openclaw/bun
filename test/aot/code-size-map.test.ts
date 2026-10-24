@@ -2,6 +2,7 @@ import { expect } from "bun:test";
 import { bunEnv, bunExe, isWindows, tempDirWithBunTypes as tempDir } from "harness";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
+import { parseCounts, parseMap } from "./harness/counted-run";
 import { built, slot, spawned } from "./run-programs";
 import { describe, test } from "./supported";
 
@@ -144,6 +145,89 @@ function readMap(path: string) {
 }
 
 describe.concurrent("the code size map", () => {
+  test(
+    "Bun.build counter options match CLI instrumentation and preserve runtime behavior",
+    () =>
+      slot(async () => {
+        using dir = tempDir("aot-api-counter-options", {
+          "app.ts": `
+            function sum(record: Record<string, number>, key: string, rounds: number): number {
+              let total = 0;
+              for (let i = 0; i < rounds; i++) {
+                if (i & 1) total += record[key];
+                else total += record[key] * 2;
+              }
+              return total;
+            }
+            console.log(sum(JSON.parse('{"value":7}'), process.argv[2], Number(process.argv[3])));
+          `,
+          "build.ts": `
+            const result = await Bun.build({
+              entrypoints: ["./app.ts"],
+              compile: { aot: true, outfile: process.argv[2], ...JSON.parse(process.argv[3]) },
+            });
+            if (!result.success) throw new AggregateError(result.logs);
+          `,
+        });
+        const folder = String(dir);
+        for (const mode of ["api-default", "api-disabled", "api-enabled", "cli-enabled"]) {
+          const enabled = mode.endsWith("-enabled");
+          const executable = join(folder, mode + (isWindows ? ".exe" : ""));
+          const mapFile = join(folder, mode + ".map");
+          const countsFile = join(folder, mode + ".counts");
+          const command =
+            mode === "cli-enabled"
+              ? [
+                  bunExe(),
+                  "build",
+                  "--compile",
+                  "--aot",
+                  "--aot-count-branches",
+                  "--aot-count-arrivals",
+                  "app.ts",
+                  "--outfile",
+                  executable,
+                ]
+              : [
+                  bunExe(),
+                  "build.ts",
+                  executable,
+                  JSON.stringify(
+                    mode === "api-default" ? {} : { aotCountBranches: enabled, aotCountArrivals: enabled },
+                  ),
+                ];
+          built(await spawned(command, folder, { ...env, BUN_JSC_aotMapFilePath: mapFile }));
+          expect(
+            await spawned([executable, "value", "10"], folder, {
+              ...env,
+              BUN_DESTRUCT_VM_ON_EXIT: "1",
+              BUN_JSC_aotCountsPath: countsFile,
+            }),
+          ).toMatchObject({ stdout: "105\n", stderr: "", exitCode: 0, signal: null });
+          const map = parseMap(readFileSync(mapFile, "utf8"));
+          const counts = parseCounts(readFileSync(countsFile, "utf8"));
+          if (enabled) {
+            const branches = map.branches.filter(branch => branch.path.endsWith("app.ts"));
+            expect(branches.length).toBeGreaterThan(0);
+            expect(
+              branches.some(
+                branch =>
+                  (counts.byCounter.get(branch.whenTrue) ?? 0) + (counts.byCounter.get(branch.whenFalse) ?? 0) > 0,
+              ),
+            ).toBe(true);
+            expect(map.entries.some(entry => (counts.byCounter.get(entry.counter) ?? 0) > 0)).toBe(true);
+            expect(counts.accessesByName).toBeGreaterThan(0);
+          } else {
+            expect(map.branches).toEqual([]);
+            expect(map.entries).toEqual([]);
+            expect(counts.byCounter.size).toBe(0);
+            expect(counts.accessesByName).toBe(0);
+          }
+        }
+      }),
+    300_000,
+  );
+
   test(
     "every byte of a function is in one range, and the totals by label agree with the ranges",
     () =>
