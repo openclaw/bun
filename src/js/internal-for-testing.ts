@@ -7,6 +7,12 @@
 // In a debug build, the import is always allowed.
 // It is disallowed in release builds unless run in Bun's CI.
 
+export const withBlockedVMTraps: (callback: () => unknown) => unknown = $newCppFunction(
+  "InternalForTesting.cpp",
+  "jsFunction_withBlockedVMTraps",
+  1,
+);
+
 const fmtBinding = $bindgen("fmt_jsc.bind.ts", "fmtString");
 
 export const highlightJavaScript = (code: string) => fmtBinding(code, "highlight-javascript");

@@ -325,6 +325,8 @@ Contextified globals, `DONT_CONTEXTIFY` globals, and the main realm allow a Prox
 
 The pinned engine initializes VM entry storage and deferred microtask scopes so stale native values do not retain otherwise unreachable objects.
 
+Timeouts are checked when `bun:sqlite` statements return, including trigger and full-text index writes, so delayed timer delivery cannot let an elapsed timeout return normally or leave a write cursor locked.
+
 🟢 Fully implemented, including `vm.Script`, `vm.createContext`, `vm.runInContext`, `vm.runInNewContext`, `vm.runInThisContext`, `vm.compileFunction`, `vm.isContext`, the ES module classes `vm.Module`, `vm.SourceTextModule` and `vm.SyntheticModule` (exported without `--experimental-vm-modules`), and `importModuleDynamically` support. The `timeout`, `breakOnSigint`, `cachedData`, `microtaskMode` and `codeGeneration` options are supported. An `importModuleDynamically` callback that returns a promise for a `vm.Module` resolves `import()` to the module object rather than its namespace. `vm.measureMemory()` reports whole-heap figures for every context.
 
 Contexts created with `vm.constants.DONT_CONTEXTIFY` expose the same global object through the returned context, top-level `this`, and `globalThis`, including private-field receiver branding. They also work as `vm.compileFunction` parsing contexts.
