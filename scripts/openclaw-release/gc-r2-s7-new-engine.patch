@@ -1,0 +1,11 @@
+--- a/src/jsc/bindings/CodeCoverage.cpp
++++ b/src/jsc/bindings/CodeCoverage.cpp
+@@ -23,7 +23,7 @@
+ 
+     size_t functionStartOffset = basicBlocks.size();
+ 
+-    const Vector<std::tuple<bool, unsigned, unsigned>>& functionRanges = vm.functionHasExecutedCache()->getFunctionRanges(sourceID);
++    const auto& functionRanges = vm.functionHasExecutedCache()->getFunctionRanges(sourceID);
+ 
+     basicBlocks.reserveCapacity(functionRanges.size() + basicBlocks.size());
+ 
