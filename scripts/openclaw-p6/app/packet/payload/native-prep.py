@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Prepare final native source/runtime only. This helper cannot launch standalone compilation."""
-import argparse,datetime,hashlib,json,os,platform,runpy,shutil,signal,subprocess,sys,tarfile,urllib.request
+import argparse,datetime,hashlib,json,os,platform,runpy,shlex,shutil,signal,subprocess,sys,tarfile,urllib.request
 from pathlib import Path
 
 CUT='670a7ab33bbd2e3ed4f0a5681e138159d74540a1'
@@ -93,7 +93,9 @@ def main():
     unpack=root/'downloads/pnpm-unpack';unpack.mkdir()
     with tarfile.open(archive) as t:t.extractall(unpack,filter='data')
     (unpack/'package').rename(root/'opt/pnpm');(root/'opt/bin').mkdir()
-    (root/'opt/bin/pnpm').symlink_to('../pnpm/pnpm')
+    launcher=root/'opt/bin/pnpm'
+    launcher.write_text(f'#!/bin/sh\nexec {shlex.quote(str(node))} {shlex.quote(str(pnpm))} "$@"\n')
+    launcher.chmod(0o755)
     assert probe([node,pnpm,'--version'])=='12.15.0'
     assert probe(['pnpm','--version'])=='12.15.0'
     native=root/'opt/pnpm/pnpm-native'

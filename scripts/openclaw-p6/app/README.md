@@ -38,8 +38,12 @@ reference. That reference is historical provenance only. It supplies no Linux
 application or performance qualification. The original capsule and P0 index are
 unchanged; their hashes are provenance in `packet/input-projection.json`.
 Unrelated CB4/CB5 history, local paths and private operational notes are excluded.
-All executable owners except `runtime-controller.py` are unchanged from the
-accepted capsule. That controller now preserves terminal exit classifications
+All executable owners except `runtime-controller.py` and `native-prep.py` are
+unchanged from the accepted capsule. Native preparation exposes pnpm through a
+task-local executable shim that runs the pinned Node and official `pnpm.mjs`,
+avoiding the archive's shebang-less native placeholder. The official tarball
+integrity, signed native download and Linux x64 ELF checks remain unchanged.
+The runtime controller preserves terminal exit classifications
 after evidence collection and uses a shorter generated guest label so C2's QMP
 socket path fits Linux's 107-byte limit. The original capsule is unchanged.
 The source proof

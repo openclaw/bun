@@ -2,12 +2,14 @@
 """Synthetic guard tests; no compiler, Docker, paging or network execution."""
 import hashlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
 import stat
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 import unittest
@@ -25,6 +27,83 @@ def module(name):
 
 
 class CandidateGuards(unittest.TestCase):
+    def test_toolchain_exposes_pnpm_without_installing_the_placeholder(self):
+        spec = importlib.util.spec_from_file_location('native_prep', HERE / 'packet/payload/native-prep.py')
+        prep = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(prep)
+
+        def archive(files):
+            output = io.BytesIO()
+            with tarfile.open(fileobj=output, mode='w:gz') as package:
+                for name, (contents, mode) in files.items():
+                    entry = tarfile.TarInfo(name)
+                    entry.size, entry.mode = len(contents), mode
+                    package.addfile(entry, io.BytesIO(contents))
+            return output.getvalue()
+
+        node = (f'#!{sys.executable}\n' + '''import json, sys
+from pathlib import Path
+if sys.argv[1:] == ['--version']:
+    print('v26.12.1')
+else:
+    assert sys.argv[1].endswith('/bin/pnpm.mjs')
+    native = Path(sys.argv[1]).parent.parent / 'pnpm-native'
+    header = bytearray(20)
+    header[:6] = b'\\x7fELF\\x02\\x01'
+    header[18:20] = (62).to_bytes(2, 'little')
+    native.write_bytes(header)
+    print('12.15.0' if sys.argv[2:] == ['--version'] else json.dumps(sys.argv[2:]))
+''').encode()
+        node_archive = archive({'node-v26.12.1-linux-x64/bin/node': (node, 0o755)})
+        pnpm_archive = archive({
+            'package/pnpm': (b'# native binary placeholder, no shebang\n', 0o755),
+            'package/bin/pnpm.mjs': (b'#!/usr/bin/env node\n', 0o644),
+        })
+        responses = {
+            'https://nodejs.org/dist/v26.12.1/SHASUMS256.txt':
+                (hashlib.sha256(node_archive).hexdigest() + '  node-v26.12.1-linux-x64.tar.xz\n').encode(),
+            'https://nodejs.org/dist/v26.12.1/node-v26.12.1-linux-x64.tar.xz': node_archive,
+            'https://registry.npmjs.org/pnpm/-/pnpm-12.15.0.tgz': pnpm_archive,
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary).resolve()
+            root = home / '.cache/oc-ty-ext/P6/app-x64-final-r2-v1'
+            (root / 'source').mkdir(parents=True)
+            (root / 'admission-inputs').mkdir()
+            (root / 'prep-receipts/clone').mkdir(parents=True)
+            (root / 'manifest.json').write_text('{"files":{}}')
+            (root / 'admission-inputs/source-preparation.json').write_text('{"files":{}}')
+            (root / 'prep-receipts/clone/result.json').write_text('{"status":"PASS"}')
+            (root / 'source/package.json').write_text(json.dumps({
+                'packageManager': 'pnpm@12.15.0+sha512.' + hashlib.sha512(pnpm_archive).hexdigest()}))
+            check_output = subprocess.check_output
+
+            def probe(args, **kwargs):
+                if args[:3] == ['git', 'rev-parse', 'HEAD']:
+                    return prep.CUT + '\n'
+                if args[:2] == ['git', 'status']:
+                    return ''
+                return check_output(args, **kwargs)
+
+            with patch.object(Path, 'home', return_value=home), \
+                 patch.object(prep.platform, 'system', return_value='Linux'), \
+                 patch.object(prep.platform, 'machine', return_value='x86_64'), \
+                 patch.object(prep.shutil, 'disk_usage', return_value=type('Disk', (), {'free': 50_000_000_000})()), \
+                 patch.object(prep.urllib.request, 'urlopen', side_effect=lambda url, **_: io.BytesIO(responses[url])), \
+                 patch.object(prep.subprocess, 'check_output', side_effect=probe), \
+                 patch.object(sys, 'argv', ['native-prep.py', '--root', str(root), '--phase', 'toolchain']), \
+                 patch.object(sys, 'stdout', io.StringIO()):
+                code = prep.main()
+            result = json.loads((root / 'prep-receipts/toolchain/result.json').read_text())
+            self.assertEqual(code, 0, result)
+            self.assertEqual(result['pnpm']['version'], '12.15.0')
+            self.assertTrue((root / 'opt/pnpm/pnpm').read_bytes().startswith(b'# '))
+            env = {'PATH': str(root / 'opt/node/bin') + ':/usr/bin:/bin'}
+            direct = subprocess.run([str(root / 'opt/bin/pnpm'), 'fixture', 'two words', '--flag'],
+                                    env=env, capture_output=True, text=True, timeout=5)
+            self.assertEqual(direct.stdout.strip(), '["fixture", "two words", "--flag"]')
+            self.assertEqual(direct.returncode, 0, direct.stderr)
+
     def test_terminal_status_survives_child_cleanup_failure(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

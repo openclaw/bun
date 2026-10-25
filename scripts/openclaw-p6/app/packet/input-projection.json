@@ -49,7 +49,7 @@
     },
     "native-prep.py": {
       "originalSha256": "8bfd331144ad876405e73f317e839b35cfc7647288f9fb2c34f95dab86f66e91",
-      "projectedSha256": "161d1732a7569dc695854574e24dfcf2981e6724f0e126ee81cbe6396eb483c8"
+      "projectedSha256": "f9e30ec076ab5d954f9107cf9a96f84e92a5ac36396717d48ecfb71f02d3f553"
     },
     "preserve.py": {
       "originalSha256": "5851e29c0832b017f7e7a98b0f64e51b4951f451574f49a6d9632f0a57b08d34",
@@ -80,7 +80,7 @@
       "projectedSha256": "1c95d9e5896bf9a0993c1819fae708d7dc4c9d355913b0dc0d87c6fec7773989"
     }
   },
-  "manifestSha256": "b231556d4c03faf8131fd3577113c7393f230646f5434f51b8c98145f4a057dd",
+  "manifestSha256": "e73a2330232bfabdc36155d0496eaa43ab0ea8d8b6ce250e3b6855590cd98e04",
   "runtimeControllerRepair": {
     "terminalClassification": "Actual SIGTERM fixture child exit -15 formerly normalized to 1; retain timeout, cancellation and signal classification after cleanup",
     "guestQmpPath": "Generated C2 guest label shortened consistently for preparation and raw collection, reducing Linux QMP pathname from108 to98bytes"
@@ -100,5 +100,10 @@
       "Knowledge plugin with two workers and assets"
     ],
     "currentC2QmpPathBytes": 96
+  },
+  "pnpmLauncherRepair": {
+    "cause": "Official pnpm archive exposes a shebang-less native placeholder until its installation script replaces it; Python exec does not provide shell fallback.",
+    "repair": "Install a task-local executable command shim that execs the pinned Node and official pnpm.mjs with forwarded arguments.",
+    "unchanged": "Official archive SHA512 pin, signed native downloader, native Linux x64 ELF check, source and compiler pins."
   }
 }

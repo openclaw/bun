@@ -34,7 +34,7 @@
     "guest/shared/kvm-preflight.py": "6ba9f17413342ddca66437bdb3c9b18d7c7357c1028470ebdebc689981e41ca5",
     "guest/shared/run-kvm-guest.py": "bca0eac25f6bd828f67c895c675fea6c8202583b1e6027f6a83f22212860ab42",
     "measure-command.py": "373b56ced3b931233bc15a1d97c634f486602b3c9e5a02d75e0688d2f5552a5a",
-    "native-prep.py": "161d1732a7569dc695854574e24dfcf2981e6724f0e126ee81cbe6396eb483c8",
+    "native-prep.py": "f9e30ec076ab5d954f9107cf9a96f84e92a5ac36396717d48ecfb71f02d3f553",
     "preserve.py": "c4bf1af86d21050f6d7f9c4b801017de18ac50ba35f8eda8179e00c88e2575ca",
     "qualification/README.md": "9853f67d28ba0e9cff3b274dd7cab73ac7a6ccc55bd111431bae424106712640",
     "qualification/docker-image.py": "5cc18ed7bf5d02fc0eed0d2688dba355e470e62fe7910b4a679eab0751c9a87a",
