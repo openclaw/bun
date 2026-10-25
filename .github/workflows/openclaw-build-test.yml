@@ -1,0 +1,98 @@
+name: P6 native Linux x64 AOT compilers
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p6-native-linux-x64-compilers
+  cancel-in-progress: false
+
+jobs:
+  linux-x64:
+    if: github.repository == 'openclaw/bun' && github.ref == 'refs/heads/openclaw/aot-rd-P6'
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    timeout-minutes: 240
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Establish work deadline
+        run: |
+          {
+            echo "P6_DEADLINE_EPOCH=$(( $(date +%s) + 12600 ))"
+            echo "P6_WORK=$RUNNER_TEMP/p6-aot-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            echo "P6_CONTAINER=p6-aot-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          } >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/openclaw-p6
+      - name: Stage exact source and bootstrap native Docker toolchain
+        run: |
+          mkdir -p "$P6_WORK"
+          bash scripts/openclaw-p6/host.sh bootstrap
+      - name: Build and preserve standard compiler
+        id: build_standard
+        run: bash scripts/openclaw-p6/host.sh cb-standard
+      - name: Export standard compiler
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: p6-linux-x64-standard-${{ github.sha }}-attempt${{ github.run_attempt }}
+          path: ${{ env.P6_WORK }}/data/rd150c-x64-highmem-deadline-v1/preserved-cb-standard/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+      - name: Build and preserve physical ShadowRealm-off compiler
+        id: build_shadowrealm_off
+        run: bash scripts/openclaw-p6/host.sh cb-compat
+      - name: Export ShadowRealm-off compiler
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: p6-linux-x64-shadowrealm-off-${{ github.sha }}-attempt${{ github.run_attempt }}
+          path: ${{ env.P6_WORK }}/data/rd150c-x64-highmem-deadline-v1/preserved-cb-compat/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+      - name: Stop and remove owned container
+        if: always()
+        run: bash scripts/openclaw-p6/host.sh cleanup
+      - name: Export UNQUALIFIED FAILED standard compiler diagnostics
+        if: failure() && steps.build_standard.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: p6-linux-x64-UNQUALIFIED-FAILED-standard-${{ github.sha }}-attempt${{ github.run_attempt }}
+          path: |
+            ${{ env.P6_WORK }}/data/rd150c-x64-highmem-deadline-v1/build-standard/bun
+            ${{ env.P6_WORK }}/data/rd150c-x64-highmem-deadline-v1/build-standard/configure.json
+          if-no-files-found: warn
+          compression-level: 0
+          retention-days: 7
+      - name: Export UNQUALIFIED FAILED ShadowRealm-off compiler diagnostics
+        if: failure() && steps.build_shadowrealm_off.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: p6-linux-x64-UNQUALIFIED-FAILED-shadowrealm-off-${{ github.sha }}-attempt${{ github.run_attempt }}
+          path: |
+            ${{ env.P6_WORK }}/data/rd150c-x64-highmem-deadline-v1/build-c2/bun
+            ${{ env.P6_WORK }}/data/rd150c-x64-highmem-deadline-v1/build-c2/configure.json
+          if-no-files-found: warn
+          compression-level: 0
+          retention-days: 7
+      - name: Export compiler receipts, including failures
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: p6-linux-x64-receipts-${{ github.sha }}-attempt${{ github.run_attempt }}
+          path: |
+            ${{ env.P6_WORK }}/data/proof/
+            ${{ env.P6_WORK }}/data/rd150c-x64-highmem-deadline-v1/receipts/
+            ${{ env.P6_WORK }}/data/rd150c-x64-highmem-deadline-v1/source-ready.json
+            ${{ env.P6_WORK }}/data/rd150c-x64-highmem-deadline-v1/raw-cb-*/
+            ${{ env.P6_WORK }}/container-final.json
+            ${{ env.P6_WORK }}/containers-after-cleanup.txt
+          if-no-files-found: warn
+          compression-level: 0
+          retention-days: 7
