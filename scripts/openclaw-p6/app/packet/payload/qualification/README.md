@@ -165,3 +165,29 @@ owner-inputs.json records original and staged hashes separately.
 This version preserves v2 and sets umask077 before fixture creation, resolves the admitted source to its physical path before existing Docker test-state helpers, and copies only runtime/package.json into readable /app/package.json instead of a symlink into the private artifact runtime. Docker image construction already uses a verified-by-build task local tag and checked Python subprocess exits; it does not use the ARM-specific base image ID/digest or Bash3.2 conditional pattern. No product source, artifact mode or app security change is made. Use fresh qualification-harness-v3 and transport qualification-v3.data.
 
 Docker fixture now uses the exact root-approved v6 Dockerfile, adding source-matched jszip3.10.2 and tar7.5.22 alongside ws8.22.0 under /opt/openclaw-e2e with /app/node_modules pointing to that tooling. This repairs existing ClawHub fixture dependencies; it does not supply the AOT application or change its embedded/installed plugin resolver. The nested SDK product investigation remains separate.
+
+## Fetched Teams follow-on
+
+`teams-fetched` is an explicit functional lane; default variant phases and benchmarks do not schedule it. It uses the accepted ARM R4 Teams assertion and config unchanged, with the same package pin (only its historical operator path is omitted), then verifies the loaded `dist/index.cjs` bytes and its compiled SDK import. Every native x64 artifact must supply its own successful build/admission and pass the existing complete runtime-tree and runtime-free-PATH gates. The fixture copies the artifact before use and keeps all package/state writes in a fresh output directory.
+
+After separate root admission, `python3 -B /p6-recipe/app/teams.py --variant js` (or `c2-off`, or a later selected `ts`) invokes the existing deadline and runtime-controller owners. Install is bounded at 900 seconds, inspection at 300, and the read-only assertion at 30. The 1350-second functional phase allows their cleanup and finalization. Its 45-second outer cleanup exceeds the 15-second inner command cleanup; the deadline owner allows 60 seconds. Insufficient enclosing budget records not-run. Timeout, signal, and forced cleanup remain failures.
+
+The result is under `qualification-results/<variant>-teams-fetched/run/result.json`, with unchanged assertion output in `verification.json`, installed-CJS evidence in `cjsBoundary`, and raw command output/receipts. The runtime owner archives it and export reports it under `followOnProof`; duration/CPU/RSS are excluded from performance conclusions. No prior-platform or prior-run evidence is promoted to a current pass.
+
+### Replay after the originating runner is removed
+
+The adapter does not depend on keeping the originating runner alive. Use the existing `app/benchmark/download.py` owner to fetch one completed app export with actual run/attempt/head/artifact/ZIP pins. For the initial R4 JS/C2 run the originating helper head is `a61fc72a57672fafe87fc1bda9a8e231a5f98bc7`; the artifact ID/digest and completion evidence remain unbound until that run finishes. Interrupted exports still need the download owner's explicit cleanup proof. Do not combine different originating runs.
+
+On a fresh native Linux x64 host, check out the separately reviewed follow-on helper commit, run its `app/packet/payload/stage.py`, clone OpenClaw commit `4fa442e332745f1f58ccedd27106abdafcf4e019` into ROOT/source, and unpack official Node26.12.1 linux-x64 into ROOT/opt/node. No dependency install, pnpm build, compiler build, or AOT compile is needed: the source-owned archive checker imports only source files. The replay driver verifies the exact source HEAD/tree and clean checkout, Node bytes against the original native build, both originating compiler pins/records, the complete indexed export, and each preserved artifact through unchanged `preserve.py verify`. Compiler provenance is verified from the originating build/adoption/archive chain; no compiler executes on the replay host.
+
+With a new synthetic P6_WORK directory and an absolute P6_DEADLINE_EPOCH, invoke these explicit phases from the reviewed helper checkout (ROOT is the fixed `/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1`):
+
+```sh
+python3 -B scripts/openclaw-p6/deadline_process.py --deadline-epoch "$P6_DEADLINE_EPOCH" --reserve-seconds 1200 --cleanup-grace-seconds 60 --receipt "$P6_WORK/restore-js-deadline.json" -- python3 -B scripts/openclaw-p6/app/teams-replay.py --download /absolute/verified-app-download --helper-head <reviewed-follow-on-commit> --variant js
+python3 -B scripts/openclaw-p6/app/teams.py --variant js
+python3 -B scripts/openclaw-p6/deadline_process.py --deadline-epoch "$P6_DEADLINE_EPOCH" --reserve-seconds 1200 --cleanup-grace-seconds 60 --receipt "$P6_WORK/restore-c2-deadline.json" -- python3 -B scripts/openclaw-p6/app/teams-replay.py --download /absolute/verified-app-download --helper-head <reviewed-follow-on-commit> --variant c2-off
+python3 -B scripts/openclaw-p6/app/teams.py --variant c2-off
+python3 -B scripts/openclaw-p6/app/export.py
+```
+
+The replay driver is preparation only: it never runs the app. It requires an original successful build, original passing core/controller evidence, and complete preserved artifact for that selected variant; missing or contradictory evidence refuses restoration. Original build/admission bytes are retained unchanged. `teams-replay/<variant>/replay-binding.json` identifies the source run and local restoration, while the current workspace is marked `untimed-functional-replay`. Each actual Teams phase still needs its own successful outer deadline receipt; an inner pass with missing/failed/cancelled outer evidence remains an unrun proof gap. Run later TS from its own completed TS export with the same procedure, in a fresh host/root/work directory. Actual artifact/pins and native execution remain pending.

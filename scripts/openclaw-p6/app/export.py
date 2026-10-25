@@ -14,6 +14,8 @@ ROOT = Path('/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1')
 PHASES = ['core', 'elf-floor', 'zero-js', 'node-vm', 'node-vm-native-workers', 'pty',
           'plugin', 'docker-image', 'docker-gateway-network', 'docker-kitchen-sink', 'docker-cron']
 
+FOLLOW_ON_PHASES = ['teams-fetched']
+
 
 def load(path):
     return json.loads(path.read_text())
@@ -35,18 +37,20 @@ def selections(work, root):
         yield work / name, Path('host') / name
     for variant in VARIANTS:
         yield root / 'admissions' / (variant + '.json'), Path('admissions') / (variant + '.json')
-        for name in [variant + '-skipped.json', variant + '-paging-live.json']:
+        for name in [variant + '-skipped.json', variant + '-paging-live.json', variant + '-teams-fetched-skipped.json']:
             yield work / name, Path('host') / name
-        for phase in ['preflight', 'build', 'preserve', *PHASES, 'guest-prerequisites', 'guest-security']:
+        for phase in ['preflight', 'build', 'preserve', *PHASES, *FOLLOW_ON_PHASES, 'guest-prerequisites', 'guest-security']:
             name = f'{variant}-{phase}-deadline.json'
             yield work / name, Path('host') / name
         for name in ['plan.json', 'result.json', 'artifact-contract.stdout', 'artifact-contract.stderr',
                      'measurement/receipt.json', 'measurement/stdout.txt', 'measurement/stderr.txt',
                      'measurement/time.txt']:
             yield root / 'build-receipts' / variant / name, Path('build-receipts') / variant / name
-        for phase in [*PHASES, 'guest-prerequisites', 'guest-security']:
+        for phase in [*PHASES, *FOLLOW_ON_PHASES, 'guest-prerequisites', 'guest-security']:
             for name in ['result.json', 'raw-index.json', 'raw-evidence.tar.gz']:
                 yield root / 'runtime-results' / (variant + '-' + phase) / name, Path('runtime-results') / (variant + '-' + phase) / name
+        for name in ['verification.json', 'replay-binding.json']:
+            yield root / 'teams-replay' / variant / name, Path('teams-replay') / variant / name
         yield root / 'qualification-results' / (variant + '-core') / 'run/result.json', Path('qualification-results') / (variant + '-core') / 'run/result.json'
         for name in ['artifact.tar', 'transport.json']:
             yield root / 'preserved' / variant / name, Path('preserved') / variant / name
@@ -63,6 +67,32 @@ def selections(work, root):
     for name in ['compiler-records.json', 'plugins/desktop.json', 'plugins/plugin-selection.json',
                  'source-preparation.json', 'p0-reference.json', 'P0-artifacts.json']:
         yield root / 'admission-inputs' / name, Path('admission-inputs') / name
+
+
+
+def follow_on_status(work, root, variant, phase, build_path):
+    receipt = facts(root / 'runtime-results' / (variant + '-' + phase) / 'result.json')
+    observed = receipt.get('status', 'invalid-receipt')
+    if observed != 'phase-passed':
+        return observed
+    deadline = facts(work / (variant + '-' + phase + '-deadline.json'))
+    if ((work / (variant + '-' + phase + '-skipped.json')).exists()
+        or deadline.get('exitCode') != 0 or deadline.get('timedOut') is not False
+        or deadline.get('interruptedBySignal') is not None
+        or deadline.get('finishedBeforeReserve') is not True):
+        return 'failed-or-missing-outer-receipt'
+    build = facts(build_path)
+    if build.get('status') != 'built-unsigned' or build.get('phase') != 'complete':
+        return 'invalid-build-binding'
+    artifact = build.get('artifact', {})
+    with build_path.open('rb') as stream:
+        build_sha = hashlib.file_digest(stream, 'sha256').hexdigest()
+    expected = {'variant': variant, 'sourceCommit': '4fa442e332745f1f58ccedd27106abdafcf4e019',
+                'binarySha256': artifact.get('executable', {}).get('sha256'),
+                'manifestSha256': artifact.get('manifestSha256'), 'actualBuildReceiptSha256': build_sha}
+    if any(value is None or receipt.get(key) != value for key, value in expected.items()):
+        return 'invalid-build-binding'
+    return observed
 
 
 def summary(work, root):
@@ -83,6 +113,8 @@ def summary(work, root):
                                     'full raw-trace strict zero-disk-JS and Worker boundary assessment',
                                     'live provider streamed-turn proof',
                                     'fetched CJS plugin load through the compiled SDK (PR183822); current plugin/Docker lanes do not establish this boundary']}
+    result['originatingAppExport'] = execution.get('originatingAppExport') if selection_status == 'bound' else None
+    result['functionalReplay'] = execution.get('kind') == 'untimed-functional-replay' if selection_status == 'bound' else False
     result['nativeCompatibility'] = {'status': facts(root / 'prep-receipts/compatibility/result.json').get('status', 'not-run')}
     result['scheduledPhasesComplete'] = selection_status == 'bound' and result['nativeCompatibility']['status'] == 'PASS'
     for variant in VARIANTS:
@@ -100,7 +132,10 @@ def summary(work, root):
             row['runtime'][phase] = facts(path).get('status', 'invalid-receipt')
         row['complete'] = not skipped.is_file() and row['build'] == 'built-unsigned' and all(value == 'phase-passed' for value in row['runtime'].values())
         result['scheduledPhasesComplete'] = result['scheduledPhasesComplete'] and row['complete']
+        row['followOnProof'] = {phase: follow_on_status(work, root, variant, phase, build) for phase in FOLLOW_ON_PHASES}
         result['variants'][variant] = row
+    if requested and all(result['variants'][variant].get('followOnProof', {}).get('teams-fetched') == 'phase-passed' for variant in requested):
+        result['unrunRequiredProof'] = [item for item in result['unrunRequiredProof'] if not item.startswith('fetched CJS plugin load')]
     result['guestSecurity'] = {variant: ('not-selected' if selection_status == 'bound' and variant not in requested else
         facts(root / 'runtime-results' / (variant + '-guest-security') / 'result.json').get('status', 'invalid-receipt'))
         for variant in ['js', 'c2-off']}

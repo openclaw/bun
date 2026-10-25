@@ -5,7 +5,7 @@ from pathlib import Path
 HERE=Path(__file__).resolve().parent
 CUT='4fa442e332745f1f58ccedd27106abdafcf4e019'
 ROOT=Path('/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1')
-QUALIFIER_SHA='2b4de67c6f749079ed01a1bc220b4a2bba4838b26754d0b096f9c3188debd712'
+QUALIFIER_SHA='abac81c7af6762874c5954192a0f2eade85aaf902e668a9b3ce283faa8269fb2'
 
 def sha(p):
  with Path(p).open('rb') as f:return hashlib.file_digest(f,'sha256').hexdigest()

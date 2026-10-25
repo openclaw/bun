@@ -5,9 +5,12 @@ phase=${1:?bootstrap, prepare, variant or cleanup}
 : "${P6_CONTAINER:?Missing owned container}"
 recipe=$(cd "$(dirname "$0")/.." && pwd -P)
 mode=${P6_EXECUTION_MODE:-app}
-case "$mode" in app|benchmark) ;; *) exit 2;; esac
+case "$mode" in app|benchmark|teams) ;; *) exit 2;; esac
 initializer="$recipe/app/initialize.py"
 if [[ "$mode" == benchmark ]]; then initializer="$recipe/app/benchmark/initialize.py"; fi
+if [[ "$mode" == teams ]]; then initializer="$recipe/app/teams-mode/initialize.py"; fi
+execution_file="$P6_WORK/execution.json"
+if [[ "$mode" == teams ]]; then execution_file="$P6_WORK/teams-execution.json"; fi
 base=/home/runner/.cache/oc-ty-ext/P6
 root=$base/app-x64-final-r4-v1
 label="openclaw.p6.actions=$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
@@ -83,6 +86,11 @@ if [[ "$phase" == bootstrap ]]; then
     [[ -d "$P6_WORK/benchmark-download" ]]
     inputs=(--mount "type=bind,src=$P6_WORK/benchmark-download,dst=$P6_WORK/benchmark-download,readonly")
   fi
+  if [[ "$mode" == teams ]]; then
+    [[ -d "${P6_WORK}-download" && -d "$GITHUB_WORKSPACE/.git" ]]
+    inputs=(--mount "type=bind,src=${P6_WORK}-download,dst=${P6_WORK}-download,readonly"
+      --mount "type=bind,src=$GITHUB_WORKSPACE,dst=/p6-helper,readonly")
+  fi
   buildx=$(timeout --kill-after=5s 30s docker info --format '{{range .ClientInfo.Plugins}}{{if eq .Name "buildx"}}{{.Path}}{{end}}{{end}}')
   [[ -n "$buildx" && -f "$buildx" && -x "$buildx" ]]
   timeout --kill-after=10s 50s docker run --detach --name "$P6_CONTAINER" --init \
@@ -92,7 +100,7 @@ if [[ "$phase" == bootstrap ]]; then
     --mount "type=bind,src=$base,dst=$base" \
     --mount "type=bind,src=$P6_WORK,dst=$P6_WORK" \
     "${inputs[@]}" \
-    --mount "type=bind,src=$P6_WORK/execution.json,dst=/p6-execution.json,readonly" \
+    --mount "type=bind,src=$execution_file,dst=/p6-execution.json,readonly" \
     --mount "type=bind,src=$(command -v docker),dst=/p6-host-docker,readonly" \
     --mount "type=bind,src=$buildx,dst=/p6-host-buildx,readonly" \
     --mount type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock \
@@ -102,7 +110,7 @@ if [[ "$phase" == bootstrap ]]; then
   timeout --kill-after=5s 30s docker exec "$P6_CONTAINER" ln -s /p6-host-buildx /usr/libexec/docker/cli-plugins/docker-buildx
   exit
 fi
-[[ "$mode" == app ]] || { echo 'Benchmark phases use benchmark/host.py' >&2; exit 2; }
+[[ "$mode" == app ]] || { echo 'Non-app phases use their dedicated host owner' >&2; exit 2; }
 if [[ "$phase" == paging ]]; then
   remaining=$((P6_DEADLINE_EPOCH - $(date +%s) - 1200))
   (( remaining > 120 )) || exit 124

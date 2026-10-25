@@ -4,7 +4,7 @@ import argparse,datetime,hashlib,json,os,platform,shutil,signal,subprocess,sys,t
 from pathlib import Path
 HERE=Path(__file__).resolve().parent
 ROOT=Path('/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1')
-PHASES=['core','elf-floor','zero-js','node-vm','node-vm-native-workers','pty','plugin','docker-image','docker-gateway-network','docker-kitchen-sink','docker-cron','guest-prerequisites','guest-security']
+PHASES=['core','elf-floor','zero-js','node-vm','node-vm-native-workers','pty','plugin','teams-fetched','docker-image','docker-gateway-network','docker-kitchen-sink','docker-cron','guest-prerequisites','guest-security']
 def require(ok,message):
  if not ok:raise ValueError(message)
 def sha(p):
@@ -90,9 +90,9 @@ def main():
   signal_state['signal']=signum
   if not signal_state['finalizing']:raise RecoveryInterrupted('Qualification interrupted by signal '+str(signum))
  handlers={sig:signal.signal(sig,interrupted) for sig in [signal.SIGTERM,signal.SIGINT,signal.SIGHUP]}
- def run(command,timeout=600,gateway_owning=False):
+ def run(command,timeout=600,gateway_owning=False,cleanup_grace=15):
   record['command']=list(map(str,command));write(directory/'result.json',record)
-  grace=15
+  grace=cleanup_grace
   if gateway_owning:
    budget=json.loads(subprocess.check_output([str(ROOT/'opt/node/bin/node'),str(ROOT/'qualification/harness/process-stop.mjs'),'--gateway-budget',str(ROOT/'source')],env=env,text=True,timeout=30))
    record['gatewayShutdownBudget']=budget
@@ -116,7 +116,11 @@ def main():
    output=ROOT/'qualification-results'/label;raw.append(output)
    command=[sys.executable,'-B',ROOT/'qualification/qualify.py','--artifact',artifact,'--binary-sha256',binary_sha,'--manifest-sha256',manifest_sha,'--build-receipt',built,'--build-receipt-sha256',sha(built),'--lane',a.phase,'--out',output,'--run']
    if a.phase.startswith('docker-') and a.phase!='docker-image':command+=['--docker-image-receipt',image_receipt]
-   run(command,1200 if a.phase=='docker-image' else 600,gateway_owning=a.phase in ['core','zero-js','node-vm','node-vm-native-workers','pty'])
+   if a.phase=='teams-fetched':
+    budget=read(ROOT/'qualification/teams-fetched/budget.json')
+    run(command,budget['phaseSeconds'],cleanup_grace=budget['phaseCleanupSeconds'])
+   else:
+    run(command,1200 if a.phase=='docker-image' else 600,gateway_owning=a.phase in ['core','zero-js','node-vm','node-vm-native-workers','pty'])
    if a.phase=='elf-floor':record['abi']=read(output/'elf-floor.json')
    elif a.phase=='docker-image':require(read(output/'result.json')['status']=='PASS','Docker image failed')
    elif not a.phase.startswith('docker-'):

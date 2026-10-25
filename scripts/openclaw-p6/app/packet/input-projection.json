@@ -41,11 +41,11 @@
     },
     "guest/manifest.json": {
       "originalSha256": "4280c2f62a9168b812176bab9fb762432a5425fe29821a1720471d2ece242d12",
-      "projectedSha256": "b19537eeb2ebf1ca8ee617c89c885bc127a86ef36be3f6c257d33d735e833acf"
+      "projectedSha256": "5adc7b1107202bbef7e1bef4d07c16bc779ba4a060334e1dd469c254f8b2c828"
     },
     "guest/prepare-guest.py": {
       "originalSha256": "936bf471c1c6e06ac2bb1ec1efec0e8e0c4583853e8fcb0ff1a53fb42cfacd52",
-      "projectedSha256": "295af4688985ee5c2e17f0641e0c77d56e3153f3dca558965fff0f358469ab1e"
+      "projectedSha256": "1737d66cda6ef635973bd5ddcffdd43c19357f5c4687d9d6bf90a4ffe248babf"
     },
     "native-prep.py": {
       "originalSha256": "8bfd331144ad876405e73f317e839b35cfc7647288f9fb2c34f95dab86f66e91",
@@ -57,15 +57,15 @@
     },
     "qualification/README.md": {
       "originalSha256": "cbf5adaed9ff418fa5d0092994cf05166efe215cf56a153c8dcff17d3f1e9fbb",
-      "projectedSha256": "e3041b8f7a7f07f8c4700098fe45759293cb4d9f9c57c7a57074abc5c2e6786c"
+      "projectedSha256": "35c679361dfe79a18ff0c568bc239713869c2533a32fd4a9d9bcaac1f0e213da"
     },
     "qualification/manifest.json": {
       "originalSha256": "6a38454878806509950a1ea7fb9a15ffb2bb79b53f4ef586bee131474a3e9221",
-      "projectedSha256": "91d02cbcb2167a5b10cd95db8345b19a5c1897b71eaaf0796b1ff42a41e1ca07"
+      "projectedSha256": "623904adcf11bcb37b476f0de7b2a17e09a3a4c5da91cabc5a3e4446dc9f1caa"
     },
     "qualification/qualify.py": {
       "originalSha256": "c32886e391f27eb8c66d333d07b15b4af4c8081c329bad2fe8dca28b2dd9c2d7",
-      "projectedSha256": "2b4de67c6f749079ed01a1bc220b4a2bba4838b26754d0b096f9c3188debd712"
+      "projectedSha256": "abac81c7af6762874c5954192a0f2eade85aaf902e668a9b3ce283faa8269fb2"
     },
     "qualification/source-contract.json": {
       "originalSha256": "e2056668fd189ba8505c75fbef695c535930600e08d6e8d7bb0df55f9cf13d2b",
@@ -73,14 +73,14 @@
     },
     "runtime-controller.py": {
       "originalSha256": "d0974f26f8432bc3fe5c59afb640105ce53dc0d268d8f85fe0598d363ff5d7d9",
-      "projectedSha256": "1e93b19894910a849ff261ca940972e7da1817758653864339c7c2d5037c4a48"
+      "projectedSha256": "659dac44a521dffa8111001b4684d02374b996b5e29330f01c00d3cae92ee0d7"
     },
     "stage.py": {
       "originalSha256": "d40bdf22aeae208f1165a0d74ee0b87eb7e93e9144a5092212211633b59124d3",
       "projectedSha256": "29ad1ad089f28720ff1ac2c3036c5153b873856698ecb18122411a0c0d0db277"
     }
   },
-  "manifestSha256": "09230146770646b82bf5c4859cfc3ccda3b9d644ee3e2305bc6001cd6f5b311d",
+  "manifestSha256": "71c34cdc0397592e9cf7470670fc57f96eb205cfca85e3799336edec47409914",
   "runtimeControllerRepair": {
     "terminalClassification": "Actual SIGTERM fixture child exit -15 formerly normalized to 1; retain timeout, cancellation and signal classification after cleanup",
     "guestQmpPath": "Generated C2 guest label shortened consistently for preparation and raw collection, reducing Linux QMP pathname from108 to98bytes"
@@ -113,5 +113,28 @@
     "sourceBudgetOwner": "gateway-shutdown-budget.mjs",
     "sourceBudgetSha256": "02757141fd71a0e03ee885d952edbcd664395a420b26c6b7ba596529336baa3a",
     "scope": "Gateway source budget, explicit forced-stop failure and runtime-only outer cleanup grace; operation/default budgets retained"
+  },
+  "fetchedTeamsFollowOn": {
+    "baseHead": "a61fc72a57672fafe87fc1bda9a8e231a5f98bc7",
+    "sourceCommit": "4fa442e332745f1f58ccedd27106abdafcf4e019",
+    "acceptedArmManifestSha256": "245a99b44189822443da485006ffa65f599c9edcc93c73f4f2120319b628455f",
+    "acceptedArmAcceptanceSha256": "8c3d796d709e7da0b74900e2117ec912240cc2b4f9709d581b2fb5ed1b897f11",
+    "rootSourceProofSha256": "69a1a26a7c138ccb26fc03671949edf27b89c126036ce53f0fabc69bb16cfee5",
+    "unchangedFixtureFiles": {
+      "assert-teams.py": "47b32e68002abdf7649a098c4783603f30eb53f43118fb425485e5e6c5976ed4",
+      "config.template.json": "6eb88933badf9e833be2c47bebb0a0667f441efdb6ae3862819be5dffca0cc6e"
+    },
+    "runtimeFactsBound": false,
+    "executionAuthorized": false,
+    "defaultScheduleChanged": false,
+    "performanceEligible": false,
+    "pinProjection": {
+      "originalSha256": "f7225212c61579fe184ec455d733474ceee0734d17cf4e2c4516225c49fb182f",
+      "projectedSha256": "4c9c165d8367dc62df059d84cceef38d40c933c8207793a5d5d41791166eeb59",
+      "omittedFields": [
+        "historicalP0Lock.path"
+      ],
+      "reason": "Public artifact omits the historical operator path; package/version/tarball/integrity/dependency fields are unchanged."
+    }
   }
 }

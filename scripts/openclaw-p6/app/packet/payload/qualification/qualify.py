@@ -5,7 +5,7 @@ from pathlib import Path
 
 HERE=Path(__file__).resolve().parent
 CUT='4fa442e332745f1f58ccedd27106abdafcf4e019'
-LANES=['core','zero-js','node-vm','node-vm-native-workers','pty','plugin','elf-floor','docker-image','docker-gateway-network','docker-kitchen-sink','docker-cron']
+LANES=['core','zero-js','node-vm','node-vm-native-workers','pty','plugin','teams-fetched','elf-floor','docker-image','docker-gateway-network','docker-kitchen-sink','docker-cron']
 
 def sha(path):
  h=hashlib.sha256()
@@ -66,6 +66,8 @@ def main():
   scenario='node-vm' if a.lane=='node-vm-native-workers' else a.lane
   command=[str(node),str(harness/'capability-runner.mjs'),'--artifact',str(artifact),'--source',str(source),'--out',str(run),'--scenario',scenario]
   if a.lane=='node-vm-native-workers':command+=['--native-workers']
+ elif a.lane=='teams-fetched':
+  command=[sys.executable,'-B',str(HERE/'teams-fetched.py'),str(out/'input-proof.json')]
  elif a.lane=='elf-floor':
   external=[str(path.relative_to(artifact)) for path in artifact.rglob('*') if path.is_symlink() and path.resolve()!=artifact and artifact not in path.resolve().parents]
   if external:p.error('External artifact symlinks prevent complete artifact/sidecar floor: '+repr(external))

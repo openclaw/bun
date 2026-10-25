@@ -1,7 +1,7 @@
 {
   "sourceCommit": "4fa442e332745f1f58ccedd27106abdafcf4e019",
   "files": {
-    "README.md": "e3041b8f7a7f07f8c4700098fe45759293cb4d9f9c57c7a57074abc5c2e6786c",
+    "README.md": "35c679361dfe79a18ff0c568bc239713869c2533a32fd4a9d9bcaac1f0e213da",
     "docker-image.py": "5cc18ed7bf5d02fc0eed0d2688dba355e470e62fe7910b4a679eab0751c9a87a",
     "harness/Dockerfile.aot": "f1f6c87b3e30bf319842b1d6ddc3d7ac27d46a51b766922bec0fe7e1896dbd4c",
     "harness/analyze-workers.py": "ba2e5187c3dda4614c35e51aa6e0e1079840b372ecfa50cf8f2009804b008086",
@@ -17,9 +17,16 @@
     "harness/legacy/capability-provider.mjs": "3b28c3bc5a5b892e2b14164a8633671c444257448dbfcfffd8812fc47a5301b4",
     "harness/legacy/native_trace.py": "c1fda60c8a74b76811555ee895e1df0a5083951a53df38f35a7a18de8df15607",
     "harness/openclaw-launcher": "fc343d0173e513aa7e74bfc1943d385beaab4ced57447ad7ea2023bdad2aee09",
-    "qualify.py": "2b4de67c6f749079ed01a1bc220b4a2bba4838b26754d0b096f9c3188debd712",
+    "harness/process-stop.mjs": "68c2e651f829a424a7fc2c2b7d44a05caa23bc2c4f6a047296ca5529f3afdaec",
+    "qualify.py": "abac81c7af6762874c5954192a0f2eade85aaf902e668a9b3ce283faa8269fb2",
     "source-contract.json": "c1cffbee88de6e49601c68e753a0456e938a1ed2fc503640d43c7f942fea838b",
-    "harness/process-stop.mjs": "68c2e651f829a424a7fc2c2b7d44a05caa23bc2c4f6a047296ca5529f3afdaec"
+    "teams-fetched/assert-teams.py": "47b32e68002abdf7649a098c4783603f30eb53f43118fb425485e5e6c5976ed4",
+    "teams-fetched/boundary-reference.json": "4e6821dbf12444a7d1655dccf74579b25e3f56f52c2bfdb1c3043324ebbf97ad",
+    "teams-fetched/budget.json": "ad49da8949d9b95aa78c1369daef220016f01596abbee2dea7f62ce7b015da4a",
+    "teams-fetched/config.template.json": "6eb88933badf9e833be2c47bebb0a0667f441efdb6ae3862819be5dffca0cc6e",
+    "teams-fetched/pin.json": "4c9c165d8367dc62df059d84cceef38d40c933c8207793a5d5d41791166eeb59",
+    "teams-fetched/provenance.json": "ffde3e07d67d4ecd6199ee5bd90f5e595d805e82b05c05572a79b1cb9bc34942",
+    "teams-fetched.py": "e1939f691dfda4a5ed16694e9ca59e644b548954cb754596d2972cd557704886"
   },
   "ownerFiles": [
     "kitchen-sink-pin.json",
