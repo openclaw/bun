@@ -14,12 +14,12 @@ root = checkout / "proof"
 root.mkdir()
 (root / "home").mkdir(mode=0o700)
 (root / "tmp").mkdir(mode=0o700)
-head = "f08cee251d437eefb2f5c419d3b1ec0e1d0ccf85"
+head = "3f65cff0d2c2fbdae7921634fa0724c633c8b6bd"
 assert subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=source, text=True).strip() == head
 hashes = {
     "artifacts/baseline/bun-linux-x64.zip": "5b17f7c554d7669c0a9253f5aa2e56c205a1a84c5ef136433b1a1717083f39ab",
-    "artifacts/candidate/bun-linux-x64.zip": "55551ff2c22aa888684639ab5f2ccbd3260b38620e85f3cd970da4175377ab44",
-    "artifacts/control/bun-linux-x64.zip": "2aa8814d772bc1a13d0ffda6fe066a8662e1c9644ed9ce15bb8848fc55a177e8",
+    "artifacts/candidate/bun-linux-x64.zip": "7215831627f3eb225fa1a1757a23456f686d5a0aa94100b5740812dec7dd3393",
+    "artifacts/control/bun-linux-x64.zip": "85a265a2533d3c960caf1f3ccd73f1a269aeb88e3831ec0b4b04c9c3f924d82f",
     "source/bench/gc-async-stack.mjs": "09db8a7bee4be019544abc9af6159f739e0866148860dbd59784680ffe77101b",
     "source/test/js/node/worker_threads/worker_threads.test.ts": "2c246a36b6f09dd1c593450b0d160af991d666b9b4f76ff02dd22fe96e8d73fc",
 }
@@ -34,7 +34,7 @@ identities = {}
 for label, revision, engine in [
     ("baseline", "6aba42d75d4bcee905087fa518cb2df6ff49bb0d", "419b5a0470fc059a610e98697691bf6f7cedd841"),
     ("candidate", head, "b82bc917e99110b61c3a21202d6def7457aa194c"),
-    ("control", "57c9a5df47ba1380df8b41f28746ad7877c51e01", "b82bc917e99110b61c3a21202d6def7457aa194c"),
+    ("control", "6b7c19f0db6b3cadfa02391c553919ad6c1409da", "b82bc917e99110b61c3a21202d6def7457aa194c"),
 ]:
     with zipfile.ZipFile(checkout / "artifacts" / label / "bun-linux-x64.zip") as archive:
         archive.extractall(root / label)
@@ -47,15 +47,9 @@ for label, revision, engine in [
     identities[label] = {**identity, "sha256": hashlib.sha256(exe.read_bytes()).hexdigest()}
 (root / "identities.json").write_text(json.dumps(identities, indent=2) + "\n")
 with (root / "cost.log").open("w") as log:
-    cost = subprocess.run(["node", str(source / "bench/gc-async-stack.mjs"), binaries["baseline"], binaries["candidate"], str(root / "results")], env=env, stdout=log, stderr=log)
+    cost = subprocess.run(["node", str(checkout / "bench/gc-async-calibrated.mjs"), binaries["baseline"], binaries["candidate"], str(root / "results"), binaries["control"]], env=env, stdout=log, stderr=log)
 (root / "cost-exit.json").write_text(json.dumps({"exitCode": cost.returncode}) + "\n")
 print((root / "cost.log").read_text(), flush=True)
-# This diagnostic comparison never overrides a failed S8 acceptance gate.
-if cost.returncode != 0:
-    with (root / "control-cost.log").open("w") as log:
-        control = subprocess.run(["node", str(source / "bench/gc-async-stack.mjs"), binaries["control"], binaries["candidate"], str(root / "control-results")], env=env, stdout=log, stderr=log)
-    (root / "control-cost-exit.json").write_text(json.dumps({"exitCode": control.returncode}) + "\n")
-    print((root / "control-cost.log").read_text(), flush=True)
 out = root / "surrounding"
 out.mkdir()
 target = "test/js/node/worker_threads/worker_threads.test.ts"

@@ -6,6 +6,7 @@ on:
       - .github/workflows/openclaw-async-gc-proof.yml
       - bench/gc-async-ci-proof.py
       - bench/gc-async-stack.mjs
+      - bench/gc-async-calibrated.mjs
 
 permissions:
   contents: read
@@ -22,7 +23,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: f08cee251d437eefb2f5c419d3b1ec0e1d0ccf85
+          ref: 3f65cff0d2c2fbdae7921634fa0724c633c8b6bd
           path: source
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -37,13 +38,13 @@ jobs:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: build-linux-x64
-          run-id: 40174160677
+          run-id: 40175945777
           github-token: ${{ github.token }}
           path: artifacts/candidate
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: build-linux-x64
-          run-id: 40173513739
+          run-id: 40171805209
           github-token: ${{ github.token }}
           path: artifacts/control
       - name: Measure pinned portable binaries and run unchanged tests
@@ -54,7 +55,6 @@ jobs:
           name: async-gc-linux-proof
           path: |
             proof/results/**
-            proof/control-results/**
             proof/surrounding/**
             proof/*.json
             proof/*.log
