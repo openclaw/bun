@@ -334,12 +334,17 @@ pub(crate) fn plugin_namespace_and_path(specifier: &[u8]) -> Option<(&[u8], &[u8
     if !could_be_plugin(specifier) {
         return None;
     }
+    Some(split_plugin_specifier(specifier))
+}
+
+/// Resolution hooks can claim extensionless files and package names too.
+pub(crate) fn split_plugin_specifier(specifier: &[u8]) -> (&[u8], &[u8]) {
     let namespace = extract_namespace(specifier);
-    Some(if namespace.is_empty() {
+    if namespace.is_empty() {
         (namespace, specifier)
     } else {
         (namespace, &specifier[namespace.len() + 1..])
-    })
+    }
 }
 
 /// The `namespace:` prefix of `specifier`, or `b""` if it has none
