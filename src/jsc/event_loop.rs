@@ -19,6 +19,15 @@ use crate::js_promise::Status as PromiseStatus;
 use crate::virtual_machine::VirtualMachine;
 use crate::{self as jsc, JSGlobalObject, JSValue, JsResult};
 
+unsafe extern "C" {
+    safe fn Bun__traceGCWake(
+        event: *const core::ffi::c_char,
+        owner: *const core::ffi::c_void,
+        object: *const core::ffi::c_void,
+        detail: f64,
+    );
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // Re-exports (thin re-exports of sibling/neighbor modules — do NOT inline
 // bodies). Kept so downstream `bun_jsc::event_loop::Foo` paths resolve.
@@ -427,6 +436,12 @@ impl EventLoop {
         }
 
         jsc::mark_binding();
+        Bun__traceGCWake(
+            c"weak_refs_release".as_ptr(),
+            core::ptr::from_ref(vm).cast(),
+            core::ptr::from_ref(jsc_vm).cast(),
+            0.0,
+        );
         jsc_vm.release_weak_refs();
 
         match JSC__JSGlobalObject__drainMicrotasks(global_object) {
@@ -608,6 +623,7 @@ impl EventLoop {
             .imminent_gc_timer
             .swap(core::ptr::null_mut(), Ordering::SeqCst);
         if !ptr.is_null() {
+            Bun__traceGCWake(c"timer_consume".as_ptr(), self.vm().cast(), ptr.cast(), 0.0);
             // SAFETY: `ptr` was published by `WTFTimer::update` and remains
             // valid until `run` removes it; `vm()` is the live owning VM.
             unsafe { __bun_run_wtf_timer(ptr, self.vm()) };

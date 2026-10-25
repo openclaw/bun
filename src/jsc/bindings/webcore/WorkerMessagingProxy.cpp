@@ -25,6 +25,7 @@
  */
 
 #include "config.h"
+#include "GCWakeTrace.h"
 #include "WorkerMessagingProxy.h"
 #include <JavaScriptCore/ErrorInstance.h>
 
@@ -122,10 +123,11 @@ public:
     }
 
 private:
-    void willGarbageCollect() final {}
+    void willGarbageCollect() final { Bun__traceGCWake("gc_begin", &m_vm, m_workerThread, 0); }
 
     void didGarbageCollect(JSC::CollectionScope scope) final
     {
+        Bun__traceGCWake("gc_end", &m_vm, m_workerThread, static_cast<int>(scope));
         // Only a full collection's survivor size is the live set; an eden collection's is not.
         if (scope != JSC::CollectionScope::Full)
             return;

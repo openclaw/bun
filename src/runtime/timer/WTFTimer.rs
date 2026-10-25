@@ -86,6 +86,12 @@ impl WTFTimer {
 
     #[inline]
     fn run_without_removing(&self) {
+        Bun__traceGCWake(
+            c"timer_fire".as_ptr(),
+            self.vm.as_ptr().cast(),
+            ptr::from_ref(self).cast(),
+            0.0,
+        );
         RunLoopTimer::fire(self.run_loop_timer);
     }
 
@@ -133,6 +139,8 @@ impl WTFTimer {
         // Only set imminent if it's not already set to avoid overwriting another timer.
         if seconds.partial_cmp(&0.0) != Some(core::cmp::Ordering::Greater) {
             let wake_handle = t.wake_handle.clone();
+            let owner = t.vm.as_ptr().cast();
+            Bun__traceGCWake(c"timer_publish_begin".as_ptr(), owner, this.cast(), seconds);
             if imminent
                 .compare_exchange(
                     ptr::null_mut(),
@@ -142,11 +150,20 @@ impl WTFTimer {
                 )
                 .is_ok()
             {
+                Bun__traceGCWake(c"timer_publish_ok".as_ptr(), owner, this.cast(), seconds);
                 wake_handle.wake();
+            } else {
+                Bun__traceGCWake(c"timer_publish_busy".as_ptr(), owner, this.cast(), seconds);
             }
             return;
         }
         // Clear imminent if this timer was the one that set it.
+        Bun__traceGCWake(
+            c"timer_schedule".as_ptr(),
+            t.vm.as_ptr().cast(),
+            this.cast(),
+            seconds,
+        );
         let _ = imminent.compare_exchange(
             self_opaque,
             ptr::null_mut(),
@@ -315,4 +332,10 @@ unsafe extern "C" fn WTFTimer__cancel(this: *mut WTFTimer) {
 
 unsafe extern "C" {
     safe fn WTFTimer__fire(this: NonNull<RunLoopTimer>);
+    safe fn Bun__traceGCWake(
+        event: *const core::ffi::c_char,
+        owner: *const c_void,
+        object: *const c_void,
+        detail: f64,
+    );
 }

@@ -1,4 +1,5 @@
 #include "root.h"
+#include "GCWakeTrace.h"
 
 #include "ZigGlobalObject.h"
 #include "CodeGenerationFromStrings.h"
@@ -3221,7 +3222,9 @@ uint8_t GlobalObject::drainMicrotasks()
             return *result;
     }
 
+    Bun__traceGCWake("microtasks_begin", &vm, this, 0);
     vm.drainMicrotasks();
+    Bun__traceGCWake("microtasks_end", &vm, this, 0);
     if (auto result = endedByException())
         return *result;
 

@@ -1,10 +1,58 @@
 #include "root.h"
 #include "BunClientData.h"
+#include "GCWakeTrace.h"
 
 #include <atomic>
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
+#include <functional>
+#include <mutex>
+#include <thread>
+#if OS(WINDOWS)
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
 
 #include <JavaScriptCore/VM.h>
 #include <JavaScriptCore/Heap.h>
+
+extern "C" void Bun__traceGCWake(const char* event, const void* owner, const void* object, double detail)
+{
+    static FILE* file = []() -> FILE* {
+        const char* directory = std::getenv("BUN_DIAG_GC_WAKE_DIR");
+        if (!directory || !*directory)
+            return nullptr;
+        char path[4096];
+#if OS(WINDOWS)
+        int pid = _getpid();
+#else
+        int pid = getpid();
+#endif
+        int length = std::snprintf(path, sizeof(path), "%s/gc-wake-%d.log", directory, pid);
+        if (length < 0 || static_cast<size_t>(length) >= sizeof(path))
+            return nullptr;
+        FILE* output = std::fopen(path, "wb");
+        if (output) {
+            const char* disableTimer = std::getenv("BUN_GC_TIMER_DISABLE");
+            const char* markers = std::getenv("BUN_JSC_numberOfGCMarkers");
+            std::fprintf(output, "config gc_timer_disable=%s markers=%s\n", disableTimer ? disableTimer : "unset", markers ? markers : "unset");
+        }
+        return output;
+    }();
+    if (!file)
+        return;
+    static std::mutex mutex;
+    static unsigned sequence = 0;
+    std::lock_guard<std::mutex> lock(mutex);
+    if (sequence >= 100000)
+        return;
+    auto now = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    auto thread = std::hash<std::thread::id> {}(std::this_thread::get_id());
+    std::fprintf(file, "%u %lld %zu %s %p %p %.17g\n", ++sequence, static_cast<long long>(now), thread, event, owner, object, detail);
+    std::fflush(file);
+}
 
 #if USE(MIMALLOC)
 // Matches oven-sh/mimalloc's mi_attr_noexcept declaration; bmalloc's
@@ -27,6 +75,7 @@ extern "C" std::atomic<int32_t> Bun__defaultRemainingRunsUntilSkipReleaseAccess;
 
 extern "C" void Bun__JSC_acquireHeapAccessAfterWait(JSC::VM* _Nonnull vm)
 {
+    Bun__traceGCWake("heap_acquire", vm, nullptr, 0);
     vm->heap.acquireAccess();
 }
 
@@ -44,6 +93,7 @@ extern "C" unsigned int Bun__JSC_onBeforeWait(JSC::VM* _Nonnull vm, uint64_t now
     ASSERT(vm);
     unsigned int runAgainInMs = 0;
     const bool previouslyHadAccess = vm->heap.hasHeapAccess();
+    Bun__traceGCWake("before_wait", vm, nullptr, previouslyHadAccess + 2 * vm->didEnterVM + 4 * WebCore::clientData(*vm)->idleCollectionsPending.load());
     // sanity check for debug builds to ensure we're not doing a
     // use-after-free here
     ASSERT(vm->refCount() > 0);
@@ -137,6 +187,7 @@ extern "C" unsigned int Bun__JSC_onBeforeWait(JSC::VM* _Nonnull vm, uint64_t now
         // now rather than at the next time JS happens to run; then park without access so the rest goes on without us.
         vm->heap.stopIfNecessary();
         vm->heap.releaseAccess();
+        Bun__traceGCWake("heap_release", vm, nullptr, 0);
         *releasedHeapAccess = 1;
     }
     return runAgainInMs;

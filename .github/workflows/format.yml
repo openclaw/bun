@@ -16,6 +16,7 @@ env:
 
 jobs:
   autofix:
+    if: ${{ !startsWith(github.head_ref, 'claude/diag-parked-worker-gc-') }}
     name: Format
     runs-on: ubuntu-latest
     concurrency:

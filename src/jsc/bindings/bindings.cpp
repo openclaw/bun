@@ -8,6 +8,7 @@
  *      can be disabled if necessary. Consult cppbind.ts for details.
  */
 #include "root.h"
+#include "GCWakeTrace.h"
 
 #include "JavaScriptCore/ErrorType.h"
 #include "JavaScriptCore/TopExceptionScope.h"
@@ -3116,6 +3117,7 @@ void JSC__JSGlobalObject__deleteModuleRegistryEntry(JSC::JSGlobalObject* global,
 
 void JSC__VM__collectAsync(JSC::VM* vm, bool full)
 {
+    Bun__traceGCWake("gc_request", vm, nullptr, full);
     JSC::JSLockHolder lock(*vm);
     if (full)
         vm->heap.collectAsync(JSC::CollectionScope::Full);

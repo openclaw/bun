@@ -43,6 +43,15 @@ use crate::event_loop::EventLoop;
 use crate::virtual_machine::VirtualMachine;
 use bun_event_loop::ConcurrentTask::ConcurrentTask as ConcurrentTaskItem;
 
+unsafe extern "C" {
+    safe fn Bun__traceGCWake(
+        event: *const core::ffi::c_char,
+        owner: *const core::ffi::c_void,
+        object: *const core::ffi::c_void,
+        detail: f64,
+    );
+}
+
 pub use bun_event_loop::Posted;
 
 #[repr(u8)]
@@ -402,7 +411,20 @@ impl VmHandle {
     /// Wake the VM's loop (no-op once closed). Any thread.
     pub fn wake(&self) {
         if let Some(_a) = self.enter() {
+            Bun__traceGCWake(
+                c"vm_wake".as_ptr(),
+                self.0.hot.vm.cast(),
+                core::ptr::null(),
+                0.0,
+            );
             self.0.loop_of(LoopKind::Regular).wakeup();
+        } else {
+            Bun__traceGCWake(
+                c"vm_wake_closed".as_ptr(),
+                self.0.hot.vm.cast(),
+                core::ptr::null(),
+                0.0,
+            );
         }
     }
 

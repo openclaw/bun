@@ -22,6 +22,8 @@
 
 #ifdef LIBUS_USE_LIBUV
 
+extern void Bun__traceGCWake(const char *event, const void *owner, const void *object, double detail);
+
 /* Windows does not reliably latch a received RST in SO_ERROR (POSIX does);
  * the reset surfaces on the next I/O. A zero-byte send observes it without
  * touching the stream: 0 on a healthy socket, SOCKET_ERROR with a fatal
@@ -178,6 +180,7 @@ static void timer_cb(uv_timer_t *t) {
 
 static void async_cb(uv_async_t *a) {
   struct us_internal_callback_t *cb = a->data;
+  Bun__traceGCWake("uv_async_callback", cb->loop->data.jsc_vm, cb->loop, 0);
   // internal asyncs give their loop, not themselves
   cb->cb((struct us_internal_callback_t *)cb->loop);
 }
@@ -475,7 +478,9 @@ void us_loop_run(struct us_loop_t *loop) {
    * that waits for a promise re-enters here while the outer dispatch is still
    * using its socket. us_loop_run_bun_tick does the same on POSIX. */
   loop->data.tick_depth++;
+  Bun__traceGCWake("uv_poll_begin", loop->data.jsc_vm, loop, 0);
   uv_run(loop->uv_loop, UV_RUN_ONCE);
+  Bun__traceGCWake("uv_poll_end", loop->data.jsc_vm, loop, 0);
   loop->data.tick_depth--;
 }
 
@@ -630,7 +635,8 @@ void us_internal_async_wakeup(struct us_internal_async *a) {
       (struct us_internal_callback_t *)a;
 
   uv_async_t *uv_async = (uv_async_t *)(internal_cb + 1);
-  uv_async_send(uv_async);
+  int result = uv_async_send(uv_async);
+  Bun__traceGCWake("uv_async_send", NULL, internal_cb->loop, result);
 }
 
 int us_socket_get_error(struct us_socket_t *s) {
