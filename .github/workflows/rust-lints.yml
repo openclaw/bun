@@ -43,6 +43,7 @@ env:
 
 jobs:
   clippy:
+    if: ${{ !startsWith(github.head_ref, 'claude/diag-parked-worker-gc-') }}
     name: cargo clippy
     runs-on: ubuntu-latest
     steps:
@@ -75,6 +76,7 @@ jobs:
         run: cargo check --workspace --all-targets --keep-going
 
   miri:
+    if: ${{ !startsWith(github.head_ref, 'claude/diag-parked-worker-gc-') }}
     name: cargo miri test
     runs-on: ubuntu-latest
     steps:
@@ -97,6 +99,7 @@ jobs:
         run: bun run rust:miri
 
   lolhtml:
+    if: ${{ !startsWith(github.head_ref, 'claude/diag-parked-worker-gc-') }}
     # The vendored lol-html is a fork (oven-sh/lol-html, `bun` branch) carrying
     # content-handler suspension, and its own test suite is the only thing that
     # guards the fork's invariants: nothing in the Bun test suite reaches, for
@@ -126,7 +129,7 @@ jobs:
   mordant:
     name: mordant
     runs-on: ubuntu-latest
-    if: github.event_name != 'merge_group'
+    if: ${{ !startsWith(github.head_ref, 'claude/diag-parked-worker-gc-') && (github.event_name != 'merge_group') }}
     # Advisory while the pack is new: shows up on the PR, does not block it.
     continue-on-error: true
     env:

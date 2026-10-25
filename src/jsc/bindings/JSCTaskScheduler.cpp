@@ -1,4 +1,5 @@
 #include "config.h"
+#include "GCWakeTrace.h"
 #include <JavaScriptCore/VM.h>
 #include <JavaScriptCore/HeapInlines.h>
 #include <JavaScriptCore/TopExceptionScope.h>
@@ -56,6 +57,7 @@ static bool dropPendingTicketLocked(Bun::JSCTaskScheduler& scheduler, Ticket* ti
 
 void JSCTaskScheduler::onAddPendingWork(WebCore::JSVMClientData* clientData, Ref<Ticket>&& ticket, JSC::DeferredWorkTimer::WorkType kind)
 {
+    Bun__traceGCWake("deferred_add", clientData->bunVM, ticket.ptr(), static_cast<int>(kind));
     auto& scheduler = clientData->deferredWorkTimer;
     JSCTaskScheduler::PendingWork pending { Bun__VM__currentLoopKind(clientData->bunVM), 0 };
     // Script asked for this work (WebAssembly.compile, Atomics.waitAsync): it is the asking
@@ -78,6 +80,7 @@ void JSCTaskScheduler::onAddPendingWork(WebCore::JSVMClientData* clientData, Ref
 }
 void JSCTaskScheduler::onScheduleWorkSoon(WebCore::JSVMClientData* clientData, Ref<Ticket>&& ticket, Task&& task)
 {
+    Bun__traceGCWake("deferred_schedule", clientData->bunVM, ticket.ptr(), 0);
     auto& scheduler = clientData->deferredWorkTimer;
     BunLoopKind loopKind = BunLoopKind::Regular;
     {
@@ -106,6 +109,7 @@ void JSCTaskScheduler::onScheduleWorkSoon(WebCore::JSVMClientData* clientData, R
 
 void JSCTaskScheduler::onCancelPendingWork(WebCore::JSVMClientData* clientData, Ticket& ticket)
 {
+    Bun__traceGCWake("deferred_cancel", clientData->bunVM, &ticket, 0);
     auto* vmHandle = clientData->vmHandle;
     auto& scheduler = clientData->deferredWorkTimer;
 
@@ -142,6 +146,7 @@ void JSCTaskScheduler::cancelWorkOfDeadRealms(WebCore::JSVMClientData* clientDat
 
 static void runPendingWork(const ::BunVmHandleRef* vmHandle, Bun::JSCTaskScheduler& scheduler, JSCDeferredWorkTask* job)
 {
+    Bun__traceGCWake("deferred_consume", job->clientData->bunVM, job->ticket.ptr(), 0);
     Locker<Lock> holder { scheduler.m_lock };
     bool wasPending = false;
     uint32_t graphContext = 0;
@@ -177,10 +182,14 @@ static void runPendingWork(const ::BunVmHandleRef* vmHandle, Bun::JSCTaskSchedul
         // finished file's leftover work is dropped instead of running under the next
         // file. doWork re-queues a Suspended realm's task; no Bun realm reports that.
         auto status = globalObject->globalObjectMethodTable()->scriptExecutionStatus(globalObject, job->ticket->scriptExecutionOwner());
+        Bun__traceGCWake("deferred_status", job->clientData->bunVM, job->ticket.ptr(), static_cast<int>(status));
         ASSERT(status != ScriptExecutionStatus::Suspended);
         if (status == ScriptExecutionStatus::Running) {
             auto scope = DECLARE_TOP_EXCEPTION_SCOPE(vm);
+            bool isFinalizer = job->ticket->target()->inherits<JSC::JSFinalizationRegistry>();
+            Bun__traceGCWake("deferred_run_begin", job->clientData->bunVM, job->ticket.ptr(), isFinalizer);
             job->task(job->ticket.get());
+            Bun__traceGCWake("deferred_run_end", job->clientData->bunVM, job->ticket.ptr(), isFinalizer);
             if (auto* exception = scope.exception(); exception && !vm.hasPendingTerminationException()) {
                 scope.clearException();
                 Zig::GlobalObject::reportUncaughtExceptionAtEventLoop(globalObject, exception);

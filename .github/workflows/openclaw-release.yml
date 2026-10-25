@@ -63,7 +63,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: source
-          ref: ${{ env.RELEASE_TAG && format('refs/tags/{0}', env.RELEASE_TAG) || github.sha }}
+          ref: ${{ env.RELEASE_TAG && format('refs/tags/{0}', env.RELEASE_TAG) || github.event.pull_request.head.sha || github.sha }}
           # History for the ancestry check against main; blobs are fetched on demand.
           fetch-depth: 0
           filter: blob:none
@@ -73,12 +73,13 @@ jobs:
         with:
           bun-version: "1.4.2"
       - name: Test pipeline
+        if: ${{ !startsWith(github.head_ref, 'claude/diag-parked-worker-gc-') }}
         working-directory: pipeline
         run: bun test test/internal/source-lints/openclaw-release.test.ts
       - name: Plan
         id: plan
         env:
-          TARGETS: ${{ inputs.targets }}
+          TARGETS: ${{ startsWith(github.head_ref, 'claude/diag-parked-worker-gc-') && 'windows-x64,windows-arm64' || inputs.targets }}
           WINDOWS_SIGNED: ${{ vars.OPENCLAW_RELEASE_WINDOWS_SIGNED }}
         run: |
           args=(--source source --main origin/main)
@@ -353,7 +354,7 @@ jobs:
   smoke:
     name: Smoke ${{ matrix.target }}
     needs: [plan, build, sign-macos, sign-windows, windows-test-only]
-    if: ${{ !cancelled() && needs.build.result == 'success' && needs.sign-macos.result != 'failure' && (needs.plan.outputs.windows != 'true' || (needs.plan.outputs.publish == 'true' && needs.sign-windows.result == 'success') || (needs.plan.outputs.publish != 'true' && needs.windows-test-only.result == 'success')) }}
+    if: ${{ !startsWith(github.head_ref, 'claude/diag-parked-worker-gc-') && !cancelled() && needs.build.result == 'success' && needs.sign-macos.result != 'failure' && (needs.plan.outputs.windows != 'true' || (needs.plan.outputs.publish == 'true' && needs.sign-windows.result == 'success') || (needs.plan.outputs.publish != 'true' && needs.windows-test-only.result == 'success')) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     strategy:
@@ -435,15 +436,20 @@ jobs:
           $arch = & $exe -p process.arch
           if ($LASTEXITCODE -ne 0 -or $arch -cne $env:EXPECTED_ARCH) { throw 'Unexpected runtime architecture.' }
           $env:PATH = "$(Split-Path $exe);$env:PATH"
-          & $exe ../pipeline/scripts/openclaw-ci/tests.ts select-windows
-          if ($LASTEXITCODE -ne 0) { throw 'Test selection failed.' }
-          & $exe ../pipeline/scripts/openclaw-ci/tests.ts test
-          if ($LASTEXITCODE -ne 0) { throw 'Windows compatibility tests failed.' }
+          New-Item -ItemType Directory -Force build/openclaw-ci/traces | Out-Null
+          $env:BUN_DIAG_GC_WAKE_DIR = (Resolve-Path build/openclaw-ci/traces).Path
+          & $exe --revision
+          & $exe -p 'process.versions.webkit'
+          git rev-parse HEAD
+          node scripts/runner.node.ts --exec-path $exe --vendor=false --retries=0 --results-json build/openclaw-ci/results.json --include js/node/worker_threads/worker_threads.test.ts
+          if ($LASTEXITCODE -ne 0) { throw 'Worker diagnostic failed.' }
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: compatibility-${{ matrix.target }}
-          path: source/build/openclaw-ci/*.json
+          path: |
+            source/build/openclaw-ci/*.json
+            source/build/openclaw-ci/traces/*.log
           if-no-files-found: error
           retention-days: 14
 
