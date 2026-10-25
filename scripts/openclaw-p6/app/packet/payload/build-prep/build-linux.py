@@ -36,7 +36,7 @@ COHORTS = {
         'cb-linux-hardened': {'shadowRealm': False, 'hardened': True},
     }},
 }
-MEASURE_SHA = '373b56ced3b931233bc15a1d97c634f486602b3c9e5a02d75e0688d2f5552a5a'
+MEASURE_SHA = '2fa495f4727a351f6cee078b403ac064610ce90ed339311f55c40a567463e4b7'
 FLAGS = {
     'js': ['--compile-aot', '--explain=statistics'],
     'c2': ['--compile-aot', '--no-compile-function-source',

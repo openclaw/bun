@@ -25,11 +25,15 @@ knowledge={'sourceCommit':x['sourceCommit'],'status':'incomplete','expectedVaria
  'variants':{v:{'status':'not-run'} for v in x['requestedVariants']},'performanceEligible':False}
 save(work/'knowledge-controls.json',knowledge)
 env={'PATH':'/usr/bin:/bin','HOME':str(work/'home'),'TMPDIR':str(work/'tmp'),'LANG':'C.UTF-8','TZ':'UTC'}
+shutdown=json.loads(subprocess.check_output([node,str(HERE/'harness/process-stop.mjs'),
+ '--gateway-budget',str(ROOT/'source')],env=env,text=True,timeout=30))
+# Allow Gateway reap (5s), provider stop/reap (10s+5s), and final census (10s).
+cleanup_grace=shutdown['serviceStopTimeoutMs']/1000+30
 for cell,args,out,variant in cells:
  receipt=measurements/cell;receipt.mkdir();started=time.monotonic();error=None
  old=signal.signal(signal.SIGHUP,owner.interrupted)
  try:
-  owner.measure({'measurementUtility':str(ROOT/'measure-command.py'),'variant':'preflight-'+cell,'source':str(ROOT/'source'),'timeoutSeconds':900,'command':[node,str(HERE/'benchmark/core-runner.proposed.mjs'),'--source',str(ROOT/'source'),'--out',str(out),*args]},env,receipt)
+  owner.measure({'measurementUtility':str(ROOT/'measure-command.py'),'variant':'preflight-'+cell,'source':str(ROOT/'source'),'timeoutSeconds':900,'cleanupGraceSeconds':cleanup_grace,'command':[node,str(HERE/'benchmark/core-runner.proposed.mjs'),'--source',str(ROOT/'source'),'--out',str(out),*args]},env,receipt)
   result=load(out/'result.json');assert result['qualification']=='passed'
  except BaseException as e:
   if isinstance(e,(owner.BuildInterrupted,KeyboardInterrupt,SystemExit)):raise
@@ -52,7 +56,7 @@ for variant in x['requestedVariants']:
  old=signal.signal(signal.SIGHUP,owner.interrupted)
  try:
   owner.measure({'measurementUtility':str(ROOT/'measure-command.py'),'variant':'knowledge-'+variant,
-   'source':str(ROOT/'source'),'timeoutSeconds':900,'command':[node,str(HERE/'benchmark/core-runner.proposed.mjs'),
+   'source':str(ROOT/'source'),'timeoutSeconds':900,'cleanupGraceSeconds':cleanup_grace,'command':[node,str(HERE/'benchmark/core-runner.proposed.mjs'),
    '--source',str(ROOT/'source'),'--out',str(out),'--artifact',str(ROOT/'artifacts'/variant),'--knowledge-control']},env,receipt)
   result=load(out/'result.json');assert result['qualification']=='passed'
   assert result['checks']['knowledge']['status']=='passed-operations-only'

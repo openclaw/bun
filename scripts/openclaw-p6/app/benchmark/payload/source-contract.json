@@ -27,6 +27,7 @@
     "scripts/package-openclaw-for-docker.mts": "3a21e738f0d70c7ef7b45800e830ff404c59b1dbe6e20634839837cc2a5230dd",
     "scripts/lib/root-package-bundled-plugin-excludes.mjs": "6336b0bdd4f8b2ab1767f0b72b47c49da209ed10cc99102ab07280c8fbde4b3c",
     "scripts/check-openclaw-package-tarball.mjs": "5b5be1e75fafde5c87d193c6ec48ca319e91777dcf3a7feb06c6e2058bee7690",
-    "scripts/lib/bun-standalone-native.mjs": "f9a1f75d68afe4173ac134f770677fa3ade21f33f2cba7dcf30748a358d3db00"
+    "scripts/lib/bun-standalone-native.mjs": "f9a1f75d68afe4173ac134f770677fa3ade21f33f2cba7dcf30748a358d3db00",
+    "gateway-shutdown-budget.mjs": "02757141fd71a0e03ee885d952edbcd664395a420b26c6b7ba596529336baa3a"
   }
 }

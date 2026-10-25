@@ -7,6 +7,7 @@ import io
 import json
 import os
 from pathlib import Path
+import shutil
 import sys
 import tempfile
 import unittest
@@ -33,6 +34,14 @@ class RuntimeTerminal(unittest.TestCase):
                          'qualification', 'guest', 'guest-prerequisites/native', 'tmp',
                          'qualification-results/' + variant + '-core/run']:
                 (root / name).mkdir(parents=True, exist_ok=True)
+            (root / 'opt/node/bin').mkdir(parents=True)
+            (root / 'opt/node/bin/node').symlink_to(shutil.which('node'))
+            (root / 'qualification/harness').mkdir()
+            shutil.copyfile(HERE / 'shared/process-stop.mjs', root / 'qualification/harness/process-stop.mjs')
+            (root / 'source').mkdir()
+            (root / 'source/gateway-shutdown-budget.mjs').write_text(
+                'export const GATEWAY_SHUTDOWN_TIMEOUT_MS=325000;\n'
+                'export const GATEWAY_SERVICE_STOP_TIMEOUT_MS=330000;\n')
             (root / 'manifest.json').write_text('{"files":{}}')
             admission = root / 'admissions' / (variant + '.json')
             admission.write_text(json.dumps({'decision': 'build-linux', 'linuxCut': {
@@ -61,7 +70,8 @@ class RuntimeTerminal(unittest.TestCase):
                     stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
                     if timeout is not None:
                         stack.enter_context(patch.object(owner, 'run_command',
-                            lambda command, cwd, env, directory, _: original_run(command, cwd, env, directory, timeout)))
+                            lambda command, cwd, env, directory, _, cleanup_grace=15:
+                                original_run(command, cwd, env, directory, timeout, cleanup_grace)))
                     code = owner.main()
                 result = json.loads((root / 'runtime-results' / (variant + '-' + phase) / 'result.json').read_text())
                 label = (root / 'observed-label').read_text() if (root / 'observed-label').exists() else None

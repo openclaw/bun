@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
+import { readGatewayStopBudget, stopProcess, shutdownFailure } from './process-stop.mjs';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
@@ -36,14 +37,14 @@ const env={PATH:process.env.PATH??'/usr/local/bin:/usr/bin:/bin',LANG:'C.UTF-8',
  OPENCLAW_SKIP_CHANNELS:'1',OPENCLAW_SKIP_CRON:'1',OPENCLAW_SKIP_GMAIL_WATCHER:'1',OPENCLAW_SKIP_CANVAS_HOST:'1',TERM:'dumb',NO_COLOR:'1'};
 const result={schema:1,scenario:o.scenario,artifact,source,controllerPid:process.pid,arch:process.arch,kernel:spawnSync('uname',['-r'],{encoding:'utf8'}).stdout?.trim(),pass:false,syntheticOnly:true,commands:[],performanceEligible:false};
 const hasher=createHash('sha256');for await(const chunk of fs.createReadStream(binary))hasher.update(chunk);result.binarySha256=hasher.digest('hex');
-const children=[],observed=new Map();let gateway,client,server,interrupted=false;
+const children=[],observed=new Map(),stopReceipts=new Map();let gateway,client,server,interrupted=false;
 function identity(pid){try{const raw=fs.readFileSync(`/proc/${pid}/stat`,'utf8'),v=raw.slice(raw.lastIndexOf(')')+2).split(' ');return{pid,ppid:Number(v[1]),state:v[0],start:v[19]};}catch{return null;}}
 function scan(){const all=[];for(const name of fs.readdirSync('/proc'))if(/^\d+$/.test(name)){const p=identity(Number(name));if(p)all.push(p);}
  const ids=new Set(children.map(c=>c.pid));let more=true;while(more){more=false;for(const p of all)if(ids.has(p.ppid)&&!ids.has(p.pid)){ids.add(p.pid);more=true;}}
  for(const p of all)if(ids.has(p.pid))observed.set(`${p.pid}:${p.start}`,p);}
 const sampler=setInterval(scan,100);sampler.unref();
 function signal(c,sig){if(c?.pid)try{process.kill(-c.pid,sig);}catch(error){if(error.code!=='ESRCH')throw error;}}
-const interrupt=()=>{interrupted=true;for(const c of children)signal(c,'SIGTERM');};process.on('SIGTERM',interrupt);process.on('SIGINT',interrupt);
+const interrupt=()=>{interrupted=true;void stop(gateway).catch(error=>{result.stopError=String(error);});for(const c of children)if(c!==gateway)signal(c,'SIGTERM');};process.on('SIGTERM',interrupt);process.on('SIGINT',interrupt);
 function launch(label,cmd,argv,{native=false}={}){
  const stdout=path.join(out,'logs',label+'.stdout'),stderr=path.join(out,'logs',label+'.stderr'),a=fs.openSync(stdout,'w'),b=fs.openSync(stderr,'w');
  const extra=native&&o.nativeWorkers?{BUN_WORKER_VM_TRACE:path.join(out,'native-workers','worker-%p.jsonl')}:{};
@@ -51,16 +52,15 @@ function launch(label,cmd,argv,{native=false}={}){
  const row={label,command:[cmd,...argv],pid:child.pid,stdout,stderr,runtimeOverride:extra};child.row=row;children.push(child);result.commands.push(row);
  child.done=new Promise(resolve=>{child.once('error',error=>{row.spawnError=String(error);});child.once('close',(code,sig)=>{Object.assign(row,{code,signal:sig});resolve(row);});});return child;
 }
-function groupExists(c){try{process.kill(-c.pid,0);return true;}catch(error){if(error.code==='ESRCH')return false;throw error;}}
 async function stop(c){if(!c?.pid)return;
- signal(c,'SIGTERM');const deadline=Date.now()+10000;while(Date.now()<deadline&&groupExists(c))await delay(50);
- // The direct child may have exited while a descendant retained this task group.
- signal(c,'SIGKILL');await Promise.race([c.done,delay(3000,undefined,{ref:false})]);}
+ const shutdown=await stopProcess(c,{graceMs:c===gateway?result.gatewayStopBudget.serviceStopTimeoutMs:10000,killWaitMs:3000});
+ stopReceipts.set(c,{label:c.row.label,...shutdown});return shutdown;}
 async function command(label,argv,{allowFailure=false,cmd=binary}={}){const c=launch(label,cmd,argv),row=await Promise.race([c.done,delay(180000,undefined,{ref:false}).then(()=>null)]);
  if(!row){await stop(c);throw new Error(`${label} timed out`);}assert(!row.spawnError,`${label} could not launch`);if(!allowFailure)assert.equal(row.code,0,`${label}: see ${row.stderr}`);return{row,text:fs.readFileSync(row.stdout,'utf8')};}
 async function port(){const s=net.createServer();await new Promise((yes,no)=>{s.once('error',no);s.listen(0,'127.0.0.1',yes);});const p=s.address().port;await new Promise(r=>s.close(r));return p;}
 const sourceImport=relative=>import(pathToFileURL(path.join(source,relative)).href);
 try{
+ result.gatewayStopBudget=await readGatewayStopBudget(source);
  const {applyMockOpenAiModelConfig}=await sourceImport('scripts/e2e/lib/fixtures/mock-openai-config.mjs');
  const gatewayPort=await port();
  let cfg;
@@ -119,7 +119,9 @@ finally{
  scan();clearInterval(sampler);
  const deadline=Date.now()+10000;let live=[];
  do{live=[...observed.values()].filter(p=>{const q=identity(p.pid);return q?.start===p.start&&q.state!=='Z';});if(!live.length)break;await delay(100);}while(Date.now()<deadline);
- result.cleanup={observedPids:[...observed.values()],forced:live};
+ result.cleanup={observedPids:[...observed.values()],forced:live,stops:[...stopReceipts.values()]};
+ const stopFailure=result.stopError??shutdownFailure(result.cleanup.stops,gateway?.row);
+ if(stopFailure){result.pass=false;result.cleanup.error=stopFailure;}
  if(live.length){result.pass=false;for(const p of live){const q=identity(p.pid);if(q?.start===p.start)try{process.kill(p.pid,'SIGKILL');}catch(error){if(error.code!=='ESRCH')throw error;}}}
  if(o.nativeWorkers){const analyzer=path.join(path.dirname(fileURLToPath(import.meta.url)),'analyze-workers.py');
   const analyzed=spawnSync('python3',[analyzer,'--directory',path.join(out,'native-workers'),'--controller-pid',String(process.pid),'--out',path.join(out,'native-workers.json')],{encoding:'utf8',env});

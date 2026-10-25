@@ -7,9 +7,9 @@
     "harness/analyze-workers.py": "ba2e5187c3dda4614c35e51aa6e0e1079840b372ecfa50cf8f2009804b008086",
     "harness/analyze-zero-js.py": "cd5ac0436fa1ffeebcbaa4b760c93f2cdc94e31dfa4c26d9ca6529ac0d43a621",
     "harness/aot-entry.mjs": "ccb32c3d2a895ed5a7bbf9a5966f38a0ea1e70e4b41e65d838285ef93f61510b",
-    "harness/capability-runner.mjs": "5606c0052b50be84903b270dcb9999cb1d0d75a61d8f4255be567424ead49563",
+    "harness/capability-runner.mjs": "6715980b06eb265acf618230d1155eeba3e7ee7eb367681d15f4f4663fce91aa",
     "harness/config-roundtrip.mjs": "511d9140896da1cff71e116a428a985b7d1f695bd07b0423afebac6f1601d6b0",
-    "harness/core-runner.mjs": "9bdd8d99f2ae2fa96a9cdf690e9ac37d034433bcc05d25ebe6fb1676e5f8ccfa",
+    "harness/core-runner.mjs": "56a4e32c40c2bf4e84a12f03f318acf62a9e98c38454ee055550f6cfda0876b0",
     "harness/elf-floor.py": "ec0a288f782b6786105f7801d62f32f2d44d23659655286008004fb59cbf2932",
     "harness/fixture-config.mjs": "3cd13d2aeb10982bbda7198fbd6a451c57d24b184de5f07b892d67b63c3f5120",
     "harness/gateway-readiness.mjs": "a007aa71fd55a888d0b159ee4ab51cc63a35492586c87769086d95a50e3d0759",
@@ -18,7 +18,8 @@
     "harness/legacy/native_trace.py": "c1fda60c8a74b76811555ee895e1df0a5083951a53df38f35a7a18de8df15607",
     "harness/openclaw-launcher": "fc343d0173e513aa7e74bfc1943d385beaab4ced57447ad7ea2023bdad2aee09",
     "qualify.py": "e5e9f3fdf050bfca5d43a30035553b57b9f2ad444dbb63d61f6ba460aa6d5c88",
-    "source-contract.json": "1821dd6df099bdbe411dfd01a63f362ea0d78c55e06327e47322c8c3c5330123"
+    "source-contract.json": "dc261c248995cde0156c9278f0669533b577901723af9c45f8a9683991ae7255",
+    "harness/process-stop.mjs": "68c2e651f829a424a7fc2c2b7d44a05caa23bc2c4f6a047296ca5529f3afdaec"
   },
   "ownerFiles": [
     "kitchen-sink-pin.json",
@@ -34,7 +35,8 @@
     "config-roundtrip.mjs",
     "analyze-workers.py",
     "legacy/native_trace.py",
-    "legacy/capability-provider.mjs"
+    "legacy/capability-provider.mjs",
+    "process-stop.mjs"
   ],
   "actualArtifactRequired": true,
   "applicationQualified": false

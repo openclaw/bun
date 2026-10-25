@@ -61,7 +61,7 @@
     },
     "qualification/manifest.json": {
       "originalSha256": "6a38454878806509950a1ea7fb9a15ffb2bb79b53f4ef586bee131474a3e9221",
-      "projectedSha256": "3cf639820550505294608639c33e2543f158a0248a864da05e1caf6c62330371"
+      "projectedSha256": "7c91acd9e6558d7849124ab062e4ca328f383327c3cd41107ca5795fcfd6a0bf"
     },
     "qualification/qualify.py": {
       "originalSha256": "c32886e391f27eb8c66d333d07b15b4af4c8081c329bad2fe8dca28b2dd9c2d7",
@@ -69,18 +69,18 @@
     },
     "qualification/source-contract.json": {
       "originalSha256": "e2056668fd189ba8505c75fbef695c535930600e08d6e8d7bb0df55f9cf13d2b",
-      "projectedSha256": "1821dd6df099bdbe411dfd01a63f362ea0d78c55e06327e47322c8c3c5330123"
+      "projectedSha256": "dc261c248995cde0156c9278f0669533b577901723af9c45f8a9683991ae7255"
     },
     "runtime-controller.py": {
       "originalSha256": "d0974f26f8432bc3fe5c59afb640105ce53dc0d268d8f85fe0598d363ff5d7d9",
-      "projectedSha256": "f4b2a1d2dc4469af646a6e0b7b5ccda362231bce6c2db4a561abbf11cb4beaf9"
+      "projectedSha256": "6fec8b461a1dcf6821ebd24c7f13527d2518457106c522a56bb930dad95158bb"
     },
     "stage.py": {
       "originalSha256": "d40bdf22aeae208f1165a0d74ee0b87eb7e93e9144a5092212211633b59124d3",
       "projectedSha256": "8f6a94d7cc63c9e23c8f8ca1c9e2a5036a9c12b72074e8a4b014a867a2a11e4f"
     }
   },
-  "manifestSha256": "205281467935d771b365a0ca226cdd6ee0f00191febea5ca35025f5c65481a82",
+  "manifestSha256": "d3a711c49f5f94a4899bfab43eb8a9e902d8cf9ef0660c1a777de3304c54d100",
   "runtimeControllerRepair": {
     "terminalClassification": "Actual SIGTERM fixture child exit -15 formerly normalized to 1; retain timeout, cancellation and signal classification after cleanup",
     "guestQmpPath": "Generated C2 guest label shortened consistently for preparation and raw collection, reducing Linux QMP pathname from108 to98bytes"
@@ -105,5 +105,13 @@
     "cause": "Official pnpm archive exposes a shebang-less native placeholder until its installation script replaces it; Python exec does not provide shell fallback.",
     "repair": "Install a task-local executable command shim that execs the pinned Node and official pnpm.mjs with forwarded arguments.",
     "unchanged": "Official archive SHA512 pin, signed native downloader, native Linux x64 ELF check, source and compiler pins."
+  },
+  "gatewayShutdownRepair": {
+    "baseHead": "f9634d8a2da46bd990913c7b07b51d40ed11db12",
+    "helperOwner": "shared/process-stop.mjs",
+    "helperSha256": "68c2e651f829a424a7fc2c2b7d44a05caa23bc2c4f6a047296ca5529f3afdaec",
+    "sourceBudgetOwner": "gateway-shutdown-budget.mjs",
+    "sourceBudgetSha256": "02757141fd71a0e03ee885d952edbcd664395a420b26c6b7ba596529336baa3a",
+    "scope": "Gateway source budget, explicit forced-stop failure and runtime-only outer cleanup grace; operation/default budgets retained"
   }
 }

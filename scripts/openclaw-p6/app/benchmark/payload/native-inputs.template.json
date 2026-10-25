@@ -111,7 +111,7 @@
   },
   "ownerFiles": {
     "benchmark/cohort-stats.mjs": "18c9c6ac68e7898a0a3bcff4c441626602b96e93c86e733b56c8c2801fd413f0",
-    "benchmark/core-runner.proposed.mjs": "1e4c7e14ccfdca5923edf16e6cedced81ac5eee13a453e7dc970335a1b9018c2",
+    "benchmark/core-runner.proposed.mjs": "ed861466e0283ccd630d7a21fae9828254023b1852024cedb7989552ce9f4482",
     "benchmark/launch-target.mjs": "549517def60351d5e1fc3e0d175b112dc452a43f93f0fc0f0e64c698302fe7cd",
     "benchmark/process-tree.mjs": "f4e43b17f6693753d06099633c056ae022a1fa4c8c139b0dfdcb76a58d828d79",
     "benchmark/run-cohort.mjs": "9f162d5815f9263d619b632e8e83cced143db87838bbf892f317d9a5d6599c9f",
@@ -119,12 +119,13 @@
     "harness/config-roundtrip.mjs": "511d9140896da1cff71e116a428a985b7d1f695bd07b0423afebac6f1601d6b0",
     "harness/fixture-config.mjs": "1d028bfe83d0906f9fe1a651e5066a09442e850c08470eff584bf6487f4fbcc7",
     "harness/gateway-readiness.mjs": "a007aa71fd55a888d0b159ee4ab51cc63a35492586c87769086d95a50e3d0759",
-    "harness/measurement-owner.py": "c5210ffe6e0ea8fbeee8a9515ac0e0bb6b3b23e9da171814d3ceb4900ca76e34",
-    "stream-cohort.py": "63541c127f2dc32c4400193b77869407b785407098f8751e46ca305217c06315",
+    "harness/measurement-owner.py": "c610495003a00a6da6e4b870c752e14c9db55b06d38bda78f376a05c3722c724",
+    "stream-cohort.py": "534faa35fcaf5f48766323463cf42fc8d3fbf3d75ca442b26fc548483c16abb3",
     "package-inventory.mjs": "c406013d6d33cdff0776833c0ab7e027683c361700af4633dc3cfd84ef1a7978",
     "measure-install.py": "a3030140bd90db5ad148e453807633752648dcdd17c9d8c74a4a9f72e27a3ad6",
     "harness/knowledge-provider.py": "f144aaa440e3bac9aeb9edeb5f44402a5df0bbe32c4c7a1adb391970499a089f",
-    "harness/knowledge-agent.mjs": "16abb14fd436e60c6ab59816184d78b2e765dcc964f8104b09f0f1235d77dd6b"
+    "harness/knowledge-agent.mjs": "16abb14fd436e60c6ab59816184d78b2e765dcc964f8104b09f0f1235d77dd6b",
+    "harness/process-stop.mjs": "68c2e651f829a424a7fc2c2b7d44a05caa23bc2c4f6a047296ca5529f3afdaec"
   },
   "npm": {
     "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1/opt/node/lib/node_modules/npm/bin/npm-cli.js",

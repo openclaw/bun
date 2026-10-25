@@ -149,12 +149,14 @@ esac
                 (app / 'admissions').mkdir(exist_ok=True)
                 (app / 'admissions' / (variant + '.json')).write_text('{}')
             original_stat = Path.stat
+            original_exists = Path.exists
             def info(path, *args, **kwargs):
                 if str(path) == '/dev/kvm':
                     return os.stat_result((stat.S_IFCHR, 0, 0, 1, 0, 0, 0, 0, 0, 0))
                 return original_stat(path, *args, **kwargs)
             for codes in [[143], [0, 137], [0, 124], [-9], [0, -15]]:
                 with patch.object(guest, 'ROOT', app), patch.object(Path, 'stat', info), \
+                     patch.object(Path, 'exists', lambda path: True if str(path) == '/dev/kvm' else original_exists(path)), \
                      patch.dict(os.environ, {'P6_WORK': str(work), 'P6_DEADLINE_EPOCH': str(time.time() + 10000)}), \
                      patch.object(guest.subprocess, 'run', side_effect=[subprocess.CompletedProcess([], code) for code in codes]) as run:
                     self.assertEqual(guest.main(), 128 - codes[-1] if codes[-1] < 0 else codes[-1])

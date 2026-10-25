@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Direct-artifact qualification. Source imports below are test owners, never the app under test.
 import assert from 'node:assert/strict';
+import { readGatewayStopBudget, stopProcess, shutdownFailure } from './process-stop.mjs';
 import { qualifyConfigRoundtrip } from './config-roundtrip.mjs';
 import { coreFixtureConfig } from './fixture-config.mjs';
 import { hasGatewayReadyLog,isGatewayReadyResponse } from './gateway-readiness.mjs';
@@ -62,7 +63,7 @@ const result={schema:1,at:new Date().toISOString(),artifact,source,binary,platfo
  qualification:'incomplete',syntheticOnly:true,checks:{},commands:[],processes:[],cleanup:{},
  limits:['Worker pool census is not proof of every worker lifecycle.','No live provider credentials or live-model proof.','Timing with --zero-js includes tracing overhead; own process counters then refer to strace, not the app.']};
 if (fs.existsSync(path.join(artifact,'manifest.json'))) result.manifest=JSON.parse(fs.readFileSync(path.join(artifact,'manifest.json'),'utf8'));
-const children=[],observed=new Map();
+const children=[],observed=new Map(),stopReceipts=new Map();
 const clk=Number(spawnSync('getconf',['CLK_TCK'],{encoding:'utf8'}).stdout?.trim());
 const pageSize=Number(spawnSync('getconf',['PAGESIZE'],{encoding:'utf8'}).stdout?.trim());
 result.processCounters={clockTicksPerSecond:clk,pageSizeBytes:pageSize};
@@ -99,9 +100,9 @@ function start(label,command,args,{trace=false,extraEnv={}}={}) {
 function signalGroup(child,signal) { if(child.pid) try {process.kill(-child.pid,signal);} catch(error){if(error.code!=='ESRCH') throw error;} }
 async function stop(child) {
   if (!child?.pid) return;
-  if(child.exitCode===null&&child.signalCode===null) signalGroup(child,'SIGTERM');
-  const done=await Promise.race([child.done.then(()=>true),delay(10000,undefined,{ref:false}).then(()=>false)]);
-  if(!done) { signalGroup(child,'SIGKILL'); await Promise.race([child.done,delay(5000,undefined,{ref:false})]); }
+  const shutdown=await stopProcess(child,{graceMs:child===gateway?result.gatewayStopBudget.serviceStopTimeoutMs:10000});
+  stopReceipts.set(child,{label:child.receipt.label,...shutdown});
+  return shutdown;
 }
 async function command(label,args) {
   const child=start(label,binary,args,{trace:true});
@@ -117,10 +118,11 @@ async function freePort() {
 }
 let client,mock,gateway;
 let interrupted=false;
-const interrupt=()=>{interrupted=true;for(const child of children) signalGroup(child,'SIGTERM');};
+const interrupt=()=>{interrupted=true;void stop(gateway).catch(error=>{result.stopError=String(error);});for(const child of children) if(child!==gateway) signalGroup(child,'SIGTERM');};
 process.on('SIGINT',interrupt);process.on('SIGTERM',interrupt);
 const sourceImport=relative=>import(pathToFileURL(path.join(source,relative)).href);
 try {
+  result.gatewayStopBudget=await readGatewayStopBudget(source);
   const [{applyMockOpenAiModelConfig},{createGatewayWsClient},{resolveGatewaySuccessPayload},{PROTOCOL_VERSION},{assertOpenAiRequestLogUsed}]=await Promise.all([
     sourceImport('scripts/e2e/lib/fixtures/mock-openai-config.mjs'),sourceImport('scripts/lib/gateway-ws-client.ts'),
     sourceImport('scripts/e2e/lib/gateway-frame-payload.mjs'),sourceImport('packages/gateway-protocol/src/version.ts'),
@@ -223,7 +225,9 @@ finally {
   for(const item of live) {const current=procIdentity(item.pid);if(current?.start===item.start) try{process.kill(item.pid,'SIGKILL');}catch(error){if(error.code!=='ESRCH')throw error;}}
   await delay(50);
   const survivors=live.filter(item=>{const current=procIdentity(item.pid);return current?.start===item.start&&current.state!=='Z';});
-  result.processes=[...observed.values()];result.cleanup={observedPids:observed.size,requiredForcedCleanup:live.map(item=>item.pid),survivors};
+  result.processes=[...observed.values()];result.cleanup={observedPids:observed.size,requiredForcedCleanup:live.map(item=>item.pid),survivors,stops:[...stopReceipts.values()]};
+  const stopFailure=result.stopError??shutdownFailure(result.cleanup.stops,gateway?.receipt);
+  if(stopFailure){result.qualification='failed';result.cleanup.error=stopFailure;}
   if(survivors.length||live.length){result.qualification='failed';result.cleanup.error='Task process survived normal shutdown';}
   if(options.zeroJs) {
     const analyzer=path.join(path.dirname(fileURLToPath(import.meta.url)),'analyze-zero-js.py');

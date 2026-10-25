@@ -11,8 +11,19 @@ def sha(p):
  with Path(p).open('rb') as f:return hashlib.file_digest(f,'sha256').hexdigest()
 def read(p):return json.loads(Path(p).read_text())
 def write(p,x):Path(p).write_text(json.dumps(x,indent=2)+'\n')
-def run_command(command,cwd,env,directory,timeout):
- cancelled=[]
+def live_group(child):
+ if sys.platform!='linux':
+  # The actual controller is Linux-only; local fixtures own a direct child.
+  return child.poll() is None
+ # A finished orphan may remain Z under a non-reaping container init.
+ for process in Path('/proc').iterdir():
+  if not process.name.isdigit():continue
+  try:fields=(process/'stat').read_text().rsplit(') ',1)[1].split()
+  except (FileNotFoundError,ProcessLookupError):continue
+  if int(fields[2])==child.pid and fields[0] not in ['Z','X']:return True
+ return False
+def run_command(command,cwd,env,directory,timeout,cleanup_grace=15):
+ cancelled=[];forced=False
  def interrupt(sig,frame):cancelled.append(sig)
  handlers={sig:signal.signal(sig,interrupt) for sig in [signal.SIGTERM,signal.SIGINT,signal.SIGHUP]};child=None;start=time.monotonic()
  try:
@@ -24,19 +35,19 @@ def run_command(command,cwd,env,directory,timeout):
   if child is not None:
    try:os.killpg(child.pid,signal.SIGTERM)
    except ProcessLookupError:pass
-   deadline=time.monotonic()+15
+   deadline=time.monotonic()+cleanup_grace
    while time.monotonic()<deadline:
     child.poll()
-    try:os.killpg(child.pid,0)
-    except ProcessLookupError:break
+    if not live_group(child):break
     time.sleep(.1)
-   else:
+   forced=live_group(child)
+   if forced:
     try:os.killpg(child.pid,signal.SIGKILL)
     except ProcessLookupError:pass
    child.wait()
   for sig,handler in handlers.items():signal.signal(sig,handler)
  require(child is not None,'Command did not launch')
- return {'exitCode':child.returncode,'cancelled':bool(cancelled),'interruptedBySignal':cancelled[0] if cancelled else None,'timeout':timed_out,'wallSeconds':time.monotonic()-start}
+ return {'exitCode':child.returncode,'cancelled':bool(cancelled),'interruptedBySignal':cancelled[0] if cancelled else None,'timeout':timed_out,'cleanupGraceSeconds':cleanup_grace,'forcedCleanup':forced,'wallSeconds':time.monotonic()-start}
 def preserve_raw(paths,directory):
  files=[]
  for root in paths:
@@ -79,10 +90,16 @@ def main():
   signal_state['signal']=signum
   if not signal_state['finalizing']:raise RecoveryInterrupted('Qualification interrupted by signal '+str(signum))
  handlers={sig:signal.signal(sig,interrupted) for sig in [signal.SIGTERM,signal.SIGINT,signal.SIGHUP]}
- def run(command,timeout=600):
+ def run(command,timeout=600,gateway_owning=False):
   record['command']=list(map(str,command));write(directory/'result.json',record)
-  measured=run_command(command,Path.cwd(),env,directory,timeout);record['commandResult']=measured
-  require(measured['exitCode']==0 and not measured['timeout'] and not measured['cancelled'],'Phase command failed; preserve raw evidence')
+  grace=15
+  if gateway_owning:
+   budget=json.loads(subprocess.check_output([str(ROOT/'opt/node/bin/node'),str(ROOT/'qualification/harness/process-stop.mjs'),'--gateway-budget',str(ROOT/'source')],env=env,text=True,timeout=30))
+   record['gatewayShutdownBudget']=budget
+   # Gateway reap (5s), provider stop/reap (10s+5s), and final census (10s).
+   grace=budget['serviceStopTimeoutMs']/1000+30
+  measured=run_command(command,Path.cwd(),env,directory,timeout,grace);record['commandResult']=measured
+  require(measured['exitCode']==0 and not measured['timeout'] and not measured['cancelled'] and not measured['forcedCleanup'],'Phase command failed; preserve raw evidence')
  try:
   guest=ROOT/'guest';image_receipt=ROOT/'qualification-results'/(a.variant+'-docker-image')/'result.json'
   if a.phase=='guest-prerequisites':
@@ -99,7 +116,7 @@ def main():
    output=ROOT/'qualification-results'/label;raw.append(output)
    command=[sys.executable,'-B',ROOT/'qualification/qualify.py','--artifact',artifact,'--binary-sha256',binary_sha,'--manifest-sha256',manifest_sha,'--build-receipt',built,'--build-receipt-sha256',sha(built),'--lane',a.phase,'--out',output,'--run']
    if a.phase.startswith('docker-') and a.phase!='docker-image':command+=['--docker-image-receipt',image_receipt]
-   run(command,1200 if a.phase=='docker-image' else 600)
+   run(command,1200 if a.phase=='docker-image' else 600,gateway_owning=a.phase in ['core','zero-js','node-vm','node-vm-native-workers','pty'])
    if a.phase=='elf-floor':record['abi']=read(output/'elf-floor.json')
    elif a.phase=='docker-image':require(read(output/'result.json')['status']=='PASS','Docker image failed')
    elif not a.phase.startswith('docker-'):
