@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Make AOT evaluated-text names independent of temporary build roots so repeated builds produce identical executables.
+
 - Recognize macOS SIGBUS when entering removed AOT code, and retain the external-script runtime when `compile.trim.allow` includes `"run"`.
 - Preserve SharedArrayBuffer when a JIT-free AOT executable runs external scripts as Bun on macOS.
 

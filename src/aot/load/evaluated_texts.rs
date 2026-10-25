@@ -114,7 +114,7 @@ fn has_wrapper_reference(hir: &File<'_>, bound: &Bound<'_>, wrapper: FnId) -> bo
     flags.contains(FunctionFlags::USES_ARGUMENTS) || hir.rare_syntax & rare::NEW_TARGET != 0
 }
 
-fn create_virtual_path(importer: &[u8], call: ExprId) -> Vec<u8> {
+pub(super) fn create_virtual_path(importer: &[u8], call: ExprId) -> Vec<u8> {
     let mut path = [HOST_ROOT, VIRTUAL_DIRECTORY].concat();
     append_encoded_segment(&mut path, importer);
     path.push(b'/');

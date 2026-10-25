@@ -28,6 +28,31 @@ async function buildAndHash(folder: string, ...command: string[]) {
 }
 
 const buildLimit = 300_000;
+
+test(
+  "evaluated text has reproducible names in independent build roots",
+  () =>
+    slot(async () => {
+      const files = {
+        "app.ts": `const answer = new Function("value", "return value + 1;"); console.log(answer(41));\n`,
+      };
+      using first = tempDir("compile-evaluated-first", files);
+      using second = tempDir("compile-evaluated-second", files);
+      const left = await buildAndHash(String(first), "build", "--compile", "--aot", "app.ts");
+      const right = await buildAndHash(String(second), "build", "--compile", "--aot", "app.ts");
+      expect(right.sha256).toBe(left.sha256);
+      for (const folder of [String(first), String(second)]) {
+        const ran = await spawned([executable(folder, "app")], folder, interpreterForbidden);
+        expect({ stdout: ran.stdout, exitCode: ran.exitCode, signal: ran.signal }).toEqual({
+          stdout: "42\n",
+          exitCode: 0,
+          signal: null,
+        });
+      }
+    }),
+  buildLimit,
+);
+
 const program = {
   "app.ts": `import { twice } from "./lib";\nconst list: number[] = [1, 2, 3];\nconsole.log(list.map(twice).join(), process.argv.slice(2).join(" "));\n`,
   "lib.ts": `export function twice(n: number): number {\n  return n * 2;\n}\n`,

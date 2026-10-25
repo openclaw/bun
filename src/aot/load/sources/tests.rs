@@ -909,7 +909,8 @@ fn evaluated_function_is_found_by_file_and_call() {
             FnKind::Expr
         );
         let paths = sources.module_paths(function.file);
-        assert!(paths.public_path.starts_with(b"/$bun/text/"));
+        let expected = format!("/$bun/text/%2f%24bunfs%2froot%2fmain.js/{}.cjs", call.0);
+        assert_eq!(paths.public_path, expected.as_bytes());
         assert_eq!(paths.display_path, paths.public_path);
         assert_eq!(sources.diagnostic_path(function.file), paths.public_path);
 
@@ -940,6 +941,46 @@ fn uncompiled_text_has_no_function() {
         );
         assert_eq!(sources.evaluated_function(main, site.call), None);
         assert!(sources.evaluated_functions_of(main).is_empty());
+        let expected = format!(
+            "/$bun/text/%2f%24bunfs%2froot%2fmain.js/{}.cjs",
+            site.call.0
+        );
+        assert_eq!(
+            sources.module_paths(text_file).public_path,
+            expected.as_bytes()
+        );
+    });
+}
+
+#[test]
+fn nested_evaluated_text_uses_finalized_parent_path() {
+    let source = r#"export const outer = Function("return Function('return 42')");"#;
+    with_project_view(&[("main.js", source)], |view| {
+        let sources = view.sources;
+        let main = sources.entry_points()[0].file;
+        let [((_, outer_call), outer)] = *sources.evaluated_functions_of(main) else {
+            panic!("expected one outer evaluated text");
+        };
+        let [((_, inner_call), inner)] = *sources.evaluated_functions_of(outer.file) else {
+            panic!("expected one nested evaluated text");
+        };
+        let expected_outer = format!(
+            "/$bun/text/%2f%24bunfs%2froot%2fmain.js/{}.cjs",
+            outer_call.0
+        );
+        assert_eq!(
+            sources.module_paths(outer.file).public_path,
+            expected_outer.as_bytes()
+        );
+        let expected_inner = format!(
+            "/$bun/text/%2f%24bun%2ftext%2f%252f%2524bunfs%252froot%252fmain.js%2f{}.cjs/{}.cjs",
+            outer_call.0, inner_call.0
+        );
+        let paths = sources.module_paths(inner.file);
+        assert_eq!(paths.public_path, expected_inner.as_bytes());
+        assert_eq!(paths.display_path, paths.public_path);
+        assert_eq!(sources.diagnostic_path(inner.file), paths.public_path);
+        assert_eq!(sources.evaluator_of(inner.file), Some(outer.file));
     });
 }
 
