@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 umask 077
-root=/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1
+root=/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1
 here=$(cd "$(dirname "$0")" && pwd -P)
 [[ "$here" == "$root/benchmark-prep" && $(uname -s) == Linux && $(uname -m) == x86_64 ]]
 [[ ! -e "$here/package-source" && ! -e "$here/package" ]]
@@ -57,7 +57,7 @@ import hashlib,json,sys,tarfile
 from pathlib import Path
 root,here=map(Path,sys.argv[1:]);p=here/'package/openclaw.tgz'
 with tarfile.open(p) as t: build=json.load(t.extractfile('package/dist/build-info.json'))
-assert build['commit']=='59baf4a051665750eb7055d0cec991d9876526df'
+assert build['commit']=='4fa442e332745f1f58ccedd27106abdafcf4e019'
 receipt={'status':'package-owner-passed','sourceCommit':build['commit'],'tarball':str(p),'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),'bytes':p.stat().st_size,'buildInfo':build,'bundles':json.loads((here/'package/bundles.json').read_text()),'performanceEligible':False}
 (here/'package/producer-receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
 PY

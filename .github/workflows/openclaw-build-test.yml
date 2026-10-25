@@ -11,6 +11,14 @@ on:
           - compiler
           - app
           - benchmark
+      app_variants:
+        description: Application variants requested by this attempt (app mode only)
+        type: choice
+        default: all
+        options:
+          - all
+          - js-c2
+          - ts
       app_run_id:
         description: Completed originating app run ID (benchmark only)
         type: string
@@ -139,6 +147,8 @@ jobs:
     permissions:
       contents: read
       actions: read
+    env:
+      P6_APP_VARIANTS: ${{ inputs.app_variants }}
     defaults:
       run:
         shell: bash
@@ -167,21 +177,22 @@ jobs:
         id: paging
         run: bash scripts/openclaw-p6/app/host.sh paging
       - name: Build and qualify JS AOT
+        if: steps.prepare.outcome == 'success' && steps.paging.outcome == 'success' && !cancelled() && inputs.app_variants != 'ts'
         id: js
         continue-on-error: true
         run: bash scripts/openclaw-p6/app/host.sh variant js
       - name: Build and qualify physical ShadowRealm-off C2 AOT
-        if: steps.prepare.outcome == 'success' && steps.paging.outcome == 'success' && !cancelled()
+        if: steps.prepare.outcome == 'success' && steps.paging.outcome == 'success' && !cancelled() && inputs.app_variants != 'ts'
         id: c2
         continue-on-error: true
         run: bash scripts/openclaw-p6/app/host.sh variant c2-off
       - name: Build and qualify TypeScript source AOT
-        if: steps.prepare.outcome == 'success' && steps.paging.outcome == 'success' && !cancelled()
+        if: steps.prepare.outcome == 'success' && steps.paging.outcome == 'success' && !cancelled() && inputs.app_variants != 'js-c2'
         id: ts
         continue-on-error: true
         run: bash scripts/openclaw-p6/app/host.sh variant ts
       - name: Attempt actual application guest MDWE on the available native KVM device
-        if: steps.prepare.outcome == 'success' && steps.paging.outcome == 'success' && !cancelled()
+        if: steps.prepare.outcome == 'success' && steps.paging.outcome == 'success' && !cancelled() && inputs.app_variants != 'ts'
         continue-on-error: true
         run: bash scripts/openclaw-p6/app/host.sh guest
       - name: Stop owned workloads and remove encrypted task paging

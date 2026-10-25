@@ -4,7 +4,7 @@ import importlib.util,json,os,signal,subprocess,sys,time
 from pathlib import Path
 HERE=Path(__file__).resolve().parent
 sys.path.insert(0,str(HERE.parent))
-ROOT=Path('/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1')
+ROOT=Path('/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1')
 assert HERE==ROOT/'benchmark-prep'
 os.umask(0o077)
 def load(p):return json.loads(Path(p).read_text())

@@ -5,21 +5,22 @@
   "artifacts": [
     {
       "variant": "desktop-c2",
-      "mainSha": "83fb19513e8d3013a27db742a0610230070bc8df",
-      "sourceCommit": "83fb19513e8d3013a27db742a0610230070bc8df",
-      "sourceStatus": "main",
+      "mainSha": "d465bda8766e9031f14bd266458e4bb09ac37ff2",
+      "sourceCommit": "58c12b7787c3852c32667329f506750a8ed63994",
+      "sourceStatus": "main-plus-open-pr",
+      "pr": "https://github.com/openclaw/openclaw/pull/183771",
       "platform": "darwin",
       "arch": "arm64",
-      "sha256": "62c5ac39f9f1a35cae9eef038ac7c22091ef4b28ffb9effc70d8958f5d22f9f8",
+      "sha256": "877d86b206343b485d615e488e7b88802181a3c7f56bc1bd4dcdc91cb210638b",
       "signed": true,
+      "qualified": true,
       "compilerPins": {
         "bun": "b838e73072227c2652a41c689299284f1965cdc6",
         "webkit": "aaa690bfbf34c9d50775716ac2fc3c7d0573e0b8",
         "shadowRealm": "retained",
         "historicalC2Equivalent": false
-      },
-      "qualified": true
+      }
     }
   ],
-  "projection": "P6-derived public projection of the selected CB6 record; not a byte-identical P0 index clone"
+  "projection": "P6-derived public projection of the selected CB11 record; not a byte-identical P0 index clone"
 }

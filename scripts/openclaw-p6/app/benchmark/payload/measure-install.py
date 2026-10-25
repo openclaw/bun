@@ -21,7 +21,7 @@ measurement = root / 'measure-command.py'
 assert owner.sha(measurement) == owner.MEASURE_SHA
 receipt = here / 'work/install-command'
 receipt.mkdir(exist_ok=False)
-plan = {'measurementUtility': str(measurement), 'variant': 'npm-install-final-r3',
+plan = {'measurementUtility': str(measurement), 'variant': 'npm-install-final-r4',
         'source': str(here / 'work'), 'timeoutSeconds': 1200,
         'command': ['/usr/bin/nice', '-n', '10', inputs['node']['path'],
                     str(root / 'opt/node/lib/node_modules/npm/bin/npm-cli.js'), 'install',

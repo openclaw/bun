@@ -3,15 +3,12 @@
   "lane": "P6",
   "decision": "prepared-not-admitted",
   "variant": "js",
-  "source": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1/source",
-  "output": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1/artifacts/js",
-  "receiptDirectory": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1/build-receipts/js",
+  "source": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/source",
+  "output": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/artifacts/js",
+  "receiptDirectory": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/build-receipts/js",
   "linuxCut": {
     "status": "landed-main",
-    "commit": "59baf4a051665750eb7055d0cec991d9876526df",
-    "mainRef": "refs/remotes/origin/main",
-    "mainRefSha": "PENDING_ACTUAL_NATIVE_CLONE_MAIN_SHA",
-    "frozenAt": "2026-10-25T19:15:34.315016+00:00",
+    "commit": "4fa442e332745f1f58ccedd27106abdafcf4e019",
     "requiredAncestors": [
       "c36710ec04ba17c98a6d3ba59d68fcb124df8e49",
       "a171cfb74891e3abce0fb8312e976323998b3654",
@@ -40,23 +37,28 @@
       "247b73c9bdc34dd723533f50d56fc345ef624d9a",
       "d465bda8766e9031f14bd266458e4bb09ac37ff2",
       "a4cfee8af58ac2fc43ea5497db4bf02b98cc46dc",
-      "59baf4a051665750eb7055d0cec991d9876526df"
+      "59baf4a051665750eb7055d0cec991d9876526df",
+      "792b7d58c384eaa16c6caf28770fbc3064cf642b"
     ],
-    "p0DifferenceRationale": "Current landed main includes Knowledge worker resolver/manifest and declaration-link repairs. Preserve Linux150c/aaa compilers; all native preparation and qualification refreshed. P0 references remain distinct."
+    "typedResolverMergeCommit": "792b7d58c384eaa16c6caf28770fbc3064cf642b",
+    "mainRef": "refs/remotes/origin/main",
+    "mainRefSha": "PENDING_ACTUAL_NATIVE_CLONE_MAIN_SHA",
+    "frozenAt": "2026-10-25T22:30:39.990290+00:00",
+    "p0DifferenceRationale": "Latest fetched landed main4fa includes merged typed resolver fix183822 and all prior29 repairs. Linux keeps native150c/aaa compiler profiles; P0 CB11 C2 is distinct58c/b838 signed reference. Fresh preparation and runtime required for1270changed paths sinceR3."
   },
   "distBuildInfoSha256": "PENDING_ACTUAL_NATIVE_DIST_SHA256",
   "p0Reference": {
     "cohort": "cb-b838",
-    "manifest": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1/admission-inputs/P0-artifacts.json",
-    "manifestSha256": "220560f5474dbb93266d2fdcb23b93fecf46728778becdf54b5cda578f544e18",
+    "manifest": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/admission-inputs/P0-artifacts.json",
+    "manifestSha256": "f60309fc44e418cfaf02df998ada40cfab89c10f773df0c09eb512775d0d8e83",
     "variant": "desktop-c2",
-    "sourceCommit": "83fb19513e8d3013a27db742a0610230070bc8df",
-    "executableSha256": "62c5ac39f9f1a35cae9eef038ac7c22091ef4b28ffb9effc70d8958f5d22f9f8"
+    "sourceCommit": "58c12b7787c3852c32667329f506750a8ed63994",
+    "executableSha256": "877d86b206343b485d615e488e7b88802181a3c7f56bc1bd4dcdc91cb210638b"
   },
   "compiler": {
     "cohort": "rd-p6-150c",
     "profile": "cb-standard",
-    "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1/compilers/standard/bun",
+    "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/compilers/standard/bun",
     "sha256": "PENDING_ACTUAL_PRESERVED_NATIVE_COMPILER_SHA256",
     "bunCommit": "150c9620c53710060186b8b0cd50985e035408b0",
     "webkitCommit": "aaa690bfbf34c9d50775716ac2fc3c7d0573e0b8",
@@ -66,10 +68,10 @@
     }
   },
   "buildNode": {
-    "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1/opt/node/bin/node",
+    "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/opt/node/bin/node",
     "sha256": "PENDING_ACTUAL_NATIVE_NODE_SHA256"
   },
-  "pluginsFile": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1/admission-inputs/plugins/desktop.json",
+  "pluginsFile": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/admission-inputs/plugins/desktop.json",
   "pluginsSha256": "PENDING_ACTUAL_NATIVE_PLUGIN_SELECTION_SHA256",
   "compileTrimAllow": [
     "run"

@@ -7,8 +7,8 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { inspectPackageExtensions } from './package-inventory.mjs';
 
-const CUT = '59baf4a051665750eb7055d0cec991d9876526df';
-const ROOT = '/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1';
+const CUT = '4fa442e332745f1f58ccedd27106abdafcf4e019';
+const ROOT = '/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const read = filename => JSON.parse(fs.readFileSync(filename, 'utf8'));
 const write = (filename, value) => fs.writeFileSync(filename, JSON.stringify(value, null, 2) + '\n', { flag: 'wx' });

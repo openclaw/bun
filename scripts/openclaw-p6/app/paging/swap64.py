@@ -2,12 +2,12 @@
 """Explicitly admitted task swap only; no app launch or persistent system changes."""
 import argparse,hashlib,json,os,platform,re,resource,shutil,signal,stat,subprocess,time
 from pathlib import Path
-ROOT=Path('/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1')
+ROOT=Path('/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1')
 AREA=BACKING=STATE=MAPPER=None
 NAME=None
 IDENTITY=None
 EXECUTION_SHA256=None
-SOURCE='59baf4a051665750eb7055d0cec991d9876526df'
+SOURCE='4fa442e332745f1f58ccedd27106abdafcf4e019'
 SIZE=64*1024**3
 FLOOR=25*1024**3
 BUILD_HEADROOM=32*1024**3

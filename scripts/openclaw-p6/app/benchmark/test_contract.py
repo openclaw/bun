@@ -3,13 +3,13 @@ from pathlib import Path
 from app_contract import CUT,classify,sha,verify_export
 
 class Contract(unittest.TestCase):
- def fixture(self,base,conclusion='failure',cleanup=None):
+ def fixture(self,base,conclusion='failure',cleanup=None,selection=None):
   head='a'*40;runid=12
   execution={'identity':{'repository':'openclaw/bun','runId':str(runid),'runAttempt':'2','job':'linux-x64-app'},'workflowHead':head,'sourceCommit':CUT}
   rows={'host/execution.json':json.dumps(execution).encode()}
   if cleanup is not None:rows['host/paging-cleanup.json']=json.dumps(cleanup).encode()
   index=[{'path':k,'sha256':hashlib.sha256(v).hexdigest(),'bytes':len(v)} for k,v in rows.items()]
-  rows['index.json']=json.dumps(index).encode();rows['summary.json']=json.dumps({'sourceCommit':CUT,'pagingCleanup':cleanup,'unrunRequiredProof':['strict-zero-js']}).encode()
+  rows['index.json']=json.dumps(index).encode();rows['summary.json']=json.dumps({'sourceCommit':CUT,'pagingCleanup':cleanup,'unrunRequiredProof':['strict-zero-js'],**(selection or {})}).encode()
   archive=base/'app.zip'
   with zipfile.ZipFile(archive,'w') as z:
    for name,data in rows.items():z.writestr(name,data)
@@ -18,6 +18,16 @@ class Contract(unittest.TestCase):
   run={'id':runid,'run_attempt':2,'head_sha':head,'workflow_id':4,'path':'.github/workflows/openclaw-build-test.yml','repository':{'id':3,'full_name':'openclaw/bun'},'status':'completed','conclusion':conclusion}
   meta={'id':5,'name':pins['artifact']['name'],'expired':False,'workflow_run':{'id':runid,'head_sha':head,'repository_id':3},'size_in_bytes':size,'digest':'sha256:'+digest}
   return pins,run,meta,archive
+ def test_partial_origin_keeps_selection_and_ts_unavailability(self):
+  with tempfile.TemporaryDirectory() as d:
+   base=Path(d);selection={'variantSelection':'js-c2','requestedVariants':['js','c2-off'],'unselectedVariants':['ts'],'fullVariantMatrixComplete':False}
+   p,r,m,z=self.fixture(base,selection=selection)
+   verify_export(p,r,m,z,base/'out')
+   summary=json.loads((base/'out/summary.json').read_text())
+   self.assertEqual(summary['requestedVariants'],['js','c2-off'])
+   self.assertFalse(summary['fullVariantMatrixComplete'])
+   self.assertEqual(classify(base/'out','ts')['status'],'unavailable')
+
  def test_failed_completed_run_is_allowed_but_exact_attempt_required(self):
   with tempfile.TemporaryDirectory() as d:
    base=Path(d);p,r,m,z=self.fixture(base)

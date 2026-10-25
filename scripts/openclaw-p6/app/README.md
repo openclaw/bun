@@ -1,7 +1,7 @@
 # P6 native x64 application attempt
 
 This is a bounded qualification attempt for OpenClaw
-`59baf4a051665750eb7055d0cec991d9876526df` using the compiler pair from Actions
+`4fa442e332745f1f58ccedd27106abdafcf4e019` using the compiler pair from Actions
 run `40214829538`, attempt 1, wrapper head
 `f9fa08790bf45b3e995280f6eb249e14fd9191c1`. It never builds the compiler itself.
 Both compiler artifacts must have reviewed IDs, ZIP digests, compiler digests,
@@ -32,7 +32,7 @@ Cleanup stops the app container, removes only that label's resources and verifie
 their absence before paging cleanup. It never prunes the Docker host.
 
 `packet/payload` is a P6-derived public input projection, not a byte-identical P0
-index clone. Its selected CB6 record retains the exact source, signed status,
+index clone. Its selected CB11 record retains the exact source, signed status,
 qualified status, executable hash and compiler facts of the private frozen
 reference. That reference is historical provenance only. It supplies no Linux
 application or performance qualification. The original capsule and P0 index are
@@ -47,7 +47,7 @@ The runtime controller preserves terminal exit classifications
 after evidence collection and uses a shorter generated guest label so C2's QMP
 socket path fits Linux's 107-byte limit. The original capsule is unchanged.
 The source proof
-retains the exact R3 tree, all 28 required ancestors and dependency/source file
+retains the exact R4 tree, all 29 required ancestors and dependency/source file
 hashes; native clone, frozen install, runtime build, boundary generation and plugin
 selection still run afresh.
 
@@ -76,7 +76,7 @@ The comparison follow-on consumes the exact completed app run/attempt and
 artifact digest, plus the compiler pair above. The exported admissions,
 build/core/controller receipts, plugin selection and projected reference facts
 retain their native relative paths. On one fresh native x64 runner, recreate
-the exact R3 source and canonical runtime with the existing preparation owner;
+the exact R4 source and canonical runtime with the existing preparation owner;
 package with `scripts/package-openclaw-for-docker.mts`; install into a new prefix
 using the source's exact lifecycle policy; then run the existing comparison
 owner with one warmup and six alternating measured sweeps. No build-host sample
@@ -84,7 +84,7 @@ is reused. The separately prepared comparator capsule is
 `46057637d4872e3660aa7ca7a2e8b5610e84da8f8ff4065fab82bb933c5c5420`;
 its dedicated dispatch adapter requires separate review before execution.
 
-R3 uses the root freeze at `2026-10-25T19:15:34.315016+00:00`, including PR183771 Knowledge worker resolver/manifest repairs and PR183781 declaration-link repair, plus the prior acpx 0.21.0 and Knowledge integration. Fresh frozen installation, canonical build, boundary artifacts and plugin selection are required. Prior plugin counts, worker counts and dependency caches are not qualification evidence.
+R4 uses the root freeze at `2026-10-25T22:30:39.990290+00:00`, including landed PR183822 typed resolver expression unwrapping and the later main runtime changes. Fresh frozen installation, canonical build, boundary artifacts, plugin selection and qualification are required. Prior plugin counts, worker counts and dependency caches are not qualification evidence.
 
 ## Selected builtin and native-worker preparation gate
 
@@ -95,7 +95,7 @@ compiler profiles must pass; missing selected exports, unmapped workers and plug
 worker declarations block further work. Full-dist findings outside the selected
 owner inputs remain visible diagnostics.
 
-`compatibility/source-binding.json` binds the reviewed R3 commit/tree, all listed
+`compatibility/source-binding.json` binds the reviewed R4 commit/tree, all listed
 owner hashes, and the classic TypeScript6.0.3 package/entry hashes. Fresh native
 preparation must match each of these facts before execution.
 The unchanged input and command templates are evidence, not executable shell
@@ -111,3 +111,24 @@ selection, execution identity, parser and compiler bytes. Shared benchmark
 preparation uses the same gate. Named reports and failures are exported; the
 preflight's HOME/tmp/cache directories are excluded. This is selected emitted-JS
 and native-worker preflight, not final transformed TS/link or runtime qualification.
+
+## Explicit application variant selection
+
+`mode=app` accepts `app_variants=all` (the default), `js-c2`, or `ts`.
+Each attempt records its requested variants in the execution identity. Admission
+rejects unselected builds. A JS+C2 attempt finishes its normal guest, cleanup and
+export phases without starting TS; only after its exact uploaded artifact is
+verified should a separate TS-only attempt be considered.
+
+The summary lists unselected variants explicitly. `scheduledPhasesComplete`
+requires every selected build/runtime phase, compatibility and cleanup to pass;
+`fullVariantMatrixComplete` additionally requires all three variants. Missing or
+invalid selection cannot pass. Application qualification and ship readiness stay
+false until the separate required evidence exists. No runtime/security deadline
+or cleanup rule changes with a smaller selection.
+
+The existing benchmark can consume a verified JS+C2 export with TS unavailable.
+A TS-only export cannot provide its mandatory JS baseline, and binaries from
+separate runs are not combined into one comparison. This splits later TS risk
+from an already exported JS+C2 attempt; it does not prevent evidence loss if the
+first runner itself disappears before upload.

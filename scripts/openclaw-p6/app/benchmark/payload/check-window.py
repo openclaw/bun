@@ -3,9 +3,9 @@
 import hashlib,json,os,time
 from pathlib import Path
 HERE=Path(__file__).resolve().parent
-ROOT=Path('/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1')
+ROOT=Path('/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1')
 budget=json.loads((HERE/'cohort-budget.json').read_text());q=json.loads((HERE/'quiet-admission.json').read_text())
-assert q['decision']=='run-complete-selected-cell-cohort' and q['sourceCommit']=='59baf4a051665750eb7055d0cec991d9876526df' and q['nativeRoot']==str(ROOT)
+assert q['decision']=='run-complete-selected-cell-cohort' and q['sourceCommit']=='4fa442e332745f1f58ccedd27106abdafcf4e019' and q['nativeRoot']==str(ROOT)
 assert q['hostBootId']==Path('/proc/sys/kernel/random/boot_id').read_text().strip()
 assert 0<=time.time()-q['observedAtEpoch']<=300
 assert all(q[k] is True for k in ['heavyBuildsReconciled','nativeHooksReconciled','dockerAndGuestWorkReconciled','otherBenchmarksStopped','sameNativeMachineAllCells','exclusiveBenchmarkInterval'])

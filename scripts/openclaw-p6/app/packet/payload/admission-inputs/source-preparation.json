@@ -1,12 +1,9 @@
 {
-  "sourceCommit": "59baf4a051665750eb7055d0cec991d9876526df",
-  "sourceTree": "6b1896212170bdfc7632f87ceee3bc59934356b8",
+  "sourceCommit": "4fa442e332745f1f58ccedd27106abdafcf4e019",
+  "sourceTree": "5409457bc1b8a901b00193469a3c2b7a74dc2f30",
   "linuxCut": {
     "status": "landed-main",
-    "commit": "59baf4a051665750eb7055d0cec991d9876526df",
-    "mainRef": "refs/remotes/origin/main",
-    "mainRefSha": "59baf4a051665750eb7055d0cec991d9876526df",
-    "frozenAt": "2026-10-25T19:15:34.315016+00:00",
+    "commit": "4fa442e332745f1f58ccedd27106abdafcf4e019",
     "requiredAncestors": [
       "c36710ec04ba17c98a6d3ba59d68fcb124df8e49",
       "a171cfb74891e3abce0fb8312e976323998b3654",
@@ -35,9 +32,14 @@
       "247b73c9bdc34dd723533f50d56fc345ef624d9a",
       "d465bda8766e9031f14bd266458e4bb09ac37ff2",
       "a4cfee8af58ac2fc43ea5497db4bf02b98cc46dc",
-      "59baf4a051665750eb7055d0cec991d9876526df"
+      "59baf4a051665750eb7055d0cec991d9876526df",
+      "792b7d58c384eaa16c6caf28770fbc3064cf642b"
     ],
-    "p0DifferenceRationale": "Current landed main includes Knowledge worker resolver/manifest and declaration-link repairs. Preserve Linux150c/aaa compilers; all native preparation and qualification refreshed. P0 references remain distinct."
+    "typedResolverMergeCommit": "792b7d58c384eaa16c6caf28770fbc3064cf642b",
+    "mainRef": "refs/remotes/origin/main",
+    "mainRefSha": "4fa442e332745f1f58ccedd27106abdafcf4e019",
+    "frozenAt": "2026-10-25T22:30:39.990290+00:00",
+    "p0DifferenceRationale": "Latest fetched landed main4fa includes merged typed resolver fix183822 and all prior29 repairs. Linux keeps native150c/aaa compiler profiles; P0 CB11 C2 is distinct58c/b838 signed reference. Fresh preparation and runtime required for1270changed paths sinceR3."
   },
   "files": {
     "extensions/acpx/package.json": "5e1e7275d8b79dd5e02d2eaaa1176e00abbb79b03f681d944056f0124e10b0ec",
@@ -67,6 +69,9 @@
     "src/cli/security-cli.ts": "18a37df7b3eb2ccdb7bfb55b63aecd9f1cef739f8b5fac16b0f266bd12fe23e1",
     "src/commands/backup-record.ts": "6b7b088fc997cd31fa0178c2bb1b67622ea9e5e9169190a65637b93ae5265810",
     "src/config/sessions/session-transcript-worker-readers.ts": "c8baed3ee4957099240bfd7014beb6c57de724d9270e43e6ba3c2653dbe1430a",
-    "src/plugins/plugin-state-operation-source.ts": "61f39fc6b9c289d7cf96a03d87c1b20230f81ea65b0bf4e9287d72faff29319f"
+    "src/plugins/plugin-state-operation-source.ts": "61f39fc6b9c289d7cf96a03d87c1b20230f81ea65b0bf4e9287d72faff29319f",
+    "scripts/lib/bun-standalone-imports.mjs": "8033969ca474dce851df256dce73845315b17ca99e887930e5459f2149117782",
+    "test/scripts/bun-standalone-imports.test.ts": "8b5f6b48dc8acb4a25e79564ad233eb0c66865006db1996e0115792d0b2991a7",
+    "docs/install/standalone.md": "6d9ddff15e12622d299c789e23025d9aeccbdf025e895b5885276d65e5f9c2c7"
   }
 }

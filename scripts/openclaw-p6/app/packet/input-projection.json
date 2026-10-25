@@ -1,103 +1,103 @@
 {
   "schemaVersion": 1,
   "originalCapsuleSha256": "879c8909d02159882757675affbba14587c45b783bb480fd2fd73925c63372ec",
-  "projectionReason": "P6 public CB6 provenance projection with exact R3 source freeze and identity/path/hash rebind. Previously reviewed runtime controller repairs remain; original879c is unchanged.",
+  "projectionReason": "P6 public CB11 provenance projection with exact R4 source/tree/proof/path binding. Original capsule provenance and the reviewed Gateway shutdown repair are preserved.",
   "changedFiles": {
     "admission-inputs/P0-artifacts.json": {
       "originalSha256": "6ceb952c8c527152d3fb534e203985b493c7c94e3729f27b65d36a925c755ab2",
-      "projectedSha256": "220560f5474dbb93266d2fdcb23b93fecf46728778becdf54b5cda578f544e18"
+      "projectedSha256": "f60309fc44e418cfaf02df998ada40cfab89c10f773df0c09eb512775d0d8e83"
     },
     "admission-inputs/p0-reference.json": {
       "originalSha256": "09b61d429272bd580e4ed064260d431e7a864743e4afefebbf18bd6d0eceab99",
-      "projectedSha256": "9c068ecfb5343e80c268892caa4e78644fe73b2fff9a069a619cd66fc9da6fc0"
+      "projectedSha256": "1603c0262605fcb488ecbbd07a163b9afb5487456aca01b6574aaa6bac9296c9"
     },
     "admission-inputs/source-preparation.json": {
       "originalSha256": "60fcbaa4d97242d8ed3f0b970f7a14e9be46356d1d1ee588e75bc73bbe01d0de",
-      "projectedSha256": "706297fdfa79d2b54260edc5a30d234b0c7c471dbf0498e2311041dca7142382"
+      "projectedSha256": "dd8492221cf6bce907a90b392a24289a3c8e6f1e655e47dba174d51ccd0710e9"
     },
     "admission-templates/c2-off.json": {
       "originalSha256": "1f02cb47781a9e689fb7a3074945fca3a36bf05c064e5bac0047ebc2d49a57d2",
-      "projectedSha256": "b3a64d942abf84261fa9ac71e7777d37e4a8591a4e3a024c0a7f59e41a9aae45"
+      "projectedSha256": "8c3ad5cf6d473092c3ee0145afcae576b52288e822cb3e6485e429293b0bf7a3"
     },
     "admission-templates/js.json": {
       "originalSha256": "dcc439c33249b208d1f522f026fa21ecc8fa7aed7142c0f7991e3a9682c604f8",
-      "projectedSha256": "583db1e8e125fa6eb51849537ded61685b1fb731ef58ff9d9490a6190c67598c"
+      "projectedSha256": "8ffbfe9f0bab1a910a8e40e0eb71037db32ed242bd00f12932020e6ef1d4d120"
     },
     "admission-templates/ts.json": {
       "originalSha256": "e73da6e668f071517b392cd56bf22cb32c0fbc2b2da61bfb9525357330752e93",
-      "projectedSha256": "b70e4293cd792e0c3d013e82867159752f19f3a9fbbe4b1effb4d726132a73e1"
+      "projectedSha256": "f6fcd850b680c5f9b81ac77763afbba5dc67c6ff092b610a3623197faa2c25db"
     },
     "adopt-compilers.py": {
       "originalSha256": "e12f117f417d1bb108b5d4719f5e471ad75b2adba78a425e0dd9a2a0c697d2cf",
-      "projectedSha256": "3f9d972e42394cf4bf6d9902408066c9b8f2d71c88c861a34ef26a4465d6765e"
+      "projectedSha256": "97585382c7ee80321fd26595220120b2d42f855575059d283b4c58cb93362a27"
     },
     "cron-fixture/inputs.json": {
       "originalSha256": "0971140eb17775d974eb509693c864a9e954d5e7a5fc0946bff7852e43785ff6",
-      "projectedSha256": "81e57c1c5dee1094aca1268bc79d34e9d454006d99528c2cbf659055b4370c79"
+      "projectedSha256": "fd559a9b5f566b19e155427ec267e512a5d7ed5cfd7b0ef89b460711b9017b36"
     },
     "cron-fixture/run-native.sh": {
       "originalSha256": "b07d4dac039fc0099a1697814b31cbf2ec32e56a2e2183aaef87be0a3b02ac46",
-      "projectedSha256": "2adf586ce9b41328fcce6687a0e588297f40ccdde9917ce2133a859db0b37df4"
+      "projectedSha256": "e7201d5ec00c6759fa937eeb557ca7c20ae4e309a2b05d4d4dd105a9fcc28308"
     },
     "guest/manifest.json": {
       "originalSha256": "4280c2f62a9168b812176bab9fb762432a5425fe29821a1720471d2ece242d12",
-      "projectedSha256": "883698ce24693baede4da572e045d8f6b6db3e609db7b2ede2c6e111b5395040"
+      "projectedSha256": "b19537eeb2ebf1ca8ee617c89c885bc127a86ef36be3f6c257d33d735e833acf"
     },
     "guest/prepare-guest.py": {
       "originalSha256": "936bf471c1c6e06ac2bb1ec1efec0e8e0c4583853e8fcb0ff1a53fb42cfacd52",
-      "projectedSha256": "afb0cf56f8126d3d1081a7cd4a17ef112c53112eb4a4dbe2f170749768606689"
+      "projectedSha256": "295af4688985ee5c2e17f0641e0c77d56e3153f3dca558965fff0f358469ab1e"
     },
     "native-prep.py": {
       "originalSha256": "8bfd331144ad876405e73f317e839b35cfc7647288f9fb2c34f95dab86f66e91",
-      "projectedSha256": "24669ace544f960d183b8d655a5bbca00e3255f955b11636461d8b1ba244661a"
+      "projectedSha256": "5c6932de85c113f7b7d5b2a25780dc0cf103bd92352be084fb64561075bebf06"
     },
     "preserve.py": {
       "originalSha256": "5851e29c0832b017f7e7a98b0f64e51b4951f451574f49a6d9632f0a57b08d34",
-      "projectedSha256": "119216b638a278611f08421689cb58ad528b4cbf2170337419be1faf3756c807"
+      "projectedSha256": "c6d78862f9921af842c0eec4eb3e9a2850426847859bf503ff08112c95b95456"
     },
     "qualification/README.md": {
       "originalSha256": "cbf5adaed9ff418fa5d0092994cf05166efe215cf56a153c8dcff17d3f1e9fbb",
-      "projectedSha256": "ed5b21715bffcfb97c9e1f771c5d14ad7a7682564be31e87420b762d754335ec"
+      "projectedSha256": "e3041b8f7a7f07f8c4700098fe45759293cb4d9f9c57c7a57074abc5c2e6786c"
     },
     "qualification/manifest.json": {
       "originalSha256": "6a38454878806509950a1ea7fb9a15ffb2bb79b53f4ef586bee131474a3e9221",
-      "projectedSha256": "7c91acd9e6558d7849124ab062e4ca328f383327c3cd41107ca5795fcfd6a0bf"
+      "projectedSha256": "91d02cbcb2167a5b10cd95db8345b19a5c1897b71eaaf0796b1ff42a41e1ca07"
     },
     "qualification/qualify.py": {
       "originalSha256": "c32886e391f27eb8c66d333d07b15b4af4c8081c329bad2fe8dca28b2dd9c2d7",
-      "projectedSha256": "e5e9f3fdf050bfca5d43a30035553b57b9f2ad444dbb63d61f6ba460aa6d5c88"
+      "projectedSha256": "2b4de67c6f749079ed01a1bc220b4a2bba4838b26754d0b096f9c3188debd712"
     },
     "qualification/source-contract.json": {
       "originalSha256": "e2056668fd189ba8505c75fbef695c535930600e08d6e8d7bb0df55f9cf13d2b",
-      "projectedSha256": "dc261c248995cde0156c9278f0669533b577901723af9c45f8a9683991ae7255"
+      "projectedSha256": "c1cffbee88de6e49601c68e753a0456e938a1ed2fc503640d43c7f942fea838b"
     },
     "runtime-controller.py": {
       "originalSha256": "d0974f26f8432bc3fe5c59afb640105ce53dc0d268d8f85fe0598d363ff5d7d9",
-      "projectedSha256": "6fec8b461a1dcf6821ebd24c7f13527d2518457106c522a56bb930dad95158bb"
+      "projectedSha256": "1e93b19894910a849ff261ca940972e7da1817758653864339c7c2d5037c4a48"
     },
     "stage.py": {
       "originalSha256": "d40bdf22aeae208f1165a0d74ee0b87eb7e93e9144a5092212211633b59124d3",
-      "projectedSha256": "8f6a94d7cc63c9e23c8f8ca1c9e2a5036a9c12b72074e8a4b014a867a2a11e4f"
+      "projectedSha256": "29ad1ad089f28720ff1ac2c3036c5153b873856698ecb18122411a0c0d0db277"
     }
   },
-  "manifestSha256": "d3a711c49f5f94a4899bfab43eb8a9e902d8cf9ef0660c1a777de3304c54d100",
+  "manifestSha256": "09230146770646b82bf5c4859cfc3ccda3b9d644ee3e2305bc6001cd6f5b311d",
   "runtimeControllerRepair": {
     "terminalClassification": "Actual SIGTERM fixture child exit -15 formerly normalized to 1; retain timeout, cancellation and signal classification after cleanup",
     "guestQmpPath": "Generated C2 guest label shortened consistently for preparation and raw collection, reducing Linux QMP pathname from108 to98bytes"
   },
   "sourceRebind": {
-    "fromSource": "247b73c9bdc34dd723533f50d56fc345ef624d9a",
-    "sourceCommit": "59baf4a051665750eb7055d0cec991d9876526df",
-    "sourceTree": "6b1896212170bdfc7632f87ceee3bc59934356b8",
-    "frozenAt": "2026-10-25T19:15:34.315016+00:00",
-    "rootProofSha256": "2e0f91325368978d351955d0de24ed38877d4f610713db49dabf8a24c62d7607",
-    "requiredAncestors": 28,
-    "nativeRoot": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1",
+    "fromSource": "59baf4a051665750eb7055d0cec991d9876526df",
+    "sourceCommit": "4fa442e332745f1f58ccedd27106abdafcf4e019",
+    "sourceTree": "5409457bc1b8a901b00193469a3c2b7a74dc2f30",
+    "frozenAt": "2026-10-25T22:30:39.990290+00:00",
+    "rootProofSha256": "69a1a26a7c138ccb26fc03671949edf27b89c126036ce53f0fabc69bb16cfee5",
+    "requiredAncestors": 29,
+    "nativeRoot": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1",
     "compilerPairChanged": false,
     "materialChanges": [
-      "Knowledge worker resolver/manifest repair PR183771",
-      "declaration-link boundary repair PR183781",
-      "prior typed ownership, acpx0.21.0 and Knowledge integration retained"
+      "typed resolver expression unwrapping PR183822 merged792b7d58",
+      "latest main runtime changes including perf(state)183890; all native preparation and runtime proof fresh",
+      "P0 CB11 signed/qualified C2 reference remains distinct from Linux150c/aaa"
     ],
     "currentC2QmpPathBytes": 96
   },

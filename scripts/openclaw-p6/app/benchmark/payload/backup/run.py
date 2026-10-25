@@ -14,7 +14,7 @@ import sys
 import tarfile
 
 HERE = Path(__file__).resolve().parent
-SOURCE = '59baf4a051665750eb7055d0cec991d9876526df'
+SOURCE = '4fa442e332745f1f58ccedd27106abdafcf4e019'
 LIVE_ROWS = [(7, 'p6-live-alpha'), (11, 'p6-live-beta')]
 DELETED = 'P6_SYNTHETIC_DELETED_PAGE_8c3e61'
 WORKSPACE = b'P6 synthetic workspace payload\n'

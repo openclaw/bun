@@ -9,6 +9,7 @@ import resource
 import shutil
 import sys
 import time
+from selection import select_variants
 
 work = Path(os.environ['P6_WORK'])
 resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
@@ -28,7 +29,8 @@ else:
     assert identity['repository'] == 'openclaw/bun' and identity['job'] == 'linux-x64-app'
     assert all(re.fullmatch('[1-9][0-9]*', identity[key]) for key in ['runId', 'runAttempt'])
     record = {'schemaVersion': 1, 'identity': identity, 'workflowHead': os.environ['GITHUB_SHA'],
-              'sourceCommit': '59baf4a051665750eb7055d0cec991d9876526df', 'startedEpoch': time.time()}
+              'sourceCommit': '4fa442e332745f1f58ccedd27106abdafcf4e019', 'startedEpoch': time.time(),
+              **select_variants(os.environ.get('P6_APP_VARIANTS', 'all'))}
     with (work / 'execution.json').open('x') as stream:
         json.dump(record, stream, indent=2)
         stream.write('\n')

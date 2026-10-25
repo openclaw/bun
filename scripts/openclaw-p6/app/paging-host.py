@@ -9,7 +9,7 @@ import subprocess
 import sys
 
 HERE = Path(__file__).resolve().parent
-ROOT = Path('/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1')
+ROOT = Path('/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1')
 
 
 def sha(path):

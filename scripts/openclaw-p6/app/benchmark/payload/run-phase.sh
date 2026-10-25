@@ -4,7 +4,7 @@ umask 077
 [[ $# -eq 1 ]] || { echo 'Usage: run-phase.sh plan|install|inventory|node-core|bun-core|config|cohort' >&2; exit 2; }
 phase=$1
 case "$phase" in plan|install|inventory|node-core|bun-core|config|cohort) ;; *) exit 2;; esac
-root=/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1
+root=/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1
 here="$(cd "$(dirname "$0")" && pwd -P)"
 [[ "$here" == "$root/benchmark-prep" && $(uname -s) == Linux && $(uname -m) == x86_64 ]]
 node="$root/opt/node/bin/node"

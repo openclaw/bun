@@ -11,7 +11,7 @@
     "application/trace-policy.py": "04a1558c00ccb2be9d87f4c0748ef253546ceb87f5727d38f3ac406a882e8963",
     "collect-evidence.py": "59a49d27f372b4f2bce4c7ad95b00bcc01708ea59fb17acf857d4c15c233a652",
     "guest-prerequisites.py": "463a6cc56a7de19a49bc873cd630a7da28082337ab7f340809c43f4b2604050c",
-    "prepare-guest.py": "afb0cf56f8126d3d1081a7cd4a17ef112c53112eb4a4dbe2f170749768606689",
+    "prepare-guest.py": "295af4688985ee5c2e17f0641e0c77d56e3153f3dca558965fff0f358469ab1e",
     "shared/guest_result_transport.py": "1e0d155a7827e3fa44e3c377d935001a3db6f6546cdc397fa909c86be4dcdd7b",
     "shared/kvm-preflight.py": "6ba9f17413342ddca66437bdb3c9b18d7c7357c1028470ebdebc689981e41ca5",
     "shared/run-kvm-guest.py": "bca0eac25f6bd828f67c895c675fea6c8202583b1e6027f6a83f22212860ab42"

@@ -1,8 +1,8 @@
 """Exact completed app-run transport contract; contains no network or app execution."""
 import hashlib,json,stat,zipfile
 from pathlib import Path,PurePosixPath
-CUT='59baf4a051665750eb7055d0cec991d9876526df'
-ROOT=Path('/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1')
+CUT='4fa442e332745f1f58ccedd27106abdafcf4e019'
+ROOT=Path('/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1')
 VARIANTS=('js','c2-off','ts')
 def load(p):return json.loads(Path(p).read_text())
 def sha(p):

@@ -1,5 +1,5 @@
 {
-  "sourceCommit": "59baf4a051665750eb7055d0cec991d9876526df",
+  "sourceCommit": "4fa442e332745f1f58ccedd27106abdafcf4e019",
   "files": {
     "scripts/e2e/lib/fixtures/mock-openai-config.mjs": "26986b7a44259220a98ba616e20297888502a6ec9f0cb89f9306159b544ebfb1",
     "scripts/lib/gateway-ws-client.ts": "5dfcd0f4904475a249b19d6c4d2d22270d2e76c8d79da3377011a38eb30ed34d",

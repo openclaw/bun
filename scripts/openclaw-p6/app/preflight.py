@@ -13,7 +13,7 @@ import time
 
 HERE = Path(__file__).resolve().parent
 PAYLOAD = HERE / 'compatibility'
-ROOT = Path('/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1')
+ROOT = Path('/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1')
 PROFILES = {'standard': 'cb-standard', 'shadowrealm-off': 'cb-compat'}
 STEPS = ['node-identity', 'identity-standard', 'identity-shadowrealm-off', 'full-dist-census',
          'builtin-query-standard', 'selected-standard', 'builtin-query-shadowrealm-off', 'selected-shadowrealm-off']
@@ -40,7 +40,7 @@ def write(path, value):
 
 def bound_source(payload):
     binding = load(payload / 'source-binding.json')
-    assert binding['schemaVersion'] == 1 and binding['status'] == 'bound-reviewed-r3-cut', 'Reviewed R3 source binding required'
+    assert binding['schemaVersion'] == 1 and binding['status'] == 'bound-reviewed-r4-cut', 'Reviewed R4 source binding required'
     assert all(isinstance(binding[key], str) and re.fullmatch('[a-f0-9]{40}', binding[key])
                for key in ['sourceCommit', 'sourceTree'])
     owners = load(payload / 'inputs.template.json')['sourceOwners']

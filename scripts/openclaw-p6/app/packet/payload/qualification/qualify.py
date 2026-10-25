@@ -4,7 +4,7 @@ import argparse,hashlib,json,os,platform,re,shutil,subprocess,sys
 from pathlib import Path
 
 HERE=Path(__file__).resolve().parent
-CUT='59baf4a051665750eb7055d0cec991d9876526df'
+CUT='4fa442e332745f1f58ccedd27106abdafcf4e019'
 LANES=['core','zero-js','node-vm','node-vm-native-workers','pty','plugin','elf-floor','docker-image','docker-gateway-network','docker-kitchen-sink','docker-cron']
 
 def sha(path):
@@ -26,7 +26,7 @@ def main():
  if platform.system()!='Linux' or platform.machine()!='x86_64':p.error('Native Linux x64 required; --help is preparation only')
  for value in [a.binary_sha256,a.manifest_sha256,a.build_receipt_sha256]:
   if not re.fullmatch('[0-9a-f]{64}',value):p.error('Actual full SHA256 values required')
- root=Path.home()/'.cache/oc-ty-ext/P6/app-x64-final-r3-v1';source=(root/'source').resolve(strict=True);node=root/'opt/node/bin/node';artifact=a.artifact.resolve(strict=True);out=a.out.resolve()
+ root=Path.home()/'.cache/oc-ty-ext/P6/app-x64-final-r4-v1';source=(root/'source').resolve(strict=True);node=root/'opt/node/bin/node';artifact=a.artifact.resolve(strict=True);out=a.out.resolve()
  if out.parent!=root/'qualification-results' or out.exists():p.error('Fresh root/qualification-results/<label> required')
  if any(out==x or out in x.parents or x in out.parents for x in [source,artifact,HERE]):p.error('Output overlaps an input')
  for name,expected in load(HERE/'manifest.json')['files'].items():

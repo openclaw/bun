@@ -28,7 +28,7 @@ class CompatibilityContracts(unittest.TestCase):
         self.commit, self.tree = '1'*40, '2'*40
         shutil.copytree(HERE/'compatibility', self.payload)
         self.binding = preflight.load(self.payload/'source-binding.json')
-        self.binding.update(status='bound-reviewed-r3-cut', sourceCommit=self.commit, sourceTree=self.tree)
+        self.binding.update(status='bound-reviewed-r4-cut', sourceCommit=self.commit, sourceTree=self.tree)
         for name in self.binding['sourceOwners']:
             self.put(self.source/name, 'synthetic owner '+name)
             self.binding['sourceOwners'][name] = preflight.sha(self.source/name)
@@ -57,7 +57,8 @@ class CompatibilityContracts(unittest.TestCase):
         self.put(self.payload.parent/'compiler-pins.json', pins)
         self.put(self.root/'admission-inputs/source-preparation.json', {'commit':self.commit})
         self.put(self.work/'execution.json', {'identity':{'repository':'openclaw/bun','job':'linux-x64-app','runId':'1','runAttempt':'1'},
-                                            'sourceCommit':self.commit,'workflowHead':'3'*40})
+                                            'sourceCommit':self.commit,'workflowHead':'3'*40,
+                                            'variantSelection':'all','requestedVariants':['js','c2-off','ts']})
         self.put(self.root/'prep-receipts/plugins/result.json', {'status':'PASS','sourceCommit':self.commit,
             'nativeSource':{'commit':self.commit}, 'plugins':{'desktop.json':preflight.sha(selection)},
             'distBuildInfoSha256':preflight.sha(self.source/'dist/build-info.json'),
@@ -93,9 +94,9 @@ class CompatibilityContracts(unittest.TestCase):
         return preflight.verify_completed(self.root,self.work,self.payload)
 
     def test_unbound_source_rejects_before_any_execution(self):
-        unbound = dict(self.binding, status='awaiting-reviewed-r3-cut', sourceCommit=None, sourceTree=None)
+        unbound = dict(self.binding, status='awaiting-reviewed-r4-cut', sourceCommit=None, sourceTree=None)
         self.put(self.payload/'source-binding.json', unbound)
-        with self.assertRaisesRegex(AssertionError,'Reviewed R3 source binding required'):
+        with self.assertRaisesRegex(AssertionError,'Reviewed R4 source binding required'):
             preflight.snapshot(self.root,self.work,self.payload)
 
     def test_complete_native_pair_and_unchanged_inputs_are_required(self):

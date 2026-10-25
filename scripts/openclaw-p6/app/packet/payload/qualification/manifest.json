@@ -1,7 +1,7 @@
 {
-  "sourceCommit": "59baf4a051665750eb7055d0cec991d9876526df",
+  "sourceCommit": "4fa442e332745f1f58ccedd27106abdafcf4e019",
   "files": {
-    "README.md": "ed5b21715bffcfb97c9e1f771c5d14ad7a7682564be31e87420b762d754335ec",
+    "README.md": "e3041b8f7a7f07f8c4700098fe45759293cb4d9f9c57c7a57074abc5c2e6786c",
     "docker-image.py": "5cc18ed7bf5d02fc0eed0d2688dba355e470e62fe7910b4a679eab0751c9a87a",
     "harness/Dockerfile.aot": "f1f6c87b3e30bf319842b1d6ddc3d7ac27d46a51b766922bec0fe7e1896dbd4c",
     "harness/analyze-workers.py": "ba2e5187c3dda4614c35e51aa6e0e1079840b372ecfa50cf8f2009804b008086",
@@ -17,8 +17,8 @@
     "harness/legacy/capability-provider.mjs": "3b28c3bc5a5b892e2b14164a8633671c444257448dbfcfffd8812fc47a5301b4",
     "harness/legacy/native_trace.py": "c1fda60c8a74b76811555ee895e1df0a5083951a53df38f35a7a18de8df15607",
     "harness/openclaw-launcher": "fc343d0173e513aa7e74bfc1943d385beaab4ced57447ad7ea2023bdad2aee09",
-    "qualify.py": "e5e9f3fdf050bfca5d43a30035553b57b9f2ad444dbb63d61f6ba460aa6d5c88",
-    "source-contract.json": "dc261c248995cde0156c9278f0669533b577901723af9c45f8a9683991ae7255",
+    "qualify.py": "2b4de67c6f749079ed01a1bc220b4a2bba4838b26754d0b096f9c3188debd712",
+    "source-contract.json": "c1cffbee88de6e49601c68e753a0456e938a1ed2fc503640d43c7f942fea838b",
     "harness/process-stop.mjs": "68c2e651f829a424a7fc2c2b7d44a05caa23bc2c4f6a047296ca5529f3afdaec"
   },
   "ownerFiles": [

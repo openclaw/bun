@@ -5,6 +5,7 @@ import importlib.util
 import io
 import json
 import os
+import runpy
 from pathlib import Path
 import stat
 import subprocess
@@ -67,7 +68,7 @@ else:
         }
         with tempfile.TemporaryDirectory() as temporary:
             home = Path(temporary).resolve()
-            root = home / '.cache/oc-ty-ext/P6/app-x64-final-r3-v1'
+            root = home / '.cache/oc-ty-ext/P6/app-x64-final-r4-v1'
             (root / 'source').mkdir(parents=True)
             (root / 'admission-inputs').mkdir()
             (root / 'prep-receipts/clone').mkdir(parents=True)
@@ -139,6 +140,8 @@ esac
             root = Path(temporary)
             app, work = root / 'app', root / 'work'
             work.mkdir()
+            (work / 'execution.json').write_text(json.dumps({
+                'variantSelection': 'all', 'requestedVariants': ['js', 'c2-off', 'ts']}))
             for variant in ['js', 'c2-off']:
                 build = app / 'build-receipts' / variant
                 core = app / 'qualification-results' / (variant + '-core') / 'run'
@@ -221,6 +224,8 @@ esac
     def test_missing_kvm_records_gap_without_guest_launch(self):
         guest = module('guest')
         with tempfile.TemporaryDirectory() as temporary:
+            (Path(temporary) / 'execution.json').write_text(json.dumps({
+                'variantSelection': 'all', 'requestedVariants': ['js', 'c2-off', 'ts']}))
             real_exists = Path.exists
             def exists(path):
                 return False if str(path) == '/dev/kvm' else real_exists(path)
@@ -297,6 +302,136 @@ esac
             self.assertFalse(result['shipReady'])
             self.assertFalse(result['variants']['js']['complete'])
             self.assertEqual(result['variants']['ts']['build'], 'not-run')
+
+
+class VariantSelectionContracts(unittest.TestCase):
+    def put(self, path, value):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(value))
+
+    def prepared(self, base, mode='js-c2'):
+        work, root = base / 'work', base / 'app'
+        requested = {'all': ['js', 'c2-off', 'ts'], 'js-c2': ['js', 'c2-off'], 'ts': ['ts']}[mode]
+        self.put(work / 'execution.json', {'variantSelection': mode, 'requestedVariants': requested})
+        self.put(root / 'prep-receipts/compatibility/result.json', {'status': 'PASS'})
+        self.put(work / 'paging-cleanup.json', {'status': 'not-activated'})
+        for variant in requested:
+            self.put(root / 'build-receipts' / variant / 'result.json', {'status': 'built-unsigned'})
+            for phase in module('export').PHASES:
+                self.put(root / 'runtime-results' / (variant + '-' + phase) / 'result.json', {'status': 'phase-passed'})
+        return work, root
+
+    def test_js_c2_export_is_success_only_for_the_selected_matrix(self):
+        export = module('export')
+        with tempfile.TemporaryDirectory() as temporary:
+            work, root = self.prepared(Path(temporary))
+            value = export.summary(work, root)
+            self.assertEqual(value['requestedVariants'], ['js', 'c2-off'])
+            self.assertEqual(value['unselectedVariants'], ['ts'])
+            self.assertTrue(value['scheduledPhasesComplete'])
+            self.assertFalse(value['fullVariantMatrixComplete'])
+            self.assertEqual(value['variants']['ts'], {'requested': False, 'build': 'not-selected', 'runtime': {}, 'complete': False})
+            self.assertFalse(value['applicationQualified'])
+            self.assertFalse(value['shipReady'])
+            with patch.dict(os.environ, {'P6_WORK': str(work)}), patch.object(export, 'ROOT', root), \
+                 patch.object(sys, 'argv', ['export.py']), patch.object(sys, 'stdout', io.StringIO()):
+                self.assertEqual(export.main(), 0)
+                with patch.object(sys, 'argv', ['export.py', '--require-complete']):
+                    self.assertEqual(export.main(), 0)
+
+    def test_selected_failure_or_cleanup_failure_cannot_pass(self):
+        export = module('export')
+        with tempfile.TemporaryDirectory() as temporary:
+            work, root = self.prepared(Path(temporary))
+            self.put(root / 'runtime-results/js-core/result.json', {'status': 'failed'})
+            self.assertFalse(export.summary(work, root)['scheduledPhasesComplete'])
+            self.put(root / 'runtime-results/js-core/result.json', {'status': 'phase-passed'})
+            self.put(work / 'paging-cleanup.json', {'operationExitCode': 1})
+            self.assertFalse(export.summary(work, root)['scheduledPhasesComplete'])
+            self.put(work / 'paging-cleanup.json', {'status': 'not-activated'})
+            self.put(work / 'js-skipped.json', {'status': 'not-run', 'reason': 'deadline'})
+            self.assertFalse(export.summary(work, root)['scheduledPhasesComplete'])
+
+    def test_all_selection_requires_and_reports_the_full_matrix(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work, root = self.prepared(Path(temporary), 'all')
+            value = module('export').summary(work, root)
+            self.assertTrue(value['scheduledPhasesComplete'])
+            self.assertTrue(value['fullVariantMatrixComplete'])
+            self.assertEqual(value['unselectedVariants'], [])
+
+    def test_ts_only_export_does_not_require_unselected_js_or_c2(self):
+        export = module('export')
+        with tempfile.TemporaryDirectory() as temporary:
+            work, root = self.prepared(Path(temporary), 'ts')
+            value = export.summary(work, root)
+            self.assertEqual(value['requestedVariants'], ['ts'])
+            self.assertTrue(value['scheduledPhasesComplete'])
+            self.assertFalse(value['fullVariantMatrixComplete'])
+
+    def test_invalid_or_missing_selection_does_not_pass_an_empty_matrix(self):
+        export = module('export')
+        with tempfile.TemporaryDirectory() as temporary:
+            work, root = self.prepared(Path(temporary))
+            for value in [None, {'variantSelection': 'js-c2', 'requestedVariants': []},
+                          {'variantSelection': 'ts', 'requestedVariants': ['js', 'c2-off']}]:
+                if value is None:
+                    (work / 'execution.json').unlink()
+                else:
+                    self.put(work / 'execution.json', value)
+                result = export.summary(work, root)
+                self.assertEqual(result['selectionStatus'], 'missing-or-invalid')
+                self.assertFalse(result['scheduledPhasesComplete'])
+                self.assertFalse(result['fullVariantMatrixComplete'])
+                self.assertIsNone(result['variants']['ts']['requested'])
+
+    def test_unselected_admission_stops_before_preflight_or_output(self):
+        admit = module('admit')
+        with tempfile.TemporaryDirectory() as temporary:
+            work, root = self.prepared(Path(temporary))
+            with patch.dict(os.environ, {'P6_WORK': str(work)}), \
+                 patch.object(sys, 'argv', ['admit.py', 'ts']), \
+                 patch.object(admit, 'verify_completed', side_effect=AssertionError('preflight was reached')):
+                with self.assertRaisesRegex(AssertionError, 'not selected'):
+                    admit.main()
+            self.assertFalse((root / 'admissions').exists())
+
+    def test_ts_only_guest_entry_does_not_probe_or_launch_js_c2(self):
+        guest = module('guest')
+        with tempfile.TemporaryDirectory() as temporary:
+            work, root = self.prepared(Path(temporary), 'ts')
+            with patch.dict(os.environ, {'P6_WORK': str(work), 'P6_DEADLINE_EPOCH': str(time.time() + 5000)}), \
+                 patch.object(Path, 'exists', side_effect=AssertionError('Unselected guest device was probed')), \
+                 patch.object(guest.subprocess, 'run') as run:
+                self.assertEqual(guest.main(), 0)
+                run.assert_not_called()
+
+    def test_initializer_binds_default_and_explicit_choices_before_resources(self):
+        for mode, expected in [(None, ['js', 'c2-off', 'ts']), ('js-c2', ['js', 'c2-off']), ('ts', ['ts'])]:
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as temporary:
+                env = {'P6_WORK': temporary, 'GITHUB_REPOSITORY': 'openclaw/bun', 'GITHUB_RUN_ID': '12',
+                       'GITHUB_RUN_ATTEMPT': '1', 'GITHUB_JOB': 'linux-x64-app', 'GITHUB_SHA': 'a' * 40}
+                if mode is not None:
+                    env['P6_APP_VARIANTS'] = mode
+                with patch.dict(os.environ, env, clear=True), patch.object(sys, 'argv', ['initialize.py']), \
+                     patch('platform.system', return_value='Linux'), patch('platform.machine', return_value='x86_64'), \
+                     patch('resource.setrlimit'), patch.object(Path, 'read_text', side_effect=RuntimeError('resource probe reached')):
+                    with self.assertRaisesRegex(RuntimeError, 'resource probe reached'):
+                        runpy.run_path(str(HERE / 'initialize.py'), run_name='__main__')
+                value = json.loads((Path(temporary) / 'execution.json').read_text())
+                self.assertEqual(value['requestedVariants'], expected)
+
+    def test_initializer_rejects_invalid_choice_before_execution_record(self):
+        for mode in ['', 'js', 'js,c2-off', 'arbitrary']:
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as temporary:
+                env = {'P6_WORK': temporary, 'P6_APP_VARIANTS': mode, 'GITHUB_REPOSITORY': 'openclaw/bun',
+                       'GITHUB_RUN_ID': '12', 'GITHUB_RUN_ATTEMPT': '1', 'GITHUB_JOB': 'linux-x64-app', 'GITHUB_SHA': 'a' * 40}
+                with patch.dict(os.environ, env, clear=True), patch.object(sys, 'argv', ['initialize.py']), \
+                     patch('platform.system', return_value='Linux'), patch('platform.machine', return_value='x86_64'), \
+                     patch('resource.setrlimit'):
+                    with self.assertRaisesRegex(AssertionError, 'variant selection'):
+                        runpy.run_path(str(HERE / 'initialize.py'), run_name='__main__')
+                self.assertFalse((Path(temporary) / 'execution.json').exists())
 
 
 if __name__ == '__main__':

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""One serial qualification of an actual R3 build; never builds OpenClaw or Bun."""
+"""One serial qualification of an actual R4 build; never builds OpenClaw or Bun."""
 import argparse,datetime,hashlib,json,os,platform,shutil,signal,subprocess,sys,tarfile,time
 from pathlib import Path
 HERE=Path(__file__).resolve().parent
-ROOT=Path('/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1')
+ROOT=Path('/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1')
 PHASES=['core','elf-floor','zero-js','node-vm','node-vm-native-workers','pty','plugin','docker-image','docker-gateway-network','docker-kitchen-sink','docker-cron','guest-prerequisites','guest-security']
 def require(ok,message):
  if not ok:raise ValueError(message)
@@ -74,14 +74,14 @@ def main():
  for name,expected in read(ROOT/'manifest.json')['files'].items():require(sha(ROOT/name)==expected,'Staged preparation changed: '+name)
  admission=ROOT/'admissions'/(a.variant+'.json');require(sha(admission)==a.admission_sha256,'Actual admission changed');approved=read(admission)
  built=ROOT/'build-receipts'/a.variant/'result.json';build=read(built)
- require(approved['decision']=='build-linux' and approved['linuxCut']['commit']=='59baf4a051665750eb7055d0cec991d9876526df','Actual R3 root build admission required')
+ require(approved['decision']=='build-linux' and approved['linuxCut']['commit']=='4fa442e332745f1f58ccedd27106abdafcf4e019','Actual R4 root build admission required')
  require(build['status']=='built-unsigned' and build['phase']=='complete' and build['plan']['admissionSha256']==a.admission_sha256,'Actual successful admitted build required')
  expected_variant='c2' if a.variant=='c2-off' else a.variant;require(build['plan']['variant']==expected_variant and build['plan']['compiler']['cohort']=='rd-p6-150c','Different variant/compiler cohort')
  artifact=Path(build['plan']['output']);require(artifact==ROOT/'artifacts'/a.variant,'Unexpected actual artifact path')
  facts=build['artifact'];binary_sha=facts['executable']['sha256'];manifest_sha=facts['manifestSha256']
  label=a.variant+'-'+a.phase;directory=ROOT/'runtime-results'/label;directory.mkdir(parents=True,exist_ok=False)
- proof=Path.cwd()/'.artifacts/P6-FINAL-R3-x64/runtime'/label;proof.mkdir(parents=True,exist_ok=False)
- record={'status':'started-not-qualified','phase':a.phase,'variant':a.variant,'sourceCommit':'59baf4a051665750eb7055d0cec991d9876526df','binarySha256':binary_sha,'manifestSha256':manifest_sha,'actualBuildReceiptSha256':sha(built),'rootBuildAdmissionSha256':a.admission_sha256,'applicationBuildStarted':False,'compilerBuildStarted':False,'applicationQualified':False,'performanceEligible':False}
+ proof=Path.cwd()/'.artifacts/P6-FINAL-R4-x64/runtime'/label;proof.mkdir(parents=True,exist_ok=False)
+ record={'status':'started-not-qualified','phase':a.phase,'variant':a.variant,'sourceCommit':'4fa442e332745f1f58ccedd27106abdafcf4e019','binarySha256':binary_sha,'manifestSha256':manifest_sha,'actualBuildReceiptSha256':sha(built),'rootBuildAdmissionSha256':a.admission_sha256,'applicationBuildStarted':False,'compilerBuildStarted':False,'applicationQualified':False,'performanceEligible':False}
  write(directory/'result.json',record);write(proof/'result.json',record);print('P6_FINAL_D754_RUNTIME '+json.dumps(record),flush=True)
  env={'HOME':'/home/runner','PATH':'/usr/bin:/bin','TMPDIR':str(ROOT/'tmp'),'LANG':'C.UTF-8','TZ':'UTC','NO_COLOR':'1','CI':'1'}
  if a.phase in ['guest-prerequisites','guest-security']:env['PATH']+=':/usr/sbin:/sbin'

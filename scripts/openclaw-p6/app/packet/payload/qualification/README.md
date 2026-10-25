@@ -2,8 +2,8 @@
 
 Preparation only. No artifact is assumed to exist and no application, source
 helper, Docker build, E2E lane, remote command or lease allocation has run here.
-The native root is /home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1, source=root/source
-at exact59baf4a051665750eb7055d0cec991d9876526df, Node=root/opt/node/bin/node26.12.1.
+The native root is /home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1, source=root/source
+at exact4fa442e332745f1f58ccedd27106abdafcf4e019, Node=root/opt/node/bin/node26.12.1.
 The application guest/kernel lane is separate and is not provided by this bundle.
 
 ## Immutable inputs and actual-artifact gate
@@ -150,8 +150,8 @@ If more than256 files or10MiB exceed native text collection limits, download the
 complete raw trace directory separately and verify the analyzer's hashes; do not
 drop traces, trim them, rerun a completed workload, or treat a summary as raw proof.
 
-The current R3 application capsule stages this owner under app-x64-final-r3-v1/qualification.
-Use its runtime-controller recipes and collect .artifacts/P6-FINAL-R3-x64/runtime/<variant>-<lane>/result.json. Historical v2/v3 transport names below describe owner provenance only.
+The current R4 application capsule stages this owner under app-x64-final-r4-v1/qualification.
+Use its runtime-controller recipes and collect .artifacts/P6-FINAL-R4-x64/runtime/<variant>-<lane>/result.json. Historical v2/v3 transport names below describe owner provenance only.
 
 The single capability-runner adaptation supplies the verified process.execPath
 only to the fixture helper's bare node call, using a non-exported Bash function.

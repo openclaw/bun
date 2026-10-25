@@ -9,7 +9,7 @@ case "$mode" in app|benchmark) ;; *) exit 2;; esac
 initializer="$recipe/app/initialize.py"
 if [[ "$mode" == benchmark ]]; then initializer="$recipe/app/benchmark/initialize.py"; fi
 base=/home/runner/.cache/oc-ty-ext/P6
-root=$base/app-x64-final-r3-v1
+root=$base/app-x64-final-r4-v1
 label="openclaw.p6.actions=$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
 paging() {
   sudo -n env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin P6_WORK="$P6_WORK" \

@@ -3,7 +3,7 @@
 import argparse,datetime,hashlib,json,os,platform,runpy,shlex,shutil,signal,subprocess,sys,tarfile,urllib.request
 from pathlib import Path
 
-CUT='59baf4a051665750eb7055d0cec991d9876526df'
+CUT='4fa442e332745f1f58ccedd27106abdafcf4e019'
 PHASES=['clone','toolchain','install','runtime','boundary','plugins']
 
 
@@ -24,7 +24,7 @@ def main():
  p=argparse.ArgumentParser(description=__doc__);p.add_argument('--root',type=Path,required=True);p.add_argument('--phase',choices=PHASES,required=True);a=p.parse_args()
  root=a.root.resolve()
  if platform.system()!='Linux' or platform.machine()!='x86_64' or sys.version_info<(3,12):p.error('Native Linux x64 with Python>=3.12 required')
- if root!=Path.home()/'.cache/oc-ty-ext/P6/app-x64-final-r3-v1':p.error('Use the fresh owner root app-x64-final-r3-v1')
+ if root!=Path.home()/'.cache/oc-ty-ext/P6/app-x64-final-r4-v1':p.error('Use the fresh owner root app-x64-final-r4-v1')
  manifest=load(root/'manifest.json')
  for name,expected in manifest['files'].items():
   if sha(root/name)!=expected:p.error('Staged input changed: '+name)
@@ -66,7 +66,7 @@ def main():
    source_ok()
    assert not (source/'.git/objects/info/alternates').exists()
    assert not any((source/'.git/objects/pack').glob('*.promisor'))
-   assert len(reference['linuxCut']['requiredAncestors'])==28
+   assert len(reference['linuxCut']['requiredAncestors'])==29
    for ancestor in reference['linuxCut']['requiredAncestors']:
     subprocess.run(['git','merge-base','--is-ancestor',ancestor,CUT],cwd=source,env=env,check=True,timeout=60)
    main_sha=probe(['git','rev-parse','refs/remotes/origin/main'])

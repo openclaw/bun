@@ -7,8 +7,9 @@ from pathlib import Path
 import sys
 import time
 from preflight import verify_completed
+from selection import requested_variants
 
-ROOT = Path('/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1')
+ROOT = Path('/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1')
 
 
 def read(path):
@@ -23,13 +24,14 @@ def sha(path):
 def main():
     variant = sys.argv[1]
     assert variant in ['js', 'c2-off', 'ts']
+    execution = read(Path(os.environ['P6_WORK']) / 'execution.json')
+    assert variant in requested_variants(execution), 'Application variant not selected for this execution'
     compatibility = verify_completed(ROOT, Path(os.environ['P6_WORK']))
     template = read(ROOT / 'admission-templates' / (variant + '.json'))
     records = read(ROOT / 'admission-inputs/compiler-records.json')
     assert records['status'] == 'native-compilers-adopted-not-app-admitted'
     prepared = read(ROOT / 'prep-receipts/plugins/result.json')
     assert prepared['status'] == 'PASS'
-    execution = read(Path(os.environ['P6_WORK']) / 'execution.json')
     assert execution['identity']['repository'] == 'openclaw/bun' and execution['identity']['job'] == 'linux-x64-app'
     assert execution['sourceCommit'] == template['linuxCut']['commit']
     assert compatibility['sourceCommit'] == template['linuxCut']['commit']

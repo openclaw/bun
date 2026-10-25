@@ -1,28 +1,28 @@
 {
   "schemaVersion": 1,
   "decision": "pending-native-facts",
-  "sourceCommit": "59baf4a051665750eb7055d0cec991d9876526df",
-  "nativeRoot": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1",
-  "nativeSource": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1/source",
+  "sourceCommit": "4fa442e332745f1f58ccedd27106abdafcf4e019",
+  "nativeRoot": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1",
+  "nativeSource": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/source",
   "receipts": {
     "toolchain": {
-      "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1/prep-receipts/toolchain/result.json",
+      "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/prep-receipts/toolchain/result.json",
       "sha256": null
     },
     "plugins": {
-      "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1/prep-receipts/plugins/result.json",
+      "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/prep-receipts/plugins/result.json",
       "sha256": null
     },
     "compilerRecords": {
-      "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1/admission-inputs/compiler-records.json",
+      "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/admission-inputs/compiler-records.json",
       "sha256": null
     }
   },
   "tarball": {
-    "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1/benchmark-prep/package/openclaw.tgz",
+    "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/benchmark-prep/package/openclaw.tgz",
     "sha256": null,
     "bytes": null,
-    "packagingSourceCommit": "59baf4a051665750eb7055d0cec991d9876526df",
+    "packagingSourceCommit": "4fa442e332745f1f58ccedd27106abdafcf4e019",
     "producerReceipt": {
       "path": null,
       "sha256": null
@@ -37,69 +37,69 @@
     "js": {
       "enabled": false,
       "admission": {
-        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1/admissions/js.json",
+        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/admissions/js.json",
         "sha256": null
       },
       "build": {
-        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1/build-receipts/js/result.json",
+        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/build-receipts/js/result.json",
         "sha256": null
       },
       "core": {
-        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1/qualification-results/js-core/run/result.json",
+        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/qualification-results/js-core/run/result.json",
         "sha256": null
       },
       "coreController": {
-        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1/runtime-results/js-core/result.json",
+        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/runtime-results/js-core/result.json",
         "sha256": null
       },
       "preservation": {
-        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1/preserved/js/transport.json",
+        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/preserved/js/transport.json",
         "sha256": null
       }
     },
     "c2-off": {
       "enabled": false,
       "admission": {
-        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1/admissions/c2-off.json",
+        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/admissions/c2-off.json",
         "sha256": null
       },
       "build": {
-        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1/build-receipts/c2-off/result.json",
+        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/build-receipts/c2-off/result.json",
         "sha256": null
       },
       "core": {
-        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1/qualification-results/c2-off-core/run/result.json",
+        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/qualification-results/c2-off-core/run/result.json",
         "sha256": null
       },
       "coreController": {
-        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1/runtime-results/c2-off-core/result.json",
+        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/runtime-results/c2-off-core/result.json",
         "sha256": null
       },
       "preservation": {
-        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1/preserved/c2-off/transport.json",
+        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/preserved/c2-off/transport.json",
         "sha256": null
       }
     },
     "ts": {
       "enabled": false,
       "admission": {
-        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1/admissions/ts.json",
+        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/admissions/ts.json",
         "sha256": null
       },
       "build": {
-        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1/build-receipts/ts/result.json",
+        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/build-receipts/ts/result.json",
         "sha256": null
       },
       "core": {
-        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1/qualification-results/ts-core/run/result.json",
+        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/qualification-results/ts-core/run/result.json",
         "sha256": null
       },
       "coreController": {
-        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1/runtime-results/ts-core/result.json",
+        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/runtime-results/ts-core/result.json",
         "sha256": null
       },
       "preservation": {
-        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1/preserved/ts/transport.json",
+        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/preserved/ts/transport.json",
         "sha256": null
       }
     }
@@ -122,13 +122,13 @@
     "harness/measurement-owner.py": "c610495003a00a6da6e4b870c752e14c9db55b06d38bda78f376a05c3722c724",
     "stream-cohort.py": "534faa35fcaf5f48766323463cf42fc8d3fbf3d75ca442b26fc548483c16abb3",
     "package-inventory.mjs": "c406013d6d33cdff0776833c0ab7e027683c361700af4633dc3cfd84ef1a7978",
-    "measure-install.py": "a3030140bd90db5ad148e453807633752648dcdd17c9d8c74a4a9f72e27a3ad6",
+    "measure-install.py": "5b8aaf5d7b0c8d839ad3089b9e83e48e7c4a8d4ed7cca5e1e6ab330c9a381cef",
     "harness/knowledge-provider.py": "f144aaa440e3bac9aeb9edeb5f44402a5df0bbe32c4c7a1adb391970499a089f",
     "harness/knowledge-agent.mjs": "16abb14fd436e60c6ab59816184d78b2e765dcc964f8104b09f0f1235d77dd6b",
     "harness/process-stop.mjs": "68c2e651f829a424a7fc2c2b7d44a05caa23bc2c4f6a047296ca5529f3afdaec"
   },
   "npm": {
-    "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1/opt/node/lib/node_modules/npm/bin/npm-cli.js",
+    "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/opt/node/lib/node_modules/npm/bin/npm-cli.js",
     "sha256": null,
     "manifestSha256": null,
     "version": "11.20.0"

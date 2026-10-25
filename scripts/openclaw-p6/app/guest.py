@@ -8,8 +8,9 @@ import stat
 import subprocess
 import sys
 import time
+from selection import requested_variants
 
-ROOT = Path('/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1')
+ROOT = Path('/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1')
 
 
 def read(path):
@@ -23,6 +24,10 @@ def sha(path):
 
 def main():
     work = Path(os.environ['P6_WORK'])
+    requested = requested_variants(read(work / 'execution.json'))
+    variants = [variant for variant in ['js', 'c2-off'] if variant in requested]
+    if not variants:
+        return 0
     deadline = float(os.environ['P6_DEADLINE_EPOCH'])
     gaps = []
     def gap(variant, reason):
@@ -33,7 +38,7 @@ def main():
         gap('all', 'Native /dev/kvm unavailable; no emulation fallback')
         return 0
     ready = []
-    for variant in ['js', 'c2-off']:
+    for variant in variants:
         build = ROOT / 'build-receipts' / variant / 'result.json'
         core = ROOT / 'qualification-results' / (variant + '-core') / 'run/result.json'
         if not build.is_file() or read(build).get('status') != 'built-unsigned' or not core.is_file():
