@@ -27,7 +27,8 @@ async function measure(name) {
     `const { parentPort } = require("node:worker_threads");
      async function turn(i) {
        globalThis.payload = new Array(524288).fill(i);
-       // Park between allocations so the 1 ms idle-GC timer can request collections.
+       // The controller can throttle after quiet ticks; request collection before every park.
+       Bun.gc(false);
        await new Promise(resolve => setTimeout(resolve, 0));
      }
      (async () => {
@@ -103,6 +104,7 @@ if (process.argv[2] === "--case") {
         const env = { ...baseEnv, HOME: join(dir, "home"), TMPDIR: join(dir, "tmp"),
           BUN_GC_TIMER_DISABLE: name === "gc-loop" ? "1" : "0", BUN_GC_TIMER_INTERVAL: "1",
           BUN_IDLE_GC_SECONDS: "1,2", BUN_GC_RUNS_UNTIL_SKIP_RELEASE_ACCESS: "0" };
+        if (name === "idle-worker") env.BUN_JSC_numberOfGCMarkers = "2";
         const child = spawnSync(binaries[label], [script, "--case", name],
           { env, encoding: "utf8", timeout: 120000, maxBuffer: 1024 * 1024 });
         writeFileSync(join(dir, "stdout.log"), child.stdout ?? "");
