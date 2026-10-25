@@ -127,6 +127,7 @@ impl Drop for RefreshOnDrop {
 }
 
 struct CreateOptions {
+    ca_options: Global::CAOptions,
     skip_install: bool,
     ignore_scripts: bool,
     overwrite: bool,
@@ -164,14 +165,9 @@ impl CreateOptions {
         ];
         let mut diag = clap::Diagnostic::default();
         let mut ca_options = Global::CAOptions::default();
-        let mut positional_count = 0;
         let mut on_option = |names: clap::Names, _: Option<&[u8]>| {
             if let Some(name) = names.long {
-                if positional_count < 2 {
-                    ca_options.read_flag(name);
-                }
-            } else if names.short.is_none() {
-                positional_count += 1;
+                ca_options.read_flag(name);
             }
         };
 
@@ -190,13 +186,13 @@ impl CreateOptions {
             }
         };
 
-        Global::set_ca_store_from_options(ca_options);
         let mut positionals = args.positionals().to_vec();
         if !positionals.is_empty() && (positionals[0] == b"c" || positionals[0] == b"create") {
             positionals.remove(0);
         }
 
         Ok(CreateOptions {
+            ca_options,
             positionals,
             skip_package_json: args.flag(b"--no-package-json"),
             verbose: args.flag(b"--verbose") || Output::is_verbose(),
@@ -370,9 +366,9 @@ impl CreateCommand {
             long_running: false,
             ..Default::default()
         });
-        HTTP::http_thread::init(&Default::default());
-
         let mut create_options = CreateOptions::parse()?;
+        Global::set_ca_store_from_options(create_options.ca_options);
+        HTTP::http_thread::init(&Default::default());
         let positionals = &create_options.positionals;
 
         if positionals.is_empty() {

@@ -888,6 +888,17 @@ describe.concurrent("--use-openssl-ca", () => {
     [["x", flag, "no-deps"], "no-deps", untrusted],
     [["create", flag, "no-deps"], "create-no-deps", untrusted],
     [["create", "local-template", "destination", flag], "no-deps", untrusted],
+    [["create", flag, "no-deps", "--no-use-openssl-ca"], "create-no-deps", untrusted],
+    [
+      ["create", "--use-system-ca", flag, "local-template", "destination", "--no-use-system-ca"],
+      "no-deps",
+      untrusted,
+    ],
+    [
+      ["create", "local-template", "destination", flag, "--no-use-openssl-ca"],
+      "no-deps",
+      "ERR_TLS_CERT_ALTNAME_INVALID",
+    ],
     [["init", "-y", flag], "@types/bun", untrusted],
     [["init", "--react", flag, "react-app"], "react", untrusted],
   ])("bun %j: the manifest of %s from a registry with a bundled root fails with %s", manifestFails);

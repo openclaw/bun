@@ -1788,7 +1788,6 @@ pub(crate) mod command {
         }
 
         let template_name = positionals[1];
-        Global::set_ca_store_from_options(ca_options);
 
         // if template_name is "react" — deprecated; redirect to react-app/vite.
         if template_name == b"react" {
@@ -1832,6 +1831,7 @@ To create a project with the official Next.js scaffolding tool, run
             && example_tag != ExampleTag::LocalFolder;
 
         if use_bunx {
+            Global::set_ca_store_from_options(ca_options);
             let mut bunx_args: Vec<&ZStr> =
                 Vec::with_capacity(3 + args.len() - template_name_start + (dash_dash_bun as usize));
             bunx_args.push(bun_core::zstr!("bunx"));
