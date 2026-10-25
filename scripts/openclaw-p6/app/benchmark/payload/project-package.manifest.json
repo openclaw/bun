@@ -1,0 +1,26 @@
+{
+  "name": "p6-final-r2-comparator",
+  "private": true,
+  "allowScripts": {
+    "onnxruntime-node": false,
+    "@google/genai": true,
+    "@lydell/node-pty": true,
+    "@matrix-org/matrix-sdk-crypto-nodejs": true,
+    "@tloncorp/api": true,
+    "@tloncorp/tlon-skill": true,
+    "baileys": true,
+    "authenticate-pam": true,
+    "@discordjs/opus": false,
+    "esbuild": true,
+    "koffi": false,
+    "protobufjs": true,
+    "tree-sitter-bash": false,
+    "openclaw": true,
+    "@openclaw/proxyline": true,
+    "clawpdf": true,
+    "@openclaw/crabline": true,
+    "rastermill": true,
+    "node-pty": true,
+    "file:/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r2-v1/benchmark-prep/package/openclaw.tgz": true
+  }
+}

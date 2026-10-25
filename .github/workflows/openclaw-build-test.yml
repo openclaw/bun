@@ -4,12 +4,40 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: P6 compiler build or bounded application qualification
+        description: P6 compiler build, application qualification, or same-host comparison
         type: choice
         default: compiler
         options:
           - compiler
           - app
+          - benchmark
+      app_run_id:
+        description: Completed originating app run ID (benchmark only)
+        type: string
+      app_run_attempt:
+        description: Exact originating app run attempt
+        type: string
+      app_workflow_head:
+        description: Exact originating app workflow commit
+        type: string
+      app_workflow_id:
+        description: Exact originating app workflow ID
+        type: string
+      app_repository_id:
+        description: Exact originating repository ID
+        type: string
+      app_artifact_id:
+        description: Exact originating app artifact ID
+        type: string
+      app_artifact_name:
+        description: Exact originating app artifact name
+        type: string
+      app_zip_sha256:
+        description: Exact originating artifact ZIP SHA256
+        type: string
+      app_zip_bytes:
+        description: Exact originating artifact ZIP byte count
+        type: string
 
 permissions:
   contents: read
@@ -174,3 +202,65 @@ jobs:
       - name: Require completed requested variants
         if: always()
         run: python3 -B scripts/openclaw-p6/app/export.py --require-complete
+  linux-x64-benchmark:
+    if: github.repository == 'openclaw/bun' && github.ref == 'refs/heads/openclaw/aot-rd-P6' && inputs.mode == 'benchmark'
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    timeout-minutes: 240
+    permissions:
+      contents: read
+      actions: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      P6_EXECUTION_MODE: benchmark
+    steps:
+      - name: Establish bounded benchmark work deadline
+        run: |
+          {
+            echo "P6_DEADLINE_EPOCH=$(( $(date +%s) + 13800 ))"
+            echo "P6_WORK=$RUNNER_TEMP/p6-benchmark-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            echo "P6_CONTAINER=p6-benchmark-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          } >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/openclaw-p6
+      - name: Bind exact completed app attempt and artifact
+        env:
+          P6_APP_RUN_ID: ${{ inputs.app_run_id }}
+          P6_APP_RUN_ATTEMPT: ${{ inputs.app_run_attempt }}
+          P6_APP_WORKFLOW_HEAD: ${{ inputs.app_workflow_head }}
+          P6_APP_WORKFLOW_ID: ${{ inputs.app_workflow_id }}
+          P6_APP_REPOSITORY_ID: ${{ inputs.app_repository_id }}
+          P6_APP_ARTIFACT_ID: ${{ inputs.app_artifact_id }}
+          P6_APP_ARTIFACT_NAME: ${{ inputs.app_artifact_name }}
+          P6_APP_ZIP_SHA256: ${{ inputs.app_zip_sha256 }}
+          P6_APP_ZIP_BYTES: ${{ inputs.app_zip_bytes }}
+        run: python3 -B scripts/openclaw-p6/app/benchmark/initialize.py inputs
+      - name: Download exact compiler pair and completed app artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -B scripts/openclaw-p6/app/benchmark/host.py download
+      - name: Initialize fresh native x64 benchmark container without paging
+        run: python3 -B scripts/openclaw-p6/app/benchmark/host.py bootstrap
+      - name: Restore admitted apps and run complete selected-cell comparison
+        run: python3 -B scripts/openclaw-p6/app/benchmark/host.py run
+      - name: Stop owned benchmark workloads
+        if: always()
+        run: bash scripts/openclaw-p6/app/host.sh cleanup
+      - name: Select benchmark and untimed qualification evidence
+        if: always()
+        run: sudo -n env -i PATH=/usr/bin:/bin P6_WORK="$P6_WORK" python3 -B scripts/openclaw-p6/app/benchmark/export.py
+      - name: Export benchmark attempt including failures
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: p6-linux-x64-benchmark-${{ github.sha }}-attempt${{ github.run_attempt }}
+          path: ${{ env.P6_WORK }}/benchmark-export/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+      - name: Require complete comparison, backup proof and cleanup
+        if: always()
+        run: python3 -B scripts/openclaw-p6/app/benchmark/export.py --require-complete

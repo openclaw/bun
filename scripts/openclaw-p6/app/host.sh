@@ -4,6 +4,10 @@ phase=${1:?bootstrap, prepare, variant or cleanup}
 : "${P6_WORK:?Missing task directory}"
 : "${P6_CONTAINER:?Missing owned container}"
 recipe=$(cd "$(dirname "$0")/.." && pwd -P)
+mode=${P6_EXECUTION_MODE:-app}
+case "$mode" in app|benchmark) ;; *) exit 2;; esac
+initializer="$recipe/app/initialize.py"
+if [[ "$mode" == benchmark ]]; then initializer="$recipe/app/benchmark/initialize.py"; fi
 base=/home/runner/.cache/oc-ty-ext/P6
 root=$base/app-x64-final-r2-v1
 label="openclaw.p6.actions=$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
@@ -38,13 +42,17 @@ if [[ "$phase" == cleanup ]]; then
   timeout --kill-after=5s 30s docker rm -f "$P6_CONTAINER" >/dev/null 2>&1 || true
   [[ -z "$(timeout --kill-after=5s 30s docker ps -aq --filter "name=^${P6_CONTAINER}$")" ]]
   remove_children
-  paging cleanup
+  if [[ "$mode" == app ]]; then
+    paging cleanup
+  else
+    python3 -B "$initializer" cleanup
+  fi
   exit
 fi
 : "${P6_DEADLINE_EPOCH:?Missing absolute work deadline}"
 remember_terminal() {
   if (( $1 == 124 || $1 >= 128 )); then
-    python3 -B "$recipe/app/initialize.py" terminal "$1" || true
+    python3 -B "$initializer" terminal "$1" || true
   fi
 }
 stop_on_failure() {
@@ -61,13 +69,20 @@ if [[ "$phase" == bootstrap ]]; then
   [[ $(uname -s) == Linux && $(uname -m) == x86_64 ]]
   [[ ! -e "$root" ]]
   mkdir -p "$P6_WORK" "$base"
-  python3 -B "$recipe/app/initialize.py"
-  timeout --kill-after=15s 300s sudo -n apt-get update
-  timeout --kill-after=15s 300s sudo -n apt-get install -y --no-install-recommends cryptsetup
+  python3 -B "$initializer"
+  if [[ "$mode" == app ]]; then
+    timeout --kill-after=15s 300s sudo -n apt-get update
+    timeout --kill-after=15s 300s sudo -n apt-get install -y --no-install-recommends cryptsetup
+  fi
   image=ubuntu:24.04@sha256:a2d43bffc46670d7108bb3c0468c67c5557c4c92e83e1e34cbff1322ad1b94dc
   timeout --kill-after=15s 300s docker pull "$image"
   devices=()
   if [[ -c /dev/kvm ]]; then devices=(--device /dev/kvm:/dev/kvm); fi
+  inputs=()
+  if [[ "$mode" == benchmark ]]; then
+    [[ -d "$P6_WORK/benchmark-download" ]]
+    inputs=(--mount "type=bind,src=$P6_WORK/benchmark-download,dst=$P6_WORK/benchmark-download,readonly")
+  fi
   buildx=$(timeout --kill-after=5s 30s docker info --format '{{range .ClientInfo.Plugins}}{{if eq .Name "buildx"}}{{.Path}}{{end}}{{end}}')
   [[ -n "$buildx" && -f "$buildx" && -x "$buildx" ]]
   timeout --kill-after=10s 50s docker run --detach --name "$P6_CONTAINER" --init \
@@ -76,6 +91,7 @@ if [[ "$phase" == bootstrap ]]; then
     --mount "type=bind,src=$recipe,dst=/p6-recipe,readonly" \
     --mount "type=bind,src=$base,dst=$base" \
     --mount "type=bind,src=$P6_WORK,dst=$P6_WORK" \
+    "${inputs[@]}" \
     --mount "type=bind,src=$P6_WORK/execution.json,dst=/p6-execution.json,readonly" \
     --mount "type=bind,src=$(command -v docker),dst=/p6-host-docker,readonly" \
     --mount "type=bind,src=$buildx,dst=/p6-host-buildx,readonly" \
@@ -86,6 +102,7 @@ if [[ "$phase" == bootstrap ]]; then
   timeout --kill-after=5s 30s docker exec "$P6_CONTAINER" ln -s /p6-host-buildx /usr/libexec/docker/cli-plugins/docker-buildx
   exit
 fi
+[[ "$mode" == app ]] || { echo 'Benchmark phases use benchmark/host.py' >&2; exit 2; }
 if [[ "$phase" == paging ]]; then
   remaining=$((P6_DEADLINE_EPOCH - $(date +%s) - 1200))
   (( remaining > 120 )) || exit 124

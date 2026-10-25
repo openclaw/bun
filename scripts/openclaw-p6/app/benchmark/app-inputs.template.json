@@ -1,0 +1,10 @@
+{
+  "repository": "openclaw/bun",
+  "repositoryId": null,
+  "runId": null,
+  "runAttempt": null,
+  "workflowId": null,
+  "headSha": null,
+  "artifact": { "id": null, "name": null, "zipSha256": null, "zipBytes": null },
+  "maxUnpackedBytes": 8589934592
+}
