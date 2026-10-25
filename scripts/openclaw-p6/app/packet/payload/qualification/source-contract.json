@@ -1,0 +1,27 @@
+{
+  "sourceCommit": "670a7ab33bbd2e3ed4f0a5681e138159d74540a1",
+  "files": {
+    "scripts/e2e/lib/fixtures/mock-openai-config.mjs": "26986b7a44259220a98ba616e20297888502a6ec9f0cb89f9306159b544ebfb1",
+    "scripts/lib/gateway-ws-client.ts": "5dfcd0f4904475a249b19d6c4d2d22270d2e76c8d79da3377011a38eb30ed34d",
+    "scripts/e2e/lib/gateway-frame-payload.mjs": "58b22e42570402b553f0912f3f679edf49b242c17cf06365b58ce9fc08b94dc9",
+    "packages/gateway-protocol/src/version.ts": "7e115c318086327828e8bc1f2cb35656504a42b7fa580005b3bba3e8a8b7da0f",
+    "scripts/e2e/lib/agent-turn-output.mjs": "98544ca7ba561f371ce05300904ca89e4ff3134cb97a7754a223004b3b8c5cfa",
+    "scripts/e2e/mock-openai-server.mjs": "e68f6ce4b4024aa0c04d0504dbe403f2e310be1fd2e2a51c907244e31dbf1820",
+    "scripts/e2e/lib/fixtures/plugins.mjs": "e3f5abbe82a70425fd542d9c2651d56ea3fa6f81fdc360d63be38bfb1f522ec1",
+    "scripts/lib/openclaw-e2e-instance.sh": "bd6cf54ea310f96a891f12ec55ed282d29de8370b3505482ec1ab7626e6eb08e",
+    "scripts/e2e/Dockerfile": "2c15fa9c06d96b55306ed0ac865c363f1319e4bcd927605bf7a4bdf9e3228409",
+    "scripts/e2e/gateway-network-docker.sh": "9b6ad7070a433d0ca2292a70e0d1fb0359f1c5601dae7299b63117eaf045a5c7",
+    "scripts/e2e/kitchen-sink-plugin-docker.sh": "b17f83fcfb8478188f7e4e9bdd2ea50db81b160fcac7000d847a222e981d54f0",
+    "scripts/e2e/cron-cli-docker.sh": "6abf5cf3e174992d313c1f69f863565ebad078a17dae89723fb817ec6ae33245",
+    "scripts/lib/docker-e2e-image.sh": "b1227189675dff51e3a0218edc2715fad01b771668f1a402a9effba28aec49b1",
+    "scripts/lib/docker-e2e-container.sh": "7ae9be2f95729d17913413189790973aa97e8bd6ba24ff0fbddf2ad450a40fe0",
+    "scripts/lib/docker-e2e-package.sh": "88a00beb30de0aee79e679d33d504c4058335b433166eb35a5c9d9bc14bab575",
+    "scripts/lib/docker-build.sh": "db292501abb1397faeadb114204a3957649a9a7aad0971235d2e9c77f4a16bfd",
+    "scripts/e2e/lib/kitchen-sink-plugin/sweep.sh": "c8eb4b45a5507bb414d4972c7d814bfbfbc5aea34003fa7f1f32cbf743f4e0aa",
+    "scripts/e2e/lib/kitchen-sink-plugin/assertions.mjs": "c58bef14859757e449dc893d9fe63fddf90b1f06de32d74aecf979b76b8fddb2",
+    "package.json": "afe1412c6470a96cb9ae33d4b79a4584f69c19de3afc9556958fb9cbf1fc2ad8",
+    "pnpm-lock.yaml": "6711dcbef4e6504260a6cd0ba5dfe09f91d49b1414bd64f48e2dab55759c2aba",
+    "scripts/lib/bun-standalone-contract.mjs": "7fadadc2f96e948cc2e18865e5df2bb6e5a334348ea913165485e9eaaf263b7c",
+    "packages/gateway-client/src/websocket-data.ts": "4900275c9deeea33baf7953dcb081a454916173677814839c96137938f41767e"
+  }
+}

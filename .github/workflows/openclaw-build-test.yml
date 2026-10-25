@@ -2,6 +2,14 @@ name: P6 native Linux x64 AOT compilers
 
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: P6 compiler build or bounded application qualification
+        type: choice
+        default: compiler
+        options:
+          - compiler
+          - app
 
 permissions:
   contents: read
@@ -12,7 +20,7 @@ concurrency:
 
 jobs:
   linux-x64:
-    if: github.repository == 'openclaw/bun' && github.ref == 'refs/heads/openclaw/aot-rd-P6'
+    if: github.repository == 'openclaw/bun' && github.ref == 'refs/heads/openclaw/aot-rd-P6' && (inputs.mode == 'compiler' || inputs.mode == '')
     runs-on: blacksmith-32vcpu-ubuntu-2404
     timeout-minutes: 240
     defaults:
@@ -96,3 +104,73 @@ jobs:
           if-no-files-found: warn
           compression-level: 0
           retention-days: 7
+  linux-x64-app:
+    if: github.repository == 'openclaw/bun' && github.ref == 'refs/heads/openclaw/aot-rd-P6' && inputs.mode == 'app'
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    timeout-minutes: 240
+    permissions:
+      contents: read
+      actions: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Establish bounded application work deadline
+        run: |
+          {
+            echo "P6_DEADLINE_EPOCH=$(( $(date +%s) + 13800 ))"
+            echo "P6_WORK=$RUNNER_TEMP/p6-app-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            echo "P6_CONTAINER=p6-app-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          } >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/openclaw-p6
+      - name: Initialize isolated native x64 application container
+        run: bash scripts/openclaw-p6/app/host.sh bootstrap
+      - name: Import the exact verified compiler pair
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -B scripts/openclaw-p6/app/download.py
+      - name: Prepare fresh frozen source, dependencies, dist and plugins
+        id: prepare
+        run: bash scripts/openclaw-p6/app/host.sh prepare
+      - name: Activate execution-bound encrypted task paging
+        id: paging
+        run: bash scripts/openclaw-p6/app/host.sh paging
+      - name: Build and qualify JS AOT
+        id: js
+        continue-on-error: true
+        run: bash scripts/openclaw-p6/app/host.sh variant js
+      - name: Build and qualify physical ShadowRealm-off C2 AOT
+        if: steps.prepare.outcome == 'success' && steps.paging.outcome == 'success' && !cancelled()
+        id: c2
+        continue-on-error: true
+        run: bash scripts/openclaw-p6/app/host.sh variant c2-off
+      - name: Build and qualify TypeScript source AOT
+        if: steps.prepare.outcome == 'success' && steps.paging.outcome == 'success' && !cancelled()
+        id: ts
+        continue-on-error: true
+        run: bash scripts/openclaw-p6/app/host.sh variant ts
+      - name: Attempt actual application guest MDWE on the available native KVM device
+        if: steps.prepare.outcome == 'success' && steps.paging.outcome == 'success' && !cancelled()
+        continue-on-error: true
+        run: bash scripts/openclaw-p6/app/host.sh guest
+      - name: Stop owned workloads and remove encrypted task paging
+        if: always()
+        run: bash scripts/openclaw-p6/app/host.sh cleanup
+      - name: Select explicit application artifacts and synthetic receipts
+        if: always()
+        run: sudo -n env -i PATH=/usr/bin:/bin P6_WORK="$P6_WORK" python3 -B scripts/openclaw-p6/app/export.py
+      - name: Export bounded application attempt
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: p6-linux-x64-app-${{ github.sha }}-attempt${{ github.run_attempt }}
+          path: ${{ env.P6_WORK }}/export/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+      - name: Require completed requested variants
+        if: always()
+        run: python3 -B scripts/openclaw-p6/app/export.py --require-complete

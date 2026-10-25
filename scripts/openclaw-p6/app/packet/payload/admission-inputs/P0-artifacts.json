@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "lane": "P0",
+  "referenceRole": "historical-provenance-only",
+  "artifacts": [
+    {
+      "variant": "desktop-c2",
+      "mainSha": "83fb19513e8d3013a27db742a0610230070bc8df",
+      "sourceCommit": "83fb19513e8d3013a27db742a0610230070bc8df",
+      "sourceStatus": "main",
+      "platform": "darwin",
+      "arch": "arm64",
+      "sha256": "62c5ac39f9f1a35cae9eef038ac7c22091ef4b28ffb9effc70d8958f5d22f9f8",
+      "signed": true,
+      "compilerPins": {
+        "bun": "b838e73072227c2652a41c689299284f1965cdc6",
+        "webkit": "aaa690bfbf34c9d50775716ac2fc3c7d0573e0b8",
+        "shadowRealm": "retained",
+        "historicalC2Equivalent": false
+      },
+      "qualified": true
+    }
+  ],
+  "projection": "P6-derived public projection of the selected CB6 record; not a byte-identical P0 index clone"
+}

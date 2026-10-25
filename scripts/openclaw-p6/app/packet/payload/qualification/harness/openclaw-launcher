@@ -1,0 +1,2 @@
+#!/bin/sh
+exec "${P6_AOT_BINARY:-/opt/p6-artifact/openclaw}" "$@"

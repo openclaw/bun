@@ -1,0 +1,104 @@
+{
+  "schemaVersion": 1,
+  "originalCapsuleSha256": "879c8909d02159882757675affbba14587c45b783bb480fd2fd73925c63372ec",
+  "projectionReason": "P6 public CB6 provenance projection with exact R2 source freeze and identity-only rebind. Previously reviewed runtime controller repairs remain; original879c is unchanged.",
+  "changedFiles": {
+    "admission-inputs/P0-artifacts.json": {
+      "originalSha256": "6ceb952c8c527152d3fb534e203985b493c7c94e3729f27b65d36a925c755ab2",
+      "projectedSha256": "220560f5474dbb93266d2fdcb23b93fecf46728778becdf54b5cda578f544e18"
+    },
+    "admission-inputs/p0-reference.json": {
+      "originalSha256": "09b61d429272bd580e4ed064260d431e7a864743e4afefebbf18bd6d0eceab99",
+      "projectedSha256": "9c068ecfb5343e80c268892caa4e78644fe73b2fff9a069a619cd66fc9da6fc0"
+    },
+    "admission-inputs/source-preparation.json": {
+      "originalSha256": "60fcbaa4d97242d8ed3f0b970f7a14e9be46356d1d1ee588e75bc73bbe01d0de",
+      "projectedSha256": "3a233e951847951410670bfb6cd859b8cf8aa3f946a863dd8835d3bd3cd08ca1"
+    },
+    "admission-templates/c2-off.json": {
+      "originalSha256": "1f02cb47781a9e689fb7a3074945fca3a36bf05c064e5bac0047ebc2d49a57d2",
+      "projectedSha256": "5b382c423a42ba88d7121a46d92a445e35312ab867ebd3b024ec8de3d6cc5a06"
+    },
+    "admission-templates/js.json": {
+      "originalSha256": "dcc439c33249b208d1f522f026fa21ecc8fa7aed7142c0f7991e3a9682c604f8",
+      "projectedSha256": "70e6c113167dc2d410b0e83ee79ce762bc0112cbe69370d90f9ea52eafb4f4ca"
+    },
+    "admission-templates/ts.json": {
+      "originalSha256": "e73da6e668f071517b392cd56bf22cb32c0fbc2b2da61bfb9525357330752e93",
+      "projectedSha256": "fef0d8e5faf99fef129efb66d8d1d1a2d54bd6a6cf2ed888c77ed3f6801d5132"
+    },
+    "adopt-compilers.py": {
+      "originalSha256": "e12f117f417d1bb108b5d4719f5e471ad75b2adba78a425e0dd9a2a0c697d2cf",
+      "projectedSha256": "8f4e0d8b7b118c2c125515a3724e1a27a82880f969d49d4c03bd2e3d139f6312"
+    },
+    "cron-fixture/inputs.json": {
+      "originalSha256": "0971140eb17775d974eb509693c864a9e954d5e7a5fc0946bff7852e43785ff6",
+      "projectedSha256": "068059745aeca4ec0d3b39578f48e8b3ae6af87e8ff86743339fb613fa0ac983"
+    },
+    "cron-fixture/run-native.sh": {
+      "originalSha256": "b07d4dac039fc0099a1697814b31cbf2ec32e56a2e2183aaef87be0a3b02ac46",
+      "projectedSha256": "1683c8b8710b2ecbd1c80108b2d43f833b4cc7318add99491f69b5ebe72560b0"
+    },
+    "guest/manifest.json": {
+      "originalSha256": "4280c2f62a9168b812176bab9fb762432a5425fe29821a1720471d2ece242d12",
+      "projectedSha256": "0db9d11a46d8f746ce4600728cf48331b9f04230f3c87858046b829dee2f2d1a"
+    },
+    "guest/prepare-guest.py": {
+      "originalSha256": "936bf471c1c6e06ac2bb1ec1efec0e8e0c4583853e8fcb0ff1a53fb42cfacd52",
+      "projectedSha256": "47922a51d8512cd3f88c2d88d66a69574f5f1dd08bcdf437e2e5c4da06abe1d1"
+    },
+    "native-prep.py": {
+      "originalSha256": "8bfd331144ad876405e73f317e839b35cfc7647288f9fb2c34f95dab86f66e91",
+      "projectedSha256": "161d1732a7569dc695854574e24dfcf2981e6724f0e126ee81cbe6396eb483c8"
+    },
+    "preserve.py": {
+      "originalSha256": "5851e29c0832b017f7e7a98b0f64e51b4951f451574f49a6d9632f0a57b08d34",
+      "projectedSha256": "c4bf1af86d21050f6d7f9c4b801017de18ac50ba35f8eda8179e00c88e2575ca"
+    },
+    "qualification/README.md": {
+      "originalSha256": "cbf5adaed9ff418fa5d0092994cf05166efe215cf56a153c8dcff17d3f1e9fbb",
+      "projectedSha256": "9853f67d28ba0e9cff3b274dd7cab73ac7a6ccc55bd111431bae424106712640"
+    },
+    "qualification/manifest.json": {
+      "originalSha256": "6a38454878806509950a1ea7fb9a15ffb2bb79b53f4ef586bee131474a3e9221",
+      "projectedSha256": "12aa097ba29107d3cefe1c5df3367816b0695a7fd3573078784b88ccb0f80a7c"
+    },
+    "qualification/qualify.py": {
+      "originalSha256": "c32886e391f27eb8c66d333d07b15b4af4c8081c329bad2fe8dca28b2dd9c2d7",
+      "projectedSha256": "62cb7bc09d40be522aa14fcac1b3db1e448032d296909a589bf5ef8b95c47f13"
+    },
+    "qualification/source-contract.json": {
+      "originalSha256": "e2056668fd189ba8505c75fbef695c535930600e08d6e8d7bb0df55f9cf13d2b",
+      "projectedSha256": "457efc17c28bbe8226ee512f55cea43c1ce8720ee48cfc2dba7ec221d97ef911"
+    },
+    "runtime-controller.py": {
+      "originalSha256": "d0974f26f8432bc3fe5c59afb640105ce53dc0d268d8f85fe0598d363ff5d7d9",
+      "projectedSha256": "772fc60f2894c73ccc165b9b9c1e58c251abedea139d147628c31643a51d8940"
+    },
+    "stage.py": {
+      "originalSha256": "d40bdf22aeae208f1165a0d74ee0b87eb7e93e9144a5092212211633b59124d3",
+      "projectedSha256": "1c95d9e5896bf9a0993c1819fae708d7dc4c9d355913b0dc0d87c6fec7773989"
+    }
+  },
+  "manifestSha256": "b231556d4c03faf8131fd3577113c7393f230646f5434f51b8c98145f4a057dd",
+  "runtimeControllerRepair": {
+    "terminalClassification": "Actual SIGTERM fixture child exit -15 formerly normalized to 1; retain timeout, cancellation and signal classification after cleanup",
+    "guestQmpPath": "Generated C2 guest label shortened consistently for preparation and raw collection, reducing Linux QMP pathname from108 to98bytes"
+  },
+  "sourceRebind": {
+    "fromSource": "247b73c9bdc34dd723533f50d56fc345ef624d9a",
+    "sourceCommit": "670a7ab33bbd2e3ed4f0a5681e138159d74540a1",
+    "sourceTree": "714180cb290e28dd167eaad5fd89f12733581a8b",
+    "frozenAt": "2026-10-25T18:15:36.057232+00:00",
+    "rootProofSha256": "9bfbb7fe39678fb0111afe504c762b14b6c6ccbc9d16ee7ef26f9bec3982a864",
+    "requiredAncestors": 26,
+    "nativeRoot": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r2-v1",
+    "compilerPairChanged": false,
+    "materialChanges": [
+      "typed anonymous-package ownership repair PR183756",
+      "acpx0.21.0 lock/workspace refresh",
+      "Knowledge plugin with two workers and assets"
+    ],
+    "currentC2QmpPathBytes": 96
+  }
+}

@@ -1,0 +1,24 @@
+# syntax=docker/dockerfile:1
+# Build with --build-context aot_artifact=/path/to/CLONE-of-complete-standalone-output.
+# The app is copied from the selected artifact, never installed from npm.
+ARG P6_E2E_BASE=openclaw-docker-e2e-bare:local
+FROM ${P6_E2E_BASE}
+USER root
+COPY --from=aot_artifact --chown=appuser:appuser / /opt/p6-artifact/
+COPY --chown=appuser:appuser aot-entry.mjs /app/dist/index.mjs
+COPY --chown=appuser:appuser aot-entry.mjs /app/openclaw.mjs
+COPY --from=test_source /packages/gateway-protocol/src/version.ts /opt/openclaw-e2e/protocol-version.ts
+RUN node -e 'const fs=require("node:fs"); const {stripTypeScriptTypes}=require("node:module"); fs.mkdirSync("/app/dist/gateway/protocol",{recursive:true}); fs.writeFileSync("/app/dist/gateway/protocol/index.js",stripTypeScriptTypes(fs.readFileSync("/opt/openclaw-e2e/protocol-version.ts","utf8")));' \
+ && chown -R appuser:appuser /app/dist/gateway
+COPY --chmod=0755 openclaw-launcher /home/appuser/.local/bin/openclaw
+# Existing E2E clients use ws; the ClawHub fixture uses jszip and tar.
+# These dependencies belong to the test harness. The app stays under /opt/p6-artifact.
+RUN npm install --prefix /opt/openclaw-e2e ws@8.22.0 jszip@3.10.2 tar@7.5.22 --no-save --no-package-lock --no-fund --no-audit \
+ && ln -s /opt/openclaw-e2e/node_modules /app/node_modules \
+ && cp /opt/p6-artifact/runtime/package.json /app/package.json \
+ && chmod 0644 /app/package.json
+ENV P6_AOT_BINARY=/opt/p6-artifact/openclaw
+ENV PATH=/home/appuser/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+USER appuser
+WORKDIR /app
+CMD ["bash"]
