@@ -1,3 +1,5 @@
+import { withBlockedVMTraps } from "bun:internal-for-testing";
+import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { bunEnv, bunExe, isASAN, isDebug, isWindows, normalizeBunSnapshot, tempDir } from "harness";
 import assert from "node:assert";
@@ -16,6 +18,47 @@ import {
 } from "node:vm";
 
 function capture(_: any, _1?: any) {}
+
+describe("elapsed deadlines with delayed VM trap delivery", () => {
+  const waitPastDeadline = () => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+
+  test("a native call cannot cancel an elapsed deadline on return", () => {
+    withBlockedVMTraps(() => {
+      expect(() => runInNewContext("wait()", { wait: waitPastDeadline }, { timeout: 1 })).toThrow(
+        expect.objectContaining({ code: "ERR_SCRIPT_EXECUTION_TIMEOUT" }),
+      );
+    });
+  });
+
+  test.each(["all", "values", "get", "run", "iterate"] as const)(
+    "SQLite %s unwinds before releasing its cursor",
+    method => {
+      using dir = tempDir("vm-delayed-sqlite-timeout", {});
+      const file = join(String(dir), "db.sqlite");
+      using db = new Database(file);
+      db.run(`
+      CREATE TABLE docs (id INTEGER PRIMARY KEY, body);
+      CREATE VIRTUAL TABLE ft USING fts5(body, content = 'docs', content_rowid = 'id');
+      CREATE TRIGGER ai AFTER INSERT ON docs BEGIN INSERT INTO ft (rowid, body) VALUES (new.id, new.body); END;
+    `);
+      db.function("wait_past_deadline", () => {
+        waitPastDeadline();
+        return "hello";
+      });
+      const statement = db.prepare("INSERT INTO docs (body) VALUES (wait_past_deadline()) RETURNING 1");
+      const read = () => (method === "iterate" ? statement.iterate().next() : statement[method]());
+      withBlockedVMTraps(() => {
+        expect(() => runInNewContext("read()", { read }, { timeout: 1 })).toThrow(
+          expect.objectContaining({ code: "ERR_SCRIPT_EXECUTION_TIMEOUT" }),
+        );
+      });
+      using other = new Database(file);
+      other.run("CREATE TABLE later (x)");
+      expect(other.query("SELECT count(*) AS n FROM docs").get()).toEqual({ n: 1 });
+      expect(other.query("SELECT count(*) AS n FROM ft WHERE ft MATCH 'hello'").get()).toEqual({ n: 1 });
+    },
+  );
+});
 
 describe("vm", () => {
   describe("runInContext()", () => {

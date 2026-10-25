@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Clear dead native stack slots before asynchronous GC requests so parked workers can finalize unreachable objects after `Bun.gc(false)`, including on Windows ARM64.
+- Honor elapsed `node:vm` timeouts when native SQLite writes outlast delayed timer delivery, releasing write cursors before propagating the timeout.
 
 - Sync oven-sh/bun through `a8fcd319be58ad4d284330b86602cfb3c8e49c83`, including native-binding schema migration, source-position updates, and runtime hardening while retaining fork compatibility and source-sharing fixes.
 
@@ -352,3 +352,5 @@
 - Resolve positive and negative CA options in order, applying `NODE_OPTIONS` before command-line flags across runtime and package commands while preserving Bun's existing trust stores.
 
 - x64 macOS without AVX (older Macs and Rosetta on macOS 14) no longer crashes with SIGILL at startup (openclaw/openclaw#181032).
+
+- Clear dead native stack slots before asynchronous GC requests so parked workers can finalize unreachable objects after `Bun.gc(false)`, including on Windows ARM64.
