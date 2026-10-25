@@ -1,8 +1,55 @@
 import { describe, expect, test } from "bun:test";
 import { isASAN, rss } from "harness";
-import { MessageChannel as NodeMessageChannel, receiveMessageOnPort } from "node:worker_threads";
+import { markAsUntransferable, MessageChannel as NodeMessageChannel, receiveMessageOnPort } from "node:worker_threads";
 
 describe("Structured Clone Fast Path", () => {
+  test.each([16 * 1024, 4 * 1024 * 1024])(
+    "MessagePort clones %i-byte shared backing references without detaching",
+    size => {
+      const bytes = Buffer.alloc(size, 0x5a);
+      markAsUntransferable(bytes.buffer);
+      const input: any = {
+        bytes,
+        again: bytes,
+        backing: bytes.buffer,
+        view: new DataView(bytes.buffer, bytes.byteOffset + 1, size - 2),
+      };
+      input.self = input;
+      const { port1, port2 } = new NodeMessageChannel();
+      try {
+        port1.postMessage(input);
+        const copy = receiveMessageOnPort(port2)!.message;
+        expect(copy.self).toBe(copy);
+        expect(copy.again).toBe(copy.bytes);
+        expect(copy.backing).toBe(copy.bytes.buffer);
+        expect(copy.view.buffer).toBe(copy.backing);
+        expect(copy.view.byteOffset).toBe(bytes.byteOffset + 1);
+        expect(copy.view.byteLength).toBe(size - 2);
+        expect(Buffer.from(copy.bytes)).toEqual(bytes);
+        copy.bytes.fill(0);
+        expect(bytes).toEqual(Buffer.alloc(size, 0x5a));
+      } finally {
+        port1.close();
+        port2.close();
+      }
+    },
+  );
+
+  test("rejected messages leave a previously cloned large buffer attached", () => {
+    const bytes = Buffer.alloc(16 * 1024, 0x5a);
+    const { port1, port2 } = new NodeMessageChannel();
+    try {
+      expect(() => port1.postMessage({ bytes, invalid() {} })).toThrow(
+        expect.objectContaining({ name: "DataCloneError" }),
+      );
+      expect(bytes).toEqual(Buffer.alloc(16 * 1024, 0x5a));
+      expect(receiveMessageOnPort(port2)).toBeUndefined();
+    } finally {
+      port1.close();
+      port2.close();
+    }
+  });
+
   test.each(["clone", "port"])("%s preserves repeated strings and references after a primitive prefix", kind => {
     const latin1 = "caf\u00e9";
     const sliced = ("\u0100" + latin1).slice(1);

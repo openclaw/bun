@@ -731,14 +731,14 @@ public:
 #endif
         Vector<uint8_t>& out, SerializationContext context, ArrayBufferContentsArray& sharedBuffers,
         Vector<void*>& serializedBlockListRefs,
-        SerializationForStorage forStorage, SerializationForCrossProcessTransfer forTransfer)
+        SerializationForStorage forStorage, SerializationForCrossProcessTransfer forTransfer, std::unique_ptr<ArrayBufferContentsArray>* clonedBuffers = nullptr)
     {
         CloneSerializer serializer(lexicalGlobalObject, messagePorts, arrayBuffers,
 #if ENABLE(WEBASSEMBLY)
             wasmModules,
             wasmMemoryHandles,
 #endif
-            out, context, sharedBuffers, forStorage, forTransfer);
+            out, context, sharedBuffers, forStorage, forTransfer, clonedBuffers);
         auto code = serializer.serialize(value);
         serializedBlockListRefs = WTF::move(serializer.m_serializedBlockListRefs);
         return code;
@@ -752,7 +752,7 @@ private:
         WasmModuleArray& wasmModules,
         WasmMemoryHandleArray& wasmMemoryHandles,
 #endif
-        Vector<uint8_t>& out, SerializationContext context, ArrayBufferContentsArray& sharedBuffers, SerializationForStorage forStorage, SerializationForCrossProcessTransfer forTransfer)
+        Vector<uint8_t>& out, SerializationContext context, ArrayBufferContentsArray& sharedBuffers, SerializationForStorage forStorage, SerializationForCrossProcessTransfer forTransfer, std::unique_ptr<ArrayBufferContentsArray>* clonedBuffers = nullptr)
         : CloneBase(lexicalGlobalObject)
         , m_buffer(out)
         , m_emptyIdentifier(Identifier::fromString(lexicalGlobalObject->vm(), emptyString()))
@@ -764,6 +764,7 @@ private:
 #endif
         , m_forStorage(forStorage)
         , m_forTransfer(forTransfer)
+        , m_clonedBuffers(clonedBuffers)
     {
         write(CurrentVersion);
         fillTransferMap(messagePorts, m_transferredMessagePorts);
@@ -1293,6 +1294,31 @@ private:
                 if (index != m_transferredArrayBuffers.end()) {
                     write(ArrayBufferTransferTag);
                     write(index->value);
+                    return true;
+                }
+                constexpr size_t largeBufferThreshold = 16 * 1024;
+                if (m_clonedBuffers && !arrayBuffer->isShared() && !arrayBuffer->isResizableOrGrowableShared() && arrayBuffer->byteLength() >= largeBufferThreshold) {
+                    auto cloned = m_clonedArrayBuffers.find(obj);
+                    if (cloned != m_clonedArrayBuffers.end()) {
+                        write(ArrayBufferTransferTag);
+                        write(cloned->value);
+                        return true;
+                    }
+                    auto copy = arrayBuffer->sliceWithClampedIndex(0, arrayBuffer->byteLength());
+                    ArrayBufferContents contents;
+                    if (!copy || !copy->transferTo(vm, contents)) {
+                        code = SerializationReturnCode::DataCloneError;
+                        return true;
+                    }
+                    if (!*m_clonedBuffers)
+                        *m_clonedBuffers = makeUnique<ArrayBufferContentsArray>();
+                    uint32_t clonedIndex = (*m_clonedBuffers)->size();
+                    (*m_clonedBuffers)->append(WTF::move(contents));
+                    m_clonedArrayBuffers.add(obj, clonedIndex);
+                    m_gcBuffer.appendWithCrashOnOverflow(obj);
+                    // Move the copy to the sole receiver; the source buffer is never detached.
+                    write(ArrayBufferTransferTag);
+                    write(clonedIndex);
                     return true;
                 }
                 if (!startObjectInternal(obj)) // handle duplicates
@@ -2021,6 +2047,8 @@ private:
 #endif
     SerializationForStorage m_forStorage;
     SerializationForCrossProcessTransfer m_forTransfer;
+    std::unique_ptr<ArrayBufferContentsArray>* m_clonedBuffers;
+    ObjectPool m_clonedArrayBuffers;
 };
 
 extern "C" void WebCore__CloneSerializer__write(CloneSerializer* serializer, const uint8_t* data, uint32_t length)
@@ -4536,12 +4564,12 @@ RefPtr<SerializedScriptValue> SerializedScriptValue::create(JSC::JSGlobalObject&
     return result.releaseReturnValue();
 }
 
-ExceptionOr<Ref<SerializedScriptValue>> SerializedScriptValue::create(JSGlobalObject& globalObject, JSValue value, Vector<JSC::Strong<JSC::JSObject>>&& transferList, Vector<RefPtr<MessagePort>>& messagePorts, SerializationForStorage forStorage, SerializationContext serializationContext, SerializationForCrossProcessTransfer forTransfer)
+ExceptionOr<Ref<SerializedScriptValue>> SerializedScriptValue::create(JSGlobalObject& globalObject, JSValue value, Vector<JSC::Strong<JSC::JSObject>>&& transferList, Vector<RefPtr<MessagePort>>& messagePorts, SerializationForStorage forStorage, SerializationContext serializationContext, SerializationForCrossProcessTransfer forTransfer, SerializationForSingleRecipient singleRecipient)
 {
-    return create(globalObject, value, WTF::move(transferList), messagePorts, forStorage, SerializationErrorMode::Throwing, serializationContext, forTransfer);
+    return create(globalObject, value, WTF::move(transferList), messagePorts, forStorage, SerializationErrorMode::Throwing, serializationContext, forTransfer, singleRecipient);
 }
 
-ExceptionOr<Ref<SerializedScriptValue>> SerializedScriptValue::create(JSGlobalObject& lexicalGlobalObject, JSValue value, Vector<JSC::Strong<JSC::JSObject>>&& transferList, Vector<RefPtr<MessagePort>>& messagePorts, SerializationForStorage forStorage, SerializationErrorMode throwExceptions, SerializationContext context, SerializationForCrossProcessTransfer forTransfer)
+ExceptionOr<Ref<SerializedScriptValue>> SerializedScriptValue::create(JSGlobalObject& lexicalGlobalObject, JSValue value, Vector<JSC::Strong<JSC::JSObject>>&& transferList, Vector<RefPtr<MessagePort>>& messagePorts, SerializationForStorage forStorage, SerializationErrorMode throwExceptions, SerializationContext context, SerializationForCrossProcessTransfer forTransfer, SerializationForSingleRecipient singleRecipient)
 {
     VM& vm = lexicalGlobalObject.vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
@@ -4838,13 +4866,19 @@ ExceptionOr<Ref<SerializedScriptValue>> SerializedScriptValue::create(JSGlobalOb
     WasmMemoryHandleArray wasmMemoryHandles;
 #endif
     std::unique_ptr<ArrayBufferContentsArray> sharedBuffers = makeUnique<ArrayBufferContentsArray>();
+    std::unique_ptr<ArrayBufferContentsArray> arrayBufferContentsArray;
+    bool canMoveClonedBuffers = singleRecipient == SerializationForSingleRecipient::Yes
+        && context == SerializationContext::WorkerPostMessage
+        && forStorage == SerializationForStorage::No
+        && forTransfer == SerializationForCrossProcessTransfer::No
+        && transferList.isEmpty();
     Vector<void*> serializedBlockListRefs;
     auto code = CloneSerializer::serialize(&lexicalGlobalObject, value, messagePorts, arrayBuffers,
 #if ENABLE(WEBASSEMBLY)
         wasmModules,
         wasmMemoryHandles,
 #endif
-        buffer, context, *sharedBuffers, serializedBlockListRefs, forStorage, forTransfer);
+        buffer, context, *sharedBuffers, serializedBlockListRefs, forStorage, forTransfer, canMoveClonedBuffers ? &arrayBufferContentsArray : nullptr);
 
     auto releaseSerializedBlockListRefs = [&] {
         for (auto* ptr : serializedBlockListRefs)
@@ -4867,7 +4901,6 @@ ExceptionOr<Ref<SerializedScriptValue>> SerializedScriptValue::create(JSGlobalOb
     }
 
     // Most calls have no transfer list; this keeps them at one branch.
-    std::unique_ptr<ArrayBufferContentsArray> arrayBufferContentsArray;
     if (!transferList.isEmpty()) {
         if (auto exception = transferListChangedDuringSerialization(vm, transferList, arrayBuffers, messagePorts)) [[unlikely]] {
             releaseSerializedBlockListRefs();

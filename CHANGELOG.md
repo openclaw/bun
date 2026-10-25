@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Copy large ArrayBuffers directly into receiver-owned contents for Worker and MessagePort messages, preserving source buffers and stored serialization bytes.
+
 - Honor elapsed `node:vm` timeouts when native SQLite writes outlast delayed timer delivery, releasing write cursors before propagating the timeout.
 
 - Sync oven-sh/bun through `a8fcd319be58ad4d284330b86602cfb3c8e49c83`, including native-binding schema migration, source-position updates, and runtime hardening while retaining fork compatibility and source-sharing fixes.

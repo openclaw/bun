@@ -120,7 +120,7 @@ ExceptionOr<void> MessagePort::postMessage(JSC::JSGlobalObject& state, JSC::JSVa
     }
 
     Vector<RefPtr<MessagePort>> ports;
-    auto messageData = SerializedScriptValue::create(state, messageValue, WTF::move(options.transfer), ports, SerializationForStorage::No, SerializationContext::WorkerPostMessage);
+    auto messageData = SerializedScriptValue::create(state, messageValue, WTF::move(options.transfer), ports, SerializationForStorage::No, SerializationContext::WorkerPostMessage, SerializationForCrossProcessTransfer::No, SerializationForSingleRecipient::Yes);
     if (messageData.hasException()) {
         // Satisfy the exception-check verifier for create()'s simulated throw
         // WITHOUT clearing the pending exception (propagateException needs it).
