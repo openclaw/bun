@@ -1298,12 +1298,6 @@ private:
                 }
                 constexpr size_t largeBufferThreshold = 16 * 1024;
                 if (m_clonedBuffers && !arrayBuffer->isShared() && !arrayBuffer->isResizableOrGrowableShared() && arrayBuffer->byteLength() >= largeBufferThreshold) {
-                    auto cloned = m_clonedArrayBuffers.find(obj);
-                    if (cloned != m_clonedArrayBuffers.end()) {
-                        write(ArrayBufferTransferTag);
-                        write(cloned->value);
-                        return true;
-                    }
                     auto copy = arrayBuffer->sliceWithClampedIndex(0, arrayBuffer->byteLength());
                     ArrayBufferContents contents;
                     if (!copy || !copy->transferTo(vm, contents)) {
@@ -1314,7 +1308,8 @@ private:
                         *m_clonedBuffers = makeUnique<ArrayBufferContentsArray>();
                     uint32_t clonedIndex = (*m_clonedBuffers)->size();
                     (*m_clonedBuffers)->append(WTF::move(contents));
-                    m_clonedArrayBuffers.add(obj, clonedIndex);
+                    // This mode has no explicit transfers, so reuse their backing index map.
+                    m_transferredArrayBuffers.add(obj, clonedIndex);
                     m_gcBuffer.appendWithCrashOnOverflow(obj);
                     // Move the copy to the sole receiver; the source buffer is never detached.
                     write(ArrayBufferTransferTag);
@@ -2048,7 +2043,6 @@ private:
     SerializationForStorage m_forStorage;
     SerializationForCrossProcessTransfer m_forTransfer;
     std::unique_ptr<ArrayBufferContentsArray>* m_clonedBuffers;
-    ObjectPool m_clonedArrayBuffers;
 };
 
 extern "C" void WebCore__CloneSerializer__write(CloneSerializer* serializer, const uint8_t* data, uint32_t length)
