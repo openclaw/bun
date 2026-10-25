@@ -924,16 +924,76 @@ pub fn use_openssl_ca() -> bool {
     Bun__Node__CAStore.load(core::sync::atomic::Ordering::Relaxed) == BunCAStore::Openssl as u8
 }
 
-/// Apply CA selection consistently to runtime and package-manager commands.
-pub fn set_ca_store_from_flags(has_flag: impl Fn(&'static [u8]) -> bool) {
-    let no_use_system_ca = has_flag(b"--no-use-system-ca");
-    if no_use_system_ca {
-        Bun__Node__NoUseSystemCA.store(true, core::sync::atomic::Ordering::Relaxed);
+/// Resolved at the option boundary, before a parser discards repeated flags.
+#[derive(Clone, Copy, Default)]
+pub struct CAOptions {
+    system: Option<bool>,
+    openssl: Option<bool>,
+    bundled: Option<bool>,
+}
+
+impl CAOptions {
+    pub fn read_flag(&mut self, name: &[u8]) -> bool {
+        match name {
+            b"use-system-ca" => self.system = Some(true),
+            b"no-use-system-ca" => self.system = Some(false),
+            b"use-openssl-ca" => self.openssl = Some(true),
+            b"no-use-openssl-ca" => self.openssl = Some(false),
+            b"use-bundled-ca" => self.bundled = Some(true),
+            b"no-use-bundled-ca" => self.bundled = Some(false),
+            _ => return false,
+        }
+        true
     }
-    let use_system_ca = has_flag(b"--use-system-ca");
+
+    /// NODE_OPTIONS values are canonicalized to --name=value, so they cannot look like flags here.
+    pub fn from_node_options() -> Self {
+        let mut options = Self::default();
+        for arg in &crate::argv().as_slice()[1..1 + crate::node_options_argc()] {
+            if let Some(name) = arg.as_bytes().strip_prefix(b"--") {
+                options.read_flag(name);
+            }
+        }
+        options
+    }
+
+    pub fn flags(self) -> impl Iterator<Item = &'static ZStr> {
+        [
+            self.system.map(|enabled| {
+                if enabled {
+                    crate::zstr!("--use-system-ca")
+                } else {
+                    crate::zstr!("--no-use-system-ca")
+                }
+            }),
+            self.openssl.map(|enabled| {
+                if enabled {
+                    crate::zstr!("--use-openssl-ca")
+                } else {
+                    crate::zstr!("--no-use-openssl-ca")
+                }
+            }),
+            self.bundled.map(|enabled| {
+                if enabled {
+                    crate::zstr!("--use-bundled-ca")
+                } else {
+                    crate::zstr!("--no-use-bundled-ca")
+                }
+            }),
+        ]
+        .into_iter()
+        .flatten()
+    }
+}
+
+/// Apply the parser's resolved CA options to runtime and package-manager commands.
+pub fn set_ca_store_from_options(options: CAOptions) {
+    let no_use_system_ca = options.system == Some(false);
+    Bun__Node__NoUseSystemCA.store(no_use_system_ca, core::sync::atomic::Ordering::Relaxed);
+    let use_system_ca = options.system == Some(true);
     Bun__Node__UseSystemCAFlag.store(use_system_ca, core::sync::atomic::Ordering::Relaxed);
-    let use_openssl_ca = has_flag(b"--use-openssl-ca");
-    let use_bundled_ca = has_flag(b"--use-bundled-ca");
+    let use_openssl_ca = options.openssl == Some(true);
+    let use_bundled_ca = options.bundled == Some(true);
 
     // Disallow any combination > 1
     if (use_system_ca as u8) + (use_openssl_ca as u8) + (use_bundled_ca as u8) > 1 {
@@ -943,32 +1003,22 @@ pub fn set_ca_store_from_flags(has_flag: impl Fn(&'static [u8]) -> bool) {
         exit(1);
     }
 
-    let store: Option<BunCAStore> = if use_bundled_ca {
-        Some(BunCAStore::Bundled)
+    let store = if use_bundled_ca {
+        BunCAStore::Bundled
     } else if use_openssl_ca {
-        Some(BunCAStore::Openssl)
+        BunCAStore::Openssl
     } else if no_use_system_ca {
-        Some(BunCAStore::Bundled)
+        BunCAStore::Bundled
     } else if use_system_ca || crate::env_var::NODE_USE_SYSTEM_CA.get().unwrap_or(false) {
-        Some(BunCAStore::System)
+        BunCAStore::System
     } else {
-        // No CA flag — leave the FFI default (Bundled) in place. Avoids a
-        // `transmute<u8, BunCAStore>` round-trip through the atomic, which
-        // would be UB on an out-of-range discriminant.
-        None
+        BunCAStore::Bundled
     };
-    if let Some(store) = store {
-        Bun__Node__CAStore.store(store as u8, core::sync::atomic::Ordering::Relaxed);
-        // Back-compat boolean used by native code until fully migrated
-        Bun__Node__UseSystemCA.store(
-            store == BunCAStore::System,
-            core::sync::atomic::Ordering::Relaxed,
-        );
-    } else {
-        // `Bun__Node__UseSystemCA` is written unconditionally,
-        // even when no CA flag/env was supplied (default bundled ⇒ false).
-        Bun__Node__UseSystemCA.store(false, core::sync::atomic::Ordering::Relaxed);
-    }
+    Bun__Node__CAStore.store(store as u8, core::sync::atomic::Ordering::Relaxed);
+    Bun__Node__UseSystemCA.store(
+        store == BunCAStore::System,
+        core::sync::atomic::Ordering::Relaxed,
+    );
 }
 
 /// Prevent the linker from dead-code-eliminating `#[no_mangle]` symbols that are

@@ -127,6 +127,7 @@ impl Drop for RefreshOnDrop {
 }
 
 struct CreateOptions {
+    ca_options: Global::CAOptions,
     skip_install: bool,
     ignore_scripts: bool,
     overwrite: bool,
@@ -148,14 +149,36 @@ impl CreateOptions {
             clap::param!("--verbose                      Too many logs"),
             clap::param!("--no-package-json              Disable package.json transforms"),
             clap::param!("--open                         On finish, start bun & open in-browser"),
+            clap::param!(
+                "--use-system-ca                Use the system's trusted certificate authorities"
+            ),
+            clap::param!(
+                "--no-use-system-ca             Do not use system CAs, overriding $NODE_USE_SYSTEM_CA"
+            ),
+            clap::param!("--use-openssl-ca               Use OpenSSL's default CA store"),
+            clap::param!("--no-use-openssl-ca            Do not select OpenSSL's default CA store"),
+            clap::param!("--use-bundled-ca               Use bundled CA store"),
+            clap::param!("--no-use-bundled-ca            Do not select the bundled CA store"),
             clap::param!("<POS>...                       "),
         ];
         let mut diag = clap::Diagnostic::default();
+        let mut ca_options = Global::CAOptions::default();
+        let mut positional_count = 0;
+        let mut on_option = |names: clap::Names, _: Option<&[u8]>| {
+            if let Some(name) = names.long {
+                if positional_count < 2 {
+                    ca_options.read_flag(name);
+                }
+            } else if names.short.is_none() {
+                positional_count += 1;
+            }
+        };
 
         let args = match clap::parse::<clap::Help>(
             PARAMS,
             clap::ParseOptions {
                 diagnostic: Some(&mut diag),
+                on_option: Some(&mut on_option),
                 ..Default::default()
             },
         ) {
@@ -166,12 +189,14 @@ impl CreateOptions {
             }
         };
 
+        Global::set_ca_store_from_options(ca_options);
         let mut positionals = args.positionals().to_vec();
         if !positionals.is_empty() && (positionals[0] == b"c" || positionals[0] == b"create") {
             positionals.remove(0);
         }
 
         Ok(CreateOptions {
+            ca_options,
             positionals,
             skip_package_json: args.flag(b"--no-package-json"),
             verbose: args.flag(b"--verbose") || Output::is_verbose(),
@@ -1087,11 +1112,16 @@ impl CreateCommand {
 
         if let Some(bun_exe) = bun_exe {
             let start_time = bun_core::time::nano_timestamp();
-            let install_args: &[&[u8]] = if ignore_scripts {
-                &[bun_exe, b"install", b"--ignore-scripts"]
-            } else {
-                &[bun_exe, b"install"]
-            };
+            let mut install_args: Vec<&[u8]> = vec![bun_exe.as_bytes(), b"install"];
+            if ignore_scripts {
+                install_args.push(b"--ignore-scripts");
+            }
+            install_args.extend(
+                create_options
+                    .ca_options
+                    .flags()
+                    .map(|flag| flag.as_bytes()),
+            );
             Output::flush();
             bun_core::pretty!("\n<r><d>$ <b><cyan>bun<r><d> install");
             if ignore_scripts {

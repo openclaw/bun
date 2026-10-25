@@ -435,11 +435,92 @@ describe.concurrent("certificate authority", () => {
       [["--use-system-ca", "install"], {}],
       [["install"], { BUN_OPTIONS: "--use-system-ca" }],
       [["install"], { NODE_USE_SYSTEM_CA: "1" }],
+      [["install", "--no-use-system-ca", "--use-system-ca"], {}],
+      [["install", "--use-system-ca"], { NODE_OPTIONS: "--no-use-system-ca" }],
+      [["install"], { NODE_OPTIONS: "--no-use-system-ca --use-system-ca" }],
+      [["install", "--use-system-ca"], { NODE_OPTIONS: "--use-openssl-ca --no-use-openssl-ca" }],
     ])("bun %j with %j trusts the system's certificates", async (args, extraEnv) => {
       const { out, err, exitCode } = await run(args, extraEnv);
       expect(err).not.toContain("error:");
       expect(out).toContain("+ no-deps@");
       expect(exitCode).toBe(0);
+    });
+
+    test.each([
+      [["install", "--use-system-ca", "--no-use-system-ca"], {}],
+      [["install", "--no-use-system-ca"], { NODE_OPTIONS: "--use-system-ca" }],
+      [["install"], { NODE_OPTIONS: "--use-system-ca --no-use-system-ca" }],
+    ])("bun %j with %j excludes system-only roots", async (args, extraEnv) => {
+      const { out, err, exitCode } = await run(args, extraEnv);
+      expect(err).toContain("DEPTH_ZERO_SELF_SIGNED_CERT");
+      expect(out).not.toContain("+ no-deps@");
+      expect(exitCode).toBe(1);
+    });
+
+    test.each([
+      ["install", []],
+      ["x", ["ca-option-missing-package"]],
+      ["create", ["ca-option-missing-template"]],
+      ["init", ["-y"]],
+      ["create-local", ["./template", "output", "--no-git"]],
+    ] as const)("%s resolves and forwards CA options before contacting a TLS registry", async (command, target) => {
+      for (const enabled of [false, true]) {
+        using dir = tempDir("ca-options-command", {
+          "package.json": JSON.stringify({ name: "ca-probe", dependencies: { "ca-option-missing-package": "1.0.0" } }),
+          template: {
+            "package.json": JSON.stringify({
+              name: "ca-template",
+              dependencies: { "ca-option-missing-package": "1.0.0" },
+            }),
+          },
+          certs: { "ca.pem": tls.cert },
+        });
+        let requests = 0;
+        using server = Bun.serve({
+          port: 0,
+          hostname: "127.0.0.1",
+          ...tls,
+          fetch() {
+            requests++;
+            return new Response("not found", { status: 404 });
+          },
+        });
+        await write(
+          join(String(dir), "bunfig.toml"),
+          Bun.TOML.stringify({ install: { cache: false, registry: server.url.href } }),
+        );
+        const finalFlag = enabled ? "--use-system-ca" : "--no-use-system-ca";
+        const args = command === "create-local" ? [join(String(dir), "template"), ...target.slice(1)] : target;
+        await using proc = spawn({
+          cmd: [bunExe(), command === "create-local" ? "create" : command, finalFlag, ...args],
+          cwd: String(dir),
+          env: {
+            ...bunEnv,
+            NODE_OPTIONS: enabled ? "--no-use-system-ca" : "--use-system-ca",
+            NODE_USE_SYSTEM_CA: "0",
+            NODE_EXTRA_CA_CERTS: undefined,
+            SSL_CERT_FILE: "",
+            SSL_CERT_DIR: join(String(dir), "certs"),
+            npm_config_registry: server.url.href,
+            BUN_INSTALL_CACHE_DIR: join(String(dir), "cache"),
+            BUN_CONFIG_HTTP_RETRY_COUNT: "0",
+            BUN_AGENT_RULE_DISABLED: "1",
+          },
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        const [out, err] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+        expect({ command, enabled, contactedRegistry: requests > 0 }).toEqual({
+          command,
+          enabled,
+          contactedRegistry: enabled,
+        });
+        if (enabled) {
+          expect(err).not.toContain("DEPTH_ZERO_SELF_SIGNED_CERT");
+        } else {
+          expect(out + err).toContain("DEPTH_ZERO_SELF_SIGNED_CERT");
+        }
+      }
     });
 
     test("errors when combined with --use-bundled-ca", async () => {

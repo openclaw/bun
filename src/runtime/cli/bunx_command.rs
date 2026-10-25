@@ -90,6 +90,7 @@ pub(crate) fn count_cached_packages(base: &[u8]) -> usize {
 /// bunx-specific options parsed from argv.
 #[derive(Default)]
 pub(crate) struct Options {
+    ca_options: Global::CAOptions,
     /// CLI arguments to pass to the command being run.
     pub(crate) passthrough_list: Vec<Box<[u8]>>,
     /// `bunx <package_name>`
@@ -146,9 +147,9 @@ impl Options {
         let mut opts = Options::default();
         opts.passthrough_list.reserve_exact(argv.len());
 
-        // `BUN_OPTIONS` is for every command: what bunx does not know there is not for it.
+        // Environment runtime options that bunx does not implement are not package arguments.
         let bun_options = (bun_core::argv().as_slice())
-            .get(1..1 + bun_core::bun_options_argc())
+            .get(1..1 + bun_core::injected_argv_argc())
             .unwrap_or_default();
         let is_from_bun_options =
             |arg: &ZStr| bun_options.iter().any(|option| core::ptr::eq(*option, arg));
@@ -163,6 +164,13 @@ impl Options {
             }
 
             if !positional.is_empty() && positional[0] == b'-' {
+                if positional
+                    .strip_prefix(b"--")
+                    .is_some_and(|name| opts.ca_options.read_flag(name))
+                {
+                    i += 1;
+                    continue;
+                }
                 if positional == b"--version" || positional == b"-v" {
                     has_version = true;
                 } else if positional == b"--revision" {
@@ -260,6 +268,7 @@ impl Options {
             };
             opts.package_name = package_name;
         }
+        Global::set_ca_store_from_options(opts.ca_options);
         Ok(opts)
     }
 }
@@ -1071,6 +1080,7 @@ impl BunxCommand {
             install_param.as_slice(),
             b"--no-summary",
         ];
+        args.extend(opts.ca_options.flags().map(|flag| flag.as_bytes()));
         if update_request.version.tag == VersionTag::DistTag || tree == Tree::Stale {
             // No manifest cache, so that @latest is fetched from the registry.
             args.push(b"--no-cache");

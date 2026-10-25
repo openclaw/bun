@@ -628,3 +628,40 @@ const initEnv = { ...bunEnv, BUN_AGENT_RULE_DISABLED: "1" };
     expect(fs.existsSync(path.join(temp, ".cursor"))).toBe(false);
   });
 });
+
+test.each([
+  ["--use-system-ca", "--no-use-system-ca"],
+  ["--no-use-system-ca", "--use-system-ca"],
+])("CA options before init stay options: %j", async (...flags) => {
+  using dir = tempDir("init-ca-options", {
+    "package.json": JSON.stringify({
+      private: true,
+      devDependencies: { "@types/bun": "latest" },
+      peerDependencies: { typescript: "*" },
+    }),
+  });
+  await using registry = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    fetch: () => new Response("not found", { status: 404 }),
+  });
+  await using proc = Bun.spawn({
+    cmd: [bunExe(), ...flags, "init", "--minimal", "--yes"],
+    cwd: String(dir),
+    env: {
+      ...initEnv,
+      NODE_OPTIONS: undefined,
+      NODE_USE_SYSTEM_CA: undefined,
+      npm_config_registry: registry.url.href,
+      BUN_INSTALL_CACHE_DIR: path.join(String(dir), "cache"),
+    },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect(fs.existsSync(path.join(String(dir), "tsconfig.json"))).toBe(true);
+  expect(fs.existsSync(path.join(String(dir), "init"))).toBe(false);
+  expect(stderr).toBe("");
+  expect(stdout).toContain("tsconfig.json");
+  expect(exitCode).toBe(0);
+});

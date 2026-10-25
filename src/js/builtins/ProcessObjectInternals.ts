@@ -889,6 +889,8 @@ export function buildAllowedNodeEnvironmentFlags() {
     "--max-old-space-size",
     "--no-addons",
     "--no-deprecation",
+    "--no-use-bundled-ca",
+    "--no-use-openssl-ca",
     "--no-use-system-ca",
     "--no-warnings",
     "--pending-deprecation",

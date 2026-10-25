@@ -156,6 +156,12 @@ describe("--use-system-ca", () => {
     [["--no-use-system-ca"], "rejected:DEPTH_ZERO_SELF_SIGNED_CERT"],
     [["--use-openssl-ca"], "rejected:DEPTH_ZERO_SELF_SIGNED_CERT"],
     [["--use-system-ca"], isLinux ? "trusted" : "rejected:DEPTH_ZERO_SELF_SIGNED_CERT"],
+    [["--no-use-system-ca", "--use-system-ca"], isLinux ? "trusted" : "rejected:DEPTH_ZERO_SELF_SIGNED_CERT"],
+    [["--use-system-ca", "--no-use-system-ca"], "rejected:DEPTH_ZERO_SELF_SIGNED_CERT"],
+    [
+      ["--use-openssl-ca", "--no-use-openssl-ca", "--use-system-ca"],
+      isLinux ? "trusted" : "rejected:DEPTH_ZERO_SELF_SIGNED_CERT",
+    ],
   ])("a CA only the system store sees, with flags %j -> %s", async (flags, expected) => {
     using dir = tempDir("use-system-ca-only", {
       "cert.pem": tls.cert,

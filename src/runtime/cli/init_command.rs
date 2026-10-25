@@ -305,6 +305,7 @@ impl InitCommand {
     }
 
     pub(crate) fn exec(init_args: &[&ZStr]) -> Result<(), Error> {
+        let mut ca_options = Global::CAOptions::from_node_options();
         // --minimal is a special preset to create only empty package.json + tsconfig.json
         let mut minimal = false;
         let mut auto_yes = false;
@@ -316,7 +317,13 @@ impl InitCommand {
         for arg_ in init_args {
             let arg = arg_.as_bytes();
             if parse_flags && !arg.is_empty() && arg[0] == b'-' {
-                if arg == b"--help" || arg == b"-h" {
+                if initialize_in_folder.is_none()
+                    && arg
+                        .strip_prefix(b"--")
+                        .is_some_and(|name| ca_options.read_flag(name))
+                {
+                    prev_flag_was_react = false;
+                } else if arg == b"--help" || arg == b"-h" {
                     CLI::command::tag_print_help(CLI::Command::Tag::InitCommand, true);
                     Global::exit(0);
                 } else if arg == b"-m" || arg == b"--minimal" {
@@ -361,6 +368,8 @@ impl InitCommand {
                 }
             }
         }
+
+        Global::set_ca_store_from_options(ca_options);
 
         // The template picker reads single keystrokes from raw-mode stdin; on a
         // pipe (CI, `spawn(...,{stdio:'pipe'})`, `foo | bun init`) that blocks
@@ -614,7 +623,7 @@ impl InitCommand {
 
         match template {
             Template::ReactBlank | Template::ReactTailwind | Template::ReactTailwindShadcn => {
-                template.write_files_and_run_bun_dev()?;
+                template.write_files_and_run_bun_dev(ca_options)?;
                 return Ok(());
             }
             _ => {}
@@ -943,7 +952,9 @@ impl InitCommand {
                 if exists_z(b"package.json") && need_run_bun_install {
                     bun_core::prettyln!("");
                     let self_exe = bun::self_exe_path()?;
-                    let _ = bun::spawn_sync_inherit(&[self_exe.as_bytes(), b"install"])?;
+                    let mut install_args = vec![self_exe.as_bytes(), b"install"];
+                    install_args.extend(ca_options.flags().map(|flag| flag.as_bytes()));
+                    let _ = bun::spawn_sync_inherit(&install_args)?;
                 }
             }
             _ => {}
@@ -1633,7 +1644,7 @@ impl Template {
         }
     }
 
-    fn write_files_and_run_bun_dev(self) -> Result<(), Error> {
+    fn write_files_and_run_bun_dev(self, ca_options: Global::CAOptions) -> Result<(), Error> {
         Self::create_agent_rule();
 
         for file in self.files() {
@@ -1680,7 +1691,9 @@ impl Template {
         Output::flush();
 
         let self_exe = bun::self_exe_path()?;
-        let _ = bun::spawn_sync_inherit_no_stdin(&[self_exe.as_bytes(), b"install"])?;
+        let mut install_args = vec![self_exe.as_bytes(), b"install"];
+        install_args.extend(ca_options.flags().map(|flag| flag.as_bytes()));
+        let _ = bun::spawn_sync_inherit_no_stdin(&install_args)?;
 
         bun_core::prettyln!(
             "\n\

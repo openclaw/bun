@@ -381,8 +381,8 @@ pub struct ParseOptions<'a> {
     /// An alias written as `--name=value` also matches the two tokens `--name value`. An empty
     /// replacement removes the flag from the arguments.
     pub short_aliases: &'static [(&'static [u8], &'static [u8])],
-    /// Observe each named option before repeated single-value options are collapsed.
-    pub on_option: Option<fn(Names, Option<&[u8]>)>,
+    /// Observe each parameter before repeated single-value options are collapsed.
+    pub on_option: Option<&'a mut dyn FnMut(Names, Option<&[u8]>)>,
     /// A `--flag` or `--flag=value` that no param names is a positional, with its dashes, in its
     /// place among the others. For a command that hands flags on: `bun check --strict`. Otherwise
     /// such a flag is skipped.

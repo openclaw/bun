@@ -84,7 +84,7 @@ const BACKEND_PARAM: ParamType = clap::param!(
 
 // The valueless flags of `AUTO_PARAMS` (runtime/cli/Arguments.rs) no table here has; ignored.
 const RUNTIME_FLAGS_PARAM: ParamType = clap::param!(
-    "-b, --bun/--no-orphans/--workspaces/--parallel/--sequential/--no-exit-on-error/--version/--revision/--watch/--hot/--no-clear-screen/--smol/--cpu-prof/--cpu-prof-md/--heap-prof/--heap-prof-md/--if-present/--no-install/--prefer-latest/--experimental-http2-fetch/--experimental-http3-fetch/--insecure-http-parser/--experimental-stream-iter/--expose-gc/--no-deprecation/--throw-deprecation/--no-warnings/--trace-warnings/--trace-deprecation/--pending-deprecation/--zero-fill-buffers/--use-system-ca/--no-use-system-ca/--use-openssl-ca/--use-bundled-ca/--tls-min-v1.0/--tls-min-v1.1/--tls-min-v1.2/--tls-min-v1.3/--tls-max-v1.2/--tls-max-v1.3/--redis-preconnect/--sql-preconnect/--no-addons/--no-ffi-cc/--trace-events-enabled/--trace-env/--trace-env-js-stack/--trace-env-native-stack/--trace-exit/--expose-internals/--preserve-symlinks/--preserve-symlinks-main/--no-macros/--jsx-side-effects/--ignore-dce-annotations"
+    "-b, --bun/--no-orphans/--workspaces/--parallel/--sequential/--no-exit-on-error/--version/--revision/--watch/--hot/--no-clear-screen/--smol/--cpu-prof/--cpu-prof-md/--heap-prof/--heap-prof-md/--if-present/--no-install/--prefer-latest/--experimental-http2-fetch/--experimental-http3-fetch/--insecure-http-parser/--experimental-stream-iter/--expose-gc/--no-deprecation/--throw-deprecation/--no-warnings/--trace-warnings/--trace-deprecation/--pending-deprecation/--zero-fill-buffers/--tls-min-v1.0/--tls-min-v1.1/--tls-min-v1.2/--tls-min-v1.3/--tls-max-v1.2/--tls-max-v1.3/--redis-preconnect/--sql-preconnect/--no-addons/--no-ffi-cc/--trace-events-enabled/--trace-env/--trace-env-js-stack/--trace-env-native-stack/--trace-exit/--expose-internals/--preserve-symlinks/--preserve-symlinks-main/--no-macros/--jsx-side-effects/--ignore-dce-annotations"
 );
 
 const SHARED_HEAD_PARAMS: &[ParamType] = &[
@@ -182,6 +182,11 @@ const SHARED_TAIL_PARAMS: &[ParamType] = &[
     clap::param!(
         "--use-system-ca                       Use the system's trusted certificate authorities"
     ),
+    clap::param!(
+        "--no-use-system-ca                   Do not use system CAs, overriding $NODE_USE_SYSTEM_CA"
+    ),
+    clap::param!("--no-use-openssl-ca                  Do not select OpenSSL's default CA store"),
+    clap::param!("--no-use-bundled-ca                  Do not select the bundled CA store"),
     clap::param!("--use-openssl-ca                      Use OpenSSL's default CA store"),
     clap::param!("--use-bundled-ca                      Use bundled CA store"),
     clap::param!("-h, --help                            Print this help menu"),
@@ -1385,6 +1390,12 @@ Full documentation is available at <magenta>https://bun.com/docs/pm/cli/prune<r>
             .collect();
 
         let mut diag = clap::Diagnostic::default();
+        let mut ca_options = Global::CAOptions::default();
+        let mut on_option = |names: clap::Names, _: Option<&[u8]>| {
+            if let Some(name) = names.long {
+                ca_options.read_flag(name);
+            }
+        };
 
         // `args` must stay alive for the program duration —
         // `cli` stores slices into it. Park the parsed `Args` in a process-global
@@ -1398,6 +1409,7 @@ Full documentation is available at <magenta>https://bun.com/docs/pm/cli/prune<r>
             params,
             clap::ParseOptions {
                 diagnostic: Some(&mut diag),
+                on_option: Some(&mut on_option),
                 stop_after_positional_at: 0,
                 short_aliases: REWRITES.get_or_init(|| rewrites),
                 unknown_long_flags_are_errors: true,
@@ -1485,7 +1497,7 @@ Full documentation is available at <magenta>https://bun.com/docs/pm/cli/prune<r>
 
         cli.cache_dir = args.option(b"--cache-dir");
         cli.ca_file_name = args.option(b"--cafile").unwrap_or_default();
-        Global::set_ca_store_from_flags(|flag| args.flag(flag));
+        Global::set_ca_store_from_options(ca_options);
 
         if let Some(network_concurrency) = args.option(b"--network-concurrency") {
             cli.network_concurrency =

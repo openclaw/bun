@@ -334,3 +334,5 @@
 - Settle child IPC send callbacks after peer disconnection, preserving immediate write errors and completing queued sends at channel close. Adapts [oven-sh/bun#43000](https://github.com/oven-sh/bun/pull/43000); thanks robobun.
 
 - Reduce nested-object Worker `postMessage` and `structuredClone` overhead by avoiding transient value-string atomization and discarded flat-object string copies, while preserving stored and cross-process serialized bytes.
+
+- Resolve positive and negative CA options in order, applying `NODE_OPTIONS` before command-line flags across runtime and package commands while preserving Bun's existing trust stores.

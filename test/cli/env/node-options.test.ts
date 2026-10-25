@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { bunEnv, bunExe, isWindows, tempDir } from "harness";
+import { bunEnv, bunExe, isWindows, tempDir, tls } from "harness";
 import { symlinkSync } from "node:fs";
 
 async function run(
@@ -148,6 +148,67 @@ describe("NODE_OPTIONS environment variable", () => {
     expect(stderr).toContain("choose exactly one of --use-system-ca, --use-openssl-ca, or --use-bundled-ca");
     expect({ stdout, exitCode }).toEqual({ stdout: "", exitCode: 1 });
   });
+
+  // Expected modes were checked with the official Node.js 26.12.1 build. Different CA stores
+  // remain mutually exclusive in Bun; only each positive/negative pair is last-wins.
+  test.each([
+    ["--use-system-ca --no-use-system-ca", [], [], "bundled"],
+    ["--no-use-system-ca --use-system-ca", [], [], "system"],
+    ["", ["--use-system-ca", "--no-use-system-ca"], [], "bundled"],
+    ["", ["--no-use-system-ca", "--use-system-ca"], [], "system"],
+    ["--use-system-ca", ["--no-use-system-ca"], [], "bundled"],
+    ["--no-use-system-ca", ["--use-system-ca"], [], "system"],
+    ["--use-system-ca", [], ["--no-use-system-ca"], "system"],
+    ["--no-use-system-ca", [], ["--use-system-ca"], "bundled"],
+    ["--use-openssl-ca --no-use-openssl-ca", [], [], "bundled"],
+    ["--no-use-openssl-ca --use-openssl-ca", [], [], "openssl"],
+    ["", ["--use-openssl-ca", "--no-use-openssl-ca"], [], "bundled"],
+    ["", ["--no-use-openssl-ca", "--use-openssl-ca"], [], "openssl"],
+    ["--use-openssl-ca", ["--no-use-openssl-ca"], [], "bundled"],
+    ["--no-use-openssl-ca", ["--use-openssl-ca"], [], "openssl"],
+    ["--use-openssl-ca", [], ["--no-use-openssl-ca"], "openssl"],
+    ["--no-use-openssl-ca", [], ["--use-openssl-ca"], "bundled"],
+    ["--use-bundled-ca --no-use-bundled-ca", ["--use-openssl-ca"], [], "openssl"],
+    ["--use-system-ca --no-use-system-ca", ["--use-openssl-ca"], [], "openssl"],
+    ["--use-openssl-ca --no-use-openssl-ca", ["--use-system-ca"], [], "system"],
+  ] as const)(
+    "resolves CA options in order: %s, %j, then script arguments %j -> %s",
+    async (options, flags, after, mode) => {
+      using dir = tempDir("node-options-ca-order", {
+        "probe.cjs": `const tls = require("node:tls");
+        console.log(JSON.stringify({
+          def: tls.getCACertificates("default").length,
+          bundled: tls.getCACertificates("bundled").length,
+          system: tls.getCACertificates("system").length,
+          argv: process.argv.slice(2),
+        }));`,
+        "ca.pem": tls.cert,
+        system: { "ca.pem": tls.cert },
+      });
+      for (const prefix of [[], ["run"]]) {
+        await using proc = Bun.spawn({
+          cmd: [bunExe(), ...prefix, ...flags, "probe.cjs", ...after],
+          cwd: String(dir),
+          env: {
+            ...bunEnv,
+            NODE_OPTIONS: options,
+            NODE_USE_SYSTEM_CA: undefined,
+            NODE_EXTRA_CA_CERTS: undefined,
+            SSL_CERT_FILE: `${dir}/ca.pem`,
+            SSL_CERT_DIR: `${dir}/system`,
+          },
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+        expect(stderr).toBe("");
+        const result = JSON.parse(stdout);
+        expect(result.def).toBe(mode === "openssl" ? 0 : result.bundled + (mode === "system" ? result.system : 0));
+        expect(result.argv).toEqual(after);
+        expect(exitCode).toBe(0);
+      }
+    },
+  );
 
   test.concurrent("command-line flags win over NODE_OPTIONS", async () => {
     using dir = tempDir("node-options-precedence", {});
@@ -330,6 +391,9 @@ describe("NODE_OPTIONS environment variable", () => {
       "--throw-deprecation",
       "--trace-deprecation",
       "--trace-warnings",
+      "--no-use-bundled-ca",
+      "--no-use-openssl-ca",
+      "--no-use-system-ca",
       "--use-bundled-ca",
       "--use-openssl-ca",
       "--use-system-ca",
@@ -435,14 +499,14 @@ describe("NODE_OPTIONS environment variable", () => {
   });
 
   // bunx's internal install child re-enters which() with argv0 = bunx and
-  // BUN_INTERNAL_BUNX_INSTALL=true; the "add" keyword must still be found
+  // BUN_INTERNAL_BUNX_INSTALL names its cache directory; the "add" keyword must still be found
   // after the injected window or the child loops as bunx (#39377 class).
   test.skipIf(isWindows)("bunx internal add dispatch still finds the keyword", async () => {
     using dir = tempDir("node-options-bunx", {});
     symlinkSync(bunExe(), `${String(dir)}/bunx`);
     await using proc = Bun.spawn({
       cmd: [`${String(dir)}/bunx`, "add", "--help"],
-      env: { ...bunEnv, NODE_OPTIONS: "--title=from-env", BUN_INTERNAL_BUNX_INSTALL: "true" },
+      env: { ...bunEnv, NODE_OPTIONS: "--title=from-env", BUN_INTERNAL_BUNX_INSTALL: String(dir) },
       cwd: String(dir),
       stdout: "pipe",
       stderr: "pipe",
