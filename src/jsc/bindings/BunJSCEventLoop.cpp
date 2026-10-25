@@ -4,13 +4,17 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <functional>
 #include <mutex>
+#include <new>
 #include <thread>
 #if OS(WINDOWS)
 #include <process.h>
+#include <windows.h>
 #else
 #include <unistd.h>
 #endif
@@ -18,8 +22,106 @@
 #include <JavaScriptCore/VM.h>
 #include <JavaScriptCore/Heap.h>
 
+#if OS(WINDOWS)
+extern "C" bool Bun__thisThreadHasVM();
+
+struct GCWakeRecord {
+    uint64_t committed;
+    uint64_t thread;
+    uint64_t owner;
+    uint64_t object;
+    double detail;
+    char event[32];
+};
+static_assert(sizeof(GCWakeRecord) == 72);
+
+struct MappedGCWakeTrace {
+    char magic[8];
+    uint32_t capacity;
+    uint32_t recordSize;
+    std::atomic<uint32_t> next;
+    std::atomic<uint32_t> completed;
+    std::atomic<uint32_t> overflow;
+    uint32_t flags;
+    GCWakeRecord records[8192];
+};
+static_assert(offsetof(MappedGCWakeTrace, records) == 32);
+
+static MappedGCWakeTrace* openMappedGCWakeTrace(bool backgroundOnly)
+{
+    const char* directory = std::getenv("BUN_DIAG_GC_WAKE_DIR");
+    if (!directory || !*directory)
+        return nullptr;
+    char path[4096];
+    int length = std::snprintf(path, sizeof(path), "%s/gc-wake-%d.bin", directory, _getpid());
+    if (length < 0 || static_cast<size_t>(length) >= sizeof(path))
+        return nullptr;
+    HANDLE file = CreateFileA(path, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE)
+        return nullptr;
+    HANDLE mapping = CreateFileMappingA(file, nullptr, PAGE_READWRITE, 0, static_cast<DWORD>(sizeof(MappedGCWakeTrace)), nullptr);
+    CloseHandle(file);
+    if (!mapping)
+        return nullptr;
+    void* memory = MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(MappedGCWakeTrace));
+    CloseHandle(mapping);
+    if (!memory)
+        return nullptr;
+    // The mapping lives until process exit; dirty records remain readable even if the test kills the process.
+    auto* trace = new (memory) MappedGCWakeTrace {};
+    std::memcpy(trace->magic, "BUNGCW1", 8);
+    trace->capacity = 8192;
+    trace->recordSize = sizeof(GCWakeRecord);
+    const char* disabled = std::getenv("BUN_GC_TIMER_DISABLE");
+    const char* markers = std::getenv("BUN_JSC_numberOfGCMarkers");
+    trace->flags = (disabled && disabled[0] == '1' ? 1u : 0u) | (backgroundOnly ? 2u : 0u) | (markers ? static_cast<uint32_t>(std::strtoul(markers, nullptr, 10)) << 8 : 0u);
+    return trace;
+}
+
+static ALWAYS_INLINE void recordMappedGCWake(MappedGCWakeTrace* trace, const char* event, const void* owner, const void* object, double detail)
+{
+    uint32_t index = trace->next.fetch_add(1, std::memory_order_relaxed);
+    if (index >= trace->capacity) {
+        trace->overflow.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
+    static thread_local DWORD thread = GetCurrentThreadId();
+    auto& record = trace->records[index];
+    record.thread = thread;
+    record.owner = reinterpret_cast<uintptr_t>(owner);
+    record.object = reinterpret_cast<uintptr_t>(object);
+    record.detail = detail;
+    for (size_t i = 0; i < sizeof(record.event) - 1 && event[i]; ++i)
+        record.event[i] = event[i];
+    std::atomic_ref<uint64_t>(record.committed).store(index + 1, std::memory_order_release);
+    trace->completed.fetch_add(1, std::memory_order_release);
+}
+#endif
+
 extern "C" void Bun__traceGCWake(const char* event, const void* owner, const void* object, double detail)
 {
+#if OS(WINDOWS)
+    static const int mode = [] {
+        const char* value = std::getenv("BUN_DIAG_GC_WAKE_MODE");
+        if (value && !std::strcmp(value, "memory"))
+            return 1;
+        if (value && !std::strcmp(value, "background"))
+            return 2;
+        return 0;
+    }();
+    if (mode) {
+        static MappedGCWakeTrace* trace = openMappedGCWakeTrace(mode == 2);
+        if (!trace)
+            return;
+        if (mode == 2) {
+            static thread_local const bool hasVM = Bun__thisThreadHasVM();
+            if (hasVM)
+                return;
+        }
+        recordMappedGCWake(trace, event, owner, object, detail);
+        return;
+    }
+#endif
     static FILE* file = []() -> FILE* {
         const char* directory = std::getenv("BUN_DIAG_GC_WAKE_DIR");
         if (!directory || !*directory)

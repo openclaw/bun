@@ -438,18 +438,19 @@ jobs:
           $env:PATH = "$(Split-Path $exe);$env:PATH"
           New-Item -ItemType Directory -Force build/openclaw-ci/traces | Out-Null
           $env:BUN_DIAG_GC_WAKE_DIR = (Resolve-Path build/openclaw-ci/traces).Path
+          $env:BUN_DIAG_GC_WAKE_MODE = 'memory'
           & $exe --revision
           & $exe -p 'process.versions.webkit'
           git rev-parse HEAD
           node scripts/runner.node.ts --exec-path $exe --vendor=false --retries=0 --results-json build/openclaw-ci/results.json --include js/node/worker_threads/worker_threads.test.ts
-          if ($LASTEXITCODE -ne 0) { throw 'Worker diagnostic failed.' }
+          $fullExit = $LASTEXITCODE
+          node ../pipeline/scripts/openclaw-release/gc-wake-trace-probe.mjs $exe build/openclaw-ci/probe
+          if ($LASTEXITCODE -ne 0 -or $fullExit -ne 0) { throw 'Worker diagnostic failures retained.' }
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: compatibility-${{ matrix.target }}
-          path: |
-            source/build/openclaw-ci/*.json
-            source/build/openclaw-ci/traces/*.log
+          path: source/build/openclaw-ci/
           if-no-files-found: error
           retention-days: 14
 
