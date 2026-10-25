@@ -35,22 +35,8 @@ unzip -o "$root/downloads/bun.zip" -d "$root/opt"
 fetch https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.1/LLVM-23.1.1-Linux-X64.tar.xz "$root/downloads/llvm.tar.xz" 832aeb58d105de1cabc7b982dd2c65de0610f7377df48ae8fc2dd8e97420a15c
 mkdir -p "$root/opt/llvm"
 tar -xJf "$root/downloads/llvm.tar.xz" --strip-components=1 -C "$root/opt/llvm"
-ldd "$root/opt/llvm/bin/clang" > "$root/receipts/clang-ldd-before.txt"
-if grep -q 'not found' "$root/receipts/clang-ldd-before.txt"; then
-  curl -fL --retry 2 -o "$root/downloads/libicu70.deb" https://archive.ubuntu.com/ubuntu/pool/main/i/icu/libicu70_70.1-2_amd64.deb
-  curl -fL --retry 2 -o "$root/downloads/Packages.xz" https://archive.ubuntu.com/ubuntu/dists/jammy/main/binary-amd64/Packages.xz
-  python3 - "$root/downloads" <<'PY'
-import hashlib,lzma,pathlib,sys
-root=pathlib.Path(sys.argv[1]);text=lzma.decompress((root/'Packages.xz').read_bytes()).decode()
-blocks=[b for b in text.split('\n\n') if b.startswith('Package: libicu70\n')]
-assert len(blocks)==1
-fields=dict(line.split(': ',1) for line in blocks[0].splitlines() if ': ' in line and not line.startswith(' '))
-assert fields['Version']=='70.1-2' and fields['Architecture']=='amd64'
-assert hashlib.sha256((root/'libicu70.deb').read_bytes()).hexdigest()==fields['SHA256']
-PY
-  dpkg-deb -x "$root/downloads/libicu70.deb" "$root/opt/llvm-runtime"
-fi
 export LD_LIBRARY_PATH="$root/opt/llvm-runtime/usr/lib/x86_64-linux-gnu"
+bash "$root/ensure-llvm-runtime.sh" "$root"
 export PATH="$root/opt/llvm/bin:$root/opt/bun-linux-x64-baseline:$CARGO_HOME/bin:/usr/local/bin:/usr/bin:/bin"
 curl -fL --retry 2 -o "$root/downloads/rustup-init" https://static.rust-lang.org/rustup/archive/1.28.2/x86_64-unknown-linux-gnu/rustup-init
 curl -fL --retry 2 -o "$root/downloads/rustup-init.sha256" https://static.rust-lang.org/rustup/archive/1.28.2/x86_64-unknown-linux-gnu/rustup-init.sha256
