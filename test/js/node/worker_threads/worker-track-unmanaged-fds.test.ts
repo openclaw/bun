@@ -242,12 +242,13 @@ describe.concurrent.skipIf(isWindows)("Worker trackUnmanagedFds", () => {
     const worker =
       `const fs = require("node:fs");` +
       `const { parentPort, workerData } = require("node:worker_threads");` +
+      `globalThis.streams = []; let reading = 0;` +
       `for (let i = 0; i < 10; i++) {` +
       `  const r = fs.createReadStream(workerData, { highWaterMark: 1024 });` +
-      `  r.on("data", () => {});` +
+      `  globalThis.streams.push(r);` +
+      `  r.once("data", () => { r.pause(); if (++reading === 10) parentPort.postMessage("ready"); });` +
       `}` +
       `parentPort.on("message", () => parentPort.postMessage("reading"));` +
-      `parentPort.postMessage("ready");` +
       `setInterval(() => {}, 1e9);`;
     const fixture = `
       const { Worker } = require("node:worker_threads");
@@ -260,7 +261,7 @@ describe.concurrent.skipIf(isWindows)("Worker trackUnmanagedFds", () => {
       (async () => {
         const w = new Worker(${JSON.stringify(worker)}, { eval: true, workerData: target });
         await new Promise((res, rej) => { w.once("message", res); w.once("error", rej); });
-        // Round-trip once more so the streams have had a tick to open.
+        // Every stream has read and paused, so scheduling cannot drain them before the fd snapshot.
         w.postMessage("go");
         await new Promise((res, rej) => { w.once("message", res); w.once("error", rej); });
         const during = openFds(ino);
