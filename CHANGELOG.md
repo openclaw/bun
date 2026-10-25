@@ -6,6 +6,9 @@
 
 - Cover source-less generated helper entry counters in AOT image-map regression tests.
 
+- Recognize macOS SIGBUS when entering removed AOT code, and retain the external-script runtime when `compile.trim.allow` includes `"run"`.
+- Preserve SharedArrayBuffer when a JIT-free AOT executable runs external scripts as Bun on macOS.
+
 - Resolve literal embedded module paths against prepared AOT entry points, including TypeScript and custom output names.
 
 - Add `Bun.Terminal.pause()` and `resume()` for PTY output backpressure without blocking the event loop.
