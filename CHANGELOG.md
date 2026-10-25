@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Accept hardened GNU builds whose fortified memory copies inline, while retaining stack-protector and checked-formatting import checks.
+
 - Withhold macOS signing and notarization credentials from release dry runs while retaining both Darwin archives for qualification.
 
 - Keep CI build and test diagnostics from dumping environment values or machine identity details.
