@@ -20,6 +20,7 @@
 #include "JavaScriptCore/JSType.h"
 #include "JavaScriptCore/NumberObject.h"
 #include "JavaScriptCore/JSCJSValue.h"
+#include "JavaScriptCore/EnsureStillAliveHere.h"
 #include "JavaScriptCore/JSGlobalObject.h"
 #include "JavaScriptCore/JSPromiseConstructor.h"
 #include "JavaScriptCore/DeleteAllCodeEffort.h"
@@ -4980,7 +4981,7 @@ static NEVER_INLINE SUPPRESS_ASAN void clearStackBelowCaller()
     char dead[size];
     __builtin_memset_inline(dead, 0, sizeof(dead));
     // A memory clobber alone can discard writes to an unescaped local buffer.
-    asm volatile("" : : "r"(dead) : "memory");
+    JSC::ensureStillAliveHere(dead);
 }
 
 size_t JSC__VM__runGC(JSC::VM* vm, bool sync)
