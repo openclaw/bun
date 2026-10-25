@@ -363,7 +363,7 @@ Queued worker stdout and stderr are delivered before the worker's `exit` event, 
 
 `worker.getHeapStatistics()` takes an owning-thread snapshot while a worker is idle, executing JavaScript, or blocked in `Atomics.wait()`. The snapshot includes freshly allocated external storage. Inspection preserves the atomic wait and pending requests settle if the worker exits.
 
-Immediate engine GC timers wake idle workers when scheduled. These native wakeups do not keep a worker alive.
+Immediate engine GC timers wake idle workers when scheduled. Asynchronous GC requests clear dead native stack slots so those collections can finalize unreachable objects after `Bun.gc(false)`, including on Windows ARM64. These native wakeups do not keep a worker alive.
 
 Worker teardown avoids an extra full collection before final heap destruction. Native cleanup hooks and registered finalizers still run before the exit is acknowledged.
 

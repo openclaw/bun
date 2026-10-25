@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Clear dead native stack slots before asynchronous GC requests so parked workers can finalize unreachable objects after `Bun.gc(false)`, including on Windows ARM64.
+
 - Sync oven-sh/bun through `a8fcd319be58ad4d284330b86602cfb3c8e49c83`, including native-binding schema migration, source-position updates, and runtime hardening while retaining fork compatibility and source-sharing fixes.
 
 - Preserve the relative tail when `path.win32.resolve()` falls back to a different drive's root.
