@@ -7,8 +7,12 @@ on:
       experiment:
         description: "Windows ARM64 diagnostic experiment"
         type: choice
-        options: [bisect, async-clear]
+        options: [bisect, async-clear, both]
         default: bisect
+      build_run_id:
+        description: "Reuse this diagnostic build run; empty to build"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -29,10 +33,17 @@ jobs:
       - id: matrix
         env:
           EXPERIMENT: ${{ inputs.experiment }}
-        run: node scripts/openclaw-release/gc-r2-config.mjs "$EXPERIMENT" >> "$GITHUB_OUTPUT"
+          BUILD_RUN_ID: ${{ inputs.build_run_id }}
+        run: |
+          if [ "$EXPERIMENT" = both ]; then
+            test -n "$BUILD_RUN_ID"
+            EXPERIMENT=bisect
+          fi
+          node scripts/openclaw-release/gc-r2-config.mjs "$EXPERIMENT" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build ${{ matrix.id }}
+    if: ${{ inputs.build_run_id == '' }}
     needs: matrix
     runs-on: ${{ vars.OPENCLAW_RELEASE_BUILD_RUNNER || 'ubuntu-24.04-arm' }}
     timeout-minutes: 340
@@ -111,7 +122,8 @@ jobs:
 
   native:
     name: Compare native Windows ARM64
-    needs: build
+    needs: [matrix, build]
+    if: ${{ always() && needs.matrix.result == 'success' && (needs.build.result == 'success' || (needs.build.result == 'skipped' && inputs.build_run_id != '')) }}
     permissions:
       contents: read
       actions: read
@@ -136,9 +148,26 @@ jobs:
         with:
           node-version: "26.12.1"
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: inputs.experiment != 'async-clear'
         with:
-          pattern: gc-r2-build-*
-          path: runtime
+          name: gc-r2-build-s8-bun-s7-engine
+          path: runtime/gc-r2-build-s8-bun-s7-engine
+          run-id: ${{ inputs.build_run_id || github.run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: inputs.experiment != 'async-clear'
+        with:
+          name: gc-r2-build-s7-bun-s8-engine
+          path: runtime/gc-r2-build-s7-bun-s8-engine
+          run-id: ${{ inputs.build_run_id || github.run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: inputs.experiment != 'bisect'
+        with:
+          name: gc-r2-build-async-clear
+          path: runtime/gc-r2-build-async-clear
+          run-id: ${{ inputs.experiment == 'both' && '40166242056' || inputs.build_run_id || github.run_id }}
+          github-token: ${{ github.token }}
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: signed-windows
@@ -158,8 +187,16 @@ jobs:
         run: |
           Expand-Archive s8-dist/bun-windows-aarch64.zip s8-runtime
           Expand-Archive s7-dist/bun-windows-aarch64.zip s7-runtime
-          node pipeline/scripts/openclaw-release/gc-r2-probe.mjs $env:EXPERIMENT evidence
-          if ($LASTEXITCODE -ne 0) { throw 'Invalid diagnostic or controls did not confirm the regression.' }
+          if ($env:EXPERIMENT -eq 'both') {
+            node pipeline/scripts/openclaw-release/gc-r2-probe.mjs bisect evidence/bisect
+            $bisectExit = $LASTEXITCODE
+            node pipeline/scripts/openclaw-release/gc-r2-probe.mjs async-clear evidence/async-clear
+            $clearExit = $LASTEXITCODE
+            if ($bisectExit -ne 0 -or $clearExit -ne 0) { throw 'Invalid diagnostic or controls did not confirm the regression.' }
+          } else {
+            node pipeline/scripts/openclaw-release/gc-r2-probe.mjs $env:EXPERIMENT evidence
+            if ($LASTEXITCODE -ne 0) { throw 'Invalid diagnostic or controls did not confirm the regression.' }
+          }
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
