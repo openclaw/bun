@@ -110,7 +110,6 @@
 #include "wtf/Assertions.h"
 #include "wtf/Compiler.h"
 #include "wtf/StackCheck.h"
-#include "wtf/StdLibExtras.h"
 #include "wtf/text/ExternalStringImpl.h"
 #include "wtf/text/OrdinalNumber.h"
 #include "wtf/text/StringCommon.h"
@@ -4979,7 +4978,9 @@ static NEVER_INLINE SUPPRESS_ASAN void clearStackBelowCaller()
     constexpr size_t size = 2 * 1024;
 #endif
     char dead[size];
-    WTF::secureZeroBytes(dead);
+    __builtin_memset_inline(dead, 0, sizeof(dead));
+    // A memory clobber alone can discard writes to an unescaped local buffer.
+    asm volatile("" : : "r"(dead) : "memory");
 }
 
 size_t JSC__VM__runGC(JSC::VM* vm, bool sync)
