@@ -110,6 +110,7 @@
 #include "wtf/Assertions.h"
 #include "wtf/Compiler.h"
 #include "wtf/StackCheck.h"
+#include "wtf/StdLibExtras.h"
 #include "wtf/text/ExternalStringImpl.h"
 #include "wtf/text/OrdinalNumber.h"
 #include "wtf/text/StringCommon.h"
@@ -4977,9 +4978,8 @@ static NEVER_INLINE SUPPRESS_ASAN void clearStackBelowCaller()
 #else
     constexpr size_t size = 2 * 1024;
 #endif
-    volatile char dead[size];
-    for (size_t i = 0; i < size; ++i)
-        dead[i] = 0;
+    char dead[size];
+    WTF::secureZeroBytes(dead);
 }
 
 size_t JSC__VM__runGC(JSC::VM* vm, bool sync)
