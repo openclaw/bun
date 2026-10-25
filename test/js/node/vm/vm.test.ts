@@ -1,6 +1,6 @@
-import { describe, expect, test } from "bun:test";
 import { withBlockedVMTraps } from "bun:internal-for-testing";
 import { Database } from "bun:sqlite";
+import { describe, expect, test } from "bun:test";
 import { bunEnv, bunExe, isASAN, isDebug, isWindows, normalizeBunSnapshot, tempDir } from "harness";
 import assert from "node:assert";
 import { totalmem } from "node:os";
