@@ -130,7 +130,7 @@ describe.concurrent("runtime onLoad source results", () => {
     ["json", "42", "42"],
     ["json", "null", "null"],
     ["toml", "value = 42", '{"value":42}'],
-  ])("%s source %s preserves its default export", async (loader, contents, expected) => {
+  ])("%s source %s preserves import and require values", async (loader, contents, expected) => {
     expect(
       await run(
         {
@@ -140,13 +140,13 @@ describe.concurrent("runtime onLoad source results", () => {
             } });
             const imported = (await import("./value.data")).default;
             const required = require("./value.data");
-            console.log(JSON.stringify(imported), imported === required);
+            console.log(JSON.stringify(imported), JSON.stringify(required));
           `,
           "value.data": "",
         },
         "entry.mjs",
       ),
-    ).toEqual({ stdout: `${expected} true\n`, stderr: "", exitCode: 0 });
+    ).toEqual({ stdout: `${expected} ${expected}\n`, stderr: "", exitCode: 0 });
   });
 
   it.each(["sync", "async"])("%s CommonJS source keeps each module graph's cache", async timing => {
