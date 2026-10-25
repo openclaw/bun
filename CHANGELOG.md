@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Accept hardened GNU builds whose fortified memory copies inline, while retaining stack-protector and checked-formatting import checks.
+
 - Cover source-less generated helper entry counters in AOT image-map regression tests.
 
 - Resolve literal embedded module paths against prepared AOT entry points, including TypeScript and custom output names.
