@@ -37,6 +37,7 @@
 #include "MessageEvent.h"
 #include "MessagePort.h"
 #include "SerializedScriptValue.h"
+#include "VectorSizeLimit.h"
 #include "Worker.h"
 #include "ZigGlobalObject.h"
 #include <JavaScriptCore/HeapObserver.h>
@@ -225,7 +226,8 @@ ExceptionOr<void> WorkerMessagingProxy::startWorkerGlobalScope(const String& scr
     }
 
     Vector<BunString> preloadModules;
-    preloadModules.reserveInitialCapacity(m_options.preloadModules.size());
+    if (!Bun::tryReserveCapacityWithinLimit(preloadModules, m_options.preloadModules.size())) [[unlikely]]
+        return Exception { OutOfMemoryError };
     for (auto& str : m_options.preloadModules) {
         if (str.startsWith("file://"_s)) {
             WTF::URL urlObject = WTF::URL(str);

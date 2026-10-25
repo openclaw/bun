@@ -1,7 +1,7 @@
 #![allow(non_upper_case_globals, non_snake_case)]
 
-use core::ffi::{c_char, c_int};
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::ffi::{CStr, c_char, c_int};
+use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 use const_format::{concatcp, formatcp};
 
@@ -724,6 +724,7 @@ fn is_exiting() -> bool {
 // calls. `#[link_name]` avoids colliding with this module's own `pub fn exit`.
 #[allow(suspicious_runtime_symbol_definitions)] // signatures are ABI-identical; `safe fn` is intentional (above)
 unsafe extern "C" {
+    #[cfg(windows)]
     #[link_name = "abort"]
     safe fn libc_abort() -> !;
     #[link_name = "raise"]
@@ -731,6 +732,8 @@ unsafe extern "C" {
     #[cfg(unix)]
     #[link_name = "exit"]
     safe fn libc_exit(code: c_int) -> !;
+    #[cfg(not(windows))]
+    safe fn _exit(code: c_int) -> !;
     #[cfg(all(unix, not(target_os = "macos")))]
     safe fn quick_exit(code: c_int) -> !;
 }
@@ -820,22 +823,50 @@ pub fn raise_ignoring_panic_handler_raw(sig: c_int) -> ! {
         }
     }
 
-    // clear signal handler
     #[cfg(not(windows))]
+    raise_default_action(sig);
+
+    #[cfg(windows)]
     {
-        // SAFETY: zeroed sigset + SIG_DFL handler is a valid Sigaction.
-        unsafe {
-            let mut sa: libc::sigaction = crate::ffi::zeroed();
-            sa.sa_sigaction = libc::SIG_DFL;
-            libc::sigemptyset(&raw mut sa.sa_mask);
-            sa.sa_flags = libc::SA_RESETHAND;
-            let _ = libc::sigaction(sig, &raw const sa, core::ptr::null_mut());
-        }
+        // kill self; `raise` has no preconditions (see the `safe fn` decl above).
+        let _ = libc_raise(sig);
+        // The CRT's raise() returns for SIGTERM and for signals it doesn't recognize.
+        libc_abort()
+    }
+}
+
+/// Kills the process with `sig`'s default action. Exits with 128 + `sig` if the kernel discards
+/// the signal (PID 1 in a pid namespace). Async-signal-safe.
+#[cfg(not(windows))]
+pub fn raise_default_action(sig: c_int) -> ! {
+    // SAFETY: zeroed sigset + SIG_DFL handler is a valid Sigaction.
+    unsafe {
+        let mut sa: libc::sigaction = crate::ffi::zeroed();
+        sa.sa_sigaction = libc::SIG_DFL;
+        libc::sigemptyset(&raw mut sa.sa_mask);
+        sa.sa_flags = libc::SA_RESETHAND;
+        let _ = libc::sigaction(sig, &raw const sa, core::ptr::null_mut());
     }
 
-    // kill self — `raise`/`abort` have no preconditions (see `safe fn` decls above).
+    // raise() only makes a blocked signal pending, and `sig` is blocked inside its own handler.
+    // SAFETY: zeroed sigset is valid; sigemptyset/sigaddset initialize it.
+    unsafe {
+        let mut set: libc::sigset_t = crate::ffi::zeroed();
+        libc::sigemptyset(&raw mut set);
+        libc::sigaddset(&raw mut set, sig);
+        let _ = libc::pthread_sigmask(libc::SIG_UNBLOCK, &raw const set, core::ptr::null_mut());
+    }
+
+    // kill self; `raise` has no preconditions (see the `safe fn` decl above).
     let _ = libc_raise(sig);
-    libc_abort();
+    _exit(128 + sig)
+}
+
+/// Exposes `raise_default_action` to C++ (`onExitSignal` in c-bindings.cpp).
+#[cfg(not(windows))]
+#[unsafe(no_mangle)]
+extern "C" fn Bun__raiseDefaultAction(sig: c_int) -> ! {
+    raise_default_action(sig)
 }
 
 #[derive(Default)]
@@ -881,14 +912,14 @@ static Bun__userAgent: SyncCStr = SyncCStr(concatcp!(user_agent, "\0").as_ptr().
 
 #[repr(u8)]
 #[derive(Copy, Clone, PartialEq, Eq)]
-pub enum BunCAStore {
-    Bundled,
-    Openssl,
-    System,
+pub enum CAStore {
+    Bundled = 0,
+    System = 1,
+    OpenSSL = 2,
 }
 #[unsafe(no_mangle)]
 static Bun__Node__CAStore: core::sync::atomic::AtomicU8 =
-    core::sync::atomic::AtomicU8::new(BunCAStore::Bundled as u8);
+    core::sync::atomic::AtomicU8::new(CAStore::Bundled as u8);
 #[unsafe(no_mangle)]
 pub static Bun__Node__UseSystemCA: core::sync::atomic::AtomicBool =
     core::sync::atomic::AtomicBool::new(false);
@@ -917,11 +948,32 @@ pub fn main_use_system_ca() -> Option<bool> {
     None
 }
 
-/// `--use-openssl-ca`: process-wide, as in node. The default store is then OpenSSL's
-/// own lookups instead of the bundled roots (root_certs.cpp), so the reporting path
-/// has to leave the bundled and system sets out as well.
-pub fn use_openssl_ca() -> bool {
-    Bun__Node__CAStore.load(core::sync::atomic::Ordering::Relaxed) == BunCAStore::Openssl as u8
+pub fn ca_store() -> CAStore {
+    match Bun__Node__CAStore.load(Ordering::Relaxed) {
+        store if store == CAStore::System as u8 => CAStore::System,
+        store if store == CAStore::OpenSSL as u8 => CAStore::OpenSSL,
+        _ => CAStore::Bundled,
+    }
+}
+
+// Each pair is unspecified (0), disabled (1), or enabled (2).
+static PASSED_CA_OPTIONS: [AtomicU8; 3] = [const { AtomicU8::new(0) }; 3];
+
+pub fn ca_store_flags() -> impl Iterator<Item = &'static ZStr> {
+    let [system, openssl, bundled] =
+        PASSED_CA_OPTIONS
+            .each_ref()
+            .map(|value| match value.load(Ordering::Relaxed) {
+                1 => Some(false),
+                2 => Some(true),
+                _ => None,
+            });
+    CAOptions {
+        system,
+        openssl,
+        bundled,
+    }
+    .flags()
 }
 
 /// Resolved at the option boundary, before a parser discards repeated flags.
@@ -1004,21 +1056,35 @@ pub fn set_ca_store_from_options(options: CAOptions) {
     }
 
     let store = if use_bundled_ca {
-        BunCAStore::Bundled
+        CAStore::Bundled
     } else if use_openssl_ca {
-        BunCAStore::Openssl
+        CAStore::OpenSSL
     } else if no_use_system_ca {
-        BunCAStore::Bundled
+        CAStore::Bundled
     } else if use_system_ca || crate::env_var::NODE_USE_SYSTEM_CA.get().unwrap_or(false) {
-        BunCAStore::System
+        CAStore::System
     } else {
-        BunCAStore::Bundled
+        CAStore::Bundled
     };
     Bun__Node__CAStore.store(store as u8, core::sync::atomic::Ordering::Relaxed);
     Bun__Node__UseSystemCA.store(
-        store == BunCAStore::System,
+        store == CAStore::System,
         core::sync::atomic::Ordering::Relaxed,
     );
+    for (target, value) in
+        PASSED_CA_OPTIONS
+            .iter()
+            .zip([options.system, options.openssl, options.bundled])
+    {
+        target.store(
+            match value {
+                None => 0,
+                Some(false) => 1,
+                Some(true) => 2,
+            },
+            Ordering::Relaxed,
+        );
+    }
 }
 
 /// Prevent the linker from dead-code-eliminating `#[no_mangle]` symbols that are
@@ -1043,6 +1109,8 @@ extern "C" fn Bun__onExit() {
     run_exit_callbacks();
     Output::flush();
     crate::keep_symbols!(Bun__atexit);
+    #[cfg(not(windows))]
+    crate::keep_symbols!(Bun__raiseDefaultAction);
 
     Output::source::stdio::restore();
 }

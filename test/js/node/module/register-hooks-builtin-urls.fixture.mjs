@@ -6,8 +6,11 @@ import { pathToFileURL } from "node:url";
 
 const [specifier, method, installed, behavior, inputRoot] = process.argv.slice(2);
 const root = fs.realpathSync(inputRoot);
-const packageName = specifier.startsWith("@") ? specifier.split("/").slice(0, 2).join("/") : specifier.split("/")[0];
-const subpath = specifier.slice(packageName.length);
+const packageSpecifier = specifier.replace(/^node:/, "");
+const packageName = packageSpecifier.startsWith("@")
+  ? packageSpecifier.split("/").slice(0, 2).join("/")
+  : packageSpecifier.split("/")[0];
+const subpath = packageSpecifier.slice(packageName.length);
 const put = (name, contents) => {
   const filename = path.join(root, name);
   fs.mkdirSync(path.dirname(filename), { recursive: true });

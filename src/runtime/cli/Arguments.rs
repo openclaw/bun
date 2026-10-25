@@ -95,7 +95,9 @@ const BASE_PARAMS_: &[ParamType] = concat_params!(
         parse_param!(
             "--no-use-system-ca                Do not use system CAs, overriding $NODE_USE_SYSTEM_CA"
         ),
-        parse_param!("--use-openssl-ca                  Use OpenSSL's default CA store"),
+        parse_param!(
+            "--use-openssl-ca                  Use OpenSSL's default CA store instead of the bundled one"
+        ),
         parse_param!("--no-use-openssl-ca               Do not select OpenSSL's default CA store"),
         parse_param!("--use-bundled-ca                  Use bundled CA store"),
         parse_param!("--no-use-bundled-ca               Do not select the bundled CA store"),
@@ -855,14 +857,20 @@ pub(crate) fn replace_pid_placeholder(name: &[u8]) -> Box<[u8]> {
     out.into_boxed_slice()
 }
 
-pub(crate) use bun_core::Global::{main_use_system_ca, use_openssl_ca};
+pub(crate) use bun_core::Global::main_use_system_ca;
 
 pub(crate) fn get_use_system_ca() -> Option<bool> {
     bun_jsc::virtual_machine::VirtualMachine::get().use_system_ca
 }
 
-pub(crate) fn get_use_openssl_ca() -> bool {
-    use_openssl_ca()
+use crate::generated_bindgen::node_tls_binding::CAStore;
+
+pub(crate) fn get_ca_store() -> CAStore {
+    match Global::ca_store() {
+        Global::CAStore::Bundled => CAStore::Bundled,
+        Global::CAStore::System => CAStore::System,
+        Global::CAStore::OpenSSL => CAStore::Openssl,
+    }
 }
 
 // ─── bunfig loading ──────────────────────────────────────────────────────────
@@ -1355,7 +1363,7 @@ pub(crate) fn parse(cmd: CommandTag, ctx: Context<'_>) -> crate::Result<api::Tra
             let _ = bun_http::OVERRIDDEN_DEFAULT_USER_AGENT.set(user_agent);
         }
 
-        // Without a flag, `install.prefer` of bunfig.toml stays.
+        // Without a flag, `install.prefer` from bunfig.toml is kept.
         if args.flag(b"--prefer-offline") {
             ctx.debug.offline_mode_setting =
                 Some(bun_options_types::offline_mode::OfflineMode::Offline);

@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Sync oven-sh/bun through `a8fcd319be58ad4d284330b86602cfb3c8e49c83`, including native-binding schema migration, source-position updates, and runtime hardening while retaining fork compatibility and source-sharing fixes.
+
+- Preserve the relative tail when `path.win32.resolve()` falls back to a different drive's root.
+
+- Avoid a panic when `bun create` selects a certificate store.
+
+- Keep a TLS socket's native context alive while delayed transport shutdown re-enters the event loop.
+
+- Preserve reusable transpiler-cache entries when source maps are explicitly disabled.
+
+- Preserve custom Headers iterators when `server.fetch()` copies request headers.
+
 - Back out Error.cause serialization (#192, #194) pending a performance-neutral design.
 
 - Back out Buffer trailer reservation (#195) for its small-payload serialization cost, pending a design that charges only large-Buffer paths.

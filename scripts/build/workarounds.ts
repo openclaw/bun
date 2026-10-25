@@ -66,6 +66,15 @@ export interface Workaround {
 
 export const workarounds: Workaround[] = [
   {
+    id: "highway-inactive-mask-shift",
+    issue: "https://github.com/google/highway/blob/2607d3b5b0113992fe84d3848859eae13b3b52c1/hwy/ops/x86_128-inl.h",
+    description: "Clang 23 diagnoses a shift by 64 in the inactive AVX-512 byte-mask branch.",
+    applies: cfg => cfg.x64,
+    expectedToBeFixed: cfg => cfg.clangVersion !== undefined && satisfiesRange(cfg.clangVersion, ">=24.0.0"),
+    cleanup:
+      "Recheck Highway OnlyActive with the new compiler; remove patches/highway/inactive-mask-shift.patch and its registration in deps/highway.ts when it builds without the patch.",
+  },
+  {
     id: "darwin-cross-stack-size",
     issue:
       "https://github.com/llvm/llvm-project/blob/main/lld/MachO/Driver.cpp (OPT_stack_size in unimplemented warnings)",

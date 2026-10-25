@@ -9,13 +9,13 @@ const { isBuiltin } = require("node:module");
 
 // The native load gate includes pending resolve results, which survive a hook
 // deregistering itself before returning its result.
-const setNativeHooksCounts = $newRustFunction("node_module_hooks_binding.rs", "setModuleHooksCounts", 2);
+const setNativeHooksCounts = $bindgen("node_module_hooks_binding.bind.ts", "setModuleHooksCounts");
 // (specifier: string, referrer: string, isESM: boolean, isUserRequireResolve:
 // boolean) => string — Bun's default resolution, with hooks suppressed.
-const nativeDefaultResolve = $newRustFunction("node_module_hooks_binding.rs", "defaultResolveForHooks", 6);
-const nativePackageType = $newRustFunction("node_module_hooks_binding.rs", "getPackageTypeForHooks", 1);
-const nativeDefaultConditions = $newRustFunction("node_module_hooks_binding.rs", "getDefaultConditionsForHooks", 1);
-const getNativeBuiltinSpecifier = $newRustFunction("node_module_hooks_binding.rs", "getBuiltinSpecifierForHooks", 1);
+const nativeDefaultResolve = $bindgen("node_module_hooks_binding.bind.ts", "defaultResolveForHooks");
+const nativePackageType = $bindgen("node_module_hooks_binding.bind.ts", "getPackageTypeForHooks");
+const nativeDefaultConditions = $bindgen("node_module_hooks_binding.bind.ts", "getDefaultConditionsForHooks");
+const getNativeBuiltinSpecifier = $bindgen("node_module_hooks_binding.bind.ts", "getBuiltinSpecifierForHooks");
 const containsModuleSyntax = $newCppFunction("NodeModuleModule.cpp", "jsFunctionModuleHooksContainsModuleSyntax", 1);
 
 // BunLoaderType values (src/jsc/bindings/headers-handwritten.h).

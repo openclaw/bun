@@ -5,6 +5,7 @@
 #include "BunGlobalScope.h"
 
 #include <JavaScriptCore/JSFunction.h>
+#include <JavaScriptCore/JSGlobalProxy.h>
 #include <JavaScriptCore/VM.h>
 
 #include "headers-handwritten.h"
@@ -26,8 +27,10 @@ namespace NodeVM {
 
 RefPtr<JSC::CachedBytecode> getBytecode(JSGlobalObject* globalObject, JSC::SourceCodeType, const JSC::SourceCode& source);
 bool extractCachedData(JSValue cachedDataValue, WTF::Vector<uint8_t>& outCachedData);
-// Copies `bytes`: a decoded code block reads the payload long after decodeCodeBlock() returns.
-Ref<JSC::CachedBytecode> createOwnedCachedBytecode(std::span<const uint8_t> bytes);
+JSC::JSUint8Array* createCachedDataBuffer(JSGlobalObject* globalObject, std::span<const uint8_t> bytecode);
+// Returns null unless `cachedData` is intact output from createCachedDataBuffer().
+// Copies the bytecode because a decoded code block keeps reading it after decodeCodeBlock() returns.
+RefPtr<JSC::CachedBytecode> unwrapCachedData(std::span<const uint8_t> cachedData);
 String stringifyAnonymousFunction(JSGlobalObject* globalObject, const ArgList& args, ThrowScope& scope, int* outOffset);
 JSC::EncodedJSValue createCachedData(JSGlobalObject* globalObject, const JSC::SourceCode& source);
 bool handleException(JSGlobalObject* globalObject, VM& vm, NakedPtr<JSC::Exception> exception, ThrowScope& throwScope);
@@ -78,7 +81,7 @@ public:
     JSGlobalObject* parsingContext = nullptr;
     JSValue contextExtensions {};
     bool produceCachedData = false;
-    bool hasCachedData = false;
+    bool cachedDataProvided = false;
 
     using BaseVMOptions::BaseVMOptions;
 
@@ -141,6 +144,30 @@ private:
     NodeVMContextOptions m_contextOptions {};
 
     NodeVMGlobalObject(VM& vm, Structure* structure, NodeVMContextOptions contextOptions, JSValue importer);
+
+    bool putOwnOrInherited(JSGlobalObject*, JSC::PropertyName, JSC::JSValue, JSC::PutPropertySlot&);
+};
+
+// The `globalThis` of a vm context. JSC doesn't support a Proxy in the prototype chain of a global object,
+// so the global object has no prototype, and its proxy has the prototype that scripts see and set.
+class NodeVMGlobalProxy final : public JSC::JSGlobalProxy {
+public:
+    using Base = JSC::JSGlobalProxy;
+
+    static constexpr unsigned StructureFlags = Base::StructureFlags & ~JSC::OverridesGetPrototype;
+
+    DECLARE_INFO;
+
+    static NodeVMGlobalProxy* create(JSC::VM&, NodeVMGlobalObject* target);
+
+    using JSC::JSObject::getPrototype;
+    using JSC::JSObject::setPrototype;
+
+private:
+    NodeVMGlobalProxy(JSC::VM& vm, JSC::Structure* structure, JSC::JSGlobalObject* target)
+        : Base(vm, structure, target)
+    {
+    }
 };
 
 // Helper functions to create vm contexts and run code

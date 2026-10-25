@@ -14,7 +14,7 @@ use std::cell::RefCell;
 
 use bun_collections::{ArrayHashMap, StringHashMap};
 use bun_core::strings;
-use bun_paths::{self, PathBuffer, SEP, SEP_STR};
+use bun_paths::{self, MAX_PATH_BYTES, PathBuffer, SEP, SEP_STR};
 
 use bun_http_types::URLPath::URLPath;
 
@@ -51,10 +51,6 @@ use bun_ptr::Interned;
 #[derive(Debug, Clone, Default)]
 pub struct RouteConfig {
     pub dir: Box<[u8]>,
-
-    /// Frameworks like Next.js (and others) use a special prefix for bundled/transpiled assets.
-    /// This is combined with "origin" when printing import paths.
-    pub asset_prefix_path: Box<[u8]>,
 
     // TODO: do we need a separate list for data-only extensions?
     // e.g. /foo.json just to get the data for the route, without rendering the html
@@ -220,10 +216,9 @@ impl Default for Routes {
 
 impl Routes {
     pub fn match_page_with_allocator<'p>(
-        &mut self,
-        _: &[u8],
+        &self,
         url_path: &URLPath,
-        params: &'p mut route_param::List<'p>,
+        params: &mut route_param::List<'p>,
     ) -> Option<Match<'p>> {
         // Trim trailing slash
         let mut path = url_path.path;
@@ -266,7 +261,6 @@ impl Routes {
                 // SAFETY: points into a Box<Route> owned by self.list; valid for &self.
                 let index = unsafe { index_ptr.as_ref() };
                 return Some(Match {
-                    params: std::ptr::from_mut(params),
                     name: index.name,
                     pathname: url_path.pathname,
                     file_path: index.abs_path.as_bytes(),
@@ -282,7 +276,6 @@ impl Routes {
             // self.list, which outlives self.
             let route = unsafe { &*route_ptr };
             return Some(Match {
-                params: std::ptr::from_mut(params),
                 name: route.name,
                 pathname: url_path.pathname,
                 file_path: route.abs_path.as_bytes(),
@@ -312,6 +305,8 @@ impl Routes {
             if Pattern::match_::<true>(path, &case_sensitive_name[1..], name, params) {
                 return Some(&raw const **route);
             }
+            // A failed match can leave params behind.
+            params.clear();
         }
 
         None
@@ -732,6 +727,25 @@ impl Route {
         // borrow `(*entry).base_` and a `&mut Entry` parameter would alias them.
         let base = &base_[0..base_.len() - extname.len()];
 
+        // SAFETY: caller passes an EntryStore-owned pointer valid for the
+        // process lifetime; no other live `&mut` to it during this call.
+        let entry_r = unsafe { &*entry };
+        // The public path and the longer absolute path are both built in `route_file_buf`.
+        let dir = strings::without_trailing_slash(entry_r.dir());
+        if dir.len() + 1 + base_.len() >= MAX_PATH_BYTES {
+            log.add_error_fmt(
+                None,
+                bun_ast::Loc::EMPTY,
+                format_args!(
+                    "ENAMETOOLONG opening route: {}{}{}",
+                    bstr::BStr::new(dir),
+                    SEP_STR,
+                    bstr::BStr::new(base_)
+                ),
+            );
+            return None;
+        }
+
         let public_dir = strings::trim(public_dir_, SEP_STR.as_bytes());
 
         // this is a path like
@@ -836,10 +850,7 @@ impl Route {
                 (Route::INDEX_ROUTE_NAME, Route::INDEX_ROUTE_NAME)
             };
 
-            // SAFETY: caller passes an EntryStore-owned pointer valid for the
-            // process lifetime; no other live `&mut` to it during this call.
-            let entry_r = unsafe { &*entry };
-            // `fill` runs under the per-entry mutex, like every cached-`Entry` rewrite.
+            // The closure runs under the per-entry mutex, like every other write to a cached `Entry`.
             let Ok(entry_abs_path) = entry_r.abs_path_or_try_fill(|| {
                 let mut abs_path_str: &[u8] = b"";
                 // NOTE: reshaped for borrowck — `defer if (needs_close) file.close()`
@@ -1057,52 +1068,7 @@ pub struct Match<'a> {
     pub file_path: &'a [u8],
     /// route name, like `"posts/[id]"`
     pub name: &'a [u8],
-
-    // NOTE: raw `*mut` (not `&'a mut`).
-    // `MatchedRoute` (bun_runtime) stores this self-referentially — a
-    // `&'a mut List` here would be invalidated under Stacked Borrows the
-    // moment any `&mut MatchedRoute` is taken.
-    pub params: *mut route_param::List<'a>,
     pub query_string: &'a [u8],
-}
-
-impl<'a> Match<'a> {
-    /// Widen all borrowed slices to `'static` for self-referential storage.
-    ///
-    /// Field-by-field move (no bitwise reinterpret). Used by `MatchedRoute`
-    /// (bun_runtime), which moves the backing `pathname_backing` buffer into
-    /// the same heap-stable `Box` that holds this `Match` — see the SAFETY
-    /// note at that call site for the full invariant.
-    ///
-    /// # Safety
-    /// Caller guarantees every borrowed slice (and `*params`' element slices)
-    /// outlives the returned value.
-    #[inline]
-    #[allow(unsafe_op_in_unsafe_fn)]
-    pub unsafe fn detach_lifetime(self) -> Match<'static> {
-        // `d` stays `unsafe fn` so a safe-signature wrapper does not hide the
-        // lifetime-widen; the outer fn carries `#[allow(unsafe_op_in_unsafe_fn)]`
-        // so the direct call sites below need no per-line `unsafe { }`.
-        #[inline(always)]
-        unsafe fn d(s: &[u8]) -> &'static [u8] {
-            // SAFETY: caller contract on `detach_lifetime` — every borrowed
-            // slice outlives the returned `Match<'static>`.
-            unsafe { &*core::ptr::from_ref::<[u8]>(s) }
-        }
-        Match {
-            pathname: d(self.pathname),
-            file_path: d(self.file_path),
-            name: d(self.name),
-            // Raw pointer; lifetime parameter on the pointee is phantom for the
-            // pointer value itself.
-            params: self.params.cast::<route_param::List<'static>>(),
-            query_string: d(self.query_string),
-        }
-    }
-
-    pub fn pathname_without_leading_slash(&self) -> &[u8] {
-        strings::trim_left(self.pathname, b"/")
-    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────

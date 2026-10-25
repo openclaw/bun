@@ -5,7 +5,7 @@
  * Two modes via `cfg.webkit`:
  *
  * **prebuilt**: Download a checksum-pinned tarball from openclaw/WebKit releases. Tarball name
- *   encodes {os, arch, musl, debug|lto, asan} — each is a separate ABI.
+ *   encodes {os, arch, musl, debug|lto, asan, assertions, coverage, hardened} — each is a separate ABI.
  *   ASAN MUST match bun's setting: WTF::Vector layout changes with ASAN
  *   (see WTF/Vector.h:682), so mixing → silent memory corruption.
  *
@@ -38,7 +38,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Config } from "../config.ts";
 import { assert } from "../error.ts";
-import { computeCpuTargetFlags } from "../flags.ts";
+import { computeCpuTargetFlags, hardeningFlags } from "../flags.ts";
 import { slash } from "../shell.ts";
 import { type Dependency, type NestedCmakeBuild, type Source, depBuildDir, depSourceDir } from "../source.ts";
 
@@ -104,6 +104,7 @@ function prebuiltSuffix(cfg: Config): string {
     if (cfg.assertions) s += "-assertions";
     if (cfg.fuzzilli) s += "-coverage";
   }
+  if (cfg.hardened) s += "-hardened";
   return s;
 }
 
@@ -282,6 +283,7 @@ export const webkit: Dependency = {
     // PIE-default distros — without it the driver still passes -pie and the
     // -fno-pic probe object fails R_X86_64_32S relocation, killing FindThreads.
     if (cfg.unix && cfg.abi !== "android") optFlags.push("-fno-pic", "-fno-pie", "-no-pie");
+    if (cfg.hardened) optFlags.push(...hardeningFlags);
     if (cfg.lto) optFlags.push("-flto=thin");
     if (cfg.pgoGenerate) optFlags.push(`-fprofile-generate=${cfg.pgoGenerate}`);
     if (cfg.pgoUse) {

@@ -623,7 +623,7 @@ impl InitCommand {
 
         match template {
             Template::ReactBlank | Template::ReactTailwind | Template::ReactTailwindShadcn => {
-                template.write_files_and_run_bun_dev(ca_options)?;
+                template.write_files_and_run_bun_dev()?;
                 return Ok(());
             }
             _ => {}
@@ -922,6 +922,7 @@ impl InitCommand {
                             (b"name", fields.name.as_slice()),
                             (b"bunVersion", Environment::VERSION_STRING.as_bytes()),
                             (b"entryPoint", fields.entry_point.as_slice()),
+                            (b"tools", Assets::README_TOOLS),
                         ],
                     );
                     // suppressed
@@ -951,10 +952,7 @@ impl InitCommand {
 
                 if exists_z(b"package.json") && need_run_bun_install {
                     bun_core::prettyln!("");
-                    let self_exe = bun::self_exe_path()?;
-                    let mut install_args = vec![self_exe.as_bytes(), b"install"];
-                    install_args.extend(ca_options.flags().map(|flag| flag.as_bytes()));
-                    let _ = bun::spawn_sync_inherit(&install_args)?;
+                    let _ = bun::spawn_sync_inherit(&bun_install_argv()?)?;
                 }
             }
             _ => {}
@@ -962,6 +960,12 @@ impl InitCommand {
 
         Ok(())
     }
+}
+
+fn bun_install_argv() -> Result<Vec<&'static [u8]>, Error> {
+    let mut argv: Vec<&[u8]> = vec![bun::self_exe_path()?.as_bytes(), b"install"];
+    argv.extend(Global::ca_store_flags().map(ZStr::as_bytes));
+    Ok(argv)
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -976,6 +980,12 @@ impl Assets {
     pub(crate) const TSCONFIG_JSON: &'static [u8] = include_bytes!("init/tsconfig.default.json");
     pub(crate) const README_MD: &'static [u8] = include_bytes!("init/README.default.md");
     pub(crate) const README2_MD: &'static [u8] = include_bytes!("init/README2.default.md");
+    /// `{[tools]s}` in both.
+    const README_TOOLS: &'static [u8] = if CLI::lint_command::IS_ENABLED {
+        b"Run `bun lint` to find problems in the code and `bun fmt` to format it."
+    } else {
+        b"Run `bun fmt` to format the code."
+    };
 
     /// Create a new asset file, overriding anything that already exists. Known
     /// assets will have their contents pre-populated; otherwise the file will be empty.
@@ -1481,7 +1491,7 @@ impl Template {
             return false;
         };
         // SAFETY: FileSystem::instance() returns the process-global singleton.
-        let top_level_dir = Fs::FileSystem::get().top_level_dir;
+        let top_level_dir = Fs::FileSystem::get().top_level_dir();
         bun_which::which(&mut *pathbuffer, path, top_level_dir, b"claude").is_some()
     }
 
@@ -1644,7 +1654,7 @@ impl Template {
         }
     }
 
-    fn write_files_and_run_bun_dev(self, ca_options: Global::CAOptions) -> Result<(), Error> {
+    fn write_files_and_run_bun_dev(self) -> Result<(), Error> {
         Self::create_agent_rule();
 
         for file in self.files() {
@@ -1658,6 +1668,7 @@ impl Template {
                     &[
                         (b"name", self.name()),
                         (b"bunVersion", Environment::VERSION_STRING.as_bytes()),
+                        (b"tools", Assets::README_TOOLS),
                     ],
                 )
             } else {
@@ -1690,10 +1701,7 @@ impl Template {
         bun_core::pretty!("\n");
         Output::flush();
 
-        let self_exe = bun::self_exe_path()?;
-        let mut install_args = vec![self_exe.as_bytes(), b"install"];
-        install_args.extend(ca_options.flags().map(|flag| flag.as_bytes()));
-        let _ = bun::spawn_sync_inherit_no_stdin(&install_args)?;
+        let _ = bun::spawn_sync_inherit_no_stdin(&bun_install_argv()?)?;
 
         bun_core::prettyln!(
             "\n\

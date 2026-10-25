@@ -52,22 +52,20 @@ static void us_cert_file_into_bio(void *ctx, const uint8_t *data, size_t len) {
 // External variables from the CLI arguments
 extern "C" bool Bun__Node__UseSystemCA;
 extern "C" bool Bun__Node__NoUseSystemCA;
-// BunCAStore discriminant (Arguments.rs): 1 == --use-openssl-ca.
-extern "C" uint8_t Bun__Node__CAStore;
-static const uint8_t BUN_CA_STORE_OPENSSL = 1;
+// Matches bun_core::Global::CAStore.
+enum class us_ca_store_t : uint8_t { bundled = 0, system = 1, openssl = 2 };
+extern "C" us_ca_store_t Bun__Node__CAStore;
 
-// The process-wide default: --no-use-system-ca beats everything, then --use-system-ca, then
-// NODE_USE_SYSTEM_CA=1. A thread (node: Environment) started with its own flag overrides this for
-// the contexts it creates — see us_bun_socket_context_options_t.use_system_ca.
 extern "C" int us_default_use_system_ca() {
-  if (Bun__Node__NoUseSystemCA) {
-    return 0;
-  }
-  if (Bun__Node__UseSystemCA) {
-    return 1;
-  }
+  if (Bun__Node__NoUseSystemCA) return 0;
+  if (Bun__Node__UseSystemCA) return 1;
   const char *use_system_ca = getenv("NODE_USE_SYSTEM_CA");
   return use_system_ca && strcmp(use_system_ca, "1") == 0;
+}
+
+static us_ca_store_t us_ca_store() {
+  if (Bun__Node__CAStore == us_ca_store_t::openssl) return us_ca_store_t::openssl;
+  return us_default_use_system_ca() ? us_ca_store_t::system : us_ca_store_t::bundled;
 }
 
 // Resolve an options-struct tri-state (0: process default, >0: include system roots, <0: exclude).
@@ -201,7 +199,8 @@ STACK_OF(X509) *us_get_root_extra_cert_instances() {
 // The file half of X509_STORE_set_default_paths ($SSL_CERT_FILE, else X509_get_default_cert_file(), usually
 // /etc/ssl/cert.pem), trusting exactly what X509_load_cert_crl_file would, but read once per process into a lazy set
 // (parsed per certificate on first use, shared by every store) rather than parsed whole into each store, and without
-// the certificates the bundled set already holds byte-for-byte — on most distros that is most of the file.
+// the certificates the bundled set already holds byte-for-byte — on most distros that is most of the file. With
+// --use-openssl-ca the store has no bundled set, so it needs the whole file.
 struct us_openssl_default_cert_file {
   X509_LAZY_CERT_SET *certs = nullptr;
   STACK_OF(X509) *trusted = nullptr; // TRUSTED CERTIFICATE blocks carry auxiliary data the lazy set does not model
@@ -219,9 +218,10 @@ static const us_openssl_default_cert_file &us_get_openssl_default_cert_file() {
       return;
     }
 
-    const uint8_t *const *bundled_certs;
-    const size_t *bundled_lens;
-    size_t bundled_count = us_bundled_root_certs_der(&bundled_certs, &bundled_lens);
+    const uint8_t *const *bundled_certs = nullptr;
+    const size_t *bundled_lens = nullptr;
+    size_t bundled_count =
+        us_ca_store() == us_ca_store_t::openssl ? 0 : us_bundled_root_certs_der(&bundled_certs, &bundled_lens);
     std::unordered_set<std::string_view> bundled;
     bundled.reserve(bundled_count);
     for (size_t i = 0; i < bundled_count; i++) {
@@ -310,21 +310,16 @@ extern "C" X509_STORE *us_get_default_ca_store(int use_system_ca) {
     return NULL;
   }
   X509_STORE_set_flags(store, X509_V_FLAG_IGNORE_EXPIRED_TRUST_ANCHORS);
+  us_ca_store_t ca_store = us_ca_store();
 
-  // --use-openssl-ca: OpenSSL's default lookups *instead of* the bundled roots, and no system store, as in node's
-  // NewRootCertStore (https://github.com/nodejs/node/blob/v26.3.0/src/crypto/crypto_context.cc#L1099-L1109).
-  const int openssl_ca = Bun__Node__CAStore == BUN_CA_STORE_OPENSSL;
-  if (openssl_ca) {
-    if (!X509_STORE_set_default_paths(store)) {
-      X509_STORE_free(store);
-      return NULL;
-    }
-  } else {
+  // https://github.com/nodejs/node/blob/v26.3.0/src/crypto/crypto_context.cc#L1099
+  if (ca_store != us_ca_store_t::openssl) {
     X509_LAZY_CERT_SET *bundled = us_get_bundled_root_cert_set();
     if (bundled == NULL || !X509_STORE_add_lazy_cert_set(store, bundled)) {
       X509_STORE_free(store);
       return NULL;
     }
+  }
 
     // What X509_STORE_set_default_paths(store) trusts: the default certificate file (above) and the default hashed
     // certificate directory, which BoringSSL already consults lazily per lookup.
@@ -346,7 +341,6 @@ extern "C" X509_STORE *us_get_default_ca_store(int use_system_ca) {
     }
     X509_LOOKUP_add_dir(hash_dir, NULL, X509_FILETYPE_DEFAULT);
     ERR_clear_error();
-  }
 
   STACK_OF(X509) *root_extra_cert_instances = us_get_root_extra_cert_instances();
   if (root_extra_cert_instances) {
@@ -355,9 +349,7 @@ extern "C" X509_STORE *us_get_default_ca_store(int use_system_ca) {
     }
   }
 
-  // `use_system_ca` is the decision of the thread this store is built for (us_resolve_use_system_ca), not only the
-  // process-wide flag: node makes --use-system-ca a per-Environment option.
-  if (use_system_ca && !openssl_ca) {
+  if (use_system_ca && ca_store != us_ca_store_t::openssl) {
     const us_system_certs_t &system = us_get_root_system_certs();
     if (system.lazy != nullptr && !X509_STORE_add_lazy_cert_set(store, system.lazy)) {
       X509_STORE_free(store);

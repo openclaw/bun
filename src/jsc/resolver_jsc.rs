@@ -4,22 +4,21 @@
 use crate::HostReturn as _;
 use bstr::BStr;
 
-use crate::{CallFrame, JSGlobalObject, JSValue, JsResult};
+use crate::{JSGlobalObject, JSValue};
 use bun_core::{String as BunString, strings};
 use bun_paths::resolve_path;
 use bun_paths::{Platform, SEP, SEP_STR};
 
-#[crate::host_fn(export = "Resolver__nodeModulePathsForJS")]
-fn node_module_paths_for_js(global: &JSGlobalObject, frame: &CallFrame) -> JsResult<JSValue> {
+#[derive(Clone, Copy)]
+enum NodeModulePathBase {
+    Directory,
+    FilePath,
+    ModuleKey,
+}
+
+pub(crate) fn node_module_paths(path: &BunString) -> Vec<BunString> {
     crate::mark_binding!();
-    let argument: JSValue = frame.argument(0);
-
-    if argument.is_empty() || !argument.is_string() {
-        return Err(global.throw_invalid_argument_type("nodeModulePaths", "path", "string"));
-    }
-
-    let in_str = argument.to_bun_string(global)?;
-    Ok(node_module_paths_js_value(&in_str, global, false, false))
+    node_module_paths_list(path, NodeModulePathBase::Directory)
 }
 
 #[unsafe(no_mangle)]
@@ -57,23 +56,31 @@ extern "C" fn node_module_paths_js_value(
     use_dirname: bool,
     split_query: bool,
 ) -> JSValue {
+    let base = match (use_dirname, split_query) {
+        (false, _) => NodeModulePathBase::Directory,
+        (true, false) => NodeModulePathBase::FilePath,
+        (true, true) => NodeModulePathBase::ModuleKey,
+    };
+    crate::bun_string_jsc::to_js_array(global, &node_module_paths_list(in_str, base))
+        .or_pending_exception()
+}
+
+fn node_module_paths_list(in_str: &BunString, base: NodeModulePathBase) -> Vec<BunString> {
     let mut list: Vec<bun_core::String> = Vec::new();
 
     let utf8 = in_str.to_utf8();
-    let base_path: &[u8] = if use_dirname {
-        resolve_path::dirname::<bun_paths::platform::Auto>(if split_query {
-            module_key_without_query(utf8.slice())
-        } else {
-            utf8.slice()
-        })
-    } else {
-        utf8.slice()
+    let base_path: &[u8] = match base {
+        NodeModulePathBase::Directory => utf8.slice(),
+        NodeModulePathBase::FilePath => {
+            resolve_path::dirname::<bun_paths::platform::Auto>(utf8.slice())
+        }
+        NodeModulePathBase::ModuleKey => resolve_path::dirname::<bun_paths::platform::Auto>(
+            module_key_without_query(utf8.slice()),
+        ),
     };
-    let mut buf = bun_paths::path_buffer_pool::get();
-
-    let mut full_path: &[u8] = resolve_path::join_abs_string_buf::<bun_paths::platform::Auto>(
+    // Like Node's `_nodeModulePaths`, this is pure string manipulation, so there's no length limit.
+    let mut full_path: &[u8] = resolve_path::join_abs_string::<bun_paths::platform::Auto>(
         bun_paths::fs::FileSystem::instance().top_level_dir(),
-        &mut **buf,
         &[base_path],
     );
     let root_index: usize = {
@@ -139,5 +146,5 @@ extern "C" fn node_module_paths_js_value(
         SEP_STR,
     )));
 
-    crate::bun_string_jsc::to_js_array(global, &list).or_pending_exception()
+    list
 }

@@ -1,64 +1,64 @@
 {
   "schema_version": 1,
-  "version": "a2976f02e69fde8ccc45dc8fb346173f9d63f8a1",
+  "version": "419b5a0470fc059a610e98697691bf6f7cedd841",
   "repository": "openclaw/WebKit",
-  "tag": "autobuild-a2976f02e69fde8ccc45dc8fb346173f9d63f8a1",
+  "tag": "autobuild-419b5a0470fc059a610e98697691bf6f7cedd841",
   "artifacts": {
     "bun-webkit-linux-amd64.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-a2976f02e69fde8ccc45dc8fb346173f9d63f8a1/bun-webkit-linux-amd64.tar.gz",
-      "sha256": "987992b3f6761b02841dd62c883350602a63f54c11ef9a06a75c9eb21c31e88b",
-      "size": 608176907
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-419b5a0470fc059a610e98697691bf6f7cedd841/bun-webkit-linux-amd64.tar.gz",
+      "sha256": "19d3b2b04e26fb07d09d9b5b16a1c2d41002642fa20577ecc98ef266133436e5",
+      "size": 610549036
     },
     "bun-webkit-macos-arm64.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-a2976f02e69fde8ccc45dc8fb346173f9d63f8a1/bun-webkit-macos-arm64.tar.gz",
-      "sha256": "aae333406c9edfcbde79c214557ade832c50787bcaa962e2879ecf9b60188165",
-      "size": 211854100
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-419b5a0470fc059a610e98697691bf6f7cedd841/bun-webkit-macos-arm64.tar.gz",
+      "sha256": "5dd959c0594d511d2a2bbf387bf4da031f8257af40a260f0683ca229237d83b2",
+      "size": 214042578
     },
     "bun-webkit-linux-amd64-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-a2976f02e69fde8ccc45dc8fb346173f9d63f8a1/bun-webkit-linux-amd64-lto.tar.gz",
-      "sha256": "756bbe13afb5f2b2461be7ae2f35119e0182ae8d4e90912c7f51977c0fda2c5c",
-      "size": 322861798
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-419b5a0470fc059a610e98697691bf6f7cedd841/bun-webkit-linux-amd64-lto.tar.gz",
+      "sha256": "37fd36c96797671de24dc1e7e7a3d260967305e6cce2a02a8f407d1480dbbfa9",
+      "size": 324777326
     },
     "bun-webkit-linux-arm64-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-a2976f02e69fde8ccc45dc8fb346173f9d63f8a1/bun-webkit-linux-arm64-lto.tar.gz",
-      "sha256": "c340b44e6d05709ceadeda4091d882aa35aed1300564e3a3b493548f08bfe11d",
-      "size": 314823716
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-419b5a0470fc059a610e98697691bf6f7cedd841/bun-webkit-linux-arm64-lto.tar.gz",
+      "sha256": "8aec9f44a3ffbcbff2b545ed863aac81f804d8c4acf82b88a6cc13cc3cc5e33c",
+      "size": 316914300
     },
     "bun-webkit-macos-arm64-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-a2976f02e69fde8ccc45dc8fb346173f9d63f8a1/bun-webkit-macos-arm64-lto.tar.gz",
-      "sha256": "b42887bb85fc2544a2e0e1871b1dbe2c5f3c5153e659cecfab468abe1ea32281",
-      "size": 156925369
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-419b5a0470fc059a610e98697691bf6f7cedd841/bun-webkit-macos-arm64-lto.tar.gz",
+      "sha256": "76d4c3cb14ec28565c060e2a258cae6f4a912ffe176e5c825de9271d4046c197",
+      "size": 158696628
     },
     "bun-webkit-macos-amd64-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-a2976f02e69fde8ccc45dc8fb346173f9d63f8a1/bun-webkit-macos-amd64-lto.tar.gz",
-      "sha256": "61914b8203e18e8664b53944759c1fb3153a9d8ccf43f6f8144980b7cfe2a825",
-      "size": 161281005
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-419b5a0470fc059a610e98697691bf6f7cedd841/bun-webkit-macos-amd64-lto.tar.gz",
+      "sha256": "2cc1bd1a7d6623c7b9f129771cfb26a94dbec9f7cd6cb9c0fb3cef1f538ed6a1",
+      "size": 163122388
     },
     "bun-webkit-linux-amd64-musl-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-a2976f02e69fde8ccc45dc8fb346173f9d63f8a1/bun-webkit-linux-amd64-musl-lto.tar.gz",
-      "sha256": "acec65fec73caae202a3ea39fdc7ac8c63b602351327342f890957293120a449",
-      "size": 224175011
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-419b5a0470fc059a610e98697691bf6f7cedd841/bun-webkit-linux-amd64-musl-lto.tar.gz",
+      "sha256": "3f8b181bec9db8a0a1b27097eeb05e90359c034ee58c8bbb0800dfefba05c3fc",
+      "size": 223877687
     },
     "bun-webkit-linux-arm64-musl-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-a2976f02e69fde8ccc45dc8fb346173f9d63f8a1/bun-webkit-linux-arm64-musl-lto.tar.gz",
-      "sha256": "8e5efdf97f4147243807e75e36dec87c227d858b90fef5d248cfe5b30fdb8c2d",
-      "size": 225839495
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-419b5a0470fc059a610e98697691bf6f7cedd841/bun-webkit-linux-arm64-musl-lto.tar.gz",
+      "sha256": "a2acad951e97b139b385d0b654052042ce6610a9aa8c18fe6aa3409120720956",
+      "size": 225574537
     },
     "bun-webkit-windows-amd64-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-a2976f02e69fde8ccc45dc8fb346173f9d63f8a1/bun-webkit-windows-amd64-lto.tar.gz",
-      "sha256": "dbf5cdd19573550b23cc27d2d39a5ae63608c9532650c86d34fa1121260ea5e6",
-      "size": 675949587
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-419b5a0470fc059a610e98697691bf6f7cedd841/bun-webkit-windows-amd64-lto.tar.gz",
+      "sha256": "00e3eb1a1e02827247768b3509297a7e02754fd000b9a7f66a7a501ff4e46e3d",
+      "size": 679293280
     },
     "bun-webkit-windows-arm64.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-a2976f02e69fde8ccc45dc8fb346173f9d63f8a1/bun-webkit-windows-arm64.tar.gz",
-      "sha256": "10b265da4e5e255ac354871ba97d269af6e46996e2c63da14d4e2190af40a4cb",
-      "size": 371874719
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-419b5a0470fc059a610e98697691bf6f7cedd841/bun-webkit-windows-arm64.tar.gz",
+      "sha256": "335bb7c21954c2e2d8ede3aace6b3d337494b6b8307326c14cceb8c2b943ee93",
+      "size": 373510075
     }
   },
   "variants": {
     "bun_repository": "openclaw/bun",
-    "bun_commit": "cabfa8138d20ca57ccfb0a9309103ebb55900125",
-    "base": "87ee10da087b63e011bd1ada64d1814a850a4395",
+    "bun_commit": "7f836a97af610dd0e949e49658156321430fd4bd",
+    "base": "5e3554face1338d738543540a82f23e3163045f5",
     "lanes": [
       {
         "label": "bun-webkit-linux-amd64",
@@ -103,36 +103,36 @@
     ],
     "excluded": "Android, FreeBSD, debug and ASAN are not selected by the fork's active OpenClaw workflows. Windows arm64 uses upstream's non-LTO lane because LLVM CodeView cannot encode its LTO register tuples. There is no separate x64 baseline WebKit archive.",
     "upstream_sync": {
-      "bun_commit": "cabfa8138d20ca57ccfb0a9309103ebb55900125",
-      "bun_tree": "98be6b8396a462b1756e3192891459bb58c01524",
-      "upstream_commit": "ad4089bf49d9f4c3ab7c8d95a58f3e0f0f186054"
+      "bun_commit": "7f836a97af610dd0e949e49658156321430fd4bd",
+      "bun_tree": "6d48bbc70792af33275054219f761c3aef10a8e6",
+      "upstream_commit": "a8fcd319be58ad4d284330b86602cfb3c8e49c83"
     },
-    "baseline_bun_commit": "b83b544ef744b6ab0dc1feadb59652261d64291d",
-    "baseline_webkit_commit": "1600131e46b5af48bbda3559af8d8a3327230b6e",
-    "bun_tree": "98be6b8396a462b1756e3192891459bb58c01524",
+    "baseline_bun_commit": "cabfa8138d20ca57ccfb0a9309103ebb55900125",
+    "baseline_webkit_commit": "a2976f02e69fde8ccc45dc8fb346173f9d63f8a1",
+    "bun_tree": "6d48bbc70792af33275054219f761c3aef10a8e6",
     "runtime_cache": {
-      "version": 39,
+      "version": 44,
       "source": "src/jsc/RuntimeTranspilerCache.rs",
-      "sha256": "be03b4e265bd94e2ac635c3c6c745dd6d657fde165c64a3ef42a14e11c858d04"
+      "sha256": "4b711da8e5417a4268855039a29188c85055cb5e8f5617e3fc2870df5fe309a5"
     }
   },
   "qualification": {
     "passed": true,
-    "source": "a2976f02e69fde8ccc45dc8fb346173f9d63f8a1",
-    "bun_commit": "cabfa8138d20ca57ccfb0a9309103ebb55900125",
-    "bun_tree": "98be6b8396a462b1756e3192891459bb58c01524",
+    "source": "419b5a0470fc059a610e98697691bf6f7cedd841",
+    "bun_commit": "7f836a97af610dd0e949e49658156321430fd4bd",
+    "bun_tree": "6d48bbc70792af33275054219f761c3aef10a8e6",
     "selected_files": 44,
     "result_files": 46,
     "als_variants_per_mode": 14,
     "proxy_minimum": 4,
     "resource_minimum": 16,
-    "baseline_bun_commit": "b83b544ef744b6ab0dc1feadb59652261d64291d",
-    "baseline_webkit_commit": "1600131e46b5af48bbda3559af8d8a3327230b6e",
-    "bun_manifest_sha256": "35516b63f79e37844357643debe5b81396f7a04131db4b101cd5693c9e71b87a",
+    "baseline_bun_commit": "cabfa8138d20ca57ccfb0a9309103ebb55900125",
+    "baseline_webkit_commit": "a2976f02e69fde8ccc45dc8fb346173f9d63f8a1",
+    "bun_manifest_sha256": "1773c0f348ff62b09c8c7b79b08539f0eb4c87d06db8efd92a1f4096c6155d67",
     "upstream_sync": {
       "passed": true,
-      "bun_commit": "cabfa8138d20ca57ccfb0a9309103ebb55900125",
-      "bun_tree": "98be6b8396a462b1756e3192891459bb58c01524",
+      "bun_commit": "7f836a97af610dd0e949e49658156321430fd4bd",
+      "bun_tree": "6d48bbc70792af33275054219f761c3aef10a8e6",
       "selected_files": 85,
       "result_rows": 87,
       "regressions": 0,
@@ -140,15 +140,15 @@
         "memory-release": 3,
         "proxy": 4,
         "resource-limits": 17,
-        "namespace": 43,
-        "inspector": 89,
-        "als-suites": 224,
-        "stack-positions": 350,
-        "stack-minifier": 68,
+        "namespace": 44,
+        "inspector": 95,
+        "als-suites": 225,
+        "stack-positions": 680,
+        "stack-minifier": 70,
         "arraybuffer": 19,
         "worker-statistics": 7,
         "arraybuffer-native": 1,
-        "arraybuffer-serializer": 60,
+        "arraybuffer-serializer": 70,
         "inspection-idle": 1
       },
       "gc_progress": {
@@ -162,15 +162,15 @@
         "worldStateAtStall": 0,
         "collectorParkingThreadId": 0,
         "mutatorParkingThreadId": 0,
-        "conditionAddress": "0x5872fab0621",
-        "worldAddress": "0x5872fc40610",
-        "elapsedMs": 1.884
+        "conditionAddress": "0x586da2b0621",
+        "worldAddress": "0x586da440610",
+        "elapsedMs": 1.908
       },
-      "manifest_sha256": "35516b63f79e37844357643debe5b81396f7a04131db4b101cd5693c9e71b87a"
+      "manifest_sha256": "1773c0f348ff62b09c8c7b79b08539f0eb4c87d06db8efd92a1f4096c6155d67"
     },
     "engine": {
       "passed": true,
-      "source": "a2976f02e69fde8ccc45dc8fb346173f9d63f8a1",
+      "source": "419b5a0470fc059a610e98697691bf6f7cedd841",
       "stress_counts": {
         "jsc-stress": 1847,
         "jsc-modules": 1639
@@ -191,32 +191,32 @@
     },
     "compatibility": {
       "passed": true,
-      "source": "a2976f02e69fde8ccc45dc8fb346173f9d63f8a1",
-      "bun_commit": "cabfa8138d20ca57ccfb0a9309103ebb55900125",
-      "bun_tree": "98be6b8396a462b1756e3192891459bb58c01524",
+      "source": "419b5a0470fc059a610e98697691bf6f7cedd841",
+      "bun_commit": "7f836a97af610dd0e949e49658156321430fd4bd",
+      "bun_tree": "6d48bbc70792af33275054219f761c3aef10a8e6",
       "only_manifest_changed": true,
       "memory_tests": 3,
       "startup": true,
-      "manifest_patch_sha256": "35516b63f79e37844357643debe5b81396f7a04131db4b101cd5693c9e71b87a"
+      "manifest_patch_sha256": "1773c0f348ff62b09c8c7b79b08539f0eb4c87d06db8efd92a1f4096c6155d67"
     },
     "windows_arm64": {
-      "lane": "bun-webkit-windows-arm64",
-      "arraybuffer_modes": 5,
-      "ffi": true,
-      "source": "a2976f02e69fde8ccc45dc8fb346173f9d63f8a1",
-      "sha256": "10b265da4e5e255ac354871ba97d269af6e46996e2c63da14d4e2190af40a4cb",
+      "dfg": true,
+      "architecture": "arm64",
       "arraybuffer_accounting": true,
       "passed": true,
+      "sha256": "335bb7c21954c2e2d8ede3aace6b3d337494b6b8307326c14cceb8c2b943ee93",
       "startup": true,
-      "dfg": true,
-      "architecture": "arm64"
+      "ffi": true,
+      "arraybuffer_modes": 5,
+      "lane": "bun-webkit-windows-arm64",
+      "source": "419b5a0470fc059a610e98697691bf6f7cedd841"
     }
   },
   "lanes": [
     {
       "schema_version": 1,
-      "source": "a2976f02e69fde8ccc45dc8fb346173f9d63f8a1",
-      "base": "87ee10da087b63e011bd1ada64d1814a850a4395",
+      "source": "419b5a0470fc059a610e98697691bf6f7cedd841",
+      "base": "5e3554face1338d738543540a82f23e3163045f5",
       "lane": {
         "label": "bun-webkit-linux-amd64",
         "runner": "linux-x64-gh",
@@ -239,124 +239,130 @@
           "ENABLE_SANITIZERS": "",
           "ENABLE_ASSERTS": "AUTO",
           "ENABLE_FUZZILLI": "OFF",
+          "HARDENING_FLAGS": "",
           "MARCH_FLAG": "--target=x86_64-unknown-linux-gnu -march=nehalem"
         }
       },
       "patches": [
         {
-          "commit": "5882be5fb42b67a34c907d9ad2464bfa5bde3033",
+          "commit": "d614252f799ce22be554484371229467f6aa49fb",
           "subject": "fix(jsc): allow opt-in Proxy global prototypes",
-          "patch_sha256": "5c475600ef532a78ad010e69f4274716cac56784ade06af943da0e8e28afb33b"
+          "patch_sha256": "bf8ce064614b639c2759774a0196bfd022a025c702cfb34abdee8152d1800e82"
         },
         {
-          "commit": "ed06f0c0345b9799504c3187360800f0691e2272",
+          "commit": "45a2468bcc191593b74c5ae5fa848671f1e829ed",
           "subject": "fix(jsc): preserve module-loader async context",
           "patch_sha256": "8e69a20de860e6053c302d811833294b40fb9d05338dd2301dd83813bae72ab3"
         },
         {
-          "commit": "071f716913aea51815e480176df7eeeec56ff789",
+          "commit": "045af4667f50f51adbdf7f2509a7aca177750c0d",
           "subject": "feat(jsc): add per-VM worker heap and stack budgets",
-          "patch_sha256": "2346371717a4bbe22c37f7259da639b9dca1cc6d1e07a801f104433e31d41a7a"
+          "patch_sha256": "b330c1ab6663b9ba3584a45c0d2a6a01985970076849262d1a056f54f5655a66"
         },
         {
-          "commit": "d3e3f5d21a98d8a22535b358fddeb492a451238a",
+          "commit": "5a24bd06f7e127f7cd61a40cb588e2099e10e2c8",
           "subject": "fix(jsc): give require(esm) its own namespace marker (#1)",
           "patch_sha256": "69452d4b78bae048eeea04a8f4a4ccb112efe1f183850f0f8e546312245eb5e8"
         },
         {
-          "commit": "795ad7057bd200f775f0ab39c05bf1f1e918a34c",
+          "commit": "ab43da66e16c7dd6a7ff1a54ec5954672c3406d8",
           "subject": "feat(jsc): add byte-based heap allocation sampling (#2)",
-          "patch_sha256": "6d73316d08f48ae85ef3d4288a99bf2a6fda42a1cc63388968b6360f5b6b415c"
+          "patch_sha256": "27d8a589a812356f3300ece9bb7ee077654442b6d71c263f6fb4b9902ea769c7"
         },
         {
-          "commit": "bb98adac12c44f55b9e7d2aef770fa5e57ffb7a5",
+          "commit": "533e16f03c624ed0bc9d61e6aa5573cf07674084",
           "subject": "fix(jsc): retain syntax-selected stack source positions",
-          "patch_sha256": "06acf9850d42c28aea9174250e92244f23b0285d90f438ed6af72af7f586626f"
+          "patch_sha256": "e8119d67135ac40cc5c0e4aa8c0e994303709f02d600a82f7c13818f5a4339c6"
         },
         {
-          "commit": "930e698bc336e11cb0a9ba2d285f8b74124d7c97",
+          "commit": "4ae7237f921582a55ca1bd7f1d33bba947ed7c36",
           "subject": "test(jsc): align promise stack goldens with syntax positions",
           "patch_sha256": "bdc4c9790c952a2f967edbabe6345ff14d7cb8d8429156cccdaa1747d4971f0f"
         },
         {
-          "commit": "8454dff2c37e829419c5329656defaa7747b560e",
+          "commit": "eca3fcb4ad7862015d0a2f5c0ef8d2b605afae37",
           "subject": "fix(jsc): track ArrayBuffer ownership and inspect worker memory (#5)",
-          "patch_sha256": "e2c746b1745b64feb22a418d4b99b6e553e6766c3b909aa051a5ef5019231009"
+          "patch_sha256": "39e514b715f2cbc79c8135aeb7029e16bbf0e36daa7e787256d5dc4de51ecb87"
         },
         {
-          "commit": "30d3b76b4a527a498df950359d2aaceed9d7d746",
+          "commit": "daef628fd9119d6533c71ee2faffd62fe98e1e88",
           "subject": "perf(jsc): carry stack coordinate cache into rebased release (#9)",
           "patch_sha256": "dbf16009fb176f67d794534bd2aab8cac213cde2a6133f408870b99f66828c22"
         },
         {
-          "commit": "1646ebddd8a70bafa22668552fd2810cd50d424e",
+          "commit": "df3f3e6a0a6447e5780e8365a5e5d870759a6668",
           "subject": "fix(jsc): correct ARM64 memory addition and qualify native tiers (#13)",
-          "patch_sha256": "e925f26c8a37ec76dd63895a6b8e800785e4c06874fba8396d7a44982ea8322b"
+          "patch_sha256": "efbdca8b159546fb025ef36ca0ad54ca4d94673b0ce395bb518819f854e43d70"
         },
         {
-          "commit": "d0af6b33b8c780f9e2aa9f7c02466028b68fef4c",
+          "commit": "ec4044fecb3d68057179c16c8d8310c90229145a",
           "subject": "fix(mimalloc): preserve TLS key ownership during process exit (#16)",
           "patch_sha256": "9188ec64d92f860d184d6ab7fcee5a701204076e70e657edb8de6078274c2110"
         },
         {
-          "commit": "c5ee4609fdab2c8c845b657916ceea65fd1413f8",
+          "commit": "a6496e4828314b73e5b9871706b0289308a7b2b8",
           "subject": "fix(jsc): deliver capped-worker termination after GC (#18)",
-          "patch_sha256": "d3d15f373eb909110ceb33ed03f50737ddd142ef6e0e17e4c6eb183542b00473"
+          "patch_sha256": "ec94e33943e3b5c61c6d340bdecb91ed27553e78fb4199fae77d066ddca7c35e"
         },
         {
-          "commit": "487544b0c010d3366625acda533ccf458e45e223",
+          "commit": "568c6ef7c4c609e4781adefec1ad5bc841ea59fc",
           "subject": "fix(jsc): preserve generational worker heap collection",
-          "patch_sha256": "814b40ca80ca502bef8e64332b6c957de07c374e09d32ee416999356be451479"
+          "patch_sha256": "10af3512fe284df845f74a811c0f8e524ba17c59ee4fb5e7cff99d005bb4bc0a"
         },
         {
-          "commit": "1e60ec5bcc7af9a0714495199df65830f751587e",
+          "commit": "543550f75b84cf98bdcab20bde25fae90db06d6e",
           "subject": "fix(jsc): wake passive collectors for synchronous GC (#21)",
-          "patch_sha256": "3a01dbac5ec0f345d973abb8d3a4c866c38cee4f80a70f08308e6e17a83fcbc8"
+          "patch_sha256": "cfaccb7be9374a28e86176a97f586e8fd082d66a80c4d8f67108e2a0eff63472"
         },
         {
-          "commit": "c23e226ab2ebcc3ec553ea7a5819acca390c30d6",
+          "commit": "20421ee27913c8dea1a49effd73ab5487762bc0c",
           "subject": "fix(jsc): initialize VM entry and deferred-scope storage (#24)",
-          "patch_sha256": "20efbf59e9dc8a5acd5ce4993fc62ddcfd4030c4b1606f5552d7f6358c093cce"
+          "patch_sha256": "3d204be82255351a0152b3b66882d5952e1c2e6b65e98a6ae19ffe18533650d8"
         },
         {
-          "commit": "6d9ca7dc007975ba022bde9bc5fec8ce0082edc6",
+          "commit": "d357ca32ce19fdab570bbc6917400c150d65bd2f",
           "subject": "fix(jsc): retry traps after foreign-stack suspension refusal (#25)",
-          "patch_sha256": "acb0a932d424e0cf60a6a5c88bb48c6f473ab93829031e3274fd1f5db71cfd10"
+          "patch_sha256": "b06d6108de317d6285c435c499457040ce4a897970efd57968b3a7401f547353"
         },
         {
-          "commit": "43e20a9582fe447ac52104afbcc6d0c1925de4de",
+          "commit": "64979c9eedd35cdc5c915687864adc5fcc9ad2c6",
           "subject": "test(jsc): isolate allocation sampling collection assertions",
           "patch_sha256": "b72cda8ce0957264415cb60b3128acb0f9c0c3ef79cedb797cf1bdc2fb58ac4d"
         },
         {
-          "commit": "bbc3c443eee2dcc72fe31179ff70c2f50a3593e3",
+          "commit": "c772480428045c444d880c8d84d763066068969f",
           "subject": "test(jsc): track promoted ArrayBuffer survivors across GC phases",
           "patch_sha256": "079789efc8ae99900f5701adb444c34e17a572f6ae66de1d7387c8fe834404ba"
         },
         {
-          "commit": "013b76c60efbd070e57a2ff853795e6a44e0549b",
+          "commit": "3ab47948f3e3e26ec323d0de6a1c66e388363f0e",
           "subject": "fix(jsc): sample cold compilation through executable caller frames",
           "patch_sha256": "87b3560a18b0957759d7999e61e1d626a0da6d7844b93f61c3e986984b37d951"
         },
         {
-          "commit": "2224acdc3e7de7e705c750d638921bd9f639a048",
-          "subject": "ci: prepare protected 87ee10da release pipeline",
-          "patch_sha256": "2e0a8ffc7ffa64de2e7cd07bda1eaa78fdf08312a3002689a8aa75e230f0dff6"
+          "commit": "078f081b0a60a24076de3ae5e39076e4355618c0",
+          "subject": "ci: prepare the 5e3554fa release pipeline",
+          "patch_sha256": "dc8790bbe1dec5c4b03f3a2d1c9d0f1507b6d95d7f03b8e5f15f057e583a98c4"
         },
         {
-          "commit": "6d15cf95ee9d7c18e0d2392b1626481a0023a385",
-          "subject": "ci: pin matched Bun for 87ee10da qualification",
-          "patch_sha256": "36786b5751ca7281c55d7d70af8700533aa5eb69d9e0b70eee7918147b84f9c7"
+          "commit": "db411ed6aec86f7eab7e18eb7d32dd9ab274d18d",
+          "subject": "fix(ci): stage the previous release control manifest",
+          "patch_sha256": "2931b071e833f78e3f9eb9d62c88cc95f4e12a3ad1f1238d156f6bb65f947fde"
         },
         {
-          "commit": "a2976f02e69fde8ccc45dc8fb346173f9d63f8a1",
-          "subject": "fix(ci): coordinate native partial-write fixture backpressure",
-          "patch_sha256": "aee5c7941ac6eba1cb8ca105e2cbe12afa9d27ad5e7631f5027ceb35d75ff7a1"
+          "commit": "13a09625215c3a5a291ae146d35298ecded09ce2",
+          "subject": "fix(ci): align PR qualification Node toolchains",
+          "patch_sha256": "c24c6d8cc773fc9ccbd4df3714a99bd286661309f65bb4c568f3ed6e73cd7150"
+        },
+        {
+          "commit": "419b5a0470fc059a610e98697691bf6f7cedd841",
+          "subject": "fix(ci): use each control Node version during tests",
+          "patch_sha256": "f6822852b04e0c39a32807728196eaf1d2fe1d840c8c47ff4a21c2608c3fd359"
         }
       ],
       "recipe_sha256": {
-        ".github/scripts/lanes.mjs": "4157f2f6cc5a693a9a7cad8dfddad6834d8202680fc15b6593deefc2b3f2312e",
-        "Dockerfile": "b78aef8b49de779f7f1687047b4e9016854f5a2e91e18969941b83be1b06f0f5",
+        ".github/scripts/lanes.mjs": "d409ddacf9721602a63292b6b7f1292ba95a7e9a2e96dd0fa862c241ef0f4250",
+        "Dockerfile": "810f4cd6c09c0548d4902ccdc5db720c627f60045128b6ada5eb35407fbb2a38",
         "Dockerfile.macos": "dc457cc551d60e951394a28ec3b272180f397084f76d7a79ec7168e76006129c",
         "Dockerfile.musl": "f375a16eba1811fddbb745e2b25f8d68892d216ea656d4e0169c4b2769f9deff",
         "Dockerfile.windows": "208b210aff5ed4668fac7a2885db9b748888fdc268b859e9dbac7b97bef25f45",
@@ -376,7 +382,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:914de1f4dd8eb0218f04e5b331b8750601c3a4620985ac9b5eba71cd8f2d34e5",
+      "toolchain_image_id": "sha256:af27c86b6e6d9c6345e821b0a6c1509832b73c8769d4792ce802a77b88ef79c9",
       "commands": {
         "base": [
           "docker",
@@ -409,6 +415,8 @@
           "ENABLE_ASSERTS=AUTO",
           "--build-arg",
           "ENABLE_FUZZILLI=OFF",
+          "--build-arg",
+          "HARDENING_FLAGS=",
           "--build-arg",
           "MARCH_FLAG=--target=x86_64-unknown-linux-gnu -march=nehalem",
           "--target=base",
@@ -451,6 +459,8 @@
           "--build-arg",
           "ENABLE_FUZZILLI=OFF",
           "--build-arg",
+          "HARDENING_FLAGS=",
+          "--build-arg",
           "MARCH_FLAG=--target=x86_64-unknown-linux-gnu -march=nehalem",
           "--build-context",
           "base=docker-image://openclaw-webkit-toolchain:5748275b4d66dd938bbd5643",
@@ -465,26 +475,26 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910043923+069ef0e7cb36-1~exp1~20260910043934.72)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 4.4.4\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.10.0",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "39176001734",
+      "workflow_run": "40127579679",
       "run_attempt": "1",
-      "elapsed_seconds": 505.9552552700043,
+      "elapsed_seconds": 552.5812060832977,
       "files": {
         "bun-webkit-linux-amd64.tar.gz": {
-          "sha256": "987992b3f6761b02841dd62c883350602a63f54c11ef9a06a75c9eb21c31e88b",
-          "size": 608176907
+          "sha256": "19d3b2b04e26fb07d09d9b5b16a1c2d41002642fa20577ecc98ef266133436e5",
+          "size": 610549036
         }
       },
       "provenance_files": {
-        "toolchain-build.json": "a673d242a810ade515067d3965c7ebe6fea5764f12e9651bc73a3a1fc6e1bc12",
-        "artifact-build.json": "5975651a9adf7eecf6ec5baeae9d287d6a10efb3ba1f124b3437d3ed27cb5814",
-        "toolchain-image.json": "34d5ddff3df6bceb72afe69de839d69193475a5a1670e5b59dde9a252f52ac8e",
-        "tool-versions.txt": "482e98b1eb54ae5a88a8e31aaeb70986e8f42683ee8ef8c0a34a569b5ae01b7b"
+        "toolchain-build.json": "5ac65b44519562b58630383c267271dab7f9cc063d04c03bfdd36b3111dca65d",
+        "tool-versions.txt": "482e98b1eb54ae5a88a8e31aaeb70986e8f42683ee8ef8c0a34a569b5ae01b7b",
+        "toolchain-image.json": "9bca08a853b1be0f323e74d4dce4f4801feb523c5f37351fbe479be82ddadaa7",
+        "artifact-build.json": "2a54c5396df95450aa4ce32cc3189503172300704a7a2e1180c47b7dcf74571f"
       }
     },
     {
       "schema_version": 1,
-      "source": "a2976f02e69fde8ccc45dc8fb346173f9d63f8a1",
-      "base": "87ee10da087b63e011bd1ada64d1814a850a4395",
+      "source": "419b5a0470fc059a610e98697691bf6f7cedd841",
+      "base": "5e3554face1338d738543540a82f23e3163045f5",
       "lane": {
         "label": "bun-webkit-macos-arm64",
         "runner": "linux-x64-gh",
@@ -509,119 +519,124 @@
       },
       "patches": [
         {
-          "commit": "5882be5fb42b67a34c907d9ad2464bfa5bde3033",
+          "commit": "d614252f799ce22be554484371229467f6aa49fb",
           "subject": "fix(jsc): allow opt-in Proxy global prototypes",
-          "patch_sha256": "5c475600ef532a78ad010e69f4274716cac56784ade06af943da0e8e28afb33b"
+          "patch_sha256": "bf8ce064614b639c2759774a0196bfd022a025c702cfb34abdee8152d1800e82"
         },
         {
-          "commit": "ed06f0c0345b9799504c3187360800f0691e2272",
+          "commit": "45a2468bcc191593b74c5ae5fa848671f1e829ed",
           "subject": "fix(jsc): preserve module-loader async context",
           "patch_sha256": "8e69a20de860e6053c302d811833294b40fb9d05338dd2301dd83813bae72ab3"
         },
         {
-          "commit": "071f716913aea51815e480176df7eeeec56ff789",
+          "commit": "045af4667f50f51adbdf7f2509a7aca177750c0d",
           "subject": "feat(jsc): add per-VM worker heap and stack budgets",
-          "patch_sha256": "2346371717a4bbe22c37f7259da639b9dca1cc6d1e07a801f104433e31d41a7a"
+          "patch_sha256": "b330c1ab6663b9ba3584a45c0d2a6a01985970076849262d1a056f54f5655a66"
         },
         {
-          "commit": "d3e3f5d21a98d8a22535b358fddeb492a451238a",
+          "commit": "5a24bd06f7e127f7cd61a40cb588e2099e10e2c8",
           "subject": "fix(jsc): give require(esm) its own namespace marker (#1)",
           "patch_sha256": "69452d4b78bae048eeea04a8f4a4ccb112efe1f183850f0f8e546312245eb5e8"
         },
         {
-          "commit": "795ad7057bd200f775f0ab39c05bf1f1e918a34c",
+          "commit": "ab43da66e16c7dd6a7ff1a54ec5954672c3406d8",
           "subject": "feat(jsc): add byte-based heap allocation sampling (#2)",
-          "patch_sha256": "6d73316d08f48ae85ef3d4288a99bf2a6fda42a1cc63388968b6360f5b6b415c"
+          "patch_sha256": "27d8a589a812356f3300ece9bb7ee077654442b6d71c263f6fb4b9902ea769c7"
         },
         {
-          "commit": "bb98adac12c44f55b9e7d2aef770fa5e57ffb7a5",
+          "commit": "533e16f03c624ed0bc9d61e6aa5573cf07674084",
           "subject": "fix(jsc): retain syntax-selected stack source positions",
-          "patch_sha256": "06acf9850d42c28aea9174250e92244f23b0285d90f438ed6af72af7f586626f"
+          "patch_sha256": "e8119d67135ac40cc5c0e4aa8c0e994303709f02d600a82f7c13818f5a4339c6"
         },
         {
-          "commit": "930e698bc336e11cb0a9ba2d285f8b74124d7c97",
+          "commit": "4ae7237f921582a55ca1bd7f1d33bba947ed7c36",
           "subject": "test(jsc): align promise stack goldens with syntax positions",
           "patch_sha256": "bdc4c9790c952a2f967edbabe6345ff14d7cb8d8429156cccdaa1747d4971f0f"
         },
         {
-          "commit": "8454dff2c37e829419c5329656defaa7747b560e",
+          "commit": "eca3fcb4ad7862015d0a2f5c0ef8d2b605afae37",
           "subject": "fix(jsc): track ArrayBuffer ownership and inspect worker memory (#5)",
-          "patch_sha256": "e2c746b1745b64feb22a418d4b99b6e553e6766c3b909aa051a5ef5019231009"
+          "patch_sha256": "39e514b715f2cbc79c8135aeb7029e16bbf0e36daa7e787256d5dc4de51ecb87"
         },
         {
-          "commit": "30d3b76b4a527a498df950359d2aaceed9d7d746",
+          "commit": "daef628fd9119d6533c71ee2faffd62fe98e1e88",
           "subject": "perf(jsc): carry stack coordinate cache into rebased release (#9)",
           "patch_sha256": "dbf16009fb176f67d794534bd2aab8cac213cde2a6133f408870b99f66828c22"
         },
         {
-          "commit": "1646ebddd8a70bafa22668552fd2810cd50d424e",
+          "commit": "df3f3e6a0a6447e5780e8365a5e5d870759a6668",
           "subject": "fix(jsc): correct ARM64 memory addition and qualify native tiers (#13)",
-          "patch_sha256": "e925f26c8a37ec76dd63895a6b8e800785e4c06874fba8396d7a44982ea8322b"
+          "patch_sha256": "efbdca8b159546fb025ef36ca0ad54ca4d94673b0ce395bb518819f854e43d70"
         },
         {
-          "commit": "d0af6b33b8c780f9e2aa9f7c02466028b68fef4c",
+          "commit": "ec4044fecb3d68057179c16c8d8310c90229145a",
           "subject": "fix(mimalloc): preserve TLS key ownership during process exit (#16)",
           "patch_sha256": "9188ec64d92f860d184d6ab7fcee5a701204076e70e657edb8de6078274c2110"
         },
         {
-          "commit": "c5ee4609fdab2c8c845b657916ceea65fd1413f8",
+          "commit": "a6496e4828314b73e5b9871706b0289308a7b2b8",
           "subject": "fix(jsc): deliver capped-worker termination after GC (#18)",
-          "patch_sha256": "d3d15f373eb909110ceb33ed03f50737ddd142ef6e0e17e4c6eb183542b00473"
+          "patch_sha256": "ec94e33943e3b5c61c6d340bdecb91ed27553e78fb4199fae77d066ddca7c35e"
         },
         {
-          "commit": "487544b0c010d3366625acda533ccf458e45e223",
+          "commit": "568c6ef7c4c609e4781adefec1ad5bc841ea59fc",
           "subject": "fix(jsc): preserve generational worker heap collection",
-          "patch_sha256": "814b40ca80ca502bef8e64332b6c957de07c374e09d32ee416999356be451479"
+          "patch_sha256": "10af3512fe284df845f74a811c0f8e524ba17c59ee4fb5e7cff99d005bb4bc0a"
         },
         {
-          "commit": "1e60ec5bcc7af9a0714495199df65830f751587e",
+          "commit": "543550f75b84cf98bdcab20bde25fae90db06d6e",
           "subject": "fix(jsc): wake passive collectors for synchronous GC (#21)",
-          "patch_sha256": "3a01dbac5ec0f345d973abb8d3a4c866c38cee4f80a70f08308e6e17a83fcbc8"
+          "patch_sha256": "cfaccb7be9374a28e86176a97f586e8fd082d66a80c4d8f67108e2a0eff63472"
         },
         {
-          "commit": "c23e226ab2ebcc3ec553ea7a5819acca390c30d6",
+          "commit": "20421ee27913c8dea1a49effd73ab5487762bc0c",
           "subject": "fix(jsc): initialize VM entry and deferred-scope storage (#24)",
-          "patch_sha256": "20efbf59e9dc8a5acd5ce4993fc62ddcfd4030c4b1606f5552d7f6358c093cce"
+          "patch_sha256": "3d204be82255351a0152b3b66882d5952e1c2e6b65e98a6ae19ffe18533650d8"
         },
         {
-          "commit": "6d9ca7dc007975ba022bde9bc5fec8ce0082edc6",
+          "commit": "d357ca32ce19fdab570bbc6917400c150d65bd2f",
           "subject": "fix(jsc): retry traps after foreign-stack suspension refusal (#25)",
-          "patch_sha256": "acb0a932d424e0cf60a6a5c88bb48c6f473ab93829031e3274fd1f5db71cfd10"
+          "patch_sha256": "b06d6108de317d6285c435c499457040ce4a897970efd57968b3a7401f547353"
         },
         {
-          "commit": "43e20a9582fe447ac52104afbcc6d0c1925de4de",
+          "commit": "64979c9eedd35cdc5c915687864adc5fcc9ad2c6",
           "subject": "test(jsc): isolate allocation sampling collection assertions",
           "patch_sha256": "b72cda8ce0957264415cb60b3128acb0f9c0c3ef79cedb797cf1bdc2fb58ac4d"
         },
         {
-          "commit": "bbc3c443eee2dcc72fe31179ff70c2f50a3593e3",
+          "commit": "c772480428045c444d880c8d84d763066068969f",
           "subject": "test(jsc): track promoted ArrayBuffer survivors across GC phases",
           "patch_sha256": "079789efc8ae99900f5701adb444c34e17a572f6ae66de1d7387c8fe834404ba"
         },
         {
-          "commit": "013b76c60efbd070e57a2ff853795e6a44e0549b",
+          "commit": "3ab47948f3e3e26ec323d0de6a1c66e388363f0e",
           "subject": "fix(jsc): sample cold compilation through executable caller frames",
           "patch_sha256": "87b3560a18b0957759d7999e61e1d626a0da6d7844b93f61c3e986984b37d951"
         },
         {
-          "commit": "2224acdc3e7de7e705c750d638921bd9f639a048",
-          "subject": "ci: prepare protected 87ee10da release pipeline",
-          "patch_sha256": "2e0a8ffc7ffa64de2e7cd07bda1eaa78fdf08312a3002689a8aa75e230f0dff6"
+          "commit": "078f081b0a60a24076de3ae5e39076e4355618c0",
+          "subject": "ci: prepare the 5e3554fa release pipeline",
+          "patch_sha256": "dc8790bbe1dec5c4b03f3a2d1c9d0f1507b6d95d7f03b8e5f15f057e583a98c4"
         },
         {
-          "commit": "6d15cf95ee9d7c18e0d2392b1626481a0023a385",
-          "subject": "ci: pin matched Bun for 87ee10da qualification",
-          "patch_sha256": "36786b5751ca7281c55d7d70af8700533aa5eb69d9e0b70eee7918147b84f9c7"
+          "commit": "db411ed6aec86f7eab7e18eb7d32dd9ab274d18d",
+          "subject": "fix(ci): stage the previous release control manifest",
+          "patch_sha256": "2931b071e833f78e3f9eb9d62c88cc95f4e12a3ad1f1238d156f6bb65f947fde"
         },
         {
-          "commit": "a2976f02e69fde8ccc45dc8fb346173f9d63f8a1",
-          "subject": "fix(ci): coordinate native partial-write fixture backpressure",
-          "patch_sha256": "aee5c7941ac6eba1cb8ca105e2cbe12afa9d27ad5e7631f5027ceb35d75ff7a1"
+          "commit": "13a09625215c3a5a291ae146d35298ecded09ce2",
+          "subject": "fix(ci): align PR qualification Node toolchains",
+          "patch_sha256": "c24c6d8cc773fc9ccbd4df3714a99bd286661309f65bb4c568f3ed6e73cd7150"
+        },
+        {
+          "commit": "419b5a0470fc059a610e98697691bf6f7cedd841",
+          "subject": "fix(ci): use each control Node version during tests",
+          "patch_sha256": "f6822852b04e0c39a32807728196eaf1d2fe1d840c8c47ff4a21c2608c3fd359"
         }
       ],
       "recipe_sha256": {
-        ".github/scripts/lanes.mjs": "4157f2f6cc5a693a9a7cad8dfddad6834d8202680fc15b6593deefc2b3f2312e",
-        "Dockerfile": "b78aef8b49de779f7f1687047b4e9016854f5a2e91e18969941b83be1b06f0f5",
+        ".github/scripts/lanes.mjs": "d409ddacf9721602a63292b6b7f1292ba95a7e9a2e96dd0fa862c241ef0f4250",
+        "Dockerfile": "810f4cd6c09c0548d4902ccdc5db720c627f60045128b6ada5eb35407fbb2a38",
         "Dockerfile.macos": "dc457cc551d60e951394a28ec3b272180f397084f76d7a79ec7168e76006129c",
         "Dockerfile.musl": "f375a16eba1811fddbb745e2b25f8d68892d216ea656d4e0169c4b2769f9deff",
         "Dockerfile.windows": "208b210aff5ed4668fac7a2885db9b748888fdc268b859e9dbac7b97bef25f45",
@@ -641,7 +656,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:56f2178f894cb394fb5f39e73de120b56e65c9450a1adda0cc43d290f2be852d",
+      "toolchain_image_id": "sha256:4a711d901b3451885644b20637789ad71ffe4866ef1a663f29c2b2b7fdfd7176",
       "commands": {
         "base": [
           "docker",
@@ -722,26 +737,26 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910044232+069ef0e7cb36-1~exp1~20260910044242.70)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.11.1",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "39176001734",
+      "workflow_run": "40127579679",
       "run_attempt": "1",
-      "elapsed_seconds": 311.36596274375916,
+      "elapsed_seconds": 263.564710855484,
       "files": {
         "bun-webkit-macos-arm64.tar.gz": {
-          "sha256": "aae333406c9edfcbde79c214557ade832c50787bcaa962e2879ecf9b60188165",
-          "size": 211854100
+          "sha256": "5dd959c0594d511d2a2bbf387bf4da031f8257af40a260f0683ca229237d83b2",
+          "size": 214042578
         }
       },
       "provenance_files": {
-        "toolchain-image.json": "de2597ee7d6f82a3ab06e1fc6a41d98d3c2c5f866b32ec80c157294c401a765d",
-        "toolchain-build.json": "a59577e2ab07a246ef23f9ed60dc9f2b5d2268dd4d0074c7cef3a31856481e7e",
-        "artifact-build.json": "d8863094d3cd05ebead35479881fbed501011e45e5c01b55765258c873314fd6",
-        "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8"
+        "toolchain-image.json": "0a63d18f7cda7bb1fbf7b415020afcc4354763e44778e89abc93e6236a7f3afb",
+        "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8",
+        "toolchain-build.json": "041a9010b69e840b23bb3c46d51f8920e062c8877073ea4855ba80d144c476b0",
+        "artifact-build.json": "ac2221e12a5478a14469b9b866d8ba7a2495f1f1f74a5ae65f557819642af3a6"
       }
     },
     {
       "schema_version": 1,
-      "source": "a2976f02e69fde8ccc45dc8fb346173f9d63f8a1",
-      "base": "87ee10da087b63e011bd1ada64d1814a850a4395",
+      "source": "419b5a0470fc059a610e98697691bf6f7cedd841",
+      "base": "5e3554face1338d738543540a82f23e3163045f5",
       "lane": {
         "label": "bun-webkit-linux-amd64-lto",
         "runner": "linux-x64-gh",
@@ -764,124 +779,130 @@
           "ENABLE_SANITIZERS": "",
           "ENABLE_ASSERTS": "AUTO",
           "ENABLE_FUZZILLI": "OFF",
+          "HARDENING_FLAGS": "",
           "MARCH_FLAG": "--target=x86_64-unknown-linux-gnu -march=nehalem"
         }
       },
       "patches": [
         {
-          "commit": "5882be5fb42b67a34c907d9ad2464bfa5bde3033",
+          "commit": "d614252f799ce22be554484371229467f6aa49fb",
           "subject": "fix(jsc): allow opt-in Proxy global prototypes",
-          "patch_sha256": "5c475600ef532a78ad010e69f4274716cac56784ade06af943da0e8e28afb33b"
+          "patch_sha256": "bf8ce064614b639c2759774a0196bfd022a025c702cfb34abdee8152d1800e82"
         },
         {
-          "commit": "ed06f0c0345b9799504c3187360800f0691e2272",
+          "commit": "45a2468bcc191593b74c5ae5fa848671f1e829ed",
           "subject": "fix(jsc): preserve module-loader async context",
           "patch_sha256": "8e69a20de860e6053c302d811833294b40fb9d05338dd2301dd83813bae72ab3"
         },
         {
-          "commit": "071f716913aea51815e480176df7eeeec56ff789",
+          "commit": "045af4667f50f51adbdf7f2509a7aca177750c0d",
           "subject": "feat(jsc): add per-VM worker heap and stack budgets",
-          "patch_sha256": "2346371717a4bbe22c37f7259da639b9dca1cc6d1e07a801f104433e31d41a7a"
+          "patch_sha256": "b330c1ab6663b9ba3584a45c0d2a6a01985970076849262d1a056f54f5655a66"
         },
         {
-          "commit": "d3e3f5d21a98d8a22535b358fddeb492a451238a",
+          "commit": "5a24bd06f7e127f7cd61a40cb588e2099e10e2c8",
           "subject": "fix(jsc): give require(esm) its own namespace marker (#1)",
           "patch_sha256": "69452d4b78bae048eeea04a8f4a4ccb112efe1f183850f0f8e546312245eb5e8"
         },
         {
-          "commit": "795ad7057bd200f775f0ab39c05bf1f1e918a34c",
+          "commit": "ab43da66e16c7dd6a7ff1a54ec5954672c3406d8",
           "subject": "feat(jsc): add byte-based heap allocation sampling (#2)",
-          "patch_sha256": "6d73316d08f48ae85ef3d4288a99bf2a6fda42a1cc63388968b6360f5b6b415c"
+          "patch_sha256": "27d8a589a812356f3300ece9bb7ee077654442b6d71c263f6fb4b9902ea769c7"
         },
         {
-          "commit": "bb98adac12c44f55b9e7d2aef770fa5e57ffb7a5",
+          "commit": "533e16f03c624ed0bc9d61e6aa5573cf07674084",
           "subject": "fix(jsc): retain syntax-selected stack source positions",
-          "patch_sha256": "06acf9850d42c28aea9174250e92244f23b0285d90f438ed6af72af7f586626f"
+          "patch_sha256": "e8119d67135ac40cc5c0e4aa8c0e994303709f02d600a82f7c13818f5a4339c6"
         },
         {
-          "commit": "930e698bc336e11cb0a9ba2d285f8b74124d7c97",
+          "commit": "4ae7237f921582a55ca1bd7f1d33bba947ed7c36",
           "subject": "test(jsc): align promise stack goldens with syntax positions",
           "patch_sha256": "bdc4c9790c952a2f967edbabe6345ff14d7cb8d8429156cccdaa1747d4971f0f"
         },
         {
-          "commit": "8454dff2c37e829419c5329656defaa7747b560e",
+          "commit": "eca3fcb4ad7862015d0a2f5c0ef8d2b605afae37",
           "subject": "fix(jsc): track ArrayBuffer ownership and inspect worker memory (#5)",
-          "patch_sha256": "e2c746b1745b64feb22a418d4b99b6e553e6766c3b909aa051a5ef5019231009"
+          "patch_sha256": "39e514b715f2cbc79c8135aeb7029e16bbf0e36daa7e787256d5dc4de51ecb87"
         },
         {
-          "commit": "30d3b76b4a527a498df950359d2aaceed9d7d746",
+          "commit": "daef628fd9119d6533c71ee2faffd62fe98e1e88",
           "subject": "perf(jsc): carry stack coordinate cache into rebased release (#9)",
           "patch_sha256": "dbf16009fb176f67d794534bd2aab8cac213cde2a6133f408870b99f66828c22"
         },
         {
-          "commit": "1646ebddd8a70bafa22668552fd2810cd50d424e",
+          "commit": "df3f3e6a0a6447e5780e8365a5e5d870759a6668",
           "subject": "fix(jsc): correct ARM64 memory addition and qualify native tiers (#13)",
-          "patch_sha256": "e925f26c8a37ec76dd63895a6b8e800785e4c06874fba8396d7a44982ea8322b"
+          "patch_sha256": "efbdca8b159546fb025ef36ca0ad54ca4d94673b0ce395bb518819f854e43d70"
         },
         {
-          "commit": "d0af6b33b8c780f9e2aa9f7c02466028b68fef4c",
+          "commit": "ec4044fecb3d68057179c16c8d8310c90229145a",
           "subject": "fix(mimalloc): preserve TLS key ownership during process exit (#16)",
           "patch_sha256": "9188ec64d92f860d184d6ab7fcee5a701204076e70e657edb8de6078274c2110"
         },
         {
-          "commit": "c5ee4609fdab2c8c845b657916ceea65fd1413f8",
+          "commit": "a6496e4828314b73e5b9871706b0289308a7b2b8",
           "subject": "fix(jsc): deliver capped-worker termination after GC (#18)",
-          "patch_sha256": "d3d15f373eb909110ceb33ed03f50737ddd142ef6e0e17e4c6eb183542b00473"
+          "patch_sha256": "ec94e33943e3b5c61c6d340bdecb91ed27553e78fb4199fae77d066ddca7c35e"
         },
         {
-          "commit": "487544b0c010d3366625acda533ccf458e45e223",
+          "commit": "568c6ef7c4c609e4781adefec1ad5bc841ea59fc",
           "subject": "fix(jsc): preserve generational worker heap collection",
-          "patch_sha256": "814b40ca80ca502bef8e64332b6c957de07c374e09d32ee416999356be451479"
+          "patch_sha256": "10af3512fe284df845f74a811c0f8e524ba17c59ee4fb5e7cff99d005bb4bc0a"
         },
         {
-          "commit": "1e60ec5bcc7af9a0714495199df65830f751587e",
+          "commit": "543550f75b84cf98bdcab20bde25fae90db06d6e",
           "subject": "fix(jsc): wake passive collectors for synchronous GC (#21)",
-          "patch_sha256": "3a01dbac5ec0f345d973abb8d3a4c866c38cee4f80a70f08308e6e17a83fcbc8"
+          "patch_sha256": "cfaccb7be9374a28e86176a97f586e8fd082d66a80c4d8f67108e2a0eff63472"
         },
         {
-          "commit": "c23e226ab2ebcc3ec553ea7a5819acca390c30d6",
+          "commit": "20421ee27913c8dea1a49effd73ab5487762bc0c",
           "subject": "fix(jsc): initialize VM entry and deferred-scope storage (#24)",
-          "patch_sha256": "20efbf59e9dc8a5acd5ce4993fc62ddcfd4030c4b1606f5552d7f6358c093cce"
+          "patch_sha256": "3d204be82255351a0152b3b66882d5952e1c2e6b65e98a6ae19ffe18533650d8"
         },
         {
-          "commit": "6d9ca7dc007975ba022bde9bc5fec8ce0082edc6",
+          "commit": "d357ca32ce19fdab570bbc6917400c150d65bd2f",
           "subject": "fix(jsc): retry traps after foreign-stack suspension refusal (#25)",
-          "patch_sha256": "acb0a932d424e0cf60a6a5c88bb48c6f473ab93829031e3274fd1f5db71cfd10"
+          "patch_sha256": "b06d6108de317d6285c435c499457040ce4a897970efd57968b3a7401f547353"
         },
         {
-          "commit": "43e20a9582fe447ac52104afbcc6d0c1925de4de",
+          "commit": "64979c9eedd35cdc5c915687864adc5fcc9ad2c6",
           "subject": "test(jsc): isolate allocation sampling collection assertions",
           "patch_sha256": "b72cda8ce0957264415cb60b3128acb0f9c0c3ef79cedb797cf1bdc2fb58ac4d"
         },
         {
-          "commit": "bbc3c443eee2dcc72fe31179ff70c2f50a3593e3",
+          "commit": "c772480428045c444d880c8d84d763066068969f",
           "subject": "test(jsc): track promoted ArrayBuffer survivors across GC phases",
           "patch_sha256": "079789efc8ae99900f5701adb444c34e17a572f6ae66de1d7387c8fe834404ba"
         },
         {
-          "commit": "013b76c60efbd070e57a2ff853795e6a44e0549b",
+          "commit": "3ab47948f3e3e26ec323d0de6a1c66e388363f0e",
           "subject": "fix(jsc): sample cold compilation through executable caller frames",
           "patch_sha256": "87b3560a18b0957759d7999e61e1d626a0da6d7844b93f61c3e986984b37d951"
         },
         {
-          "commit": "2224acdc3e7de7e705c750d638921bd9f639a048",
-          "subject": "ci: prepare protected 87ee10da release pipeline",
-          "patch_sha256": "2e0a8ffc7ffa64de2e7cd07bda1eaa78fdf08312a3002689a8aa75e230f0dff6"
+          "commit": "078f081b0a60a24076de3ae5e39076e4355618c0",
+          "subject": "ci: prepare the 5e3554fa release pipeline",
+          "patch_sha256": "dc8790bbe1dec5c4b03f3a2d1c9d0f1507b6d95d7f03b8e5f15f057e583a98c4"
         },
         {
-          "commit": "6d15cf95ee9d7c18e0d2392b1626481a0023a385",
-          "subject": "ci: pin matched Bun for 87ee10da qualification",
-          "patch_sha256": "36786b5751ca7281c55d7d70af8700533aa5eb69d9e0b70eee7918147b84f9c7"
+          "commit": "db411ed6aec86f7eab7e18eb7d32dd9ab274d18d",
+          "subject": "fix(ci): stage the previous release control manifest",
+          "patch_sha256": "2931b071e833f78e3f9eb9d62c88cc95f4e12a3ad1f1238d156f6bb65f947fde"
         },
         {
-          "commit": "a2976f02e69fde8ccc45dc8fb346173f9d63f8a1",
-          "subject": "fix(ci): coordinate native partial-write fixture backpressure",
-          "patch_sha256": "aee5c7941ac6eba1cb8ca105e2cbe12afa9d27ad5e7631f5027ceb35d75ff7a1"
+          "commit": "13a09625215c3a5a291ae146d35298ecded09ce2",
+          "subject": "fix(ci): align PR qualification Node toolchains",
+          "patch_sha256": "c24c6d8cc773fc9ccbd4df3714a99bd286661309f65bb4c568f3ed6e73cd7150"
+        },
+        {
+          "commit": "419b5a0470fc059a610e98697691bf6f7cedd841",
+          "subject": "fix(ci): use each control Node version during tests",
+          "patch_sha256": "f6822852b04e0c39a32807728196eaf1d2fe1d840c8c47ff4a21c2608c3fd359"
         }
       ],
       "recipe_sha256": {
-        ".github/scripts/lanes.mjs": "4157f2f6cc5a693a9a7cad8dfddad6834d8202680fc15b6593deefc2b3f2312e",
-        "Dockerfile": "b78aef8b49de779f7f1687047b4e9016854f5a2e91e18969941b83be1b06f0f5",
+        ".github/scripts/lanes.mjs": "d409ddacf9721602a63292b6b7f1292ba95a7e9a2e96dd0fa862c241ef0f4250",
+        "Dockerfile": "810f4cd6c09c0548d4902ccdc5db720c627f60045128b6ada5eb35407fbb2a38",
         "Dockerfile.macos": "dc457cc551d60e951394a28ec3b272180f397084f76d7a79ec7168e76006129c",
         "Dockerfile.musl": "f375a16eba1811fddbb745e2b25f8d68892d216ea656d4e0169c4b2769f9deff",
         "Dockerfile.windows": "208b210aff5ed4668fac7a2885db9b748888fdc268b859e9dbac7b97bef25f45",
@@ -901,7 +922,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:e55bbf6f6cf21f497b541581c749034f2677cf4a4e5e33abfd1686d1f75321fc",
+      "toolchain_image_id": "sha256:bb5e956afd10fe299ab3fe3510d41e4a477fc8fc7d9da7238672fdf83dc34bda",
       "commands": {
         "base": [
           "docker",
@@ -934,6 +955,8 @@
           "ENABLE_ASSERTS=AUTO",
           "--build-arg",
           "ENABLE_FUZZILLI=OFF",
+          "--build-arg",
+          "HARDENING_FLAGS=",
           "--build-arg",
           "MARCH_FLAG=--target=x86_64-unknown-linux-gnu -march=nehalem",
           "--target=base",
@@ -976,6 +999,8 @@
           "--build-arg",
           "ENABLE_FUZZILLI=OFF",
           "--build-arg",
+          "HARDENING_FLAGS=",
+          "--build-arg",
           "MARCH_FLAG=--target=x86_64-unknown-linux-gnu -march=nehalem",
           "--build-context",
           "base=docker-image://openclaw-webkit-toolchain:5748275b4d66dd938bbd5643",
@@ -990,26 +1015,26 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910043923+069ef0e7cb36-1~exp1~20260910043934.72)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 4.4.4\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.10.0",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "39176001734",
+      "workflow_run": "40127579679",
       "run_attempt": "1",
-      "elapsed_seconds": 559.4731969833374,
+      "elapsed_seconds": 568.3858251571655,
       "files": {
         "bun-webkit-linux-amd64-lto.tar.gz": {
-          "sha256": "756bbe13afb5f2b2461be7ae2f35119e0182ae8d4e90912c7f51977c0fda2c5c",
-          "size": 322861798
+          "sha256": "37fd36c96797671de24dc1e7e7a3d260967305e6cce2a02a8f407d1480dbbfa9",
+          "size": 324777326
         }
       },
       "provenance_files": {
-        "toolchain-build.json": "8046157629219c1414aa6699672d008134944b88b2ebbafb0a85814f464df947",
-        "artifact-build.json": "013d4012f38d06dee6f42cacd7ec2ba257410d9f1204facef0e9e67dd34f1a00",
+        "artifact-build.json": "89d5a8e40859878a649fb1e3fd8bc4813d95bdafd2cc2a5bdb2d1d4e6f34179f",
+        "toolchain-image.json": "2be201ef8d9ef06cd5b5d526163bf2a194c50d56b277724d4cdfea5a012750b7",
         "tool-versions.txt": "482e98b1eb54ae5a88a8e31aaeb70986e8f42683ee8ef8c0a34a569b5ae01b7b",
-        "toolchain-image.json": "20ab7daea4e5e99b271edca88516bf5500fbb12d6ac21eaa565877633a5a577f"
+        "toolchain-build.json": "43f798ff5e1fdbbd00b9e218359c9580f9dddd748bebe2b02ebab57fb4f5833b"
       }
     },
     {
       "schema_version": 1,
-      "source": "a2976f02e69fde8ccc45dc8fb346173f9d63f8a1",
-      "base": "87ee10da087b63e011bd1ada64d1814a850a4395",
+      "source": "419b5a0470fc059a610e98697691bf6f7cedd841",
+      "base": "5e3554face1338d738543540a82f23e3163045f5",
       "lane": {
         "label": "bun-webkit-linux-arm64-lto",
         "runner": "linux-x64-gh",
@@ -1032,124 +1057,130 @@
           "ENABLE_SANITIZERS": "",
           "ENABLE_ASSERTS": "AUTO",
           "ENABLE_FUZZILLI": "OFF",
+          "HARDENING_FLAGS": "",
           "MARCH_FLAG": "--target=aarch64-unknown-linux-gnu -march=armv8-a+crc -mtune=ampere1"
         }
       },
       "patches": [
         {
-          "commit": "5882be5fb42b67a34c907d9ad2464bfa5bde3033",
+          "commit": "d614252f799ce22be554484371229467f6aa49fb",
           "subject": "fix(jsc): allow opt-in Proxy global prototypes",
-          "patch_sha256": "5c475600ef532a78ad010e69f4274716cac56784ade06af943da0e8e28afb33b"
+          "patch_sha256": "bf8ce064614b639c2759774a0196bfd022a025c702cfb34abdee8152d1800e82"
         },
         {
-          "commit": "ed06f0c0345b9799504c3187360800f0691e2272",
+          "commit": "45a2468bcc191593b74c5ae5fa848671f1e829ed",
           "subject": "fix(jsc): preserve module-loader async context",
           "patch_sha256": "8e69a20de860e6053c302d811833294b40fb9d05338dd2301dd83813bae72ab3"
         },
         {
-          "commit": "071f716913aea51815e480176df7eeeec56ff789",
+          "commit": "045af4667f50f51adbdf7f2509a7aca177750c0d",
           "subject": "feat(jsc): add per-VM worker heap and stack budgets",
-          "patch_sha256": "2346371717a4bbe22c37f7259da639b9dca1cc6d1e07a801f104433e31d41a7a"
+          "patch_sha256": "b330c1ab6663b9ba3584a45c0d2a6a01985970076849262d1a056f54f5655a66"
         },
         {
-          "commit": "d3e3f5d21a98d8a22535b358fddeb492a451238a",
+          "commit": "5a24bd06f7e127f7cd61a40cb588e2099e10e2c8",
           "subject": "fix(jsc): give require(esm) its own namespace marker (#1)",
           "patch_sha256": "69452d4b78bae048eeea04a8f4a4ccb112efe1f183850f0f8e546312245eb5e8"
         },
         {
-          "commit": "795ad7057bd200f775f0ab39c05bf1f1e918a34c",
+          "commit": "ab43da66e16c7dd6a7ff1a54ec5954672c3406d8",
           "subject": "feat(jsc): add byte-based heap allocation sampling (#2)",
-          "patch_sha256": "6d73316d08f48ae85ef3d4288a99bf2a6fda42a1cc63388968b6360f5b6b415c"
+          "patch_sha256": "27d8a589a812356f3300ece9bb7ee077654442b6d71c263f6fb4b9902ea769c7"
         },
         {
-          "commit": "bb98adac12c44f55b9e7d2aef770fa5e57ffb7a5",
+          "commit": "533e16f03c624ed0bc9d61e6aa5573cf07674084",
           "subject": "fix(jsc): retain syntax-selected stack source positions",
-          "patch_sha256": "06acf9850d42c28aea9174250e92244f23b0285d90f438ed6af72af7f586626f"
+          "patch_sha256": "e8119d67135ac40cc5c0e4aa8c0e994303709f02d600a82f7c13818f5a4339c6"
         },
         {
-          "commit": "930e698bc336e11cb0a9ba2d285f8b74124d7c97",
+          "commit": "4ae7237f921582a55ca1bd7f1d33bba947ed7c36",
           "subject": "test(jsc): align promise stack goldens with syntax positions",
           "patch_sha256": "bdc4c9790c952a2f967edbabe6345ff14d7cb8d8429156cccdaa1747d4971f0f"
         },
         {
-          "commit": "8454dff2c37e829419c5329656defaa7747b560e",
+          "commit": "eca3fcb4ad7862015d0a2f5c0ef8d2b605afae37",
           "subject": "fix(jsc): track ArrayBuffer ownership and inspect worker memory (#5)",
-          "patch_sha256": "e2c746b1745b64feb22a418d4b99b6e553e6766c3b909aa051a5ef5019231009"
+          "patch_sha256": "39e514b715f2cbc79c8135aeb7029e16bbf0e36daa7e787256d5dc4de51ecb87"
         },
         {
-          "commit": "30d3b76b4a527a498df950359d2aaceed9d7d746",
+          "commit": "daef628fd9119d6533c71ee2faffd62fe98e1e88",
           "subject": "perf(jsc): carry stack coordinate cache into rebased release (#9)",
           "patch_sha256": "dbf16009fb176f67d794534bd2aab8cac213cde2a6133f408870b99f66828c22"
         },
         {
-          "commit": "1646ebddd8a70bafa22668552fd2810cd50d424e",
+          "commit": "df3f3e6a0a6447e5780e8365a5e5d870759a6668",
           "subject": "fix(jsc): correct ARM64 memory addition and qualify native tiers (#13)",
-          "patch_sha256": "e925f26c8a37ec76dd63895a6b8e800785e4c06874fba8396d7a44982ea8322b"
+          "patch_sha256": "efbdca8b159546fb025ef36ca0ad54ca4d94673b0ce395bb518819f854e43d70"
         },
         {
-          "commit": "d0af6b33b8c780f9e2aa9f7c02466028b68fef4c",
+          "commit": "ec4044fecb3d68057179c16c8d8310c90229145a",
           "subject": "fix(mimalloc): preserve TLS key ownership during process exit (#16)",
           "patch_sha256": "9188ec64d92f860d184d6ab7fcee5a701204076e70e657edb8de6078274c2110"
         },
         {
-          "commit": "c5ee4609fdab2c8c845b657916ceea65fd1413f8",
+          "commit": "a6496e4828314b73e5b9871706b0289308a7b2b8",
           "subject": "fix(jsc): deliver capped-worker termination after GC (#18)",
-          "patch_sha256": "d3d15f373eb909110ceb33ed03f50737ddd142ef6e0e17e4c6eb183542b00473"
+          "patch_sha256": "ec94e33943e3b5c61c6d340bdecb91ed27553e78fb4199fae77d066ddca7c35e"
         },
         {
-          "commit": "487544b0c010d3366625acda533ccf458e45e223",
+          "commit": "568c6ef7c4c609e4781adefec1ad5bc841ea59fc",
           "subject": "fix(jsc): preserve generational worker heap collection",
-          "patch_sha256": "814b40ca80ca502bef8e64332b6c957de07c374e09d32ee416999356be451479"
+          "patch_sha256": "10af3512fe284df845f74a811c0f8e524ba17c59ee4fb5e7cff99d005bb4bc0a"
         },
         {
-          "commit": "1e60ec5bcc7af9a0714495199df65830f751587e",
+          "commit": "543550f75b84cf98bdcab20bde25fae90db06d6e",
           "subject": "fix(jsc): wake passive collectors for synchronous GC (#21)",
-          "patch_sha256": "3a01dbac5ec0f345d973abb8d3a4c866c38cee4f80a70f08308e6e17a83fcbc8"
+          "patch_sha256": "cfaccb7be9374a28e86176a97f586e8fd082d66a80c4d8f67108e2a0eff63472"
         },
         {
-          "commit": "c23e226ab2ebcc3ec553ea7a5819acca390c30d6",
+          "commit": "20421ee27913c8dea1a49effd73ab5487762bc0c",
           "subject": "fix(jsc): initialize VM entry and deferred-scope storage (#24)",
-          "patch_sha256": "20efbf59e9dc8a5acd5ce4993fc62ddcfd4030c4b1606f5552d7f6358c093cce"
+          "patch_sha256": "3d204be82255351a0152b3b66882d5952e1c2e6b65e98a6ae19ffe18533650d8"
         },
         {
-          "commit": "6d9ca7dc007975ba022bde9bc5fec8ce0082edc6",
+          "commit": "d357ca32ce19fdab570bbc6917400c150d65bd2f",
           "subject": "fix(jsc): retry traps after foreign-stack suspension refusal (#25)",
-          "patch_sha256": "acb0a932d424e0cf60a6a5c88bb48c6f473ab93829031e3274fd1f5db71cfd10"
+          "patch_sha256": "b06d6108de317d6285c435c499457040ce4a897970efd57968b3a7401f547353"
         },
         {
-          "commit": "43e20a9582fe447ac52104afbcc6d0c1925de4de",
+          "commit": "64979c9eedd35cdc5c915687864adc5fcc9ad2c6",
           "subject": "test(jsc): isolate allocation sampling collection assertions",
           "patch_sha256": "b72cda8ce0957264415cb60b3128acb0f9c0c3ef79cedb797cf1bdc2fb58ac4d"
         },
         {
-          "commit": "bbc3c443eee2dcc72fe31179ff70c2f50a3593e3",
+          "commit": "c772480428045c444d880c8d84d763066068969f",
           "subject": "test(jsc): track promoted ArrayBuffer survivors across GC phases",
           "patch_sha256": "079789efc8ae99900f5701adb444c34e17a572f6ae66de1d7387c8fe834404ba"
         },
         {
-          "commit": "013b76c60efbd070e57a2ff853795e6a44e0549b",
+          "commit": "3ab47948f3e3e26ec323d0de6a1c66e388363f0e",
           "subject": "fix(jsc): sample cold compilation through executable caller frames",
           "patch_sha256": "87b3560a18b0957759d7999e61e1d626a0da6d7844b93f61c3e986984b37d951"
         },
         {
-          "commit": "2224acdc3e7de7e705c750d638921bd9f639a048",
-          "subject": "ci: prepare protected 87ee10da release pipeline",
-          "patch_sha256": "2e0a8ffc7ffa64de2e7cd07bda1eaa78fdf08312a3002689a8aa75e230f0dff6"
+          "commit": "078f081b0a60a24076de3ae5e39076e4355618c0",
+          "subject": "ci: prepare the 5e3554fa release pipeline",
+          "patch_sha256": "dc8790bbe1dec5c4b03f3a2d1c9d0f1507b6d95d7f03b8e5f15f057e583a98c4"
         },
         {
-          "commit": "6d15cf95ee9d7c18e0d2392b1626481a0023a385",
-          "subject": "ci: pin matched Bun for 87ee10da qualification",
-          "patch_sha256": "36786b5751ca7281c55d7d70af8700533aa5eb69d9e0b70eee7918147b84f9c7"
+          "commit": "db411ed6aec86f7eab7e18eb7d32dd9ab274d18d",
+          "subject": "fix(ci): stage the previous release control manifest",
+          "patch_sha256": "2931b071e833f78e3f9eb9d62c88cc95f4e12a3ad1f1238d156f6bb65f947fde"
         },
         {
-          "commit": "a2976f02e69fde8ccc45dc8fb346173f9d63f8a1",
-          "subject": "fix(ci): coordinate native partial-write fixture backpressure",
-          "patch_sha256": "aee5c7941ac6eba1cb8ca105e2cbe12afa9d27ad5e7631f5027ceb35d75ff7a1"
+          "commit": "13a09625215c3a5a291ae146d35298ecded09ce2",
+          "subject": "fix(ci): align PR qualification Node toolchains",
+          "patch_sha256": "c24c6d8cc773fc9ccbd4df3714a99bd286661309f65bb4c568f3ed6e73cd7150"
+        },
+        {
+          "commit": "419b5a0470fc059a610e98697691bf6f7cedd841",
+          "subject": "fix(ci): use each control Node version during tests",
+          "patch_sha256": "f6822852b04e0c39a32807728196eaf1d2fe1d840c8c47ff4a21c2608c3fd359"
         }
       ],
       "recipe_sha256": {
-        ".github/scripts/lanes.mjs": "4157f2f6cc5a693a9a7cad8dfddad6834d8202680fc15b6593deefc2b3f2312e",
-        "Dockerfile": "b78aef8b49de779f7f1687047b4e9016854f5a2e91e18969941b83be1b06f0f5",
+        ".github/scripts/lanes.mjs": "d409ddacf9721602a63292b6b7f1292ba95a7e9a2e96dd0fa862c241ef0f4250",
+        "Dockerfile": "810f4cd6c09c0548d4902ccdc5db720c627f60045128b6ada5eb35407fbb2a38",
         "Dockerfile.macos": "dc457cc551d60e951394a28ec3b272180f397084f76d7a79ec7168e76006129c",
         "Dockerfile.musl": "f375a16eba1811fddbb745e2b25f8d68892d216ea656d4e0169c4b2769f9deff",
         "Dockerfile.windows": "208b210aff5ed4668fac7a2885db9b748888fdc268b859e9dbac7b97bef25f45",
@@ -1169,7 +1200,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:f4c25e1fcce13429b8719d306d1fe30e9467a2e536c007fc2dcafed786aede4c",
+      "toolchain_image_id": "sha256:026133a599cc76fafb0dd10c3126dcf3160d07d30aebf86568abc7a10192cda5",
       "commands": {
         "base": [
           "docker",
@@ -1202,6 +1233,8 @@
           "ENABLE_ASSERTS=AUTO",
           "--build-arg",
           "ENABLE_FUZZILLI=OFF",
+          "--build-arg",
+          "HARDENING_FLAGS=",
           "--build-arg",
           "MARCH_FLAG=--target=aarch64-unknown-linux-gnu -march=armv8-a+crc -mtune=ampere1",
           "--target=base",
@@ -1244,6 +1277,8 @@
           "--build-arg",
           "ENABLE_FUZZILLI=OFF",
           "--build-arg",
+          "HARDENING_FLAGS=",
+          "--build-arg",
           "MARCH_FLAG=--target=aarch64-unknown-linux-gnu -march=armv8-a+crc -mtune=ampere1",
           "--build-context",
           "base=docker-image://openclaw-webkit-toolchain:5748275b4d66dd938bbd5643",
@@ -1258,26 +1293,26 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910043923+069ef0e7cb36-1~exp1~20260910043934.72)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 4.4.4\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.10.0",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "39176001734",
+      "workflow_run": "40127579679",
       "run_attempt": "1",
-      "elapsed_seconds": 565.9346556663513,
+      "elapsed_seconds": 613.6775043010712,
       "files": {
         "bun-webkit-linux-arm64-lto.tar.gz": {
-          "sha256": "c340b44e6d05709ceadeda4091d882aa35aed1300564e3a3b493548f08bfe11d",
-          "size": 314823716
+          "sha256": "8aec9f44a3ffbcbff2b545ed863aac81f804d8c4acf82b88a6cc13cc3cc5e33c",
+          "size": 316914300
         }
       },
       "provenance_files": {
+        "toolchain-image.json": "13eccfa2106f3195344c5b83b77fdc81d6a6c7ec7856729f7c28d3becb04d727",
+        "toolchain-build.json": "48d3654a71c51702811f3333afa91351e5d1e6b68242856c37517c9d8df5ca5f",
         "tool-versions.txt": "482e98b1eb54ae5a88a8e31aaeb70986e8f42683ee8ef8c0a34a569b5ae01b7b",
-        "artifact-build.json": "74e9e105f07d57d15c0bccb0e9717308d9873fc17519cc590d839f7ccddc993c",
-        "toolchain-build.json": "a7b90d55ec640d6f6396d74ba41fe55007dd77f2a2f2c892255268567ec22ebe",
-        "toolchain-image.json": "2c2f9a5eb4f1c783c3060a4257f50290791266c9dd2e250416fed21b96035e83"
+        "artifact-build.json": "983f3451813ca23033559a57326e5bcd73a925f97f26e986bf271a0192cb0a80"
       }
     },
     {
       "schema_version": 1,
-      "source": "a2976f02e69fde8ccc45dc8fb346173f9d63f8a1",
-      "base": "87ee10da087b63e011bd1ada64d1814a850a4395",
+      "source": "419b5a0470fc059a610e98697691bf6f7cedd841",
+      "base": "5e3554face1338d738543540a82f23e3163045f5",
       "lane": {
         "label": "bun-webkit-macos-arm64-lto",
         "runner": "linux-x64-gh",
@@ -1302,119 +1337,124 @@
       },
       "patches": [
         {
-          "commit": "5882be5fb42b67a34c907d9ad2464bfa5bde3033",
+          "commit": "d614252f799ce22be554484371229467f6aa49fb",
           "subject": "fix(jsc): allow opt-in Proxy global prototypes",
-          "patch_sha256": "5c475600ef532a78ad010e69f4274716cac56784ade06af943da0e8e28afb33b"
+          "patch_sha256": "bf8ce064614b639c2759774a0196bfd022a025c702cfb34abdee8152d1800e82"
         },
         {
-          "commit": "ed06f0c0345b9799504c3187360800f0691e2272",
+          "commit": "45a2468bcc191593b74c5ae5fa848671f1e829ed",
           "subject": "fix(jsc): preserve module-loader async context",
           "patch_sha256": "8e69a20de860e6053c302d811833294b40fb9d05338dd2301dd83813bae72ab3"
         },
         {
-          "commit": "071f716913aea51815e480176df7eeeec56ff789",
+          "commit": "045af4667f50f51adbdf7f2509a7aca177750c0d",
           "subject": "feat(jsc): add per-VM worker heap and stack budgets",
-          "patch_sha256": "2346371717a4bbe22c37f7259da639b9dca1cc6d1e07a801f104433e31d41a7a"
+          "patch_sha256": "b330c1ab6663b9ba3584a45c0d2a6a01985970076849262d1a056f54f5655a66"
         },
         {
-          "commit": "d3e3f5d21a98d8a22535b358fddeb492a451238a",
+          "commit": "5a24bd06f7e127f7cd61a40cb588e2099e10e2c8",
           "subject": "fix(jsc): give require(esm) its own namespace marker (#1)",
           "patch_sha256": "69452d4b78bae048eeea04a8f4a4ccb112efe1f183850f0f8e546312245eb5e8"
         },
         {
-          "commit": "795ad7057bd200f775f0ab39c05bf1f1e918a34c",
+          "commit": "ab43da66e16c7dd6a7ff1a54ec5954672c3406d8",
           "subject": "feat(jsc): add byte-based heap allocation sampling (#2)",
-          "patch_sha256": "6d73316d08f48ae85ef3d4288a99bf2a6fda42a1cc63388968b6360f5b6b415c"
+          "patch_sha256": "27d8a589a812356f3300ece9bb7ee077654442b6d71c263f6fb4b9902ea769c7"
         },
         {
-          "commit": "bb98adac12c44f55b9e7d2aef770fa5e57ffb7a5",
+          "commit": "533e16f03c624ed0bc9d61e6aa5573cf07674084",
           "subject": "fix(jsc): retain syntax-selected stack source positions",
-          "patch_sha256": "06acf9850d42c28aea9174250e92244f23b0285d90f438ed6af72af7f586626f"
+          "patch_sha256": "e8119d67135ac40cc5c0e4aa8c0e994303709f02d600a82f7c13818f5a4339c6"
         },
         {
-          "commit": "930e698bc336e11cb0a9ba2d285f8b74124d7c97",
+          "commit": "4ae7237f921582a55ca1bd7f1d33bba947ed7c36",
           "subject": "test(jsc): align promise stack goldens with syntax positions",
           "patch_sha256": "bdc4c9790c952a2f967edbabe6345ff14d7cb8d8429156cccdaa1747d4971f0f"
         },
         {
-          "commit": "8454dff2c37e829419c5329656defaa7747b560e",
+          "commit": "eca3fcb4ad7862015d0a2f5c0ef8d2b605afae37",
           "subject": "fix(jsc): track ArrayBuffer ownership and inspect worker memory (#5)",
-          "patch_sha256": "e2c746b1745b64feb22a418d4b99b6e553e6766c3b909aa051a5ef5019231009"
+          "patch_sha256": "39e514b715f2cbc79c8135aeb7029e16bbf0e36daa7e787256d5dc4de51ecb87"
         },
         {
-          "commit": "30d3b76b4a527a498df950359d2aaceed9d7d746",
+          "commit": "daef628fd9119d6533c71ee2faffd62fe98e1e88",
           "subject": "perf(jsc): carry stack coordinate cache into rebased release (#9)",
           "patch_sha256": "dbf16009fb176f67d794534bd2aab8cac213cde2a6133f408870b99f66828c22"
         },
         {
-          "commit": "1646ebddd8a70bafa22668552fd2810cd50d424e",
+          "commit": "df3f3e6a0a6447e5780e8365a5e5d870759a6668",
           "subject": "fix(jsc): correct ARM64 memory addition and qualify native tiers (#13)",
-          "patch_sha256": "e925f26c8a37ec76dd63895a6b8e800785e4c06874fba8396d7a44982ea8322b"
+          "patch_sha256": "efbdca8b159546fb025ef36ca0ad54ca4d94673b0ce395bb518819f854e43d70"
         },
         {
-          "commit": "d0af6b33b8c780f9e2aa9f7c02466028b68fef4c",
+          "commit": "ec4044fecb3d68057179c16c8d8310c90229145a",
           "subject": "fix(mimalloc): preserve TLS key ownership during process exit (#16)",
           "patch_sha256": "9188ec64d92f860d184d6ab7fcee5a701204076e70e657edb8de6078274c2110"
         },
         {
-          "commit": "c5ee4609fdab2c8c845b657916ceea65fd1413f8",
+          "commit": "a6496e4828314b73e5b9871706b0289308a7b2b8",
           "subject": "fix(jsc): deliver capped-worker termination after GC (#18)",
-          "patch_sha256": "d3d15f373eb909110ceb33ed03f50737ddd142ef6e0e17e4c6eb183542b00473"
+          "patch_sha256": "ec94e33943e3b5c61c6d340bdecb91ed27553e78fb4199fae77d066ddca7c35e"
         },
         {
-          "commit": "487544b0c010d3366625acda533ccf458e45e223",
+          "commit": "568c6ef7c4c609e4781adefec1ad5bc841ea59fc",
           "subject": "fix(jsc): preserve generational worker heap collection",
-          "patch_sha256": "814b40ca80ca502bef8e64332b6c957de07c374e09d32ee416999356be451479"
+          "patch_sha256": "10af3512fe284df845f74a811c0f8e524ba17c59ee4fb5e7cff99d005bb4bc0a"
         },
         {
-          "commit": "1e60ec5bcc7af9a0714495199df65830f751587e",
+          "commit": "543550f75b84cf98bdcab20bde25fae90db06d6e",
           "subject": "fix(jsc): wake passive collectors for synchronous GC (#21)",
-          "patch_sha256": "3a01dbac5ec0f345d973abb8d3a4c866c38cee4f80a70f08308e6e17a83fcbc8"
+          "patch_sha256": "cfaccb7be9374a28e86176a97f586e8fd082d66a80c4d8f67108e2a0eff63472"
         },
         {
-          "commit": "c23e226ab2ebcc3ec553ea7a5819acca390c30d6",
+          "commit": "20421ee27913c8dea1a49effd73ab5487762bc0c",
           "subject": "fix(jsc): initialize VM entry and deferred-scope storage (#24)",
-          "patch_sha256": "20efbf59e9dc8a5acd5ce4993fc62ddcfd4030c4b1606f5552d7f6358c093cce"
+          "patch_sha256": "3d204be82255351a0152b3b66882d5952e1c2e6b65e98a6ae19ffe18533650d8"
         },
         {
-          "commit": "6d9ca7dc007975ba022bde9bc5fec8ce0082edc6",
+          "commit": "d357ca32ce19fdab570bbc6917400c150d65bd2f",
           "subject": "fix(jsc): retry traps after foreign-stack suspension refusal (#25)",
-          "patch_sha256": "acb0a932d424e0cf60a6a5c88bb48c6f473ab93829031e3274fd1f5db71cfd10"
+          "patch_sha256": "b06d6108de317d6285c435c499457040ce4a897970efd57968b3a7401f547353"
         },
         {
-          "commit": "43e20a9582fe447ac52104afbcc6d0c1925de4de",
+          "commit": "64979c9eedd35cdc5c915687864adc5fcc9ad2c6",
           "subject": "test(jsc): isolate allocation sampling collection assertions",
           "patch_sha256": "b72cda8ce0957264415cb60b3128acb0f9c0c3ef79cedb797cf1bdc2fb58ac4d"
         },
         {
-          "commit": "bbc3c443eee2dcc72fe31179ff70c2f50a3593e3",
+          "commit": "c772480428045c444d880c8d84d763066068969f",
           "subject": "test(jsc): track promoted ArrayBuffer survivors across GC phases",
           "patch_sha256": "079789efc8ae99900f5701adb444c34e17a572f6ae66de1d7387c8fe834404ba"
         },
         {
-          "commit": "013b76c60efbd070e57a2ff853795e6a44e0549b",
+          "commit": "3ab47948f3e3e26ec323d0de6a1c66e388363f0e",
           "subject": "fix(jsc): sample cold compilation through executable caller frames",
           "patch_sha256": "87b3560a18b0957759d7999e61e1d626a0da6d7844b93f61c3e986984b37d951"
         },
         {
-          "commit": "2224acdc3e7de7e705c750d638921bd9f639a048",
-          "subject": "ci: prepare protected 87ee10da release pipeline",
-          "patch_sha256": "2e0a8ffc7ffa64de2e7cd07bda1eaa78fdf08312a3002689a8aa75e230f0dff6"
+          "commit": "078f081b0a60a24076de3ae5e39076e4355618c0",
+          "subject": "ci: prepare the 5e3554fa release pipeline",
+          "patch_sha256": "dc8790bbe1dec5c4b03f3a2d1c9d0f1507b6d95d7f03b8e5f15f057e583a98c4"
         },
         {
-          "commit": "6d15cf95ee9d7c18e0d2392b1626481a0023a385",
-          "subject": "ci: pin matched Bun for 87ee10da qualification",
-          "patch_sha256": "36786b5751ca7281c55d7d70af8700533aa5eb69d9e0b70eee7918147b84f9c7"
+          "commit": "db411ed6aec86f7eab7e18eb7d32dd9ab274d18d",
+          "subject": "fix(ci): stage the previous release control manifest",
+          "patch_sha256": "2931b071e833f78e3f9eb9d62c88cc95f4e12a3ad1f1238d156f6bb65f947fde"
         },
         {
-          "commit": "a2976f02e69fde8ccc45dc8fb346173f9d63f8a1",
-          "subject": "fix(ci): coordinate native partial-write fixture backpressure",
-          "patch_sha256": "aee5c7941ac6eba1cb8ca105e2cbe12afa9d27ad5e7631f5027ceb35d75ff7a1"
+          "commit": "13a09625215c3a5a291ae146d35298ecded09ce2",
+          "subject": "fix(ci): align PR qualification Node toolchains",
+          "patch_sha256": "c24c6d8cc773fc9ccbd4df3714a99bd286661309f65bb4c568f3ed6e73cd7150"
+        },
+        {
+          "commit": "419b5a0470fc059a610e98697691bf6f7cedd841",
+          "subject": "fix(ci): use each control Node version during tests",
+          "patch_sha256": "f6822852b04e0c39a32807728196eaf1d2fe1d840c8c47ff4a21c2608c3fd359"
         }
       ],
       "recipe_sha256": {
-        ".github/scripts/lanes.mjs": "4157f2f6cc5a693a9a7cad8dfddad6834d8202680fc15b6593deefc2b3f2312e",
-        "Dockerfile": "b78aef8b49de779f7f1687047b4e9016854f5a2e91e18969941b83be1b06f0f5",
+        ".github/scripts/lanes.mjs": "d409ddacf9721602a63292b6b7f1292ba95a7e9a2e96dd0fa862c241ef0f4250",
+        "Dockerfile": "810f4cd6c09c0548d4902ccdc5db720c627f60045128b6ada5eb35407fbb2a38",
         "Dockerfile.macos": "dc457cc551d60e951394a28ec3b272180f397084f76d7a79ec7168e76006129c",
         "Dockerfile.musl": "f375a16eba1811fddbb745e2b25f8d68892d216ea656d4e0169c4b2769f9deff",
         "Dockerfile.windows": "208b210aff5ed4668fac7a2885db9b748888fdc268b859e9dbac7b97bef25f45",
@@ -1434,7 +1474,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:53f1859adc29e461e9518fbbbc8d6945fa8a93ee576e7393d9715c37f65993da",
+      "toolchain_image_id": "sha256:db1cb2a1aebaba437be363221224d1a30bf77209e9b479682601347b32604ed0",
       "commands": {
         "base": [
           "docker",
@@ -1515,26 +1555,26 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910044232+069ef0e7cb36-1~exp1~20260910044242.70)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.11.1",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "39176001734",
+      "workflow_run": "40127579679",
       "run_attempt": "1",
-      "elapsed_seconds": 272.3332543373108,
+      "elapsed_seconds": 290.5169916152954,
       "files": {
         "bun-webkit-macos-arm64-lto.tar.gz": {
-          "sha256": "b42887bb85fc2544a2e0e1871b1dbe2c5f3c5153e659cecfab468abe1ea32281",
-          "size": 156925369
+          "sha256": "76d4c3cb14ec28565c060e2a258cae6f4a912ffe176e5c825de9271d4046c197",
+          "size": 158696628
         }
       },
       "provenance_files": {
-        "artifact-build.json": "dd310b81636160d7e61ba88acdb467fd5fe43ebd97d82be595e4d3e400746438",
-        "toolchain-build.json": "f35934d23915c9e940c33c9867a0c5d4ecbd4458d8afbac22de7ed55cbbe516e",
+        "toolchain-image.json": "fe5b5cb7a19509cbfac117e1f3acfcb6d65b41292617df3e77afe761acccf27a",
+        "toolchain-build.json": "3000638ff9c3c66aaceb73e433685fa67bf1d5af77a39380c6650512fc24e8a1",
         "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8",
-        "toolchain-image.json": "e6fe757a3e4e23035d749ac15bbd97c260ad087ac484427a5a9af6133ac98f86"
+        "artifact-build.json": "a509075c766481b04f807c4a1b61e9c2357a259c11405632ec40e9805e805b2f"
       }
     },
     {
       "schema_version": 1,
-      "source": "a2976f02e69fde8ccc45dc8fb346173f9d63f8a1",
-      "base": "87ee10da087b63e011bd1ada64d1814a850a4395",
+      "source": "419b5a0470fc059a610e98697691bf6f7cedd841",
+      "base": "5e3554face1338d738543540a82f23e3163045f5",
       "lane": {
         "label": "bun-webkit-macos-amd64-lto",
         "runner": "linux-x64-gh",
@@ -1559,119 +1599,124 @@
       },
       "patches": [
         {
-          "commit": "5882be5fb42b67a34c907d9ad2464bfa5bde3033",
+          "commit": "d614252f799ce22be554484371229467f6aa49fb",
           "subject": "fix(jsc): allow opt-in Proxy global prototypes",
-          "patch_sha256": "5c475600ef532a78ad010e69f4274716cac56784ade06af943da0e8e28afb33b"
+          "patch_sha256": "bf8ce064614b639c2759774a0196bfd022a025c702cfb34abdee8152d1800e82"
         },
         {
-          "commit": "ed06f0c0345b9799504c3187360800f0691e2272",
+          "commit": "45a2468bcc191593b74c5ae5fa848671f1e829ed",
           "subject": "fix(jsc): preserve module-loader async context",
           "patch_sha256": "8e69a20de860e6053c302d811833294b40fb9d05338dd2301dd83813bae72ab3"
         },
         {
-          "commit": "071f716913aea51815e480176df7eeeec56ff789",
+          "commit": "045af4667f50f51adbdf7f2509a7aca177750c0d",
           "subject": "feat(jsc): add per-VM worker heap and stack budgets",
-          "patch_sha256": "2346371717a4bbe22c37f7259da639b9dca1cc6d1e07a801f104433e31d41a7a"
+          "patch_sha256": "b330c1ab6663b9ba3584a45c0d2a6a01985970076849262d1a056f54f5655a66"
         },
         {
-          "commit": "d3e3f5d21a98d8a22535b358fddeb492a451238a",
+          "commit": "5a24bd06f7e127f7cd61a40cb588e2099e10e2c8",
           "subject": "fix(jsc): give require(esm) its own namespace marker (#1)",
           "patch_sha256": "69452d4b78bae048eeea04a8f4a4ccb112efe1f183850f0f8e546312245eb5e8"
         },
         {
-          "commit": "795ad7057bd200f775f0ab39c05bf1f1e918a34c",
+          "commit": "ab43da66e16c7dd6a7ff1a54ec5954672c3406d8",
           "subject": "feat(jsc): add byte-based heap allocation sampling (#2)",
-          "patch_sha256": "6d73316d08f48ae85ef3d4288a99bf2a6fda42a1cc63388968b6360f5b6b415c"
+          "patch_sha256": "27d8a589a812356f3300ece9bb7ee077654442b6d71c263f6fb4b9902ea769c7"
         },
         {
-          "commit": "bb98adac12c44f55b9e7d2aef770fa5e57ffb7a5",
+          "commit": "533e16f03c624ed0bc9d61e6aa5573cf07674084",
           "subject": "fix(jsc): retain syntax-selected stack source positions",
-          "patch_sha256": "06acf9850d42c28aea9174250e92244f23b0285d90f438ed6af72af7f586626f"
+          "patch_sha256": "e8119d67135ac40cc5c0e4aa8c0e994303709f02d600a82f7c13818f5a4339c6"
         },
         {
-          "commit": "930e698bc336e11cb0a9ba2d285f8b74124d7c97",
+          "commit": "4ae7237f921582a55ca1bd7f1d33bba947ed7c36",
           "subject": "test(jsc): align promise stack goldens with syntax positions",
           "patch_sha256": "bdc4c9790c952a2f967edbabe6345ff14d7cb8d8429156cccdaa1747d4971f0f"
         },
         {
-          "commit": "8454dff2c37e829419c5329656defaa7747b560e",
+          "commit": "eca3fcb4ad7862015d0a2f5c0ef8d2b605afae37",
           "subject": "fix(jsc): track ArrayBuffer ownership and inspect worker memory (#5)",
-          "patch_sha256": "e2c746b1745b64feb22a418d4b99b6e553e6766c3b909aa051a5ef5019231009"
+          "patch_sha256": "39e514b715f2cbc79c8135aeb7029e16bbf0e36daa7e787256d5dc4de51ecb87"
         },
         {
-          "commit": "30d3b76b4a527a498df950359d2aaceed9d7d746",
+          "commit": "daef628fd9119d6533c71ee2faffd62fe98e1e88",
           "subject": "perf(jsc): carry stack coordinate cache into rebased release (#9)",
           "patch_sha256": "dbf16009fb176f67d794534bd2aab8cac213cde2a6133f408870b99f66828c22"
         },
         {
-          "commit": "1646ebddd8a70bafa22668552fd2810cd50d424e",
+          "commit": "df3f3e6a0a6447e5780e8365a5e5d870759a6668",
           "subject": "fix(jsc): correct ARM64 memory addition and qualify native tiers (#13)",
-          "patch_sha256": "e925f26c8a37ec76dd63895a6b8e800785e4c06874fba8396d7a44982ea8322b"
+          "patch_sha256": "efbdca8b159546fb025ef36ca0ad54ca4d94673b0ce395bb518819f854e43d70"
         },
         {
-          "commit": "d0af6b33b8c780f9e2aa9f7c02466028b68fef4c",
+          "commit": "ec4044fecb3d68057179c16c8d8310c90229145a",
           "subject": "fix(mimalloc): preserve TLS key ownership during process exit (#16)",
           "patch_sha256": "9188ec64d92f860d184d6ab7fcee5a701204076e70e657edb8de6078274c2110"
         },
         {
-          "commit": "c5ee4609fdab2c8c845b657916ceea65fd1413f8",
+          "commit": "a6496e4828314b73e5b9871706b0289308a7b2b8",
           "subject": "fix(jsc): deliver capped-worker termination after GC (#18)",
-          "patch_sha256": "d3d15f373eb909110ceb33ed03f50737ddd142ef6e0e17e4c6eb183542b00473"
+          "patch_sha256": "ec94e33943e3b5c61c6d340bdecb91ed27553e78fb4199fae77d066ddca7c35e"
         },
         {
-          "commit": "487544b0c010d3366625acda533ccf458e45e223",
+          "commit": "568c6ef7c4c609e4781adefec1ad5bc841ea59fc",
           "subject": "fix(jsc): preserve generational worker heap collection",
-          "patch_sha256": "814b40ca80ca502bef8e64332b6c957de07c374e09d32ee416999356be451479"
+          "patch_sha256": "10af3512fe284df845f74a811c0f8e524ba17c59ee4fb5e7cff99d005bb4bc0a"
         },
         {
-          "commit": "1e60ec5bcc7af9a0714495199df65830f751587e",
+          "commit": "543550f75b84cf98bdcab20bde25fae90db06d6e",
           "subject": "fix(jsc): wake passive collectors for synchronous GC (#21)",
-          "patch_sha256": "3a01dbac5ec0f345d973abb8d3a4c866c38cee4f80a70f08308e6e17a83fcbc8"
+          "patch_sha256": "cfaccb7be9374a28e86176a97f586e8fd082d66a80c4d8f67108e2a0eff63472"
         },
         {
-          "commit": "c23e226ab2ebcc3ec553ea7a5819acca390c30d6",
+          "commit": "20421ee27913c8dea1a49effd73ab5487762bc0c",
           "subject": "fix(jsc): initialize VM entry and deferred-scope storage (#24)",
-          "patch_sha256": "20efbf59e9dc8a5acd5ce4993fc62ddcfd4030c4b1606f5552d7f6358c093cce"
+          "patch_sha256": "3d204be82255351a0152b3b66882d5952e1c2e6b65e98a6ae19ffe18533650d8"
         },
         {
-          "commit": "6d9ca7dc007975ba022bde9bc5fec8ce0082edc6",
+          "commit": "d357ca32ce19fdab570bbc6917400c150d65bd2f",
           "subject": "fix(jsc): retry traps after foreign-stack suspension refusal (#25)",
-          "patch_sha256": "acb0a932d424e0cf60a6a5c88bb48c6f473ab93829031e3274fd1f5db71cfd10"
+          "patch_sha256": "b06d6108de317d6285c435c499457040ce4a897970efd57968b3a7401f547353"
         },
         {
-          "commit": "43e20a9582fe447ac52104afbcc6d0c1925de4de",
+          "commit": "64979c9eedd35cdc5c915687864adc5fcc9ad2c6",
           "subject": "test(jsc): isolate allocation sampling collection assertions",
           "patch_sha256": "b72cda8ce0957264415cb60b3128acb0f9c0c3ef79cedb797cf1bdc2fb58ac4d"
         },
         {
-          "commit": "bbc3c443eee2dcc72fe31179ff70c2f50a3593e3",
+          "commit": "c772480428045c444d880c8d84d763066068969f",
           "subject": "test(jsc): track promoted ArrayBuffer survivors across GC phases",
           "patch_sha256": "079789efc8ae99900f5701adb444c34e17a572f6ae66de1d7387c8fe834404ba"
         },
         {
-          "commit": "013b76c60efbd070e57a2ff853795e6a44e0549b",
+          "commit": "3ab47948f3e3e26ec323d0de6a1c66e388363f0e",
           "subject": "fix(jsc): sample cold compilation through executable caller frames",
           "patch_sha256": "87b3560a18b0957759d7999e61e1d626a0da6d7844b93f61c3e986984b37d951"
         },
         {
-          "commit": "2224acdc3e7de7e705c750d638921bd9f639a048",
-          "subject": "ci: prepare protected 87ee10da release pipeline",
-          "patch_sha256": "2e0a8ffc7ffa64de2e7cd07bda1eaa78fdf08312a3002689a8aa75e230f0dff6"
+          "commit": "078f081b0a60a24076de3ae5e39076e4355618c0",
+          "subject": "ci: prepare the 5e3554fa release pipeline",
+          "patch_sha256": "dc8790bbe1dec5c4b03f3a2d1c9d0f1507b6d95d7f03b8e5f15f057e583a98c4"
         },
         {
-          "commit": "6d15cf95ee9d7c18e0d2392b1626481a0023a385",
-          "subject": "ci: pin matched Bun for 87ee10da qualification",
-          "patch_sha256": "36786b5751ca7281c55d7d70af8700533aa5eb69d9e0b70eee7918147b84f9c7"
+          "commit": "db411ed6aec86f7eab7e18eb7d32dd9ab274d18d",
+          "subject": "fix(ci): stage the previous release control manifest",
+          "patch_sha256": "2931b071e833f78e3f9eb9d62c88cc95f4e12a3ad1f1238d156f6bb65f947fde"
         },
         {
-          "commit": "a2976f02e69fde8ccc45dc8fb346173f9d63f8a1",
-          "subject": "fix(ci): coordinate native partial-write fixture backpressure",
-          "patch_sha256": "aee5c7941ac6eba1cb8ca105e2cbe12afa9d27ad5e7631f5027ceb35d75ff7a1"
+          "commit": "13a09625215c3a5a291ae146d35298ecded09ce2",
+          "subject": "fix(ci): align PR qualification Node toolchains",
+          "patch_sha256": "c24c6d8cc773fc9ccbd4df3714a99bd286661309f65bb4c568f3ed6e73cd7150"
+        },
+        {
+          "commit": "419b5a0470fc059a610e98697691bf6f7cedd841",
+          "subject": "fix(ci): use each control Node version during tests",
+          "patch_sha256": "f6822852b04e0c39a32807728196eaf1d2fe1d840c8c47ff4a21c2608c3fd359"
         }
       ],
       "recipe_sha256": {
-        ".github/scripts/lanes.mjs": "4157f2f6cc5a693a9a7cad8dfddad6834d8202680fc15b6593deefc2b3f2312e",
-        "Dockerfile": "b78aef8b49de779f7f1687047b4e9016854f5a2e91e18969941b83be1b06f0f5",
+        ".github/scripts/lanes.mjs": "d409ddacf9721602a63292b6b7f1292ba95a7e9a2e96dd0fa862c241ef0f4250",
+        "Dockerfile": "810f4cd6c09c0548d4902ccdc5db720c627f60045128b6ada5eb35407fbb2a38",
         "Dockerfile.macos": "dc457cc551d60e951394a28ec3b272180f397084f76d7a79ec7168e76006129c",
         "Dockerfile.musl": "f375a16eba1811fddbb745e2b25f8d68892d216ea656d4e0169c4b2769f9deff",
         "Dockerfile.windows": "208b210aff5ed4668fac7a2885db9b748888fdc268b859e9dbac7b97bef25f45",
@@ -1691,7 +1736,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:8e8410e9e2f507bc79b1388da091b7f0463ddd828fb2370b61b99776833e01a0",
+      "toolchain_image_id": "sha256:5a0949c0405a5cb7767171ba3e82a23369f5f9299f6fa5384a9dacdf48c5d6c1",
       "commands": {
         "base": [
           "docker",
@@ -1772,26 +1817,26 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910044232+069ef0e7cb36-1~exp1~20260910044242.70)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.11.1",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "39176001734",
+      "workflow_run": "40127579679",
       "run_attempt": "1",
-      "elapsed_seconds": 284.791255235672,
+      "elapsed_seconds": 364.53268337249756,
       "files": {
         "bun-webkit-macos-amd64-lto.tar.gz": {
-          "sha256": "61914b8203e18e8664b53944759c1fb3153a9d8ccf43f6f8144980b7cfe2a825",
-          "size": 161281005
+          "sha256": "2cc1bd1a7d6623c7b9f129771cfb26a94dbec9f7cd6cb9c0fb3cef1f538ed6a1",
+          "size": 163122388
         }
       },
       "provenance_files": {
-        "artifact-build.json": "b8848fa65ac76fdd30c2ad87654b6b0b0f7740f1bea0c8e59c873e8e13f3ddce",
-        "toolchain-image.json": "842beb96d79d45efa0116b6b5d84aac4cbc0d2cca14c6273c625751b6da79f96",
         "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8",
-        "toolchain-build.json": "ca873c4192eaca29ad89c993e25f9abc78869f76cd6d65efed15861fa93abf46"
+        "toolchain-build.json": "7426512e55abbc1bb5b6d5505812c53a53f7307e7472d036bae747a515083a56",
+        "toolchain-image.json": "c1c5438ed1034e1a0af38eb6ab0ddb16df6317f00368ad8fe9d16fbc4a5494cc",
+        "artifact-build.json": "90315a8777c2e3484c6d7b0764f09329a0310ec3d3bcd1aad342b3baa4c493e2"
       }
     },
     {
       "schema_version": 1,
-      "source": "a2976f02e69fde8ccc45dc8fb346173f9d63f8a1",
-      "base": "87ee10da087b63e011bd1ada64d1814a850a4395",
+      "source": "419b5a0470fc059a610e98697691bf6f7cedd841",
+      "base": "5e3554face1338d738543540a82f23e3163045f5",
       "lane": {
         "label": "bun-webkit-linux-amd64-musl-lto",
         "runner": "linux-x64-gh",
@@ -1814,119 +1859,124 @@
       },
       "patches": [
         {
-          "commit": "5882be5fb42b67a34c907d9ad2464bfa5bde3033",
+          "commit": "d614252f799ce22be554484371229467f6aa49fb",
           "subject": "fix(jsc): allow opt-in Proxy global prototypes",
-          "patch_sha256": "5c475600ef532a78ad010e69f4274716cac56784ade06af943da0e8e28afb33b"
+          "patch_sha256": "bf8ce064614b639c2759774a0196bfd022a025c702cfb34abdee8152d1800e82"
         },
         {
-          "commit": "ed06f0c0345b9799504c3187360800f0691e2272",
+          "commit": "45a2468bcc191593b74c5ae5fa848671f1e829ed",
           "subject": "fix(jsc): preserve module-loader async context",
           "patch_sha256": "8e69a20de860e6053c302d811833294b40fb9d05338dd2301dd83813bae72ab3"
         },
         {
-          "commit": "071f716913aea51815e480176df7eeeec56ff789",
+          "commit": "045af4667f50f51adbdf7f2509a7aca177750c0d",
           "subject": "feat(jsc): add per-VM worker heap and stack budgets",
-          "patch_sha256": "2346371717a4bbe22c37f7259da639b9dca1cc6d1e07a801f104433e31d41a7a"
+          "patch_sha256": "b330c1ab6663b9ba3584a45c0d2a6a01985970076849262d1a056f54f5655a66"
         },
         {
-          "commit": "d3e3f5d21a98d8a22535b358fddeb492a451238a",
+          "commit": "5a24bd06f7e127f7cd61a40cb588e2099e10e2c8",
           "subject": "fix(jsc): give require(esm) its own namespace marker (#1)",
           "patch_sha256": "69452d4b78bae048eeea04a8f4a4ccb112efe1f183850f0f8e546312245eb5e8"
         },
         {
-          "commit": "795ad7057bd200f775f0ab39c05bf1f1e918a34c",
+          "commit": "ab43da66e16c7dd6a7ff1a54ec5954672c3406d8",
           "subject": "feat(jsc): add byte-based heap allocation sampling (#2)",
-          "patch_sha256": "6d73316d08f48ae85ef3d4288a99bf2a6fda42a1cc63388968b6360f5b6b415c"
+          "patch_sha256": "27d8a589a812356f3300ece9bb7ee077654442b6d71c263f6fb4b9902ea769c7"
         },
         {
-          "commit": "bb98adac12c44f55b9e7d2aef770fa5e57ffb7a5",
+          "commit": "533e16f03c624ed0bc9d61e6aa5573cf07674084",
           "subject": "fix(jsc): retain syntax-selected stack source positions",
-          "patch_sha256": "06acf9850d42c28aea9174250e92244f23b0285d90f438ed6af72af7f586626f"
+          "patch_sha256": "e8119d67135ac40cc5c0e4aa8c0e994303709f02d600a82f7c13818f5a4339c6"
         },
         {
-          "commit": "930e698bc336e11cb0a9ba2d285f8b74124d7c97",
+          "commit": "4ae7237f921582a55ca1bd7f1d33bba947ed7c36",
           "subject": "test(jsc): align promise stack goldens with syntax positions",
           "patch_sha256": "bdc4c9790c952a2f967edbabe6345ff14d7cb8d8429156cccdaa1747d4971f0f"
         },
         {
-          "commit": "8454dff2c37e829419c5329656defaa7747b560e",
+          "commit": "eca3fcb4ad7862015d0a2f5c0ef8d2b605afae37",
           "subject": "fix(jsc): track ArrayBuffer ownership and inspect worker memory (#5)",
-          "patch_sha256": "e2c746b1745b64feb22a418d4b99b6e553e6766c3b909aa051a5ef5019231009"
+          "patch_sha256": "39e514b715f2cbc79c8135aeb7029e16bbf0e36daa7e787256d5dc4de51ecb87"
         },
         {
-          "commit": "30d3b76b4a527a498df950359d2aaceed9d7d746",
+          "commit": "daef628fd9119d6533c71ee2faffd62fe98e1e88",
           "subject": "perf(jsc): carry stack coordinate cache into rebased release (#9)",
           "patch_sha256": "dbf16009fb176f67d794534bd2aab8cac213cde2a6133f408870b99f66828c22"
         },
         {
-          "commit": "1646ebddd8a70bafa22668552fd2810cd50d424e",
+          "commit": "df3f3e6a0a6447e5780e8365a5e5d870759a6668",
           "subject": "fix(jsc): correct ARM64 memory addition and qualify native tiers (#13)",
-          "patch_sha256": "e925f26c8a37ec76dd63895a6b8e800785e4c06874fba8396d7a44982ea8322b"
+          "patch_sha256": "efbdca8b159546fb025ef36ca0ad54ca4d94673b0ce395bb518819f854e43d70"
         },
         {
-          "commit": "d0af6b33b8c780f9e2aa9f7c02466028b68fef4c",
+          "commit": "ec4044fecb3d68057179c16c8d8310c90229145a",
           "subject": "fix(mimalloc): preserve TLS key ownership during process exit (#16)",
           "patch_sha256": "9188ec64d92f860d184d6ab7fcee5a701204076e70e657edb8de6078274c2110"
         },
         {
-          "commit": "c5ee4609fdab2c8c845b657916ceea65fd1413f8",
+          "commit": "a6496e4828314b73e5b9871706b0289308a7b2b8",
           "subject": "fix(jsc): deliver capped-worker termination after GC (#18)",
-          "patch_sha256": "d3d15f373eb909110ceb33ed03f50737ddd142ef6e0e17e4c6eb183542b00473"
+          "patch_sha256": "ec94e33943e3b5c61c6d340bdecb91ed27553e78fb4199fae77d066ddca7c35e"
         },
         {
-          "commit": "487544b0c010d3366625acda533ccf458e45e223",
+          "commit": "568c6ef7c4c609e4781adefec1ad5bc841ea59fc",
           "subject": "fix(jsc): preserve generational worker heap collection",
-          "patch_sha256": "814b40ca80ca502bef8e64332b6c957de07c374e09d32ee416999356be451479"
+          "patch_sha256": "10af3512fe284df845f74a811c0f8e524ba17c59ee4fb5e7cff99d005bb4bc0a"
         },
         {
-          "commit": "1e60ec5bcc7af9a0714495199df65830f751587e",
+          "commit": "543550f75b84cf98bdcab20bde25fae90db06d6e",
           "subject": "fix(jsc): wake passive collectors for synchronous GC (#21)",
-          "patch_sha256": "3a01dbac5ec0f345d973abb8d3a4c866c38cee4f80a70f08308e6e17a83fcbc8"
+          "patch_sha256": "cfaccb7be9374a28e86176a97f586e8fd082d66a80c4d8f67108e2a0eff63472"
         },
         {
-          "commit": "c23e226ab2ebcc3ec553ea7a5819acca390c30d6",
+          "commit": "20421ee27913c8dea1a49effd73ab5487762bc0c",
           "subject": "fix(jsc): initialize VM entry and deferred-scope storage (#24)",
-          "patch_sha256": "20efbf59e9dc8a5acd5ce4993fc62ddcfd4030c4b1606f5552d7f6358c093cce"
+          "patch_sha256": "3d204be82255351a0152b3b66882d5952e1c2e6b65e98a6ae19ffe18533650d8"
         },
         {
-          "commit": "6d9ca7dc007975ba022bde9bc5fec8ce0082edc6",
+          "commit": "d357ca32ce19fdab570bbc6917400c150d65bd2f",
           "subject": "fix(jsc): retry traps after foreign-stack suspension refusal (#25)",
-          "patch_sha256": "acb0a932d424e0cf60a6a5c88bb48c6f473ab93829031e3274fd1f5db71cfd10"
+          "patch_sha256": "b06d6108de317d6285c435c499457040ce4a897970efd57968b3a7401f547353"
         },
         {
-          "commit": "43e20a9582fe447ac52104afbcc6d0c1925de4de",
+          "commit": "64979c9eedd35cdc5c915687864adc5fcc9ad2c6",
           "subject": "test(jsc): isolate allocation sampling collection assertions",
           "patch_sha256": "b72cda8ce0957264415cb60b3128acb0f9c0c3ef79cedb797cf1bdc2fb58ac4d"
         },
         {
-          "commit": "bbc3c443eee2dcc72fe31179ff70c2f50a3593e3",
+          "commit": "c772480428045c444d880c8d84d763066068969f",
           "subject": "test(jsc): track promoted ArrayBuffer survivors across GC phases",
           "patch_sha256": "079789efc8ae99900f5701adb444c34e17a572f6ae66de1d7387c8fe834404ba"
         },
         {
-          "commit": "013b76c60efbd070e57a2ff853795e6a44e0549b",
+          "commit": "3ab47948f3e3e26ec323d0de6a1c66e388363f0e",
           "subject": "fix(jsc): sample cold compilation through executable caller frames",
           "patch_sha256": "87b3560a18b0957759d7999e61e1d626a0da6d7844b93f61c3e986984b37d951"
         },
         {
-          "commit": "2224acdc3e7de7e705c750d638921bd9f639a048",
-          "subject": "ci: prepare protected 87ee10da release pipeline",
-          "patch_sha256": "2e0a8ffc7ffa64de2e7cd07bda1eaa78fdf08312a3002689a8aa75e230f0dff6"
+          "commit": "078f081b0a60a24076de3ae5e39076e4355618c0",
+          "subject": "ci: prepare the 5e3554fa release pipeline",
+          "patch_sha256": "dc8790bbe1dec5c4b03f3a2d1c9d0f1507b6d95d7f03b8e5f15f057e583a98c4"
         },
         {
-          "commit": "6d15cf95ee9d7c18e0d2392b1626481a0023a385",
-          "subject": "ci: pin matched Bun for 87ee10da qualification",
-          "patch_sha256": "36786b5751ca7281c55d7d70af8700533aa5eb69d9e0b70eee7918147b84f9c7"
+          "commit": "db411ed6aec86f7eab7e18eb7d32dd9ab274d18d",
+          "subject": "fix(ci): stage the previous release control manifest",
+          "patch_sha256": "2931b071e833f78e3f9eb9d62c88cc95f4e12a3ad1f1238d156f6bb65f947fde"
         },
         {
-          "commit": "a2976f02e69fde8ccc45dc8fb346173f9d63f8a1",
-          "subject": "fix(ci): coordinate native partial-write fixture backpressure",
-          "patch_sha256": "aee5c7941ac6eba1cb8ca105e2cbe12afa9d27ad5e7631f5027ceb35d75ff7a1"
+          "commit": "13a09625215c3a5a291ae146d35298ecded09ce2",
+          "subject": "fix(ci): align PR qualification Node toolchains",
+          "patch_sha256": "c24c6d8cc773fc9ccbd4df3714a99bd286661309f65bb4c568f3ed6e73cd7150"
+        },
+        {
+          "commit": "419b5a0470fc059a610e98697691bf6f7cedd841",
+          "subject": "fix(ci): use each control Node version during tests",
+          "patch_sha256": "f6822852b04e0c39a32807728196eaf1d2fe1d840c8c47ff4a21c2608c3fd359"
         }
       ],
       "recipe_sha256": {
-        ".github/scripts/lanes.mjs": "4157f2f6cc5a693a9a7cad8dfddad6834d8202680fc15b6593deefc2b3f2312e",
-        "Dockerfile": "b78aef8b49de779f7f1687047b4e9016854f5a2e91e18969941b83be1b06f0f5",
+        ".github/scripts/lanes.mjs": "d409ddacf9721602a63292b6b7f1292ba95a7e9a2e96dd0fa862c241ef0f4250",
+        "Dockerfile": "810f4cd6c09c0548d4902ccdc5db720c627f60045128b6ada5eb35407fbb2a38",
         "Dockerfile.macos": "dc457cc551d60e951394a28ec3b272180f397084f76d7a79ec7168e76006129c",
         "Dockerfile.musl": "f375a16eba1811fddbb745e2b25f8d68892d216ea656d4e0169c4b2769f9deff",
         "Dockerfile.windows": "208b210aff5ed4668fac7a2885db9b748888fdc268b859e9dbac7b97bef25f45",
@@ -1946,7 +1996,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:5fcaae4d340db049dc800afc0cc62ebd977f8b5e76ac6ac11e2987726d0675f3",
+      "toolchain_image_id": "sha256:a065dd57bae4cacaf2ad1f2dfca955ecaef9c3fb41be7c0c7e0dc8716f2a695a",
       "commands": {
         "base": [
           "docker",
@@ -2016,29 +2066,29 @@
           "."
         ]
       },
-      "tool_versions": "Alpine clang version 23.1.3\nTarget: x86_64-alpine-linux-musl\nThread model: posix\nInstalledDir: /usr/lib/llvm23/bin\nConfiguration file: /etc/clang23/x86_64-alpine-linux-musl.cfg\ncmake version 4.1.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.9",
+      "tool_versions": "Alpine clang version 23.1.4\nTarget: x86_64-alpine-linux-musl\nThread model: posix\nInstalledDir: /usr/lib/llvm23/bin\nConfiguration file: /etc/clang23/x86_64-alpine-linux-musl.cfg\ncmake version 4.1.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.9",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "39176001734",
+      "workflow_run": "40127579679",
       "run_attempt": "1",
-      "elapsed_seconds": 655.9480421543121,
+      "elapsed_seconds": 943.1519403457642,
       "files": {
         "bun-webkit-linux-amd64-musl-lto.tar.gz": {
-          "sha256": "acec65fec73caae202a3ea39fdc7ac8c63b602351327342f890957293120a449",
-          "size": 224175011
+          "sha256": "3f8b181bec9db8a0a1b27097eeb05e90359c034ee58c8bbb0800dfefba05c3fc",
+          "size": 223877687
         }
       },
       "provenance_files": {
-        "artifact-build.json": "76a407cfb91a635dee4fc89625da7250f1453024ac6b7ad94d8951db3ed4d5e7",
-        "toolchain-build.json": "e670e5304f82a2fe2de16bc1addd3396a3470688458465b340adb40d38dc63e1",
-        "toolchain-image.json": "e70ce837e6efd7c5fce49e1bb7deb74c651ccc497d5b6a813c592a9383dfd306",
-        "tool-versions.txt": "18b7a0ab4a50ab306af67d0696ecc83148a35d6ac6f001a361bb3b849b8e87a7"
+        "artifact-build.json": "769bb73323b920479f0a5fb101ac9397309323cf898a84a380252e1668cec139",
+        "toolchain-image.json": "aba8777c2de0a4d9a03186489f704a8e81de4a856853852001ae4b0dc29c3e75",
+        "toolchain-build.json": "258f29451173ab6293b0f45ff64bb4d6111258f282a2272007087fea2e1a0180",
+        "tool-versions.txt": "07323c31e3d31c07d4f242f3373210dd096796a2d0dc945bda73bf55bc9225a0"
       }
     },
     {
       "schema_version": 1,
-      "source": "a2976f02e69fde8ccc45dc8fb346173f9d63f8a1",
-      "base": "87ee10da087b63e011bd1ada64d1814a850a4395",
+      "source": "419b5a0470fc059a610e98697691bf6f7cedd841",
+      "base": "5e3554face1338d738543540a82f23e3163045f5",
       "lane": {
         "label": "bun-webkit-linux-arm64-musl-lto",
         "runner": "linux-x64-gh",
@@ -2061,119 +2111,124 @@
       },
       "patches": [
         {
-          "commit": "5882be5fb42b67a34c907d9ad2464bfa5bde3033",
+          "commit": "d614252f799ce22be554484371229467f6aa49fb",
           "subject": "fix(jsc): allow opt-in Proxy global prototypes",
-          "patch_sha256": "5c475600ef532a78ad010e69f4274716cac56784ade06af943da0e8e28afb33b"
+          "patch_sha256": "bf8ce064614b639c2759774a0196bfd022a025c702cfb34abdee8152d1800e82"
         },
         {
-          "commit": "ed06f0c0345b9799504c3187360800f0691e2272",
+          "commit": "45a2468bcc191593b74c5ae5fa848671f1e829ed",
           "subject": "fix(jsc): preserve module-loader async context",
           "patch_sha256": "8e69a20de860e6053c302d811833294b40fb9d05338dd2301dd83813bae72ab3"
         },
         {
-          "commit": "071f716913aea51815e480176df7eeeec56ff789",
+          "commit": "045af4667f50f51adbdf7f2509a7aca177750c0d",
           "subject": "feat(jsc): add per-VM worker heap and stack budgets",
-          "patch_sha256": "2346371717a4bbe22c37f7259da639b9dca1cc6d1e07a801f104433e31d41a7a"
+          "patch_sha256": "b330c1ab6663b9ba3584a45c0d2a6a01985970076849262d1a056f54f5655a66"
         },
         {
-          "commit": "d3e3f5d21a98d8a22535b358fddeb492a451238a",
+          "commit": "5a24bd06f7e127f7cd61a40cb588e2099e10e2c8",
           "subject": "fix(jsc): give require(esm) its own namespace marker (#1)",
           "patch_sha256": "69452d4b78bae048eeea04a8f4a4ccb112efe1f183850f0f8e546312245eb5e8"
         },
         {
-          "commit": "795ad7057bd200f775f0ab39c05bf1f1e918a34c",
+          "commit": "ab43da66e16c7dd6a7ff1a54ec5954672c3406d8",
           "subject": "feat(jsc): add byte-based heap allocation sampling (#2)",
-          "patch_sha256": "6d73316d08f48ae85ef3d4288a99bf2a6fda42a1cc63388968b6360f5b6b415c"
+          "patch_sha256": "27d8a589a812356f3300ece9bb7ee077654442b6d71c263f6fb4b9902ea769c7"
         },
         {
-          "commit": "bb98adac12c44f55b9e7d2aef770fa5e57ffb7a5",
+          "commit": "533e16f03c624ed0bc9d61e6aa5573cf07674084",
           "subject": "fix(jsc): retain syntax-selected stack source positions",
-          "patch_sha256": "06acf9850d42c28aea9174250e92244f23b0285d90f438ed6af72af7f586626f"
+          "patch_sha256": "e8119d67135ac40cc5c0e4aa8c0e994303709f02d600a82f7c13818f5a4339c6"
         },
         {
-          "commit": "930e698bc336e11cb0a9ba2d285f8b74124d7c97",
+          "commit": "4ae7237f921582a55ca1bd7f1d33bba947ed7c36",
           "subject": "test(jsc): align promise stack goldens with syntax positions",
           "patch_sha256": "bdc4c9790c952a2f967edbabe6345ff14d7cb8d8429156cccdaa1747d4971f0f"
         },
         {
-          "commit": "8454dff2c37e829419c5329656defaa7747b560e",
+          "commit": "eca3fcb4ad7862015d0a2f5c0ef8d2b605afae37",
           "subject": "fix(jsc): track ArrayBuffer ownership and inspect worker memory (#5)",
-          "patch_sha256": "e2c746b1745b64feb22a418d4b99b6e553e6766c3b909aa051a5ef5019231009"
+          "patch_sha256": "39e514b715f2cbc79c8135aeb7029e16bbf0e36daa7e787256d5dc4de51ecb87"
         },
         {
-          "commit": "30d3b76b4a527a498df950359d2aaceed9d7d746",
+          "commit": "daef628fd9119d6533c71ee2faffd62fe98e1e88",
           "subject": "perf(jsc): carry stack coordinate cache into rebased release (#9)",
           "patch_sha256": "dbf16009fb176f67d794534bd2aab8cac213cde2a6133f408870b99f66828c22"
         },
         {
-          "commit": "1646ebddd8a70bafa22668552fd2810cd50d424e",
+          "commit": "df3f3e6a0a6447e5780e8365a5e5d870759a6668",
           "subject": "fix(jsc): correct ARM64 memory addition and qualify native tiers (#13)",
-          "patch_sha256": "e925f26c8a37ec76dd63895a6b8e800785e4c06874fba8396d7a44982ea8322b"
+          "patch_sha256": "efbdca8b159546fb025ef36ca0ad54ca4d94673b0ce395bb518819f854e43d70"
         },
         {
-          "commit": "d0af6b33b8c780f9e2aa9f7c02466028b68fef4c",
+          "commit": "ec4044fecb3d68057179c16c8d8310c90229145a",
           "subject": "fix(mimalloc): preserve TLS key ownership during process exit (#16)",
           "patch_sha256": "9188ec64d92f860d184d6ab7fcee5a701204076e70e657edb8de6078274c2110"
         },
         {
-          "commit": "c5ee4609fdab2c8c845b657916ceea65fd1413f8",
+          "commit": "a6496e4828314b73e5b9871706b0289308a7b2b8",
           "subject": "fix(jsc): deliver capped-worker termination after GC (#18)",
-          "patch_sha256": "d3d15f373eb909110ceb33ed03f50737ddd142ef6e0e17e4c6eb183542b00473"
+          "patch_sha256": "ec94e33943e3b5c61c6d340bdecb91ed27553e78fb4199fae77d066ddca7c35e"
         },
         {
-          "commit": "487544b0c010d3366625acda533ccf458e45e223",
+          "commit": "568c6ef7c4c609e4781adefec1ad5bc841ea59fc",
           "subject": "fix(jsc): preserve generational worker heap collection",
-          "patch_sha256": "814b40ca80ca502bef8e64332b6c957de07c374e09d32ee416999356be451479"
+          "patch_sha256": "10af3512fe284df845f74a811c0f8e524ba17c59ee4fb5e7cff99d005bb4bc0a"
         },
         {
-          "commit": "1e60ec5bcc7af9a0714495199df65830f751587e",
+          "commit": "543550f75b84cf98bdcab20bde25fae90db06d6e",
           "subject": "fix(jsc): wake passive collectors for synchronous GC (#21)",
-          "patch_sha256": "3a01dbac5ec0f345d973abb8d3a4c866c38cee4f80a70f08308e6e17a83fcbc8"
+          "patch_sha256": "cfaccb7be9374a28e86176a97f586e8fd082d66a80c4d8f67108e2a0eff63472"
         },
         {
-          "commit": "c23e226ab2ebcc3ec553ea7a5819acca390c30d6",
+          "commit": "20421ee27913c8dea1a49effd73ab5487762bc0c",
           "subject": "fix(jsc): initialize VM entry and deferred-scope storage (#24)",
-          "patch_sha256": "20efbf59e9dc8a5acd5ce4993fc62ddcfd4030c4b1606f5552d7f6358c093cce"
+          "patch_sha256": "3d204be82255351a0152b3b66882d5952e1c2e6b65e98a6ae19ffe18533650d8"
         },
         {
-          "commit": "6d9ca7dc007975ba022bde9bc5fec8ce0082edc6",
+          "commit": "d357ca32ce19fdab570bbc6917400c150d65bd2f",
           "subject": "fix(jsc): retry traps after foreign-stack suspension refusal (#25)",
-          "patch_sha256": "acb0a932d424e0cf60a6a5c88bb48c6f473ab93829031e3274fd1f5db71cfd10"
+          "patch_sha256": "b06d6108de317d6285c435c499457040ce4a897970efd57968b3a7401f547353"
         },
         {
-          "commit": "43e20a9582fe447ac52104afbcc6d0c1925de4de",
+          "commit": "64979c9eedd35cdc5c915687864adc5fcc9ad2c6",
           "subject": "test(jsc): isolate allocation sampling collection assertions",
           "patch_sha256": "b72cda8ce0957264415cb60b3128acb0f9c0c3ef79cedb797cf1bdc2fb58ac4d"
         },
         {
-          "commit": "bbc3c443eee2dcc72fe31179ff70c2f50a3593e3",
+          "commit": "c772480428045c444d880c8d84d763066068969f",
           "subject": "test(jsc): track promoted ArrayBuffer survivors across GC phases",
           "patch_sha256": "079789efc8ae99900f5701adb444c34e17a572f6ae66de1d7387c8fe834404ba"
         },
         {
-          "commit": "013b76c60efbd070e57a2ff853795e6a44e0549b",
+          "commit": "3ab47948f3e3e26ec323d0de6a1c66e388363f0e",
           "subject": "fix(jsc): sample cold compilation through executable caller frames",
           "patch_sha256": "87b3560a18b0957759d7999e61e1d626a0da6d7844b93f61c3e986984b37d951"
         },
         {
-          "commit": "2224acdc3e7de7e705c750d638921bd9f639a048",
-          "subject": "ci: prepare protected 87ee10da release pipeline",
-          "patch_sha256": "2e0a8ffc7ffa64de2e7cd07bda1eaa78fdf08312a3002689a8aa75e230f0dff6"
+          "commit": "078f081b0a60a24076de3ae5e39076e4355618c0",
+          "subject": "ci: prepare the 5e3554fa release pipeline",
+          "patch_sha256": "dc8790bbe1dec5c4b03f3a2d1c9d0f1507b6d95d7f03b8e5f15f057e583a98c4"
         },
         {
-          "commit": "6d15cf95ee9d7c18e0d2392b1626481a0023a385",
-          "subject": "ci: pin matched Bun for 87ee10da qualification",
-          "patch_sha256": "36786b5751ca7281c55d7d70af8700533aa5eb69d9e0b70eee7918147b84f9c7"
+          "commit": "db411ed6aec86f7eab7e18eb7d32dd9ab274d18d",
+          "subject": "fix(ci): stage the previous release control manifest",
+          "patch_sha256": "2931b071e833f78e3f9eb9d62c88cc95f4e12a3ad1f1238d156f6bb65f947fde"
         },
         {
-          "commit": "a2976f02e69fde8ccc45dc8fb346173f9d63f8a1",
-          "subject": "fix(ci): coordinate native partial-write fixture backpressure",
-          "patch_sha256": "aee5c7941ac6eba1cb8ca105e2cbe12afa9d27ad5e7631f5027ceb35d75ff7a1"
+          "commit": "13a09625215c3a5a291ae146d35298ecded09ce2",
+          "subject": "fix(ci): align PR qualification Node toolchains",
+          "patch_sha256": "c24c6d8cc773fc9ccbd4df3714a99bd286661309f65bb4c568f3ed6e73cd7150"
+        },
+        {
+          "commit": "419b5a0470fc059a610e98697691bf6f7cedd841",
+          "subject": "fix(ci): use each control Node version during tests",
+          "patch_sha256": "f6822852b04e0c39a32807728196eaf1d2fe1d840c8c47ff4a21c2608c3fd359"
         }
       ],
       "recipe_sha256": {
-        ".github/scripts/lanes.mjs": "4157f2f6cc5a693a9a7cad8dfddad6834d8202680fc15b6593deefc2b3f2312e",
-        "Dockerfile": "b78aef8b49de779f7f1687047b4e9016854f5a2e91e18969941b83be1b06f0f5",
+        ".github/scripts/lanes.mjs": "d409ddacf9721602a63292b6b7f1292ba95a7e9a2e96dd0fa862c241ef0f4250",
+        "Dockerfile": "810f4cd6c09c0548d4902ccdc5db720c627f60045128b6ada5eb35407fbb2a38",
         "Dockerfile.macos": "dc457cc551d60e951394a28ec3b272180f397084f76d7a79ec7168e76006129c",
         "Dockerfile.musl": "f375a16eba1811fddbb745e2b25f8d68892d216ea656d4e0169c4b2769f9deff",
         "Dockerfile.windows": "208b210aff5ed4668fac7a2885db9b748888fdc268b859e9dbac7b97bef25f45",
@@ -2193,7 +2248,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:bbb861d1b9b5d6a01fc245bfd16131e4d39f220e72c2ff5b82b97f97aeacf611",
+      "toolchain_image_id": "sha256:b10a24649bd85e64b60948c2f932fabe7f135542e151d041d8ecf2c18eabfada",
       "commands": {
         "base": [
           "docker",
@@ -2263,29 +2318,29 @@
           "."
         ]
       },
-      "tool_versions": "Alpine clang version 23.1.3\nTarget: x86_64-alpine-linux-musl\nThread model: posix\nInstalledDir: /usr/lib/llvm23/bin\nConfiguration file: /etc/clang23/x86_64-alpine-linux-musl.cfg\ncmake version 4.1.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.9",
+      "tool_versions": "Alpine clang version 23.1.4\nTarget: x86_64-alpine-linux-musl\nThread model: posix\nInstalledDir: /usr/lib/llvm23/bin\nConfiguration file: /etc/clang23/x86_64-alpine-linux-musl.cfg\ncmake version 4.1.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.9",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "39176001734",
+      "workflow_run": "40127579679",
       "run_attempt": "1",
-      "elapsed_seconds": 658.4565546512604,
+      "elapsed_seconds": 631.8385679721832,
       "files": {
         "bun-webkit-linux-arm64-musl-lto.tar.gz": {
-          "sha256": "8e5efdf97f4147243807e75e36dec87c227d858b90fef5d248cfe5b30fdb8c2d",
-          "size": 225839495
+          "sha256": "a2acad951e97b139b385d0b654052042ce6610a9aa8c18fe6aa3409120720956",
+          "size": 225574537
         }
       },
       "provenance_files": {
-        "toolchain-build.json": "6b157b8aacb74a0fedd3061c66c1cba0916916bc90494d650d4174489e48a52b",
-        "artifact-build.json": "fbcf71a6c6fb56eb2d976c3a8d25bca415a93b9b440522781d9861945e2bb104",
-        "toolchain-image.json": "750259a50065857995e307b8cac3dd733d1937e4c8fa8ec1ddffa30bb2f13e3f",
-        "tool-versions.txt": "18b7a0ab4a50ab306af67d0696ecc83148a35d6ac6f001a361bb3b849b8e87a7"
+        "tool-versions.txt": "07323c31e3d31c07d4f242f3373210dd096796a2d0dc945bda73bf55bc9225a0",
+        "artifact-build.json": "4168f266d82f43f27c43d293a991c824b915ecf3a94c5c03d77f342a646090ec",
+        "toolchain-image.json": "7cb19d41827d0381c3fc5155f435672287cc2567b4bf1331e03fa8bdd3ce9564",
+        "toolchain-build.json": "06735078e5e71dd089281e05e285fd16fc5d44ddf710e4b9b8499be6440aabc9"
       }
     },
     {
       "schema_version": 1,
-      "source": "a2976f02e69fde8ccc45dc8fb346173f9d63f8a1",
-      "base": "87ee10da087b63e011bd1ada64d1814a850a4395",
+      "source": "419b5a0470fc059a610e98697691bf6f7cedd841",
+      "base": "5e3554face1338d738543540a82f23e3163045f5",
       "lane": {
         "label": "bun-webkit-windows-amd64-lto",
         "runner": "linux-x64-gh",
@@ -2311,119 +2366,124 @@
       },
       "patches": [
         {
-          "commit": "5882be5fb42b67a34c907d9ad2464bfa5bde3033",
+          "commit": "d614252f799ce22be554484371229467f6aa49fb",
           "subject": "fix(jsc): allow opt-in Proxy global prototypes",
-          "patch_sha256": "5c475600ef532a78ad010e69f4274716cac56784ade06af943da0e8e28afb33b"
+          "patch_sha256": "bf8ce064614b639c2759774a0196bfd022a025c702cfb34abdee8152d1800e82"
         },
         {
-          "commit": "ed06f0c0345b9799504c3187360800f0691e2272",
+          "commit": "45a2468bcc191593b74c5ae5fa848671f1e829ed",
           "subject": "fix(jsc): preserve module-loader async context",
           "patch_sha256": "8e69a20de860e6053c302d811833294b40fb9d05338dd2301dd83813bae72ab3"
         },
         {
-          "commit": "071f716913aea51815e480176df7eeeec56ff789",
+          "commit": "045af4667f50f51adbdf7f2509a7aca177750c0d",
           "subject": "feat(jsc): add per-VM worker heap and stack budgets",
-          "patch_sha256": "2346371717a4bbe22c37f7259da639b9dca1cc6d1e07a801f104433e31d41a7a"
+          "patch_sha256": "b330c1ab6663b9ba3584a45c0d2a6a01985970076849262d1a056f54f5655a66"
         },
         {
-          "commit": "d3e3f5d21a98d8a22535b358fddeb492a451238a",
+          "commit": "5a24bd06f7e127f7cd61a40cb588e2099e10e2c8",
           "subject": "fix(jsc): give require(esm) its own namespace marker (#1)",
           "patch_sha256": "69452d4b78bae048eeea04a8f4a4ccb112efe1f183850f0f8e546312245eb5e8"
         },
         {
-          "commit": "795ad7057bd200f775f0ab39c05bf1f1e918a34c",
+          "commit": "ab43da66e16c7dd6a7ff1a54ec5954672c3406d8",
           "subject": "feat(jsc): add byte-based heap allocation sampling (#2)",
-          "patch_sha256": "6d73316d08f48ae85ef3d4288a99bf2a6fda42a1cc63388968b6360f5b6b415c"
+          "patch_sha256": "27d8a589a812356f3300ece9bb7ee077654442b6d71c263f6fb4b9902ea769c7"
         },
         {
-          "commit": "bb98adac12c44f55b9e7d2aef770fa5e57ffb7a5",
+          "commit": "533e16f03c624ed0bc9d61e6aa5573cf07674084",
           "subject": "fix(jsc): retain syntax-selected stack source positions",
-          "patch_sha256": "06acf9850d42c28aea9174250e92244f23b0285d90f438ed6af72af7f586626f"
+          "patch_sha256": "e8119d67135ac40cc5c0e4aa8c0e994303709f02d600a82f7c13818f5a4339c6"
         },
         {
-          "commit": "930e698bc336e11cb0a9ba2d285f8b74124d7c97",
+          "commit": "4ae7237f921582a55ca1bd7f1d33bba947ed7c36",
           "subject": "test(jsc): align promise stack goldens with syntax positions",
           "patch_sha256": "bdc4c9790c952a2f967edbabe6345ff14d7cb8d8429156cccdaa1747d4971f0f"
         },
         {
-          "commit": "8454dff2c37e829419c5329656defaa7747b560e",
+          "commit": "eca3fcb4ad7862015d0a2f5c0ef8d2b605afae37",
           "subject": "fix(jsc): track ArrayBuffer ownership and inspect worker memory (#5)",
-          "patch_sha256": "e2c746b1745b64feb22a418d4b99b6e553e6766c3b909aa051a5ef5019231009"
+          "patch_sha256": "39e514b715f2cbc79c8135aeb7029e16bbf0e36daa7e787256d5dc4de51ecb87"
         },
         {
-          "commit": "30d3b76b4a527a498df950359d2aaceed9d7d746",
+          "commit": "daef628fd9119d6533c71ee2faffd62fe98e1e88",
           "subject": "perf(jsc): carry stack coordinate cache into rebased release (#9)",
           "patch_sha256": "dbf16009fb176f67d794534bd2aab8cac213cde2a6133f408870b99f66828c22"
         },
         {
-          "commit": "1646ebddd8a70bafa22668552fd2810cd50d424e",
+          "commit": "df3f3e6a0a6447e5780e8365a5e5d870759a6668",
           "subject": "fix(jsc): correct ARM64 memory addition and qualify native tiers (#13)",
-          "patch_sha256": "e925f26c8a37ec76dd63895a6b8e800785e4c06874fba8396d7a44982ea8322b"
+          "patch_sha256": "efbdca8b159546fb025ef36ca0ad54ca4d94673b0ce395bb518819f854e43d70"
         },
         {
-          "commit": "d0af6b33b8c780f9e2aa9f7c02466028b68fef4c",
+          "commit": "ec4044fecb3d68057179c16c8d8310c90229145a",
           "subject": "fix(mimalloc): preserve TLS key ownership during process exit (#16)",
           "patch_sha256": "9188ec64d92f860d184d6ab7fcee5a701204076e70e657edb8de6078274c2110"
         },
         {
-          "commit": "c5ee4609fdab2c8c845b657916ceea65fd1413f8",
+          "commit": "a6496e4828314b73e5b9871706b0289308a7b2b8",
           "subject": "fix(jsc): deliver capped-worker termination after GC (#18)",
-          "patch_sha256": "d3d15f373eb909110ceb33ed03f50737ddd142ef6e0e17e4c6eb183542b00473"
+          "patch_sha256": "ec94e33943e3b5c61c6d340bdecb91ed27553e78fb4199fae77d066ddca7c35e"
         },
         {
-          "commit": "487544b0c010d3366625acda533ccf458e45e223",
+          "commit": "568c6ef7c4c609e4781adefec1ad5bc841ea59fc",
           "subject": "fix(jsc): preserve generational worker heap collection",
-          "patch_sha256": "814b40ca80ca502bef8e64332b6c957de07c374e09d32ee416999356be451479"
+          "patch_sha256": "10af3512fe284df845f74a811c0f8e524ba17c59ee4fb5e7cff99d005bb4bc0a"
         },
         {
-          "commit": "1e60ec5bcc7af9a0714495199df65830f751587e",
+          "commit": "543550f75b84cf98bdcab20bde25fae90db06d6e",
           "subject": "fix(jsc): wake passive collectors for synchronous GC (#21)",
-          "patch_sha256": "3a01dbac5ec0f345d973abb8d3a4c866c38cee4f80a70f08308e6e17a83fcbc8"
+          "patch_sha256": "cfaccb7be9374a28e86176a97f586e8fd082d66a80c4d8f67108e2a0eff63472"
         },
         {
-          "commit": "c23e226ab2ebcc3ec553ea7a5819acca390c30d6",
+          "commit": "20421ee27913c8dea1a49effd73ab5487762bc0c",
           "subject": "fix(jsc): initialize VM entry and deferred-scope storage (#24)",
-          "patch_sha256": "20efbf59e9dc8a5acd5ce4993fc62ddcfd4030c4b1606f5552d7f6358c093cce"
+          "patch_sha256": "3d204be82255351a0152b3b66882d5952e1c2e6b65e98a6ae19ffe18533650d8"
         },
         {
-          "commit": "6d9ca7dc007975ba022bde9bc5fec8ce0082edc6",
+          "commit": "d357ca32ce19fdab570bbc6917400c150d65bd2f",
           "subject": "fix(jsc): retry traps after foreign-stack suspension refusal (#25)",
-          "patch_sha256": "acb0a932d424e0cf60a6a5c88bb48c6f473ab93829031e3274fd1f5db71cfd10"
+          "patch_sha256": "b06d6108de317d6285c435c499457040ce4a897970efd57968b3a7401f547353"
         },
         {
-          "commit": "43e20a9582fe447ac52104afbcc6d0c1925de4de",
+          "commit": "64979c9eedd35cdc5c915687864adc5fcc9ad2c6",
           "subject": "test(jsc): isolate allocation sampling collection assertions",
           "patch_sha256": "b72cda8ce0957264415cb60b3128acb0f9c0c3ef79cedb797cf1bdc2fb58ac4d"
         },
         {
-          "commit": "bbc3c443eee2dcc72fe31179ff70c2f50a3593e3",
+          "commit": "c772480428045c444d880c8d84d763066068969f",
           "subject": "test(jsc): track promoted ArrayBuffer survivors across GC phases",
           "patch_sha256": "079789efc8ae99900f5701adb444c34e17a572f6ae66de1d7387c8fe834404ba"
         },
         {
-          "commit": "013b76c60efbd070e57a2ff853795e6a44e0549b",
+          "commit": "3ab47948f3e3e26ec323d0de6a1c66e388363f0e",
           "subject": "fix(jsc): sample cold compilation through executable caller frames",
           "patch_sha256": "87b3560a18b0957759d7999e61e1d626a0da6d7844b93f61c3e986984b37d951"
         },
         {
-          "commit": "2224acdc3e7de7e705c750d638921bd9f639a048",
-          "subject": "ci: prepare protected 87ee10da release pipeline",
-          "patch_sha256": "2e0a8ffc7ffa64de2e7cd07bda1eaa78fdf08312a3002689a8aa75e230f0dff6"
+          "commit": "078f081b0a60a24076de3ae5e39076e4355618c0",
+          "subject": "ci: prepare the 5e3554fa release pipeline",
+          "patch_sha256": "dc8790bbe1dec5c4b03f3a2d1c9d0f1507b6d95d7f03b8e5f15f057e583a98c4"
         },
         {
-          "commit": "6d15cf95ee9d7c18e0d2392b1626481a0023a385",
-          "subject": "ci: pin matched Bun for 87ee10da qualification",
-          "patch_sha256": "36786b5751ca7281c55d7d70af8700533aa5eb69d9e0b70eee7918147b84f9c7"
+          "commit": "db411ed6aec86f7eab7e18eb7d32dd9ab274d18d",
+          "subject": "fix(ci): stage the previous release control manifest",
+          "patch_sha256": "2931b071e833f78e3f9eb9d62c88cc95f4e12a3ad1f1238d156f6bb65f947fde"
         },
         {
-          "commit": "a2976f02e69fde8ccc45dc8fb346173f9d63f8a1",
-          "subject": "fix(ci): coordinate native partial-write fixture backpressure",
-          "patch_sha256": "aee5c7941ac6eba1cb8ca105e2cbe12afa9d27ad5e7631f5027ceb35d75ff7a1"
+          "commit": "13a09625215c3a5a291ae146d35298ecded09ce2",
+          "subject": "fix(ci): align PR qualification Node toolchains",
+          "patch_sha256": "c24c6d8cc773fc9ccbd4df3714a99bd286661309f65bb4c568f3ed6e73cd7150"
+        },
+        {
+          "commit": "419b5a0470fc059a610e98697691bf6f7cedd841",
+          "subject": "fix(ci): use each control Node version during tests",
+          "patch_sha256": "f6822852b04e0c39a32807728196eaf1d2fe1d840c8c47ff4a21c2608c3fd359"
         }
       ],
       "recipe_sha256": {
-        ".github/scripts/lanes.mjs": "4157f2f6cc5a693a9a7cad8dfddad6834d8202680fc15b6593deefc2b3f2312e",
-        "Dockerfile": "b78aef8b49de779f7f1687047b4e9016854f5a2e91e18969941b83be1b06f0f5",
+        ".github/scripts/lanes.mjs": "d409ddacf9721602a63292b6b7f1292ba95a7e9a2e96dd0fa862c241ef0f4250",
+        "Dockerfile": "810f4cd6c09c0548d4902ccdc5db720c627f60045128b6ada5eb35407fbb2a38",
         "Dockerfile.macos": "dc457cc551d60e951394a28ec3b272180f397084f76d7a79ec7168e76006129c",
         "Dockerfile.musl": "f375a16eba1811fddbb745e2b25f8d68892d216ea656d4e0169c4b2769f9deff",
         "Dockerfile.windows": "208b210aff5ed4668fac7a2885db9b748888fdc268b859e9dbac7b97bef25f45",
@@ -2443,7 +2503,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:72ba2ff62419d189d8d9402fd7fd41fbdc7e20ac42d3c90031ea07ec11a8dce4",
+      "toolchain_image_id": "sha256:bfbd32b0594aad53451420ab42df0eeb520d5e2462b223df64601a090488dbd1",
       "commands": {
         "base": [
           "docker",
@@ -2528,26 +2588,26 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910044232+069ef0e7cb36-1~exp1~20260910044242.70)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.11.1",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "39176001734",
+      "workflow_run": "40127579679",
       "run_attempt": "1",
-      "elapsed_seconds": 688.3986406326294,
+      "elapsed_seconds": 845.202595949173,
       "files": {
         "bun-webkit-windows-amd64-lto.tar.gz": {
-          "sha256": "dbf5cdd19573550b23cc27d2d39a5ae63608c9532650c86d34fa1121260ea5e6",
-          "size": 675949587
+          "sha256": "00e3eb1a1e02827247768b3509297a7e02754fd000b9a7f66a7a501ff4e46e3d",
+          "size": 679293280
         }
       },
       "provenance_files": {
-        "artifact-build.json": "5e46119162c2cdb26f4c6048278bc44c65259e988afbbd728f03beef869baa1d",
-        "toolchain-image.json": "baf49584ffa68f28ba808fae3b3390f7126d0f442565211680719e643e7d340f",
+        "artifact-build.json": "0e1f90875b2995035a80fbd3aef898385a4b3d9632422d6e9f8312367474389e",
+        "toolchain-build.json": "38c8fa1c5f5573fae8dd9853b2fec22a36debad3af9d4b8751f16dde6fc18ce2",
         "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8",
-        "toolchain-build.json": "2f3e985d9844d74d7ff1b10f0fc3fc8f37cf80abe1fb65e60bf31531c0a10827"
+        "toolchain-image.json": "bf570f5bf7277d11766ca0245bcd539f33f2562db4760ce9be61a6c683639407"
       }
     },
     {
       "schema_version": 1,
-      "source": "a2976f02e69fde8ccc45dc8fb346173f9d63f8a1",
-      "base": "87ee10da087b63e011bd1ada64d1814a850a4395",
+      "source": "419b5a0470fc059a610e98697691bf6f7cedd841",
+      "base": "5e3554face1338d738543540a82f23e3163045f5",
       "lane": {
         "label": "bun-webkit-windows-arm64",
         "runner": "linux-x64-gh",
@@ -2573,119 +2633,124 @@
       },
       "patches": [
         {
-          "commit": "5882be5fb42b67a34c907d9ad2464bfa5bde3033",
+          "commit": "d614252f799ce22be554484371229467f6aa49fb",
           "subject": "fix(jsc): allow opt-in Proxy global prototypes",
-          "patch_sha256": "5c475600ef532a78ad010e69f4274716cac56784ade06af943da0e8e28afb33b"
+          "patch_sha256": "bf8ce064614b639c2759774a0196bfd022a025c702cfb34abdee8152d1800e82"
         },
         {
-          "commit": "ed06f0c0345b9799504c3187360800f0691e2272",
+          "commit": "45a2468bcc191593b74c5ae5fa848671f1e829ed",
           "subject": "fix(jsc): preserve module-loader async context",
           "patch_sha256": "8e69a20de860e6053c302d811833294b40fb9d05338dd2301dd83813bae72ab3"
         },
         {
-          "commit": "071f716913aea51815e480176df7eeeec56ff789",
+          "commit": "045af4667f50f51adbdf7f2509a7aca177750c0d",
           "subject": "feat(jsc): add per-VM worker heap and stack budgets",
-          "patch_sha256": "2346371717a4bbe22c37f7259da639b9dca1cc6d1e07a801f104433e31d41a7a"
+          "patch_sha256": "b330c1ab6663b9ba3584a45c0d2a6a01985970076849262d1a056f54f5655a66"
         },
         {
-          "commit": "d3e3f5d21a98d8a22535b358fddeb492a451238a",
+          "commit": "5a24bd06f7e127f7cd61a40cb588e2099e10e2c8",
           "subject": "fix(jsc): give require(esm) its own namespace marker (#1)",
           "patch_sha256": "69452d4b78bae048eeea04a8f4a4ccb112efe1f183850f0f8e546312245eb5e8"
         },
         {
-          "commit": "795ad7057bd200f775f0ab39c05bf1f1e918a34c",
+          "commit": "ab43da66e16c7dd6a7ff1a54ec5954672c3406d8",
           "subject": "feat(jsc): add byte-based heap allocation sampling (#2)",
-          "patch_sha256": "6d73316d08f48ae85ef3d4288a99bf2a6fda42a1cc63388968b6360f5b6b415c"
+          "patch_sha256": "27d8a589a812356f3300ece9bb7ee077654442b6d71c263f6fb4b9902ea769c7"
         },
         {
-          "commit": "bb98adac12c44f55b9e7d2aef770fa5e57ffb7a5",
+          "commit": "533e16f03c624ed0bc9d61e6aa5573cf07674084",
           "subject": "fix(jsc): retain syntax-selected stack source positions",
-          "patch_sha256": "06acf9850d42c28aea9174250e92244f23b0285d90f438ed6af72af7f586626f"
+          "patch_sha256": "e8119d67135ac40cc5c0e4aa8c0e994303709f02d600a82f7c13818f5a4339c6"
         },
         {
-          "commit": "930e698bc336e11cb0a9ba2d285f8b74124d7c97",
+          "commit": "4ae7237f921582a55ca1bd7f1d33bba947ed7c36",
           "subject": "test(jsc): align promise stack goldens with syntax positions",
           "patch_sha256": "bdc4c9790c952a2f967edbabe6345ff14d7cb8d8429156cccdaa1747d4971f0f"
         },
         {
-          "commit": "8454dff2c37e829419c5329656defaa7747b560e",
+          "commit": "eca3fcb4ad7862015d0a2f5c0ef8d2b605afae37",
           "subject": "fix(jsc): track ArrayBuffer ownership and inspect worker memory (#5)",
-          "patch_sha256": "e2c746b1745b64feb22a418d4b99b6e553e6766c3b909aa051a5ef5019231009"
+          "patch_sha256": "39e514b715f2cbc79c8135aeb7029e16bbf0e36daa7e787256d5dc4de51ecb87"
         },
         {
-          "commit": "30d3b76b4a527a498df950359d2aaceed9d7d746",
+          "commit": "daef628fd9119d6533c71ee2faffd62fe98e1e88",
           "subject": "perf(jsc): carry stack coordinate cache into rebased release (#9)",
           "patch_sha256": "dbf16009fb176f67d794534bd2aab8cac213cde2a6133f408870b99f66828c22"
         },
         {
-          "commit": "1646ebddd8a70bafa22668552fd2810cd50d424e",
+          "commit": "df3f3e6a0a6447e5780e8365a5e5d870759a6668",
           "subject": "fix(jsc): correct ARM64 memory addition and qualify native tiers (#13)",
-          "patch_sha256": "e925f26c8a37ec76dd63895a6b8e800785e4c06874fba8396d7a44982ea8322b"
+          "patch_sha256": "efbdca8b159546fb025ef36ca0ad54ca4d94673b0ce395bb518819f854e43d70"
         },
         {
-          "commit": "d0af6b33b8c780f9e2aa9f7c02466028b68fef4c",
+          "commit": "ec4044fecb3d68057179c16c8d8310c90229145a",
           "subject": "fix(mimalloc): preserve TLS key ownership during process exit (#16)",
           "patch_sha256": "9188ec64d92f860d184d6ab7fcee5a701204076e70e657edb8de6078274c2110"
         },
         {
-          "commit": "c5ee4609fdab2c8c845b657916ceea65fd1413f8",
+          "commit": "a6496e4828314b73e5b9871706b0289308a7b2b8",
           "subject": "fix(jsc): deliver capped-worker termination after GC (#18)",
-          "patch_sha256": "d3d15f373eb909110ceb33ed03f50737ddd142ef6e0e17e4c6eb183542b00473"
+          "patch_sha256": "ec94e33943e3b5c61c6d340bdecb91ed27553e78fb4199fae77d066ddca7c35e"
         },
         {
-          "commit": "487544b0c010d3366625acda533ccf458e45e223",
+          "commit": "568c6ef7c4c609e4781adefec1ad5bc841ea59fc",
           "subject": "fix(jsc): preserve generational worker heap collection",
-          "patch_sha256": "814b40ca80ca502bef8e64332b6c957de07c374e09d32ee416999356be451479"
+          "patch_sha256": "10af3512fe284df845f74a811c0f8e524ba17c59ee4fb5e7cff99d005bb4bc0a"
         },
         {
-          "commit": "1e60ec5bcc7af9a0714495199df65830f751587e",
+          "commit": "543550f75b84cf98bdcab20bde25fae90db06d6e",
           "subject": "fix(jsc): wake passive collectors for synchronous GC (#21)",
-          "patch_sha256": "3a01dbac5ec0f345d973abb8d3a4c866c38cee4f80a70f08308e6e17a83fcbc8"
+          "patch_sha256": "cfaccb7be9374a28e86176a97f586e8fd082d66a80c4d8f67108e2a0eff63472"
         },
         {
-          "commit": "c23e226ab2ebcc3ec553ea7a5819acca390c30d6",
+          "commit": "20421ee27913c8dea1a49effd73ab5487762bc0c",
           "subject": "fix(jsc): initialize VM entry and deferred-scope storage (#24)",
-          "patch_sha256": "20efbf59e9dc8a5acd5ce4993fc62ddcfd4030c4b1606f5552d7f6358c093cce"
+          "patch_sha256": "3d204be82255351a0152b3b66882d5952e1c2e6b65e98a6ae19ffe18533650d8"
         },
         {
-          "commit": "6d9ca7dc007975ba022bde9bc5fec8ce0082edc6",
+          "commit": "d357ca32ce19fdab570bbc6917400c150d65bd2f",
           "subject": "fix(jsc): retry traps after foreign-stack suspension refusal (#25)",
-          "patch_sha256": "acb0a932d424e0cf60a6a5c88bb48c6f473ab93829031e3274fd1f5db71cfd10"
+          "patch_sha256": "b06d6108de317d6285c435c499457040ce4a897970efd57968b3a7401f547353"
         },
         {
-          "commit": "43e20a9582fe447ac52104afbcc6d0c1925de4de",
+          "commit": "64979c9eedd35cdc5c915687864adc5fcc9ad2c6",
           "subject": "test(jsc): isolate allocation sampling collection assertions",
           "patch_sha256": "b72cda8ce0957264415cb60b3128acb0f9c0c3ef79cedb797cf1bdc2fb58ac4d"
         },
         {
-          "commit": "bbc3c443eee2dcc72fe31179ff70c2f50a3593e3",
+          "commit": "c772480428045c444d880c8d84d763066068969f",
           "subject": "test(jsc): track promoted ArrayBuffer survivors across GC phases",
           "patch_sha256": "079789efc8ae99900f5701adb444c34e17a572f6ae66de1d7387c8fe834404ba"
         },
         {
-          "commit": "013b76c60efbd070e57a2ff853795e6a44e0549b",
+          "commit": "3ab47948f3e3e26ec323d0de6a1c66e388363f0e",
           "subject": "fix(jsc): sample cold compilation through executable caller frames",
           "patch_sha256": "87b3560a18b0957759d7999e61e1d626a0da6d7844b93f61c3e986984b37d951"
         },
         {
-          "commit": "2224acdc3e7de7e705c750d638921bd9f639a048",
-          "subject": "ci: prepare protected 87ee10da release pipeline",
-          "patch_sha256": "2e0a8ffc7ffa64de2e7cd07bda1eaa78fdf08312a3002689a8aa75e230f0dff6"
+          "commit": "078f081b0a60a24076de3ae5e39076e4355618c0",
+          "subject": "ci: prepare the 5e3554fa release pipeline",
+          "patch_sha256": "dc8790bbe1dec5c4b03f3a2d1c9d0f1507b6d95d7f03b8e5f15f057e583a98c4"
         },
         {
-          "commit": "6d15cf95ee9d7c18e0d2392b1626481a0023a385",
-          "subject": "ci: pin matched Bun for 87ee10da qualification",
-          "patch_sha256": "36786b5751ca7281c55d7d70af8700533aa5eb69d9e0b70eee7918147b84f9c7"
+          "commit": "db411ed6aec86f7eab7e18eb7d32dd9ab274d18d",
+          "subject": "fix(ci): stage the previous release control manifest",
+          "patch_sha256": "2931b071e833f78e3f9eb9d62c88cc95f4e12a3ad1f1238d156f6bb65f947fde"
         },
         {
-          "commit": "a2976f02e69fde8ccc45dc8fb346173f9d63f8a1",
-          "subject": "fix(ci): coordinate native partial-write fixture backpressure",
-          "patch_sha256": "aee5c7941ac6eba1cb8ca105e2cbe12afa9d27ad5e7631f5027ceb35d75ff7a1"
+          "commit": "13a09625215c3a5a291ae146d35298ecded09ce2",
+          "subject": "fix(ci): align PR qualification Node toolchains",
+          "patch_sha256": "c24c6d8cc773fc9ccbd4df3714a99bd286661309f65bb4c568f3ed6e73cd7150"
+        },
+        {
+          "commit": "419b5a0470fc059a610e98697691bf6f7cedd841",
+          "subject": "fix(ci): use each control Node version during tests",
+          "patch_sha256": "f6822852b04e0c39a32807728196eaf1d2fe1d840c8c47ff4a21c2608c3fd359"
         }
       ],
       "recipe_sha256": {
-        ".github/scripts/lanes.mjs": "4157f2f6cc5a693a9a7cad8dfddad6834d8202680fc15b6593deefc2b3f2312e",
-        "Dockerfile": "b78aef8b49de779f7f1687047b4e9016854f5a2e91e18969941b83be1b06f0f5",
+        ".github/scripts/lanes.mjs": "d409ddacf9721602a63292b6b7f1292ba95a7e9a2e96dd0fa862c241ef0f4250",
+        "Dockerfile": "810f4cd6c09c0548d4902ccdc5db720c627f60045128b6ada5eb35407fbb2a38",
         "Dockerfile.macos": "dc457cc551d60e951394a28ec3b272180f397084f76d7a79ec7168e76006129c",
         "Dockerfile.musl": "f375a16eba1811fddbb745e2b25f8d68892d216ea656d4e0169c4b2769f9deff",
         "Dockerfile.windows": "208b210aff5ed4668fac7a2885db9b748888fdc268b859e9dbac7b97bef25f45",
@@ -2705,7 +2770,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:8997f81b6d5af5a9d7e8f3fd40999363176ce1f7db24cdfd8f69fbd64f75e5e2",
+      "toolchain_image_id": "sha256:494f6eed5cdf6428be723f4b368780c7289322d2279348868c18d8c7ac9ea3cc",
       "commands": {
         "base": [
           "docker",
@@ -2790,31 +2855,31 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910044232+069ef0e7cb36-1~exp1~20260910044242.70)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.11.1",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "39176001734",
+      "workflow_run": "40127579679",
       "run_attempt": "1",
-      "elapsed_seconds": 573.560772895813,
+      "elapsed_seconds": 620.7354445457458,
       "files": {
         "bun-webkit-windows-arm64.tar.gz": {
-          "sha256": "10b265da4e5e255ac354871ba97d269af6e46996e2c63da14d4e2190af40a4cb",
-          "size": 371874719
+          "sha256": "335bb7c21954c2e2d8ede3aace6b3d337494b6b8307326c14cceb8c2b943ee93",
+          "size": 373510075
         }
       },
       "provenance_files": {
-        "toolchain-image.json": "652fff5705673d9c7121d9ae5b3556470d042d62ed26a0e9a3579a44d6e4d5f1",
-        "artifact-build.json": "1510cad6af31ab47386ab2e9dcf8f685166dcfb548dc21dcfb827eb9fbccf544",
+        "toolchain-image.json": "6d1e8a8e207e39643617e45fc6ba335b30c3ce3db0ee0a6de35e84c6fd4b8b7e",
+        "toolchain-build.json": "8e7bd1f337def05771358f5dbe923490096991e2ab6900a01215d5da6bba77c7",
         "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8",
-        "toolchain-build.json": "85d62814bae724641d7804f4125d1e4846c12ce3c308fa7d9c0cc0728ba9d965"
+        "artifact-build.json": "3f45daf25d587093ad205dd84600b87f9ab912d360788ca0a7ab75abbfd6df70"
       }
     }
   ],
   "supporting_files": {
     "LICENSE-SOURCES.txt": {
-      "sha256": "964b148463e836618038a0c82cd0f934b810ed46e8c8d4edaea29cc67ef6de3e",
+      "sha256": "7f7698356a9ddde2ef65d6026aceb7b22eb5ad57aca1d264c51842166f8cb2e1",
       "size": 26102
     },
     "provenance.tar.gz": {
-      "sha256": "55107998e51310715bf8a874824190fa50ffc77235dbbd3195fd25c95a7eb004",
-      "size": 1319325
+      "sha256": "a47c2c75d8ece6b2b5000a9b2da200206632b3dbad1408286f881bcc9fd9fdd7",
+      "size": 1590516
     }
   }
 }
