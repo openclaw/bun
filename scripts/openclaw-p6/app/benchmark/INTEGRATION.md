@@ -47,16 +47,16 @@ The accepted benchmark payload and its hash manifest are unchanged. This wrapper
 adds workflow identity, host orchestration, cleanup and export; it does not supply
 native execution results.
 
-The untimed functional phase enables `--knowledge-control` only for restored
-standalone JS, C2, and TS cells. After Gateway readiness and before the first
-model turn, it invokes `knowledge_status`, `knowledge_ontology`, then
-`knowledge_status` through `/tools/invoke`. The control requires the store to
-transition from unprovisioned to ready, matching ontology fingerprints, real
-registry/store/manifest files, and zero inference requests during these calls.
-The existing core runner owns Gateway and probe cleanup. The timed cohort never
-passes this flag.
+The untimed functional phase runs a separate fresh `--knowledge-control` for
+each restored AOT variant that passes the ordinary functional probe. It creates
+an operator/direct session, then runs the admitted agent through `tool_search`,
+`tool_describe`, and `dispatch_action`. A strict synthetic Responses provider
+requires exactly four requests and consumes each actual tool output. Operator
+RPC status and ontology results must match the agent's store and fingerprint.
+Direct HTTP tool invocation is not used because that surface has no memory
+audience. The existing core runner owns all processes and cleanup.
 
-`work/knowledge-controls.json` retains the status of every restored variant.
-A failed optional variant remains a failed Knowledge result even if it is
-excluded from subsequent performance measurements. Exported completion requires
-these controls to pass; proof files are allowlisted without copying state.
+Normal AOT/Node/Bun functional probes and every timed cohort omit this flag.
+Knowledge failures remain in `work/knowledge-controls.json` without changing
+performance availability; exported completion still requires the controls to
+pass. Only named proof files and logs are exported, never state or credentials.

@@ -103,9 +103,9 @@ async function stop(child) {
   const done=await Promise.race([child.done.then(()=>true),delay(10000,undefined,{ref:false}).then(()=>false)]);
   if(!done) { signalGroup(child,'SIGKILL'); await Promise.race([child.done,delay(5000,undefined,{ref:false})]); }
 }
-async function command(label,args) {
+async function command(label,args,limit=timeoutMs) {
   const child=start(label,binary,launchArguments(launch,args),{trace:true});
-  const complete=await Promise.race([child.done,delay(timeoutMs,undefined,{ref:false}).then(()=>null)]);
+  const complete=await Promise.race([child.done,delay(limit,undefined,{ref:false}).then(()=>null)]);
   if(!complete){await stop(child);throw new Error(`${label} timed out`);}
   assert.equal(complete.spawnError,null,`${label} could not start`);
   assert.equal(complete.code,0,`${label} failed; see ${complete.stderr}`);
@@ -120,12 +120,16 @@ let interrupted=false;
 const interrupt=()=>{interrupted=true;for(const child of children) signalGroup(child,'SIGTERM');};
 process.on('SIGINT',interrupt);process.on('SIGTERM',interrupt);
 const sourceImport=relative=>import(pathToFileURL(path.join(source,relative)).href);
+const knowledgeOwner=options.knowledgeControl?await import('../harness/knowledge-agent.mjs'):null;
 try {
   const [{applyMockOpenAiModelConfig},{createGatewayWsClient},{resolveGatewaySuccessPayload},{PROTOCOL_VERSION},{assertOpenAiRequestLogUsed}]=await Promise.all([
     sourceImport('scripts/e2e/lib/fixtures/mock-openai-config.mjs'),sourceImport('scripts/lib/gateway-ws-client.ts'),
     sourceImport('scripts/e2e/lib/gateway-frame-payload.mjs'),sourceImport('packages/gateway-protocol/src/version.ts'),
     sourceImport('scripts/e2e/lib/agent-turn-output.mjs')]);
-  mock=start('mock-provider',process.execPath,[path.join(source,'scripts/e2e/mock-openai-server.mjs')]);
+  mock=options.knowledgeControl
+    ?start('knowledge-provider','/usr/bin/python3',[fileURLToPath(new URL('../harness/knowledge-provider.py',import.meta.url)),
+      '--receipt',path.join(out,'provider.json'),'--model',knowledgeOwner.KNOWLEDGE_MODEL,'--marker',knowledgeOwner.KNOWLEDGE_MARKER])
+    :start('mock-provider',process.execPath,[path.join(source,'scripts/e2e/mock-openai-server.mjs')]);
   let mockPort;
   const mockDeadline=Date.now()+timeoutMs;
   while(Date.now()<mockDeadline) {
@@ -140,8 +144,10 @@ try {
   fs.writeFileSync(configPath,JSON.stringify(cfg,null,2)+'\n');
   result.checks.version=(await command('version',['--version'])).trim();
   await command('config-validate',['config','validate']);
-  result.checks.configRoundtrip=await qualifyConfigRoundtrip(command);
-  await command('doctor',['doctor','--non-interactive']);result.checks.doctor=true;
+  if(!options.knowledgeControl) {
+    result.checks.configRoundtrip=await qualifyConfigRoundtrip(command);
+    await command('doctor',['doctor','--non-interactive']);result.checks.doctor=true;
+  }
   gateway=start('gateway',binary,launchArguments(launch,['gateway','run','--port',String(port),'--bind','loopback','--allow-unconfigured']),{trace:true});
   const readyStart=performance.now(),readyDeadline=Date.now()+timeoutMs;
   let ready=false;
@@ -163,20 +169,8 @@ try {
   result.readyTreeRssBytes=result.readyTree.rssBytes;
   result.readyTreeCpuSeconds=result.readyTree.cpuSeconds;
   if(options.knowledgeControl) {
-    const providerRows=()=>fs.existsSync(env.MOCK_REQUEST_LOG)?fs.readFileSync(env.MOCK_REQUEST_LOG,'utf8').trim().split('\n').filter(Boolean):[];
-    assert.equal(providerRows().length,0,'Knowledge control requires no prior inference requests');
-    const proofDir=path.join(out,'knowledge');
-    const proof=start('knowledge-probe','/usr/bin/python3',[fileURLToPath(new URL('../harness/knowledge-probe.py',import.meta.url)),
-      '--url',`http://127.0.0.1:${port}`,'--state',stateDir,'--output',proofDir]);
-    const complete=await Promise.race([proof.done,delay(timeoutMs,undefined,{ref:false}).then(()=>null)]);
-    if(!complete){await stop(proof);throw new Error('Knowledge control timed out');}
-    assert.equal(complete.spawnError,null,'Knowledge probe could not start');
-    assert.equal(complete.code,0,`Knowledge probe failed; see ${complete.stderr}`);
-    const knowledge=JSON.parse(fs.readFileSync(path.join(proofDir,'result.json'),'utf8'));
-    assert.equal(knowledge.status,'passed-operations-only');
-    assert.equal(providerRows().length,0,'Knowledge control issued an inference request');
-    result.checks.knowledge={...knowledge,providerRequests:0,performanceEligible:false};
-  }
+    result.checks.knowledge=await knowledgeOwner.qualifyKnowledgeAgent({command,port,token,stateDir,out,providerReceipt:path.join(out,'provider.json')});
+  } else {
   const events=[];
   client=createGatewayWsClient({url:`ws://127.0.0.1:${port}`,openTimeoutMs:timeoutMs,handshakeTimeoutMs:timeoutMs,onEvent:event=>{
     const observed={at:performance.now(),...event};events.push(observed);
@@ -228,12 +222,15 @@ try {
   assert(result.sessionDescription.session,'sessions.describe omitted completed session');
   result.lanesAfter=await request('diagnostics.lanes');
   result.workerObservation={kind:'public-pool-census-plus-returned-session-read',before:result.lanesBefore.workerCount,after:result.lanesAfter.workerCount,perWorkerCompletion:'not-exposed-by-this-RPC'};
+  }
   result.qualification='passed';
 } catch(error) {result.error=error?.stack??String(error);result.qualification='failed';}
 finally {
   try{client?.close();}catch{}
   await stop(gateway);await stop(mock);
   for(const child of children) await stop(child);
+  if(options.knowledgeControl) knowledgeOwner.finalizeKnowledgeProvider(result,path.join(out,'provider.json'));
+  if(options.knowledgeControl&&gateway?.receipt.code!==0){result.qualification='failed';result.error??='Knowledge Gateway did not exit normally';}
   census();clearInterval(sampler);
   let live=[];
   const cleanupDeadline=Date.now()+10000;

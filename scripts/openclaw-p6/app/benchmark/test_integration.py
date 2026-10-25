@@ -97,7 +97,7 @@ class Contracts(unittest.TestCase):
                 path.parent.mkdir(parents=True, exist_ok=True); path.write_text(value)
             put(prep/'work/js-core/result.json', '{}')
             put(prep/'work/js-core/logs/gateway.stdout')
-            put(prep/'work/js-core/knowledge/result.json', '{}')
+            put(prep/'work/js-knowledge/knowledge/result.json', '{}')
             for relative in ['work/installed/secret', 'work/home/secret', 'work/cache/secret',
                              'package-source/secret', 'work/js-core/home/secret',
                              'work/js-core/tmp/secret', 'work/cohort/controller-home/secret']:
@@ -108,7 +108,7 @@ class Contracts(unittest.TestCase):
             paths = [r['path'] for r in json.loads((work/'benchmark-export/index.json').read_text())]
             self.assertIn('work/js-core/result.json', paths)
             self.assertIn('work/js-core/logs/gateway.stdout', paths)
-            self.assertIn('work/js-core/knowledge/result.json', paths)
+            self.assertIn('work/js-knowledge/knowledge/result.json', paths)
             self.assertIn('backup-results/js/result.json', paths)
             self.assertFalse(any('secret' in p for p in paths))
 

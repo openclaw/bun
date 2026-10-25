@@ -43,6 +43,15 @@ This packet binds source59baf4a051665750eb7055d0cec991d9876526df, tree6b18962121
 
 ## Untimed Knowledge control
 
-Restored AOT functional cells enable the two Knowledge tools and run the reviewed status→ontology→status HTTP sequence after readiness, before their ordinary model turn. The store must change from unprovisioned to ready with matching ontology fingerprints, registry/store/manifest evidence and no inference request during the control. The existing process owner launches and cleans the thin probe and Gateway. Node/Bun controls and every timed cohort omit the flag.
+Each available AOT variant gets a fresh dedicated Knowledge control under the
+existing runtime owner. Operator RPC checks unprovisioned status and creates an
+operator/direct session without starting a run. An admitted agent then consumes
+exactly four scripted provider requests: tool search, tool description, actual
+ontology dispatch, and the final marker. Operator status/ontology must show the
+same ready store and fingerprint, with registry, store and vault files present.
+There is no direct HTTP tool call or fabricated memory audience.
 
-Knowledge responses and per-variant failures are exported without synthetic state. A failed optional cell may still be excluded from performance, but it prevents scheduledWorkComplete from becoming true. Missing original artifacts remain unavailable under the unchanged import contract.
+Normal functional runs and timed cohorts are unchanged. A failed Knowledge
+control is reported independently and prevents scheduled completion; it does
+not rewrite performance availability. Actual artifact qualification remains
+pending execution. The former direct-HTTP fixture was invalid and is removed.

@@ -10,7 +10,7 @@ export function coreFixtureConfig({workspace,port,token,mockPort,applyMockOpenAi
   if(knowledgeControl) {
     cfg.plugins={enabled:true,allow:['knowledge','openai'],slots:{memory:'knowledge'},entries:{
       openai:{enabled:true},knowledge:{enabled:true,config:{maintenance:{enabled:false}}}}};
-    cfg.tools={allow:['knowledge_status','knowledge_ontology']};
+    cfg.tools={allow:['knowledge_status','knowledge_ontology','tool_search','tool_describe','dispatch_action']};
     cfg.skills={allowBundled:[]};
   }
   return cfg;

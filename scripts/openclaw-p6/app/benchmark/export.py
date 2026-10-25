@@ -14,8 +14,8 @@ from preflight import export_selections
 
 VARIANTS = ['js', 'c2-off', 'ts']
 CORE_FILES = ['result.json', 'history.json', 'events.jsonl', 'provider-requests.jsonl', 'zero-js.json']
-KNOWLEDGE_FILES = ['result.json', 'status-before.json', 'status-before.response',
-                   'ontology.json', 'ontology.response', 'status-after.json', 'status-after.response']
+KNOWLEDGE_FILES = ['result.json', 'status-before.json', 'session-create.json', 'turn.json',
+                   'provider.json', 'status-after.json', 'ontology-after.json']
 
 
 def tree_files(directory):
@@ -36,6 +36,7 @@ def core_files(directory):
         yield directory / name
     for name in ['logs', 'traces']:
         yield from tree_files(directory / name)
+    yield directory / 'provider.json'
     for name in KNOWLEDGE_FILES:
         yield directory / 'knowledge' / name
 
@@ -61,7 +62,8 @@ def selections(work, root):
     for name in ['install-command', 'functional-measurements']:
         for path in tree_files(prep / 'work' / name):
             yield path, Path('work') / path.relative_to(prep / 'work')
-    for cell in ['node-core', 'bun-core', 'js-core', 'c2-off-core', 'ts-core']:
+    for cell in ['node-core', 'bun-core', 'js-core', 'c2-off-core', 'ts-core',
+                 'js-knowledge', 'c2-off-knowledge', 'ts-knowledge']:
         for path in core_files(prep / 'work' / cell):
             yield path, Path('work') / path.relative_to(prep / 'work')
     cohort = prep / 'work/cohort'
