@@ -52,6 +52,17 @@ Every size on this page is for Linux x64.
 
 Two things do use the tools: `BUN_BE_BUN=1`, and `Bun.build` with `check` or `compile.aot`. With `BUN_BE_BUN=1` the executable tells you to run `bun` instead, and exits with code `70`. A program that calls `Bun.build` keeps the type checker, the compiler and the JIT compilers, unless you pass `--trim`. `install.auto` in `bunfig.toml` has no effect, because the package manager is part of the command line.
 
+To run external JavaScript with `BUN_BE_BUN=1`, explicitly retain `"run"` when building:
+
+```ts
+await Bun.build({
+  entrypoints: ["./app.ts"],
+  compile: { outfile: "./app", aot: true, trim: { allow: ["run"] } },
+});
+```
+
+The compiled application still runs ahead of time. `BUN_BE_BUN=1 ./app script.cjs` runs the disk script in the interpreter. Keeping `"run"` also keeps the runtime APIs, built-in module sources and locale data that arbitrary disk scripts can use; these cannot be inferred from the compiled application. It does not retain the JIT or Bun's package manager. A JavaScript package manager such as npm can run from its own disk entry point. Disk scripts that use `bun:ffi`, including custom SQLite library loaders, also need `"jit"` in `allow`. Explicit removals still apply.
+
 ### APIs
 
 `bun compile` reads the whole program, including dependencies. It knows which globals, which members of `Bun` and `process`, which built-in modules and which methods of built-in objects your code uses. Bun removes every feature that nothing uses. You don't list anything: a program that imports `bun:sqlite` gets SQLite, and a program that doesn't ships without it.
