@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Report the removed-feature diagnostic instead of crashing when macOS raises SIGBUS while entering code omitted from an AOT executable.
+
 - Resolve literal embedded module paths against prepared AOT entry points, including TypeScript and custom output names.
 
 - Add `Bun.Terminal.pause()` and `resume()` for PTY output backpressure without blocking the event loop.

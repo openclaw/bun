@@ -1620,6 +1620,8 @@ mod draft {
             libc::SIGTRAP if cfg!(target_arch = "x86_64") => pc.map(|pc| pc.wrapping_sub(1)),
             libc::SIGTRAP | libc::SIGILL => pc,
             libc::SIGSEGV if is_unmapped => pc.filter(|&pc| pc == addr),
+            // Darwin can report an instruction fetch from a cut Mach-O range as SIGBUS.
+            libc::SIGBUS if cfg!(target_os = "macos") => pc.filter(|&pc| pc == addr),
             _ => None,
         };
         if let Some(feature) = entered.and_then(crate::compiled_frames::removed_feature_entered) {

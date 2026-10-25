@@ -92,25 +92,29 @@ describe.skipIf(!canTrim || !!unsupported)("bun build --compile --aot, without -
     });
   }, 600_000);
 
-  test("BUN_BE_BUN=1 says to run bun", async () => {
-    using dir = tempDir("aot-without-the-command-line", programs);
-    const folder = String(dir);
-    const hello = await built("hello", folder);
-    const asBun = { ...bunEnv, BUN_BE_BUN: "1" };
-    for (const args of [["install"], ["run", "hello.ts"], ["-e", "1"], ["hello.ts"], []]) {
-      expect(await run([hello, ...args], folder, asBun)).toEqual({
-        stdout: "",
-        // It is written to C's descriptor 2, which translates line ends on Windows.
-        stderr: `error: BUN_BE_BUN is set, but this executable doesn't include the Bun command line. Run bun instead.${isWindows ? "\r\n" : "\n"}`,
-        exitCode: 70,
+  test.each([{ flags: [] }, { flags: ["--no-compile-function-source", "--disallow-code-generation-from-strings"] }])(
+    "BUN_BE_BUN=1 says to run bun with compile flags $flags",
+    async ({ flags }) => {
+      using dir = tempDir("aot-without-the-command-line", programs);
+      const folder = String(dir);
+      const hello = await built("hello", folder, flags);
+      const asBun = { ...bunEnv, BUN_BE_BUN: "1" };
+      for (const args of [["install"], ["run", "hello.ts"], ["-e", "1"], ["hello.ts"], []]) {
+        expect(await run([hello, ...args], folder, asBun)).toEqual({
+          stdout: "",
+          // It is written to C's descriptor 2, which translates line ends on Windows.
+          stderr: `error: BUN_BE_BUN is set, but this executable doesn't include the Bun command line. Run bun instead.${isWindows ? "\r\n" : "\n"}`,
+          exitCode: 70,
+        });
+      }
+      expect(await run([hello, "--version"], folder, asBun)).toEqual({
+        stdout: Bun.version + "\n",
+        stderr: "",
+        exitCode: 0,
       });
-    }
-    expect(await run([hello, "--version"], folder, asBun)).toEqual({
-      stdout: Bun.version + "\n",
-      stderr: "",
-      exitCode: 0,
-    });
-  }, 600_000);
+    },
+    600_000,
+  );
 
   test.each(["--help", "-h", "--check", "--aot", "-i"])(
     "%s in BUN_OPTIONS says to run bun",
