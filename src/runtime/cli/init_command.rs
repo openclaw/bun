@@ -317,10 +317,9 @@ impl InitCommand {
         for arg_ in init_args {
             let arg = arg_.as_bytes();
             if parse_flags && !arg.is_empty() && arg[0] == b'-' {
-                if initialize_in_folder.is_none()
-                    && arg
-                        .strip_prefix(b"--")
-                        .is_some_and(|name| ca_options.read_flag(name))
+                if arg
+                    .strip_prefix(b"--")
+                    .is_some_and(|name| ca_options.read_flag(name))
                 {
                     prev_flag_was_react = false;
                 } else if arg == b"--help" || arg == b"-h" {
