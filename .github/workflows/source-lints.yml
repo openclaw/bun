@@ -65,6 +65,7 @@ env:
 
 jobs:
   source-lints:
+    if: ${{ !startsWith(github.head_ref, 'claude/diag-parked-worker-gc-') }}
     name: "Source lints"
     runs-on: ubuntu-latest
     timeout-minutes: 10

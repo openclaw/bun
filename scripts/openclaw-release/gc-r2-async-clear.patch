@@ -1,0 +1,20 @@
+--- a/src/jsc/bindings/bindings.cpp
++++ b/src/jsc/bindings/bindings.cpp
+@@ -3114,9 +3114,17 @@
+     global->moduleLoader()->removeEntry(identifier); // takes the loader's cellLock itself
+ }
+ 
++static NEVER_INLINE SUPPRESS_ASAN void clearStackBelowCaller();
++
+ void JSC__VM__collectAsync(JSC::VM* vm, bool full)
+ {
+     JSC::JSLockHolder lock(*vm);
++    static const bool clearAsyncStack = [] {
++        const char* value = std::getenv("BUN_DIAG_ASYNC_GC_CLEAR");
++        return value && value[0] == '1';
++    }();
++    if (clearAsyncStack)
++        clearStackBelowCaller();
+     if (full)
+         vm->heap.collectAsync(JSC::CollectionScope::Full);
+     else
