@@ -13,6 +13,10 @@ on:
       - scripts/openclaw-release/**
   workflow_dispatch:
     inputs:
+      diagnostic_hang:
+        description: "Capture original-release parked-worker native state (do not merge)"
+        type: boolean
+        default: false
       diagnostic_comparison:
         description: "Reuse S8/S7 binaries for parked-worker GC diagnostics (do not merge)"
         type: boolean
@@ -47,7 +51,7 @@ env:
 
 jobs:
   plan:
-    if: inputs.diagnostic_comparison != true && inputs.diagnostic_release_controls != true
+    if: inputs.diagnostic_comparison != true && inputs.diagnostic_release_controls != true && inputs.diagnostic_hang != true
     name: Plan
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -626,5 +630,93 @@ jobs:
         with:
           name: gc-wake-comparison-${{ matrix.arch }}
           path: evidence/
+          if-no-files-found: error
+          retention-days: 14
+
+  diagnostic-hang:
+    name: Capture original ARM64 parked-worker state
+    if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_hang == true
+    runs-on: windows-11-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: pipeline
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: s8
+          ref: 6aba42d75d4bcee905087fa518cb2df6ff49bb0d
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: s7
+          ref: 807211511f81e0a6639bc9eb41d67120f6b85316
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "26.12.1"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: signed-windows
+          path: s8-dist
+          run-id: 40153838318
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: signed-windows
+          path: s7-dist
+          run-id: 40123710650
+          github-token: ${{ github.token }}
+      - name: Install signed native debugging tools
+        id: tools
+        shell: pwsh
+        run: ./pipeline/scripts/openclaw-release/gc-wake-hang-tools.ps1
+      - name: Capture unchanged focused test children
+        shell: pwsh
+        env:
+          DUMP_TOOL: ${{ steps.tools.outputs.procdump }}
+          DEBUGGER_TOOL: ${{ steps.tools.outputs.cdb }}
+        run: |
+          foreach ($variant in @('s8', 's7')) {
+            Expand-Archive -LiteralPath "$variant-dist/bun-windows-aarch64.zip" -DestinationPath "$variant-runtime"
+            Expand-Archive -LiteralPath "$variant-dist/bun-windows-aarch64-profile.zip" -DestinationPath "$variant-runtime"
+            foreach ($mode in @('normal', 'profile')) {
+              $directory = "$variant-runtime/bun-windows-aarch64"
+              $binary = 'bun.exe'
+              if ($mode -eq 'profile') { $directory += '-profile'; $binary = 'bun-profile.exe' }
+              $exe = (Resolve-Path "$directory/$binary").Path
+              node pipeline/scripts/openclaw-release/gc-wake-hang-probe.mjs $exe $variant "hang-evidence/$variant-$mode" $env:DUMP_TOOL $env:DEBUGGER_TOOL (Resolve-Path $directory).Path
+              if ($LASTEXITCODE -ne 0) { throw "Probe setup failed for $variant-$mode" }
+            }
+          }
+      - name: Inspect retained dumps with matching profile symbols
+        timeout-minutes: 8
+        shell: pwsh
+        run: |
+          $cdb = "${env:ProgramFiles(x86)}/Windows Kits/10/Debuggers/arm64/cdb.exe"
+          if (!(Test-Path $cdb)) {
+            Invoke-WebRequest 'https://go.microsoft.com/fwlink/?linkid=2342616' -OutFile hang-tools/winsdksetup.exe
+            if ((Get-AuthenticodeSignature hang-tools/winsdksetup.exe).Status -ne 'Valid') { throw 'SDK installer signature is invalid.' }
+            $setup = Start-Process hang-tools/winsdksetup.exe -ArgumentList '/quiet /norestart /features OptionId.WindowsDesktopDebuggers' -Wait -PassThru
+            if ($setup.ExitCode -notin @(0, 3010)) { throw "Debugger setup failed: $($setup.ExitCode)" }
+          }
+          if (!(Test-Path $cdb)) { throw 'Native cdb unavailable; raw dumps are retained.' }
+          foreach ($variant in @('s8', 's7')) {
+            foreach ($mode in @('normal', 'profile')) {
+              $symbols = "$variant-runtime/bun-windows-aarch64"
+              if ($mode -eq 'profile') { $symbols += '-profile' }
+              foreach ($dump in Get-ChildItem "hang-evidence/$variant-$mode" -Filter '*.dmp') {
+                & $cdb -z $dump.FullName -y (Resolve-Path $symbols).Path -c '.reload; lm; ~* kP; !runaway; q' *> "$($dump.DirectoryName)/offline-debugger.log"
+              }
+            }
+          }
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: gc-wake-arm64-hang-state
+          path: |
+            hang-evidence/
+            hang-tools/tools.json
           if-no-files-found: error
           retention-days: 14
