@@ -73,13 +73,13 @@ jobs:
         with:
           bun-version: "1.4.2"
       - name: Test pipeline
-        if: ${{ !startsWith(github.head_ref, 'claude/diag-parked-worker-gc-') }}
+        if: ${{ !startsWith(github.head_ref || github.ref_name, 'claude/diag-parked-worker-gc-') }}
         working-directory: pipeline
         run: bun test test/internal/source-lints/openclaw-release.test.ts
       - name: Plan
         id: plan
         env:
-          TARGETS: ${{ startsWith(github.head_ref, 'claude/diag-parked-worker-gc-') && 'windows-x64,windows-arm64' || inputs.targets }}
+          TARGETS: ${{ startsWith(github.head_ref || github.ref_name, 'claude/diag-parked-worker-gc-') && 'windows-x64,windows-arm64' || inputs.targets }}
           WINDOWS_SIGNED: ${{ vars.OPENCLAW_RELEASE_WINDOWS_SIGNED }}
         run: |
           args=(--source source --main origin/main)
@@ -354,7 +354,7 @@ jobs:
   smoke:
     name: Smoke ${{ matrix.target }}
     needs: [plan, build, sign-macos, sign-windows, windows-test-only]
-    if: ${{ !startsWith(github.head_ref, 'claude/diag-parked-worker-gc-') && !cancelled() && needs.build.result == 'success' && needs.sign-macos.result != 'failure' && (needs.plan.outputs.windows != 'true' || (needs.plan.outputs.publish == 'true' && needs.sign-windows.result == 'success') || (needs.plan.outputs.publish != 'true' && needs.windows-test-only.result == 'success')) }}
+    if: ${{ !startsWith(github.head_ref || github.ref_name, 'claude/diag-parked-worker-gc-') && !cancelled() && needs.build.result == 'success' && needs.sign-macos.result != 'failure' && (needs.plan.outputs.windows != 'true' || (needs.plan.outputs.publish == 'true' && needs.sign-windows.result == 'success') || (needs.plan.outputs.publish != 'true' && needs.windows-test-only.result == 'success')) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     strategy:
