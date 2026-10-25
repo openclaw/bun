@@ -329,17 +329,22 @@ extern "C" fn Bun__getDefaultLoader(
     loader
 }
 
-/// The namespace (`b""` for `file`) and path that plugins are asked about for `specifier`, if they are asked.
+/// The namespace and path for specifiers eligible for an `onLoad` callback.
 pub(crate) fn plugin_namespace_and_path(specifier: &[u8]) -> Option<(&[u8], &[u8])> {
     if !could_be_plugin(specifier) {
         return None;
     }
+    Some(split_plugin_specifier(specifier))
+}
+
+/// `onResolve` also sees bare imports, which have no extension and no namespace.
+pub(crate) fn split_plugin_specifier(specifier: &[u8]) -> (&[u8], &[u8]) {
     let namespace = extract_namespace(specifier);
-    Some(if namespace.is_empty() {
+    if namespace.is_empty() {
         (namespace, specifier)
     } else {
         (namespace, &specifier[namespace.len() + 1..])
-    })
+    }
 }
 
 /// The `namespace:` prefix of `specifier`, or `b""` if it has none

@@ -4,6 +4,185 @@ import { describe, expect, it } from "bun:test";
 import { bunEnv, bunExe, isWindows } from "harness";
 import { resolve } from "path";
 
+describe.concurrent("runtime onLoad source results", () => {
+  async function run(files: Record<string, string>, entry: string) {
+    using dir = tempDir("runtime-onload-source", files);
+    await using proc = Bun.spawn({
+      cmd: [bunExe(), entry],
+      cwd: String(dir),
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    return { stdout, stderr, exitCode };
+  }
+
+  it.each(["undefined", "Promise.resolve(undefined)"])("%s leaves file loading unchanged", async value => {
+    expect(
+      await run(
+        {
+          "entry.mjs": `
+            Bun.plugin({ name: "decline", setup(build) {
+              build.onLoad({ filter: /value\\.mjs$/ }, () => ${value});
+            } });
+            console.log((await import("./value.mjs")).value);
+          `,
+          "value.mjs": "export const value = 42;",
+        },
+        "entry.mjs",
+      ),
+    ).toEqual({ stdout: "42\n", stderr: "", exitCode: 0 });
+  });
+
+  it.each(["fixture", "@scope/fixture", "fixture/sub"])("onResolve sees the bare import %s", async specifier => {
+    const packageName = specifier.startsWith("@")
+      ? specifier.split("/").slice(0, 2).join("/")
+      : specifier.split("/")[0];
+    expect(
+      await run(
+        {
+          "entry.mjs": `
+            const seen = [];
+            Bun.plugin({ name: "bare-package", setup(build) {
+              build.onResolve({ filter: /.*/, namespace: "file" }, ({ path }) => {
+                seen.push(path);
+                if (path === ${JSON.stringify(specifier)}) return { path: import.meta.dir + "/old.mjs" };
+              });
+            } });
+            const result = await import("./late.mjs");
+            console.log(result.value, seen.includes(${JSON.stringify(specifier)}));
+          `,
+          "late.mjs": `import value from ${JSON.stringify(specifier)}; export { value };`,
+          "old.mjs": 'export default "OLD";',
+          [`node_modules/${packageName}/package.json`]: JSON.stringify({
+            name: packageName,
+            type: "module",
+            exports: { ".": "./index.mjs", "./sub": "./index.mjs" },
+          }),
+          [`node_modules/${packageName}/index.mjs`]: 'export default "NEW";',
+        },
+        "entry.mjs",
+      ),
+    ).toEqual({ stdout: "OLD true\n", stderr: "", exitCode: 0 });
+  });
+
+  it.each([
+    ["import", "import-statement", "OLD_IMPORT"],
+    ["require", "require-call", "OLD_REQUIRE"],
+    ["require.resolve", "require-resolve", "OLD_REQUIRE"],
+  ])("onResolve kind preserves %s package conditions", async (mode, kind, value) => {
+    expect(
+      await run(
+        {
+          "entry.mjs": `
+            const kinds = [];
+            Bun.plugin({ name: "conditions", setup(build) {
+              build.onResolve({ filter: /^fixture\\.condition$/ }, ({ kind }) => {
+                kinds.push(kind);
+                const requireKind = kind === "require-call" || kind === "require-resolve";
+                return { path: import.meta.dir + (requireKind ? "/kept-require.cjs" : "/kept-import.mjs") };
+              });
+            } });
+            const value = ${mode === "import" ? '(await import("./late.mjs")).default' : mode === "require" ? 'require("fixture.condition")' : 'require(require.resolve("fixture.condition"))'};
+            console.log(JSON.stringify({ value, kinds }));
+          `,
+          "late.mjs": 'import value from "fixture.condition"; export default value;',
+          "kept-import.mjs": 'export default "OLD_IMPORT";',
+          "kept-require.cjs": 'module.exports = "OLD_REQUIRE";',
+          "node_modules/fixture.condition/package.json": JSON.stringify({
+            name: "fixture.condition",
+            exports: { import: "./import.mjs", require: "./require.cjs" },
+          }),
+          "node_modules/fixture.condition/import.mjs": 'export default "NEW_IMPORT";',
+          "node_modules/fixture.condition/require.cjs": 'module.exports = "NEW_REQUIRE";',
+        },
+        "entry.mjs",
+      ),
+    ).toEqual({ stdout: JSON.stringify({ value, kinds: [kind] }) + "\n", stderr: "", exitCode: 0 });
+  });
+
+  it.each(["import", "require"])("%s preserves CommonJS source and cache identity", async first => {
+    expect(
+      await run(
+        {
+          "entry.mjs": `
+            import { readFileSync } from "node:fs";
+            Bun.plugin({ name: "unchanged-cjs", setup(build) {
+              build.onLoad({ filter: /value\\.cjs$/ }, ({ path }) => ({ contents: readFileSync(path, "utf8"), loader: "js" }));
+            } });
+            ${first === "require" ? 'const first = require("./value.cjs");' : 'const first = (await import("./value.cjs")).default;'}
+            const second = (await import("./value.cjs")).default;
+            const third = require("./value.cjs");
+            const fourth = (await import("./consumer.mjs")).default;
+            console.log(first === second, second === third, third === fourth, third(), third.value);
+          `,
+          "value.cjs": "module.exports = Object.assign(function () { return 42; }, { value: 43 });",
+          "consumer.mjs": 'import value from "./value.cjs"; export default value;',
+        },
+        "entry.mjs",
+      ),
+    ).toEqual({ stdout: "true true true 42 43\n", stderr: "", exitCode: 0 });
+  });
+
+  it.each([
+    ["json", '{"value":42}', '{"value":42}'],
+    ["json", "42", "42"],
+    ["json", "null", "null"],
+    ["toml", "value = 42", '{"value":42}'],
+  ])("%s source %s preserves its default export", async (loader, contents, expected) => {
+    expect(
+      await run(
+        {
+          "entry.mjs": `
+            Bun.plugin({ name: "data", setup(build) {
+              build.onLoad({ filter: /value\\.data$/ }, () => ({ contents: ${JSON.stringify(contents)}, loader: ${JSON.stringify(loader)} }));
+            } });
+            const imported = (await import("./value.data")).default;
+            const required = require("./value.data");
+            console.log(JSON.stringify(imported), imported === required);
+          `,
+          "value.data": "",
+        },
+        "entry.mjs",
+      ),
+    ).toEqual({ stdout: `${expected} true\n`, stderr: "", exitCode: 0 });
+  });
+
+  it.each(["sync", "async"])("%s CommonJS source keeps each module graph's cache", async timing => {
+    expect(
+      await run(
+        {
+          "entry.mjs": `
+            import { fileURLToPath } from "node:url";
+            Bun.plugin({ name: "graph-cjs", setup(build) {
+              const load = () => ({ contents: "module.exports = { count: 0 };", loader: "js" });
+              build.onLoad({ filter: /value\\.cjs$/ }, ${timing === "async" ? "() => Promise.resolve().then(load)" : "load"});
+            } });
+            const firstGraph = new Bun.ModuleGraph();
+            const secondGraph = new Bun.ModuleGraph();
+            try {
+              const path = fileURLToPath(new URL("./value.cjs", import.meta.url));
+              const first = (await firstGraph.import(path)).default;
+              const same = (await firstGraph.import(path)).default;
+              const other = (await secondGraph.import(path)).default;
+              const host = (await import(path)).default;
+              const hostRequired = require(path);
+              first.count++;
+              console.log(first === same, first !== other, first !== host, host === hostRequired, first.count, other.count, host.count);
+            } finally {
+              firstGraph.dispose();
+              secondGraph.dispose();
+            }
+          `,
+          "value.cjs": "",
+        },
+        "entry.mjs",
+      ),
+    ).toEqual({ stdout: "true true true true 1 0 0\n", stderr: "", exitCode: 0 });
+  });
+});
+
 declare global {
   var failingObject: any;
   var objectModuleResult: any;

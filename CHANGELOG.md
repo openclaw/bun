@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Let synchronous runtime `onLoad` callbacks decline a load, and preserve CommonJS, JSON, and TOML exports from plugin-provided source.
+- Run runtime `onResolve` callbacks for bare package imports without requiring a file extension.
+- Include the existing import or require resolution kind in runtime `onResolve` callback arguments.
+
 - Recognize macOS SIGBUS when entering removed AOT code, and retain the external-script runtime when `compile.trim.allow` includes `"run"`.
 - Preserve SharedArrayBuffer when a JIT-free AOT executable runs external scripts as Bun on macOS.
 
