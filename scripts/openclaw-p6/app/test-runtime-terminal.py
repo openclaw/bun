@@ -36,7 +36,7 @@ class RuntimeTerminal(unittest.TestCase):
             (root / 'manifest.json').write_text('{"files":{}}')
             admission = root / 'admissions' / (variant + '.json')
             admission.write_text(json.dumps({'decision': 'build-linux', 'linuxCut': {
-                'commit': '670a7ab33bbd2e3ed4f0a5681e138159d74540a1'}}))
+                'commit': '59baf4a051665750eb7055d0cec991d9876526df'}}))
             digest = hashlib.sha256(admission.read_bytes()).hexdigest()
             build = {'status': 'built-unsigned', 'phase': 'complete', 'plan': {
                 'admissionSha256': digest, 'variant': 'c2' if variant == 'c2-off' else variant,

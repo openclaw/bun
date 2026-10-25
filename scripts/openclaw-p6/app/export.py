@@ -7,8 +7,9 @@ from pathlib import Path
 import shutil
 import stat
 import sys
+from preflight import export_selections
 
-ROOT = Path('/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r2-v1')
+ROOT = Path('/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1')
 VARIANTS = ['js', 'c2-off', 'ts']
 PHASES = ['core', 'elf-floor', 'zero-js', 'node-vm', 'node-vm-native-workers', 'pty',
           'plugin', 'docker-image', 'docker-gateway-network', 'docker-kitchen-sink', 'docker-cron']
@@ -28,6 +29,7 @@ def facts(path):
 
 
 def selections(work, root):
+    yield from export_selections(work, root)
     for name in ['execution.json', 'resources.json', 'paging-activate.json', 'paging-cleanup.json',
                  'guest-gaps.json', 'guest-skipped.json', 'terminal.json']:
         yield work / name, Path('host') / name
@@ -64,12 +66,14 @@ def selections(work, root):
 
 
 def summary(work, root):
-    result = {'sourceCommit': '670a7ab33bbd2e3ed4f0a5681e138159d74540a1',
+    result = {'sourceCommit': '59baf4a051665750eb7055d0cec991d9876526df',
               'referenceRole': 'historical CB6 provenance only', 'variants': {},
               'scheduledPhasesComplete': True, 'applicationQualified': False, 'shipReady': False,
               'unrunRequiredProof': ['same-machine Node/JIT npm baseline and balanced six-sweep ready/first-turn/RSS/CPU comparison',
                                     'full raw-trace strict zero-disk-JS and Worker boundary assessment',
                                     'live provider streamed-turn proof']}
+    result['nativeCompatibility'] = {'status': facts(root / 'prep-receipts/compatibility/result.json').get('status', 'not-run')}
+    result['scheduledPhasesComplete'] = result['nativeCompatibility']['status'] == 'PASS'
     for variant in VARIANTS:
         build = root / 'build-receipts' / variant / 'result.json'
         skipped = work / (variant + '-skipped.json')

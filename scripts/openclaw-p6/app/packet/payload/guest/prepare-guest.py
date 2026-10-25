@@ -3,9 +3,9 @@
 import argparse,base64,hashlib,json,platform,re,shlex,subprocess,sys
 from pathlib import Path
 HERE=Path(__file__).resolve().parent
-CUT='670a7ab33bbd2e3ed4f0a5681e138159d74540a1'
-ROOT=Path('/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r2-v1')
-QUALIFIER_SHA='62cb7bc09d40be522aa14fcac1b3db1e448032d296909a589bf5ef8b95c47f13'
+CUT='59baf4a051665750eb7055d0cec991d9876526df'
+ROOT=Path('/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1')
+QUALIFIER_SHA='e5e9f3fdf050bfca5d43a30035553b57b9f2ad444dbb63d61f6ba460aa6d5c88'
 
 def sha(p):
  with Path(p).open('rb') as f:return hashlib.file_digest(f,'sha256').hexdigest()
@@ -49,11 +49,11 @@ def main():
  need(sha(a.prerequisites)==a.prerequisites_sha256,'Guest prerequisite receipt changed')
  prereq=load(a.prerequisites);need(prereq['status']=='guest-prerequisites-present-not-kvm-qualified','Guest prerequisites incomplete')
  guest=[sys.executable,str(HERE/'application/run-application-guest.py'),'--artifact',str(a.artifact.resolve()),'--admission-receipt',str(a.root_admission),'--binary-sha256',a.binary_sha256,'--main-sha',CUT,'--variant',variant,'--expected-stdout',raw.rstrip('\n'),'--image','/home/runner/.cache/oc-ty-ext/P6/cb-x64-final-toolchain-input/ubuntu-24.04-release-20261017-amd64.img','--work-dir',str(work),'--vm-owner',str(HERE/'shared/run-kvm-guest.py'),'--prerequisites',str(a.prerequisites),'--prerequisites-sha256',a.prerequisites_sha256]
- out={'status':'prepared-not-authorized-to-execute','rootGuestPhaseCoordination':'required separately from root build admission','applicationQualified':False,'scope':'Actual app --version and main-thread MDWE memory controls; Gateway, Worker lifecycle and zero-disk-JS not covered','label':a.label,'sourceCommit':CUT,'binarySha256':a.binary_sha256,'manifestSha256':a.manifest_sha256,'rootBuildAdmissionSha256':a.root_admission_sha256,'actualBuildReceiptSha256':a.build_receipt_sha256,'hostCoreResultSha256':a.host_core_result_sha256,'prerequisitesSha256':a.prerequisites_sha256,'hostVersionStdoutSha256':sha(stdout),'expectedStdout':raw.rstrip('\n'),'variant':variant,'guestCommand':guest,'guestWork':str(work),'proofPath':'.artifacts/P6-application-guest-final-r2-v1/'+a.label+'/receipt.json','rawEvidence':str(work/'evidence.tar')}
+ out={'status':'prepared-not-authorized-to-execute','rootGuestPhaseCoordination':'required separately from root build admission','applicationQualified':False,'scope':'Actual app --version and main-thread MDWE memory controls; Gateway, Worker lifecycle and zero-disk-JS not covered','label':a.label,'sourceCommit':CUT,'binarySha256':a.binary_sha256,'manifestSha256':a.manifest_sha256,'rootBuildAdmissionSha256':a.root_admission_sha256,'actualBuildReceiptSha256':a.build_receipt_sha256,'hostCoreResultSha256':a.host_core_result_sha256,'prerequisitesSha256':a.prerequisites_sha256,'hostVersionStdoutSha256':sha(stdout),'expectedStdout':raw.rstrip('\n'),'variant':variant,'guestCommand':guest,'guestWork':str(work),'proofPath':'.artifacts/P6-application-guest-final-r3-v1/'+a.label+'/receipt.json','rawEvidence':str(work/'evidence.tar')}
  # The renderer never executes this recipe; the root owns guest-phase coordination.
  input_file=ROOT/'application-guest-inputs'/(a.label+'.json')
  encoded=base64.b64encode(json.dumps(out,sort_keys=True).encode()).decode()
- proof=Path('.artifacts/P6-application-guest-final-r2-v1')/a.label
+ proof=Path('.artifacts/P6-application-guest-final-r3-v1')/a.label
  collector=[sys.executable,str(HERE/'collect-evidence.py'),'--work',str(work),'--proof',str(proof),'--input-proof',str(input_file)]
  body='set -euo pipefail\n'
  body+="python3 - <<'P6_GUEST_INPUT'\nimport base64\nfrom pathlib import Path\np=Path("+repr(str(input_file))+");p.parent.mkdir(parents=True,exist_ok=True)\nwith p.open('xb') as f:f.write(base64.b64decode("+repr(encoded)+",validate=True))\nP6_GUEST_INPUT\n"

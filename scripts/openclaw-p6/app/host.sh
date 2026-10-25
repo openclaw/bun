@@ -9,7 +9,7 @@ case "$mode" in app|benchmark) ;; *) exit 2;; esac
 initializer="$recipe/app/initialize.py"
 if [[ "$mode" == benchmark ]]; then initializer="$recipe/app/benchmark/initialize.py"; fi
 base=/home/runner/.cache/oc-ty-ext/P6
-root=$base/app-x64-final-r2-v1
+root=$base/app-x64-final-r3-v1
 label="openclaw.p6.actions=$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
 paging() {
   sudo -n env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin P6_WORK="$P6_WORK" \
@@ -111,6 +111,9 @@ import json,sys
 from pathlib import Path
 assert json.loads(Path(sys.argv[1]).read_text())['status']=='PASS', 'Actual completed native preparation required'
 PY
+  timeout --signal=TERM --kill-after=30s "${remaining}s" docker exec \
+    -e HOME=/home/runner -e P6_WORK="$P6_WORK" -e PYTHONDONTWRITEBYTECODE=1 \
+    "$P6_CONTAINER" python3 -B /p6-recipe/app/preflight.py verify
   paging activate
   exit
 fi

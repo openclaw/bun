@@ -28,7 +28,7 @@ else:
     assert identity['repository'] == 'openclaw/bun' and identity['job'] == 'linux-x64-app'
     assert all(re.fullmatch('[1-9][0-9]*', identity[key]) for key in ['runId', 'runAttempt'])
     record = {'schemaVersion': 1, 'identity': identity, 'workflowHead': os.environ['GITHUB_SHA'],
-              'sourceCommit': '670a7ab33bbd2e3ed4f0a5681e138159d74540a1', 'startedEpoch': time.time()}
+              'sourceCommit': '59baf4a051665750eb7055d0cec991d9876526df', 'startedEpoch': time.time()}
     with (work / 'execution.json').open('x') as stream:
         json.dump(record, stream, indent=2)
         stream.write('\n')

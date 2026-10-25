@@ -1,5 +1,5 @@
 {
-  "sourceCommit": "670a7ab33bbd2e3ed4f0a5681e138159d74540a1",
+  "sourceCommit": "59baf4a051665750eb7055d0cec991d9876526df",
   "files": {
     "src/infra/sqlite-header-probe.ts": "5700b9b27ee350b3fa59220c18d3767cc2ce23b581f9deeb7cd3e845369f73c8",
     "src/infra/sqlite-header-probe.worker.ts": "d7a12e2f53cca9d4f93c48107aad534d98151120094ccc76f1b43c3fdaca70c4",

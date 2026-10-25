@@ -1,5 +1,5 @@
 {
-  "name": "p6-final-r2-comparator",
+  "name": "p6-final-r3-comparator",
   "private": true,
   "allowScripts": {
     "onnxruntime-node": false,
@@ -21,6 +21,6 @@
     "@openclaw/crabline": true,
     "rastermill": true,
     "node-pty": true,
-    "file:/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r2-v1/benchmark-prep/package/openclaw.tgz": true
+    "file:/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1/benchmark-prep/package/openclaw.tgz": true
   }
 }

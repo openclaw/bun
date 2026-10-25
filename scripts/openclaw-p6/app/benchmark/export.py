@@ -9,6 +9,8 @@ import stat
 import sys
 
 from app_contract import CUT, ROOT, dump, load, sha
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from preflight import export_selections
 
 VARIANTS = ['js', 'c2-off', 'ts']
 CORE_FILES = ['result.json', 'history.json', 'events.jsonl', 'provider-requests.jsonl', 'zero-js.json']
@@ -35,6 +37,7 @@ def core_files(directory):
 
 
 def selections(work, root):
+    yield from export_selections(work, root)
     prep = root / 'benchmark-prep'
     for name in ['execution.json', 'resources.json', 'app-inputs.json', 'terminal.json',
                  'benchmark-cleanup.json', 'benchmark-run.json']:
@@ -86,17 +89,19 @@ def facts(path):
 
 
 def summary(work, root):
+    compatibility = facts(root / 'prep-receipts/compatibility/result.json')
     comparison = facts(root / 'benchmark-prep/comparison-summary.json')
     backup = facts(root / 'backup-results/summary.json')
     cleanup = facts(work / 'benchmark-cleanup.json')
     execution = facts(work / 'execution.json')
-    complete = (comparison.get('performanceQualified') is True and
+    complete = (compatibility.get('status') == 'PASS' and comparison.get('performanceQualified') is True and
                 comparison.get('status') in ['comparison-passed', 'partial-comparison-passed'] and
                 facts(work / 'benchmark-run.json').get('status') == 'completed' and
                 backup.get('status') == 'passed' and cleanup.get('status') == 'owned-workloads-removed' and
                 cleanup.get('identity') == execution.get('identity') and
                 cleanup.get('pagingActivated') is False and not (work / 'terminal.json').exists())
     return {'sourceCommit': CUT, 'execution': execution, 'comparison': comparison,
+            'nativeCompatibility': {'status': compatibility.get('status', 'not-run')},
             'untimedBackup': backup, 'cleanup': cleanup, 'scheduledWorkComplete': complete,
             'applicationQualified': False, 'shipReady': False}
 

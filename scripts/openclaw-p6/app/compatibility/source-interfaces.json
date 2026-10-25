@@ -1,0 +1,65 @@
+{
+  "builtinScanner": "Frozen P0 TypeScript createSourceFile + Node builtinModules census; runtime namespace import uses the actual Bun executable.",
+  "sourceInterfaces": [
+    {
+      "file": "scripts/lib/bun-standalone-plugins.mjs",
+      "exports": [
+        "planStandalonePlugins",
+        "selectStandalonePluginModules"
+      ]
+    },
+    {
+      "file": "src/infra/runtime-process-manifest.ts",
+      "exports": [
+        "createStandaloneRuntimeProcessEntrypoints",
+        "pluginRuntimeProcessManifest"
+      ]
+    },
+    {
+      "file": "scripts/lib/bun-standalone-workers.mjs",
+      "exports": [
+        "discoverStandaloneWorkers"
+      ]
+    },
+    {
+      "file": "scripts/lib/bun-standalone-source-entries.mjs",
+      "exports": [
+        "loadStandaloneSourceEntries"
+      ],
+      "result": [
+        "entries",
+        "unmappedWorkers"
+      ]
+    },
+    {
+      "file": "scripts/lib/bun-standalone-source-parser.mjs",
+      "exports": [
+        "createStandaloneSourceParser"
+      ]
+    },
+    {
+      "file": "scripts/lib/bundled-plugin-build-entries.mjs",
+      "exports": [
+        "collectSourceCheckoutPluginBuildEntries"
+      ]
+    },
+    {
+      "file": "scripts/lib/static-extension-assets.mts",
+      "exports": [
+        "listPackagedStaticExtensionAssetOutputs"
+      ]
+    },
+    {
+      "file": "scripts/lib/bun-standalone-sidecar.mjs",
+      "exports": [
+        "standaloneResourceCategory"
+      ]
+    }
+  ],
+  "notInvoked": [
+    "scripts/build-bun-standalone.mjs",
+    "Bun.build",
+    "createStandaloneSourceGraph (materializes inputs)",
+    "native compiler/linker"
+  ]
+}

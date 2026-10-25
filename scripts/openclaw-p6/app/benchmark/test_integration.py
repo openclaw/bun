@@ -131,6 +131,8 @@ class Contracts(unittest.TestCase):
             put(work/'benchmark-cleanup.json', {'status':'owned-workloads-removed', 'identity':identity, 'pagingActivated':False})
             put(root/'benchmark-prep/comparison-summary.json', {'status':'partial-comparison-passed','performanceQualified':True})
             put(root/'backup-results/summary.json', {'status':'passed'})
+            self.assertFalse(EXPORT.summary(work, root)['scheduledWorkComplete'])
+            put(root/'prep-receipts/compatibility/result.json', {'status':'PASS'})
             self.assertTrue(EXPORT.summary(work, root)['scheduledWorkComplete'])
             put(root/'backup-results/summary.json', {'status':'failed'})
             self.assertFalse(EXPORT.summary(work, root)['scheduledWorkComplete'])

@@ -9,7 +9,7 @@ import subprocess
 import sys
 import time
 
-ROOT = Path('/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r2-v1')
+ROOT = Path('/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1')
 
 
 def read(path):

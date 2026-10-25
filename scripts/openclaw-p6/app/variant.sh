@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 variant=${1:?variant required}
-root=/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r2-v1
+root=/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1
 recipe=/p6-recipe/app
 cd "$P6_WORK"
 mode=${2:?prepare or run}

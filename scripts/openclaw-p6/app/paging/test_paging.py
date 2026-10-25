@@ -14,14 +14,14 @@ class PagingIdentity(unittest.TestCase):
   self.tmp=tempfile.TemporaryDirectory(dir=HERE);self.addCleanup(self.tmp.cleanup);self.root=Path(self.tmp.name)
   self.context=patch.object(owner,'ROOT',self.root);self.context.start();self.addCleanup(self.context.stop)
   self.identity={'repository':'openclaw/bun','runId':'12345','runAttempt':'2','job':'linux-x64-app'}
-  self.data={'schemaVersion':1,'identity':dict(self.identity),'sourceCommit':'670a7ab33bbd2e3ed4f0a5681e138159d74540a1','workflowHead':'a'*40,'startedEpoch':1}
+  self.data={'schemaVersion':1,'identity':dict(self.identity),'sourceCommit':'59baf4a051665750eb7055d0cec991d9876526df','workflowHead':'a'*40,'startedEpoch':1}
   self.file=self.root/'execution.json';self.write()
   self.env={'GITHUB_REPOSITORY':'openclaw/bun','GITHUB_RUN_ID':'12345','GITHUB_RUN_ATTEMPT':'2','GITHUB_JOB':'linux-x64-app','GITHUB_SHA':'a'*40}
   context=patch.dict(os.environ,self.env,clear=True);context.start();self.addCleanup(context.stop)
  def write(self):self.file.write_text(json.dumps(self.data));return sha(self.file)
  def bind(self):return owner.bind_identity(self.file,sha(self.file))
  def approval(self):
-  data={'schemaVersion':1,'lane':'P6','decision':'activate-task-encrypted-swap','identity':self.identity,'executionSha256':sha(self.file),'sourceCommit':'670a7ab33bbd2e3ed4f0a5681e138159d74540a1','nativeRoot':str(self.root),'swapBytes':68719476736,'cipher':'aes-cbc-essiv:sha256','keyBytes':32,'preserveExistingSwap':True,'preserveVmSettings':True,'buildHeadroomBytes':34359738368,'scriptSha256':sha(HERE/'swap64.py')}
+  data={'schemaVersion':1,'lane':'P6','decision':'activate-task-encrypted-swap','identity':self.identity,'executionSha256':sha(self.file),'sourceCommit':'59baf4a051665750eb7055d0cec991d9876526df','nativeRoot':str(self.root),'swapBytes':68719476736,'cipher':'aes-cbc-essiv:sha256','keyBytes':32,'preserveExistingSwap':True,'preserveVmSettings':True,'buildHeadroomBytes':34359738368,'scriptSha256':sha(HERE/'swap64.py')}
   p=self.root/'approval.json';p.write_text(json.dumps(data));return p,data
  def test_exact_run_binding_is_read_only_and_attempt_scoped(self):
   self.bind();self.assertEqual(owner.AREA,self.root/'ephemeral-swap64/actions-12345-2');self.assertEqual(owner.NAME,'p6-aot-swap64-12345-2');self.assertFalse(owner.AREA.exists())

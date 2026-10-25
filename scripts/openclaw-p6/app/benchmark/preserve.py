@@ -10,7 +10,7 @@ import stat
 import subprocess
 import tarfile
 
-SOURCE_COMMIT = '670a7ab33bbd2e3ed4f0a5681e138159d74540a1'
+SOURCE_COMMIT = '59baf4a051665750eb7055d0cec991d9876526df'
 
 
 def require(ok, message):

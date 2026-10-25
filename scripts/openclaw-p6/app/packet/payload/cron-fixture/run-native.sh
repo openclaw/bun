@@ -2,7 +2,7 @@
 set -euo pipefail
 [[ $# -eq 3 ]] || { echo 'Usage: run-native.sh ACTUAL_ARTIFACT APPROVED_DOCKER_IMAGE_RESULT_JSON FRESH_P6_OUTPUT' >&2; exit 2; }
 here="$(cd "$(dirname "$0")" && pwd -P)"
-root=/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r2-v1
+root=/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1
 source="$(cd "$root/source" && pwd -P)"
 node="$root/opt/node/bin/node"
 artifact=$1
@@ -60,6 +60,6 @@ sha256sum "$here/inputs.json" "$here/cron-cli-fixture.sh" "$artifact/manifest.js
 export OPENCLAW_SKIP_DOCKER_BUILD=1 OPENCLAW_DOCKER_E2E_REQUIRE_LOCAL_IMAGE=1
 export OPENCLAW_IMAGE="$image" OPENCLAW_DOCKER_E2E_IMAGE="$image"
 export OPENCLAW_DOCKER_E2E_REPO_ROOT="$source" DOCKER_E2E_HARNESS_ROOT_DIR="$source"
-export OPENCLAW_SELECTED_SHA=670a7ab33bbd2e3ed4f0a5681e138159d74540a1
+export OPENCLAW_SELECTED_SHA=59baf4a051665750eb7055d0cec991d9876526df
 export OPENCLAW_DOCKER_E2E_SELECTED_SHA="$OPENCLAW_SELECTED_SHA"
 /bin/bash "$here/cron-cli-fixture.sh" >"$output/lane.log" 2>&1 || exit "$?"

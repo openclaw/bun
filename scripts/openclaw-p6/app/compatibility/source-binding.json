@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "status": "bound-reviewed-r3-cut",
+  "sourceCommit": "59baf4a051665750eb7055d0cec991d9876526df",
+  "sourceTree": "6b1896212170bdfc7632f87ceee3bc59934356b8",
+  "sourceOwners": {
+    "scripts/build-bun-standalone.mjs": "a32d46f7dd6e978834540ba1ca5d173afdd12d5df02acda7779c50b53119e0f0",
+    "scripts/lib/bun-standalone-plugins.mjs": "dc7a90471099b9ee73f5fdba02cd4c09ff92c8f5866120d6e3c526a18d9cc717",
+    "scripts/lib/bun-standalone-workers.mjs": "36cad2b9b1832a40336e4f07a864e52526a0bcd5e444847f7b63d3acd9d20107",
+    "scripts/lib/bun-standalone-source-entries.mjs": "83a99a63ba2a5db69a1c2b99eccc46f2419acee8378539c94d344546bb1b2104",
+    "scripts/lib/bun-standalone-source-parser.mjs": "ff6e6d31b0e6f32dcbd1bf0dbdcc3ca1ea8b032a88f0f210c373967560dfeb4e",
+    "scripts/lib/bundled-plugin-build-entries.mjs": "36d9bd72460fd5d76d3e4b33060e49ae710790146db11feffe37df394e1e6a0a",
+    "scripts/lib/static-extension-assets.mts": "52d60d4b959f54f01b276686a15a69d472788c4dad7be53a097011874f13c974",
+    "scripts/lib/bun-standalone-sidecar.mjs": "716d7001b44a6edae7979c3b27d236cddefaa53a6de94ce3d4f8b684c4eae858",
+    "src/infra/runtime-process-manifest.ts": "b421bca8b2cde6fbc3d07ecb5cb48ffcfeecb3bdb757668513f218e53d0b46d6",
+    "src/gateway/worker-environments/node-bootstrap-runtime-chunks.ts": "84503a5819d57608d85de5e7e66c3b1ba1fc2e782d251981502f1622d9ba7577"
+  },
+  "typescript": {
+    "relativePath": "node_modules/.pnpm/typescript@6.0.3/node_modules/typescript",
+    "version": "6.0.3",
+    "manifestSha256": "9332e97c30d3e53ed54910b89207ed657fb444066484df6e5b6965bf130865e9",
+    "entrySha256": "569177652966bd528c319171c7dd22860dbf72bde116cbc4f644f1d02bb12e39"
+  }
+}

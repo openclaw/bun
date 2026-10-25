@@ -1,7 +1,7 @@
 {
-  "sourceCommit": "670a7ab33bbd2e3ed4f0a5681e138159d74540a1",
+  "sourceCommit": "59baf4a051665750eb7055d0cec991d9876526df",
   "files": {
-    "README.md": "9853f67d28ba0e9cff3b274dd7cab73ac7a6ccc55bd111431bae424106712640",
+    "README.md": "ed5b21715bffcfb97c9e1f771c5d14ad7a7682564be31e87420b762d754335ec",
     "docker-image.py": "5cc18ed7bf5d02fc0eed0d2688dba355e470e62fe7910b4a679eab0751c9a87a",
     "harness/Dockerfile.aot": "f1f6c87b3e30bf319842b1d6ddc3d7ac27d46a51b766922bec0fe7e1896dbd4c",
     "harness/analyze-workers.py": "ba2e5187c3dda4614c35e51aa6e0e1079840b372ecfa50cf8f2009804b008086",
@@ -17,8 +17,8 @@
     "harness/legacy/capability-provider.mjs": "3b28c3bc5a5b892e2b14164a8633671c444257448dbfcfffd8812fc47a5301b4",
     "harness/legacy/native_trace.py": "c1fda60c8a74b76811555ee895e1df0a5083951a53df38f35a7a18de8df15607",
     "harness/openclaw-launcher": "fc343d0173e513aa7e74bfc1943d385beaab4ced57447ad7ea2023bdad2aee09",
-    "qualify.py": "62cb7bc09d40be522aa14fcac1b3db1e448032d296909a589bf5ef8b95c47f13",
-    "source-contract.json": "457efc17c28bbe8226ee512f55cea43c1ce8720ee48cfc2dba7ec221d97ef911"
+    "qualify.py": "e5e9f3fdf050bfca5d43a30035553b57b9f2ad444dbb63d61f6ba460aa6d5c88",
+    "source-contract.json": "1821dd6df099bdbe411dfd01a63f362ea0d78c55e06327e47322c8c3c5330123"
   },
   "ownerFiles": [
     "kitchen-sink-pin.json",

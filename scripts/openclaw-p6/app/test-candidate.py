@@ -67,7 +67,7 @@ else:
         }
         with tempfile.TemporaryDirectory() as temporary:
             home = Path(temporary).resolve()
-            root = home / '.cache/oc-ty-ext/P6/app-x64-final-r2-v1'
+            root = home / '.cache/oc-ty-ext/P6/app-x64-final-r3-v1'
             (root / 'source').mkdir(parents=True)
             (root / 'admission-inputs').mkdir()
             (root / 'prep-receipts/clone').mkdir(parents=True)

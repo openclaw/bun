@@ -2,7 +2,7 @@
 """Copy actual preserved150c native compilers into this fresh app root; no build."""
 import hashlib,json,os,platform,shutil
 from pathlib import Path
-ROOT=Path('/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r2-v1')
+ROOT=Path('/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1')
 COMPILER_ROOT=Path('/home/runner/.cache/oc-ty-ext/P6/rd150c-x64-v1')
 def sha(p):
  with p.open('rb') as f:return hashlib.file_digest(f,'sha256').hexdigest()

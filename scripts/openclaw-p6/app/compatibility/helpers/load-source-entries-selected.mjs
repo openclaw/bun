@@ -1,0 +1,17 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import {pathToFileURL} from 'node:url';
+const root=fs.realpathSync(process.argv[2]);
+const selected=JSON.parse(fs.readFileSync(process.argv[3],'utf8'));
+const module=relative=>import(pathToFileURL(path.join(root,relative)).href);
+const {planStandalonePlugins}=await module('scripts/lib/bun-standalone-plugins.mjs');
+const {createStandaloneRuntimeProcessEntrypoints}=await module('src/infra/runtime-process-manifest.ts');
+const {discoverStandaloneWorkers}=await module('scripts/lib/bun-standalone-workers.mjs');
+const {loadStandaloneSourceEntries}=await module('scripts/lib/bun-standalone-source-entries.mjs');
+const {createStandaloneSourceParser}=await module('scripts/lib/bun-standalone-source-parser.mjs');
+const plugins=planStandalonePlugins(root,selected);
+const workerEntries=discoverStandaloneWorkers({runtimeRoot:root,runtimeEntrypoints:createStandaloneRuntimeProcessEntrypoints(import.meta.url,plugins.embeddedDirs)});
+const entries=await loadStandaloneSourceEntries({sourceRoot:root,workerEntries,parse:createStandaloneSourceParser()});
+const unmapped=entries.unmappedWorkers(workerEntries);
+console.log(JSON.stringify({sourceRoot:root,entries:entries.entries.length,workerTargets:workerEntries.length,selectedPlugins:plugins.embedded.length,unmapped},null,2));
+if(unmapped.length)process.exitCode=1;

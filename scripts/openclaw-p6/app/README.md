@@ -1,7 +1,7 @@
 # P6 native x64 application attempt
 
 This is a bounded qualification attempt for OpenClaw
-`670a7ab33bbd2e3ed4f0a5681e138159d74540a1` using the compiler pair from Actions
+`59baf4a051665750eb7055d0cec991d9876526df` using the compiler pair from Actions
 run `40214829538`, attempt 1, wrapper head
 `f9fa08790bf45b3e995280f6eb249e14fd9191c1`. It never builds the compiler itself.
 Both compiler artifacts must have reviewed IDs, ZIP digests, compiler digests,
@@ -47,7 +47,7 @@ The runtime controller preserves terminal exit classifications
 after evidence collection and uses a shorter generated guest label so C2's QMP
 socket path fits Linux's 107-byte limit. The original capsule is unchanged.
 The source proof
-retains the exact R2 tree, all 26 required ancestors and dependency/source file
+retains the exact R3 tree, all 28 required ancestors and dependency/source file
 hashes; native clone, frozen install, runtime build, boundary generation and plugin
 selection still run afresh.
 
@@ -76,7 +76,7 @@ The comparison follow-on consumes the exact completed app run/attempt and
 artifact digest, plus the compiler pair above. The exported admissions,
 build/core/controller receipts, plugin selection and projected reference facts
 retain their native relative paths. On one fresh native x64 runner, recreate
-the exact R2 source and canonical runtime with the existing preparation owner;
+the exact R3 source and canonical runtime with the existing preparation owner;
 package with `scripts/package-openclaw-for-docker.mts`; install into a new prefix
 using the source's exact lifecycle policy; then run the existing comparison
 owner with one warmup and six alternating measured sweeps. No build-host sample
@@ -84,4 +84,30 @@ is reused. The separately prepared comparator capsule is
 `46057637d4872e3660aa7ca7a2e8b5610e84da8f8ff4065fab82bb933c5c5420`;
 its dedicated dispatch adapter requires separate review before execution.
 
-R2 uses the root freeze at `2026-10-25T18:15:36.057232+00:00`, including PR183756, acpx 0.21.0 and Knowledge with two workers. Fresh frozen installation, canonical build, boundary artifacts and plugin selection are required. Prior plugin counts, worker counts and dependency caches are not qualification evidence.
+R3 uses the root freeze at `2026-10-25T19:15:34.315016+00:00`, including PR183771 Knowledge worker resolver/manifest repairs and PR183781 declaration-link repair, plus the prior acpx 0.21.0 and Knowledge integration. Fresh frozen installation, canonical build, boundary artifacts and plugin selection are required. Prior plugin counts, worker counts and dependency caches are not qualification evidence.
+
+## Selected builtin and native-worker preparation gate
+
+Shared application and comparison preparation runs `preflight.py` immediately after
+fresh plugin selection. It reuses the frozen static builtin census, actual native
+namespace query, and maintained source/plugin/worker projection. Both imported
+compiler profiles must pass; missing selected exports, unmapped workers and plugin
+worker declarations block further work. Full-dist findings outside the selected
+owner inputs remain visible diagnostics.
+
+`compatibility/source-binding.json` binds the reviewed R3 commit/tree, all listed
+owner hashes, and the classic TypeScript6.0.3 package/entry hashes. Fresh native
+preparation must match each of these facts before execution.
+The unchanged input and command templates are evidence, not executable shell
+strings. The runtime owner fills actual source/preparation/selection/Node/compiler
+facts and checks them before and after the bounded600-second phase. It uses the
+existing deadline/process-group owner, clean synthetic state, and nice10; it does
+not build an application.
+
+`prep-receipts/compatibility/result.json` is required by application admission and
+again before paging activation. Admission records its hash. Reuse requires both
+successful profiles, complete command evidence and unchanged source/dist,
+selection, execution identity, parser and compiler bytes. Shared benchmark
+preparation uses the same gate. Named reports and failures are exported; the
+preflight's HOME/tmp/cache directories are excluded. This is selected emitted-JS
+and native-worker preflight, not final transformed TS/link or runtime qualification.

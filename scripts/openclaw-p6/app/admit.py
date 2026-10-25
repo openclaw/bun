@@ -6,8 +6,9 @@ import os
 from pathlib import Path
 import sys
 import time
+from preflight import verify_completed
 
-ROOT = Path('/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r2-v1')
+ROOT = Path('/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1')
 
 
 def read(path):
@@ -22,6 +23,7 @@ def sha(path):
 def main():
     variant = sys.argv[1]
     assert variant in ['js', 'c2-off', 'ts']
+    compatibility = verify_completed(ROOT, Path(os.environ['P6_WORK']))
     template = read(ROOT / 'admission-templates' / (variant + '.json'))
     records = read(ROOT / 'admission-inputs/compiler-records.json')
     assert records['status'] == 'native-compilers-adopted-not-app-admitted'
@@ -30,9 +32,11 @@ def main():
     execution = read(Path(os.environ['P6_WORK']) / 'execution.json')
     assert execution['identity']['repository'] == 'openclaw/bun' and execution['identity']['job'] == 'linux-x64-app'
     assert execution['sourceCommit'] == template['linuxCut']['commit']
+    assert compatibility['sourceCommit'] == template['linuxCut']['commit']
     remaining = int(float(os.environ['P6_DEADLINE_EPOCH']) - time.time() - 1200)
     assert remaining >= 120, 'No bounded build window remains'
     template['decision'] = 'build-linux'
+    template['nativeCompatibility'] = compatibility
     template['execution'] = execution
     template['referenceRole'] = 'historical-provenance-only; no current-platform qualification transfer'
     template['linuxCut']['mainRefSha'] = prepared['nativeSource']['mainRefSha']

@@ -1,0 +1,10 @@
+{
+  "commands.template.json": "4738ea5c2fdc58173434ce89b895e6067bc4af7a9883cea77926d750058d69d2",
+  "helpers/load-source-entries-selected.mjs": "e929b93b2244df5eaaa64103861905d22608a37101b3cb849e40b272d4608ed9",
+  "helpers/plugin-contract-selected.mjs": "f1770bd6435b3ffdb337bef3de07c1274117d5617b3228bff3c88ec2eff7d1da",
+  "helpers/runtime.ts": "fa7d3fc1320b1d3aa75abbbb3cfbc7e9ea97cd4e4ed86100a08a23f2d7b81338",
+  "helpers/scan.cjs": "0f4022f02c8212141d09569613650838361ffd41e92be85a4414bb86554e9115",
+  "inputs.template.json": "d3540027cade25ad8a5944ef48b9eacc7a6279d810b25566c354fb283637f76f",
+  "project-selected-builtins.mjs": "7d4cdd0a4ec09e13a50e2bd288d3b883fa9efa945c88fef78a7b442b823be197",
+  "source-interfaces.json": "91d48d78f3914210aefae2b2d02cb31094020404866e8a27d3b2a35bd83d30c0"
+}

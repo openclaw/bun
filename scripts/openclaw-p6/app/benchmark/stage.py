@@ -3,7 +3,7 @@
 import hashlib,json,shutil
 from pathlib import Path
 HERE=Path(__file__).resolve().parent
-ROOT=Path('/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r2-v1')
+ROOT=Path('/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r3-v1')
 assert not (ROOT/'benchmark-prep').exists()
 manifest=json.loads((HERE/'payload/payload-manifest.json').read_text())
 for name,digest in manifest.items():assert hashlib.sha256((HERE/'payload'/name).read_bytes()).hexdigest()==digest,name
