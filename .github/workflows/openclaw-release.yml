@@ -17,6 +17,10 @@ on:
         description: "Reuse S8/S7 binaries for parked-worker GC diagnostics (do not merge)"
         type: boolean
         default: false
+      diagnostic_release_controls:
+        description: "Compare the original signed S8/S7 release-run binaries (do not merge)"
+        type: boolean
+        default: false
       tag:
         description: "Release tag (openclaw-v…) to build; empty builds the dispatched ref as a dry run"
         type: string
@@ -43,7 +47,7 @@ env:
 
 jobs:
   plan:
-    if: inputs.diagnostic_comparison != true
+    if: inputs.diagnostic_comparison != true && inputs.diagnostic_release_controls != true
     name: Plan
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -557,7 +561,7 @@ jobs:
           gh release create "$TAG" "${flags[@]}" ./*.zip manifest.json SHA256SUMS
 
   compare:
-    if: inputs.diagnostic_comparison == true
+    if: inputs.diagnostic_comparison == true || inputs.diagnostic_release_controls == true
     permissions:
       contents: read
       actions: read
@@ -582,33 +586,34 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: s8
-          ref: a242c7f085316fb4c6c0a78c2e3a557e65a0c846
+          ref: ${{ inputs.diagnostic_release_controls && '6aba42d75d4bcee905087fa518cb2df6ff49bb0d' || 'a242c7f085316fb4c6c0a78c2e3a557e65a0c846' }}
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: s7
-          ref: 4e3f28e9b2fb8abb296afd55a819b925b0a0c730
+          ref: ${{ inputs.diagnostic_release_controls && '807211511f81e0a6639bc9eb41d67120f6b85316' || '4e3f28e9b2fb8abb296afd55a819b925b0a0c730' }}
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "26.12.1"
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: test-only-windows
+          name: ${{ inputs.diagnostic_release_controls && 'signed-windows' || 'test-only-windows' }}
           path: s8-dist
-          run-id: 40158095734
+          run-id: ${{ inputs.diagnostic_release_controls && 40153838318 || 40158095734 }}
           github-token: ${{ github.token }}
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: test-only-windows
+          name: ${{ inputs.diagnostic_release_controls && 'signed-windows' || 'test-only-windows' }}
           path: s7-dist
-          run-id: 40158426381
+          run-id: ${{ inputs.diagnostic_release_controls && 40123710650 || 40158426381 }}
           github-token: ${{ github.token }}
       - name: Run unchanged full files and interleaved focused trials
         shell: pwsh
         env:
           TRIPLET: ${{ matrix.triplet }}
           EXPECTED_ARCH: ${{ matrix.arch }}
+          USE_RELEASE_CONTROLS: ${{ inputs.diagnostic_release_controls && '1' || '0' }}
         run: |
           Expand-Archive -LiteralPath "s8-dist/$env:TRIPLET.zip" -DestinationPath s8-runtime
           Expand-Archive -LiteralPath "s7-dist/$env:TRIPLET.zip" -DestinationPath s7-runtime

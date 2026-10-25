@@ -10,11 +10,12 @@ const output = resolve(outputArg);
 mkdirSync(output, { recursive: true });
 const testFile = "test/js/node/worker_threads/worker_threads.test.ts";
 const testName = "wakes a parked worker for an immediate GC timer";
+const releaseControls = process.env.USE_RELEASE_CONTROLS === "1";
 const variants = [
-  { name: "S8", exe: resolve(s8Exe), source: resolve(s8Source), head: "a242c7f085316fb4c6c0a78c2e3a557e65a0c846" },
-  { name: "S7", exe: resolve(s7Exe), source: resolve(s7Source), head: "4e3f28e9b2fb8abb296afd55a819b925b0a0c730" },
+  { name: "S8", exe: resolve(s8Exe), source: resolve(s8Source), head: releaseControls ? "6aba42d75d4bcee905087fa518cb2df6ff49bb0d" : "a242c7f085316fb4c6c0a78c2e3a557e65a0c846" },
+  { name: "S7", exe: resolve(s7Exe), source: resolve(s7Source), head: releaseControls ? "807211511f81e0a6639bc9eb41d67120f6b85316" : "4e3f28e9b2fb8abb296afd55a819b925b0a0c730" },
 ];
-const report = { variants: [], fullFiles: [], trials: [] };
+const report = { releaseControls, variants: [], fullFiles: [], trials: [] };
 const save = () => writeFileSync(join(output, "trials.json"), JSON.stringify(report, null, 2) + "\n");
 
 function environment(variant, traceDirectory) {
@@ -51,8 +52,9 @@ for (const variant of variants) {
   const identity = spawnSync(variant.exe, ["-p", "JSON.stringify({revision:Bun.revision,webkit:process.versions.webkit,arch:process.arch})"], { encoding: "utf8" });
   assert.equal(identity.status, 0);
   const runtime = JSON.parse(identity.stdout);
-  assert(runtime.revision.includes(variant.head.slice(0, 9)));
+  assert.equal(runtime.revision, variant.head);
   assert.equal(runtime.arch, process.env.EXPECTED_ARCH);
+  assert.equal(runtime.webkit, JSON.parse(readFileSync(join(variant.source, "scripts/build/deps/webkit-artifacts.json"), "utf8")).version);
   report.variants.push({ ...variant, runtime, caseHash, binarySha256: createHash("sha256").update(readFileSync(variant.exe)).digest("hex") });
   save();
 
@@ -68,7 +70,7 @@ for (const variant of variants) {
   save();
 }
 
-for (const tracing of [false, true]) {
+for (const tracing of releaseControls ? [false] : [false, true]) {
   for (let round = 1; round <= 10; round++) {
     const order = round % 2 ? variants : [...variants].reverse();
     for (const variant of order) {
