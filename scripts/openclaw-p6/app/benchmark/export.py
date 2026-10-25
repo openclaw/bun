@@ -14,6 +14,8 @@ from preflight import export_selections
 
 VARIANTS = ['js', 'c2-off', 'ts']
 CORE_FILES = ['result.json', 'history.json', 'events.jsonl', 'provider-requests.jsonl', 'zero-js.json']
+KNOWLEDGE_FILES = ['result.json', 'status-before.json', 'status-before.response',
+                   'ontology.json', 'ontology.response', 'status-after.json', 'status-after.response']
 
 
 def tree_files(directory):
@@ -34,6 +36,8 @@ def core_files(directory):
         yield directory / name
     for name in ['logs', 'traces']:
         yield from tree_files(directory / name)
+    for name in KNOWLEDGE_FILES:
+        yield directory / 'knowledge' / name
 
 
 def selections(work, root):
@@ -52,7 +56,7 @@ def selections(work, root):
         yield prep / name, Path(name)
     for name in ['producer-receipt.json', 'producer.stdout', 'producer.stderr', 'pack.json', 'bundles.json']:
         yield prep / 'package' / name, Path('package') / name
-    for name in ['package-plan.json', 'installed-receipt.json', 'functional-timings.json', 'cohort-config.json']:
+    for name in ['package-plan.json', 'installed-receipt.json', 'functional-timings.json', 'knowledge-controls.json', 'cohort-config.json']:
         yield prep / 'work' / name, Path('work') / name
     for name in ['install-command', 'functional-measurements']:
         for path in tree_files(prep / 'work' / name):
@@ -94,15 +98,17 @@ def summary(work, root):
     backup = facts(root / 'backup-results/summary.json')
     cleanup = facts(work / 'benchmark-cleanup.json')
     execution = facts(work / 'execution.json')
+    knowledge = facts(root / 'benchmark-prep/work/knowledge-controls.json')
     complete = (compatibility.get('status') == 'PASS' and comparison.get('performanceQualified') is True and
                 comparison.get('status') in ['comparison-passed', 'partial-comparison-passed'] and
                 facts(work / 'benchmark-run.json').get('status') == 'completed' and
-                backup.get('status') == 'passed' and cleanup.get('status') == 'owned-workloads-removed' and
+                backup.get('status') == 'passed' and knowledge.get('sourceCommit') == CUT and
+                knowledge.get('status') == 'passed' and cleanup.get('status') == 'owned-workloads-removed' and
                 cleanup.get('identity') == execution.get('identity') and
                 cleanup.get('pagingActivated') is False and not (work / 'terminal.json').exists())
     return {'sourceCommit': CUT, 'execution': execution, 'comparison': comparison,
             'nativeCompatibility': {'status': compatibility.get('status', 'not-run')},
-            'untimedBackup': backup, 'cleanup': cleanup, 'scheduledWorkComplete': complete,
+            'untimedBackup': backup, 'untimedKnowledge': knowledge, 'cleanup': cleanup, 'scheduledWorkComplete': complete,
             'applicationQualified': False, 'shipReady': False}
 
 

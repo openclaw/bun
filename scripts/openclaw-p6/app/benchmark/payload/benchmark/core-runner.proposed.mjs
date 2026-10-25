@@ -16,13 +16,14 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const argv = process.argv.slice(2);
 if (argv.includes('--help')) {
-  console.log('Usage: node core-runner.mjs (--artifact <complete-standalone-dir> | --runtime <executable> --entry <package/openclaw.mjs>) --source <matching-source> --out <fresh-run-dir> [--zero-js] [--timeout-seconds 180]');
+  console.log('Usage: node core-runner.mjs (--artifact <complete-standalone-dir> | --runtime <executable> --entry <package/openclaw.mjs>) --source <matching-source> --out <fresh-run-dir> [--zero-js] [--knowledge-control] [--timeout-seconds 180]');
   process.exit(0);
 }
 const options = {};
 for (let i=0;i<argv.length;i++) {
   const key=argv[i];
   if (key==='--zero-js') options.zeroJs=true;
+  else if (key==='--knowledge-control') options.knowledgeControl=true;
   else if (['--artifact','--runtime','--entry','--source','--out','--timeout-seconds'].includes(key) && argv[i+1]) options[key.slice(2)]=argv[++i];
   else throw new Error(`Unknown or incomplete option: ${key}`);
 }
@@ -30,6 +31,7 @@ for (const key of ['source','out']) assert(options[key], `Missing --${key}`);
 assert.equal(process.platform,'linux','P6 core qualification requires native Linux');
 const source=fs.realpathSync(options.source), launch=resolveLaunchTarget(options);
 const {artifact,binary,entry}=launch;
+if(options.knowledgeControl) assert.equal(launch.kind,'standalone','Knowledge control requires an admitted standalone artifact');
 const out=path.resolve(options.out);
 assert(!fs.existsSync(out),'--out must be a fresh directory');
 assert(![artifact,source,entry && path.dirname(entry)].filter(Boolean).some(root=>out===root || out.startsWith(root+path.sep)),'--out must be outside source and artifact');
@@ -65,6 +67,7 @@ const result={schema:1,at:new Date().toISOString(),artifact,source,binary,platfo
  qualification:'incomplete',syntheticOnly:true,checks:{},commands:[],processes:[],cleanup:{},
  limits:['Worker pool census is not proof of every worker lifecycle.','No live provider credentials or live-model proof.','Timing with --zero-js includes tracing overhead; own process counters then refer to strace, not the app.']};
 if (artifact && fs.existsSync(path.join(artifact,'manifest.json'))) result.manifest=JSON.parse(fs.readFileSync(path.join(artifact,'manifest.json'),'utf8'));
+if(options.knowledgeControl) result.performanceEligible=false;
 const children=[],observed=new Map();
 const clk=Number(spawnSync('getconf',['CLK_TCK'],{encoding:'utf8'}).stdout?.trim());
 const pageSize=Number(spawnSync('getconf',['PAGESIZE'],{encoding:'utf8'}).stdout?.trim());
@@ -133,7 +136,7 @@ try {
   assert(mockPort,'mock did not publish its allocated listener');
   assert.equal((await fetch(`http://127.0.0.1:${mockPort}/health`,{signal:AbortSignal.timeout(2000)})).status,200);
   const port=await freePort();
-  const cfg=coreFixtureConfig({workspace:env.OPENCLAW_TEST_WORKSPACE_DIR,port,token,mockPort,applyMockOpenAiModelConfig});
+  const cfg=coreFixtureConfig({workspace:env.OPENCLAW_TEST_WORKSPACE_DIR,port,token,mockPort,applyMockOpenAiModelConfig,knowledgeControl:options.knowledgeControl});
   fs.writeFileSync(configPath,JSON.stringify(cfg,null,2)+'\n');
   result.checks.version=(await command('version',['--version'])).trim();
   await command('config-validate',['config','validate']);
@@ -159,6 +162,21 @@ try {
   result.readyTree=snapshotProcessTree(gateway.pid,{clockTicks:clk,pageSize});
   result.readyTreeRssBytes=result.readyTree.rssBytes;
   result.readyTreeCpuSeconds=result.readyTree.cpuSeconds;
+  if(options.knowledgeControl) {
+    const providerRows=()=>fs.existsSync(env.MOCK_REQUEST_LOG)?fs.readFileSync(env.MOCK_REQUEST_LOG,'utf8').trim().split('\n').filter(Boolean):[];
+    assert.equal(providerRows().length,0,'Knowledge control requires no prior inference requests');
+    const proofDir=path.join(out,'knowledge');
+    const proof=start('knowledge-probe','/usr/bin/python3',[fileURLToPath(new URL('../harness/knowledge-probe.py',import.meta.url)),
+      '--url',`http://127.0.0.1:${port}`,'--state',stateDir,'--output',proofDir]);
+    const complete=await Promise.race([proof.done,delay(timeoutMs,undefined,{ref:false}).then(()=>null)]);
+    if(!complete){await stop(proof);throw new Error('Knowledge control timed out');}
+    assert.equal(complete.spawnError,null,'Knowledge probe could not start');
+    assert.equal(complete.code,0,`Knowledge probe failed; see ${complete.stderr}`);
+    const knowledge=JSON.parse(fs.readFileSync(path.join(proofDir,'result.json'),'utf8'));
+    assert.equal(knowledge.status,'passed-operations-only');
+    assert.equal(providerRows().length,0,'Knowledge control issued an inference request');
+    result.checks.knowledge={...knowledge,providerRequests:0,performanceEligible:false};
+  }
   const events=[];
   client=createGatewayWsClient({url:`ws://127.0.0.1:${port}`,openTimeoutMs:timeoutMs,handshakeTimeoutMs:timeoutMs,onEvent:event=>{
     const observed={at:performance.now(),...event};events.push(observed);

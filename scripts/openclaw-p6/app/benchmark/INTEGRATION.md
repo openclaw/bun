@@ -46,3 +46,17 @@ python3.12 -B -m unittest discover -s scripts/openclaw-p6/app/benchmark -p 'test
 The accepted benchmark payload and its hash manifest are unchanged. This wrapper
 adds workflow identity, host orchestration, cleanup and export; it does not supply
 native execution results.
+
+The untimed functional phase enables `--knowledge-control` only for restored
+standalone JS, C2, and TS cells. After Gateway readiness and before the first
+model turn, it invokes `knowledge_status`, `knowledge_ontology`, then
+`knowledge_status` through `/tools/invoke`. The control requires the store to
+transition from unprovisioned to ready, matching ontology fingerprints, real
+registry/store/manifest files, and zero inference requests during these calls.
+The existing core runner owns Gateway and probe cleanup. The timed cohort never
+passes this flag.
+
+`work/knowledge-controls.json` retains the status of every restored variant.
+A failed optional variant remains a failed Knowledge result even if it is
+excluded from subsequent performance measurements. Exported completion requires
+these controls to pass; proof files are allowlisted without copying state.

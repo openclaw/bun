@@ -97,6 +97,7 @@ class Contracts(unittest.TestCase):
                 path.parent.mkdir(parents=True, exist_ok=True); path.write_text(value)
             put(prep/'work/js-core/result.json', '{}')
             put(prep/'work/js-core/logs/gateway.stdout')
+            put(prep/'work/js-core/knowledge/result.json', '{}')
             for relative in ['work/installed/secret', 'work/home/secret', 'work/cache/secret',
                              'package-source/secret', 'work/js-core/home/secret',
                              'work/js-core/tmp/secret', 'work/cohort/controller-home/secret']:
@@ -107,6 +108,7 @@ class Contracts(unittest.TestCase):
             paths = [r['path'] for r in json.loads((work/'benchmark-export/index.json').read_text())]
             self.assertIn('work/js-core/result.json', paths)
             self.assertIn('work/js-core/logs/gateway.stdout', paths)
+            self.assertIn('work/js-core/knowledge/result.json', paths)
             self.assertIn('backup-results/js/result.json', paths)
             self.assertFalse(any('secret' in p for p in paths))
 
@@ -133,7 +135,12 @@ class Contracts(unittest.TestCase):
             put(root/'backup-results/summary.json', {'status':'passed'})
             self.assertFalse(EXPORT.summary(work, root)['scheduledWorkComplete'])
             put(root/'prep-receipts/compatibility/result.json', {'status':'PASS'})
+            self.assertFalse(EXPORT.summary(work, root)['scheduledWorkComplete'])
+            put(root/'benchmark-prep/work/knowledge-controls.json', {'status':'passed','sourceCommit':EXPORT.CUT})
             self.assertTrue(EXPORT.summary(work, root)['scheduledWorkComplete'])
+            put(root/'benchmark-prep/work/knowledge-controls.json', {'status':'failed','sourceCommit':EXPORT.CUT})
+            self.assertFalse(EXPORT.summary(work, root)['scheduledWorkComplete'])
+            put(root/'benchmark-prep/work/knowledge-controls.json', {'status':'passed','sourceCommit':EXPORT.CUT})
             put(root/'backup-results/summary.json', {'status':'failed'})
             self.assertFalse(EXPORT.summary(work, root)['scheduledWorkComplete'])
             put(root/'backup-results/summary.json', {'status':'passed'})

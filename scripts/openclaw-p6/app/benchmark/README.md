@@ -24,7 +24,7 @@ Use the phase sequence and exact argv in `integration.json`. Every executable ph
 
 Report Gateway readiness, first streamed delta, completed first turn, root/tree RSS and CPU with medians/quartiles/min/max and paired ratios. Results are same-machine deployment comparisons with recorded plugin-content differences, warm shared file caches and a synthetic streaming provider. They are not cold-cache, live-provider or compiler-only claims. A Worker census is not complete Worker lifecycle qualification. `summarize.py` includes the explicit unavailable cells beside successful statistics.
 
-`test_contract.py` is pure synthetic transport/selection proof: completed failed run acceptance, wrong attempt/ZIP rejection, changed exported bytes, path traversal, unavailable TS and independent valid JS with missing TS. Run it under Python3.12 (matching the native environment). Runtime owners remain byte-identical; local checks do not establish native results or an autoreview verdict.
+`test_contract.py` is pure synthetic transport/selection proof: completed failed run acceptance, wrong attempt/ZIP rejection, changed exported bytes, path traversal, unavailable TS and independent valid JS with missing TS. Run it under Python3.12 (matching the native environment). The cohort invocation remains unchanged. The opt-in Knowledge control below changes only untimed AOT functional cells; local checks do not establish native results or an autoreview verdict.
 
 
 ## Untimed backup qualification in version2
@@ -40,3 +40,9 @@ Version3 preserves the complete originating qualification summary, including str
 ## R3 source freeze
 
 This packet binds source59baf4a051665750eb7055d0cec991d9876526df, tree6b1896212170bdfc7632f87ceee3bc59934356b8, frozen2026-10-25T19:15:34.315016+00:00. It includes PR183771 Knowledge worker resolver/manifest repairs and PR183781 declaration-link repair. All27 benchmark and12 backup source-contract entries were verified against immutable R3 blobs and remain byte-identical to R2, as do package manifest/lock/workspace and the19 source npm policy decisions. Actual plugin selection, compiler/runtime hashes, installed contents and AOT facts must still be supplied from new native receipts; no prior counts or binaries are reused.
+
+## Untimed Knowledge control
+
+Restored AOT functional cells enable the two Knowledge tools and run the reviewed status→ontology→status HTTP sequence after readiness, before their ordinary model turn. The store must change from unprovisioned to ready with matching ontology fingerprints, registry/store/manifest evidence and no inference request during the control. The existing process owner launches and cleans the thin probe and Gateway. Node/Bun controls and every timed cohort omit the flag.
+
+Knowledge responses and per-variant failures are exported without synthetic state. A failed optional cell may still be excluded from performance, but it prevents scheduledWorkComplete from becoming true. Missing original artifacts remain unavailable under the unchanged import contract.

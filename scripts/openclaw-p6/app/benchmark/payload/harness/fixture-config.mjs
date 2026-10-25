@@ -3,10 +3,16 @@ function baseConfig({workspace,port,token}) {
   return {gateway:{mode:'local',bind:'loopback',port,auth:{mode:'token',token},controlUi:{enabled:false}},
     agents:{defaults:{workspace},entries:{main:{}}},browser:{enabled:false},update:{checkOnStart:false}};
 }
-export function coreFixtureConfig({workspace,port,token,mockPort,applyMockOpenAiModelConfig}) {
+export function coreFixtureConfig({workspace,port,token,mockPort,applyMockOpenAiModelConfig,knowledgeControl=false}) {
   const cfg=baseConfig({workspace,port,token});
   cfg.tools={allow:[],deny:['*']};
   applyMockOpenAiModelConfig(cfg,{mockPort,modelRef:'openai/p6-deterministic'});
+  if(knowledgeControl) {
+    cfg.plugins={enabled:true,allow:['knowledge','openai'],slots:{memory:'knowledge'},entries:{
+      openai:{enabled:true},knowledge:{enabled:true,config:{maintenance:{enabled:false}}}}};
+    cfg.tools={allow:['knowledge_status','knowledge_ontology']};
+    cfg.skills={allowBundled:[]};
+  }
   return cfg;
 }
 export function capabilityFixtureConfig({workspace,port,token,scenario,mockPort,applyMockOpenAiModelConfig}) {

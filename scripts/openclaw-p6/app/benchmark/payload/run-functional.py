@@ -21,19 +21,30 @@ entry=str(work/'installed/node_modules/openclaw/openclaw.mjs')
 cells=[(v+'-aot',['--artifact',str(ROOT/'artifacts'/v)],work/(v+'-core'),v) for v in x['requestedVariants']]
 cells += [('node-npm',['--runtime',node,'--entry',entry],work/'node-core',None),('bun-jit-npm',['--runtime',str(ROOT/'compilers/standard/bun'),'--entry',entry],work/'bun-core',None)]
 measurements=work/'functional-measurements';measurements.mkdir();timings=[]
+knowledge={'sourceCommit':x['sourceCommit'],'status':'incomplete','expectedVariants':list(x['requestedVariants']),
+ 'variants':{v:{'status':'not-run'} for v in x['requestedVariants']},'performanceEligible':False}
+save(work/'knowledge-controls.json',knowledge)
 env={'PATH':'/usr/bin:/bin','HOME':str(work/'home'),'TMPDIR':str(work/'tmp'),'LANG':'C.UTF-8','TZ':'UTC'}
 for cell,args,out,variant in cells:
  receipt=measurements/cell;receipt.mkdir();started=time.monotonic();error=None
+ controls=['--knowledge-control'] if variant is not None else []
  old=signal.signal(signal.SIGHUP,owner.interrupted)
  try:
-  owner.measure({'measurementUtility':str(ROOT/'measure-command.py'),'variant':'preflight-'+cell,'source':str(ROOT/'source'),'timeoutSeconds':900,'command':[node,str(HERE/'benchmark/core-runner.proposed.mjs'),'--source',str(ROOT/'source'),'--out',str(out),*args]},env,receipt)
+  owner.measure({'measurementUtility':str(ROOT/'measure-command.py'),'variant':'preflight-'+cell,'source':str(ROOT/'source'),'timeoutSeconds':900,'command':[node,str(HERE/'benchmark/core-runner.proposed.mjs'),'--source',str(ROOT/'source'),'--out',str(out),*args,*controls]},env,receipt)
   result=load(out/'result.json');assert result['qualification']=='passed'
+  if variant is not None:assert result['checks']['knowledge']['status']=='passed-operations-only'
  except BaseException as e:
   if isinstance(e,(owner.BuildInterrupted,KeyboardInterrupt,SystemExit)):raise
   error=str(e)
  finally:signal.signal(signal.SIGHUP,old)
  row={'id':cell,'wallSeconds':time.monotonic()-started,'status':'passed' if error is None else 'failed','error':error,'receipt':str(receipt),'output':str(out),'performanceEligible':False};timings.append(row)
  save(work/'functional-timings.json',timings)
+ if variant is not None:
+  knowledge['variants'][variant]={'status':'passed' if error is None else 'failed','error':error,
+   'proof':str(out/'knowledge/result.json'),'coreResult':str(out/'result.json')}
+  states=[row['status'] for row in knowledge['variants'].values()]
+  knowledge['status']='passed' if all(value=='passed' for value in states) else 'failed' if 'failed' in states else 'incomplete'
+  save(work/'knowledge-controls.json',knowledge)
  if error is not None:
   if variant not in ['c2-off','ts']:raise RuntimeError(cell+' required baseline functional failed: '+error)
   availability['variants'][variant]={'status':'unavailable','reason':'new-host functional failed','functional':row,'performanceQualified':False}
