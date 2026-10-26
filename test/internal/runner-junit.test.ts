@@ -5,11 +5,133 @@
  * annotation. parseJunitFileSuites() in scripts/buildkite.ts is that parsing step.
  */
 import { describe, expect, test } from "bun:test";
-import { bunEnv, bunExe, tempDir } from "harness";
+import { bunEnv, bunExe, nodeExeAtLeast, tempDir } from "harness";
 import { join } from "node:path";
 import { createLiveOutputFilter, parseJunitFileSuites } from "../../scripts/buildkite.ts";
 
 const parse = (xml: string) => Object.fromEntries(parseJunitFileSuites(xml));
+
+describe("machine diagnostics", () => {
+  for (const [runtime, executable] of [
+    ["Bun", bunExe()],
+    ["Node", nodeExeAtLeast("24.2.0")],
+  ] as const) {
+    test.skipIf(!executable)(`does not expose environment or machine identity under ${runtime}`, async () => {
+      using dir = tempDir("machine-diagnostics", {
+        "package.json": '{"type":"module"}',
+        "buildkite.ts": await Bun.file(new URL("../../scripts/buildkite.ts", import.meta.url)).text(),
+        "agent.ts": await Bun.file(new URL("../../scripts/agent.ts", import.meta.url)).text(),
+        "sh": "",
+        "pwsh": "",
+        "diagnostic.mjs": `
+          import assert from "node:assert/strict";
+          import childProcess, { spawnSync } from "node:child_process";
+          import { syncBuiltinESMExports } from "node:module";
+
+          const commands = [];
+          const stub = (file, args = []) => {
+            commands.push([file, ...args]);
+            return { status: 0, signal: null, stdout: "synthetic command output", stderr: "" };
+          };
+          childProcess.spawnSync = stub;
+          syncBuiltinESMExports();
+          assert.equal(spawnSync, stub);
+          spawnSync("binding-marker");
+          if (process.argv[2] === "Node") {
+            assert.equal(process.release.name, "node");
+            assert.equal(process.versions.bun, undefined);
+          } else {
+            assert.equal(typeof process.versions.bun, "string");
+          }
+
+          // Import only after the stub is bound: even the old logger must not run a network command.
+          const { printEnvironment } = await import("./buildkite.ts");
+          printEnvironment();
+          console.log("DIAGNOSTIC_COMMANDS " + JSON.stringify(commands));
+        `,
+      });
+      // Never inherit credentials into this regression, including its unfixed control.
+      await using proc = Bun.spawn({
+        cmd: [executable!, "diagnostic.mjs", runtime],
+        cwd: String(dir),
+        env: {
+          CI: "true",
+          GITHUB_ACTIONS: "true",
+          GITHUB_REPOSITORY: "example/project",
+          GITHUB_RUN_ID: "123",
+          GITHUB_SHA: "synthetic-commit",
+          GITHUB_REF_NAME: "synthetic-branch",
+          GITHUB_WORKFLOW: "synthetic-workflow",
+          RUNNER_NAME: "synthetic-runner",
+          SYNTHETIC_SECRET: "diagnostic-secret-sentinel",
+          SYNTHETIC_SETTING: "diagnostic-setting-sentinel",
+          PATH: String(dir),
+          HOME: String(dir),
+          TMPDIR: String(dir),
+          TEMP: String(dir),
+          TMP: String(dir),
+          BUN_DEBUG_QUIET_LOGS: "1",
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      const commandLine = stdout.split("\n").find(line => line.startsWith("DIAGNOSTIC_COMMANDS "));
+      const commands: string[][] = JSON.parse(commandLine?.slice("DIAGNOSTIC_COMMANDS ".length) ?? "[]");
+      const identities = [
+        "Hostname",
+        "Tailscale IP",
+        "Public IP",
+        "Username",
+        "Working Directory",
+        "Temporary Directory",
+      ];
+      const resourceGroups =
+        process.platform === "win32"
+          ? ["Disk (win)", "Memory"]
+          : process.platform === "linux" || process.platform === "android"
+            ? ["Limits", "Disk (df)", "Memory", "Docker"]
+            : ["Limits", "Disk (df)"];
+
+      // Assert only a safe projection; a failure must not print the captured diagnostic output.
+      expect({
+        exitCode,
+        signal: proc.signalCode,
+        hasStderr: stderr.length > 0,
+        leakedSentinel: ["diagnostic-secret-sentinel", "diagnostic-setting-sentinel", "synthetic-runner"].some(value =>
+          stdout.includes(value),
+        ),
+        identityLabels: identities.filter(label => stdout.includes(label + ":")),
+        environmentGroup: stdout.includes("::group::Environment"),
+        retainedGroups: ["Machine", "Repository", "CI", ...resourceGroups].every(group =>
+          stdout.includes("::group::" + group),
+        ),
+        platform: stdout.includes("Operating System:") && stdout.includes("Architecture:"),
+        runtime: stdout.includes(runtime + " Version:"),
+        commit: stdout.includes("Commit: synthetic-commit"),
+        ci: stdout.includes("Build ID: 123") && stdout.includes("Build Label: synthetic-workflow"),
+        stubBound: commands.some(([file]) => file === "binding-marker"),
+        resourceCommand: commands.some(([, arg]) => arg === "-c"),
+        networkCommand: commands.some(([file]) => /curl|tailscale/i.test(file)),
+      }).toEqual({
+        exitCode: 0,
+        signal: null,
+        hasStderr: false,
+        leakedSentinel: false,
+        identityLabels: [],
+        environmentGroup: false,
+        retainedGroups: true,
+        platform: true,
+        runtime: true,
+        commit: true,
+        ci: true,
+        stubBound: true,
+        resourceCommand: true,
+        networkCommand: false,
+      });
+    });
+  }
+});
 
 describe("live worker output", () => {
   const annotation = "::error file=src/js/node/_http_client.ts,line=650::socket hang up";

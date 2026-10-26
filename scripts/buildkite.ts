@@ -4,7 +4,6 @@
 
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { userInfo } from "node:os";
 import { basename, dirname, relative, resolve } from "node:path";
 import {
   getAbi,
@@ -12,17 +11,14 @@ import {
   getArch,
   getDistro,
   getDistroVersion,
-  getHostname,
   getKernel,
   getOs,
   isLinux,
-  isMacOS,
   isPosix,
   isWindows,
   output,
   request,
   run,
-  tmpdir,
   which,
 } from "./agent.ts";
 
@@ -647,45 +643,6 @@ export function parseJunitFileSuites(xml: string): Map<string, JunitFileSuite> {
   return files;
 }
 
-function getTailscale(): string {
-  if (isMacOS) {
-    const tailscaleApp = "/Applications/Tailscale.app/Contents/MacOS/tailscale";
-    if (existsSync(tailscaleApp)) {
-      return tailscaleApp;
-    }
-  }
-
-  if (isWindows) {
-    const tailscaleExe = "C:\\Program Files\\Tailscale\\tailscale.exe";
-    if (existsSync(tailscaleExe)) {
-      return tailscaleExe;
-    }
-  }
-
-  return "tailscale";
-}
-
-function getTailscaleIp(): string | undefined {
-  const tailscale = getTailscale();
-  const stdout = output([tailscale, "ip", "--1"]);
-  if (stdout !== undefined) {
-    return stdout.trim();
-  }
-
-  return undefined;
-}
-
-function getPublicIp(): string | undefined {
-  for (const url of ["https://checkip.amazonaws.com", "https://ipinfo.io/ip"]) {
-    const stdout = output(["curl", url]);
-    if (stdout !== undefined) {
-      return stdout.trim();
-    }
-  }
-
-  return undefined;
-}
-
 export function getBuildMetadata(name: string): string | undefined {
   if (isBuildkite) {
     return output(["buildkite-agent", "meta-data", "get", name])?.trim() || undefined;
@@ -827,14 +784,6 @@ export function printEnvironment(): void {
     }
     console.log("Distro:", getDistro());
     console.log("Distro Version:", getDistroVersion());
-    console.log("Hostname:", getHostname());
-    if (isCI) {
-      console.log("Tailscale IP:", getTailscaleIp());
-      console.log("Public IP:", getPublicIp());
-    }
-    console.log("Username:", userInfo().username);
-    console.log("Working Directory:", process.cwd());
-    console.log("Temporary Directory:", tmpdir());
     if (process.isBun) {
       console.log("Bun Version:", Bun.version, Bun.revision);
     } else {
@@ -843,12 +792,6 @@ export function printEnvironment(): void {
   });
 
   if (isCI) {
-    startGroup("Environment", () => {
-      for (const [key, value] of Object.entries(process.env).sort()) {
-        console.log(`${key}:`, value);
-      }
-    });
-
     const show = (title: string, shells: string[], ...scripts: string[]) =>
       startGroup(title, () => {
         const shell = which(shells);

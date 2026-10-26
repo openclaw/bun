@@ -183,6 +183,55 @@ test("publication requires exactly the enabled platform coverage while dry-run W
   }
 });
 
+test("macOS signing credentials are limited to publishing runs while dry runs keep both archives", () => {
+  const workflow = Bun.YAML.parse(
+    readFileSync(join(import.meta.dir, "../../../.github/workflows/openclaw-release.yml"), "utf8"),
+  ) as {
+    jobs: Record<
+      string,
+      { environment: string; steps: { name?: string; env?: Record<string, string>; with?: { name?: string } }[] }
+    >;
+  };
+  const job = workflow.jobs["sign-macos"]!;
+  const signing = job.steps.find(step => step.name === "Sign and notarize")!;
+  for (const [name, secret] of Object.entries({
+    P12_BASE64: "MACOS_SIGNING_P12",
+    P12_PASSWORD: "MACOS_SIGNING_P12_PASSWORD",
+    NOTARY_KEY_P8: "ASC_PRIVATE_KEY_P8",
+    NOTARYTOOL_KEY_ID: "ASC_KEY_ID",
+    NOTARYTOOL_ISSUER: "ASC_ISSUER_ID",
+  })) {
+    expect(signing.env![name]).toBe(
+      `\${{ needs.plan.outputs.publish == 'true' && github.event_name != 'pull_request' && secrets.${secret} || '' }}`,
+    );
+  }
+  expect(job.environment).toBe("${{ needs.plan.outputs.publish == 'true' && 'openclaw-release' || '' }}");
+  expect(signing.env!.PUBLISH).toBe("${{ needs.plan.outputs.publish }}");
+  expect(signing.env!.REQUIRE_SIGNING).toBe("${{ vars.OPENCLAW_RELEASE_REQUIRE_SIGNING }}");
+  expect(job.steps.filter(step => step.name?.startsWith("Upload darwin-")).map(step => step.with!.name)).toEqual([
+    "signed-darwin-arm64",
+    "signed-darwin-x64",
+  ]);
+});
+
+test("dry-run manifests describe both Darwin archives without claiming signing is unconfigured", () => {
+  using dir = tempDir("openclaw-darwin-dry-run", {});
+  const dist = String(dir);
+  const file = join(dist, "bun");
+  writeFileSync(file, "executable");
+  for (const name of ["darwin-arm64", "darwin-x64"] as const) {
+    const t = targets[name];
+    zip(join(dist, `${t.triplet}.zip`), t.triplet, [file], 1790353014);
+  }
+  const m = manifest({ tag: tagFor(facts), repository: "openclaw/bun", facts, dist, signing: {}, publish: false });
+  expect(m.assets.map(asset => [asset.target, asset.signing])).toEqual([
+    ["darwin-arm64", { kind: "adhoc", notarized: false }],
+    ["darwin-x64", { kind: "none", notarized: false }],
+  ]);
+  expect(releaseNotes(m)).toContain("`darwin-arm64` and `darwin-x64` are not signed with a Developer ID or notarized.");
+  expect(releaseNotes(m)).not.toContain("none is configured for this repository yet");
+});
+
 test("a default published manifest needs all four Darwin/Linux targets and rejects any Windows archive", () => {
   using dir = tempDir("openclaw-unix-manifest", {});
   const dist = String(dir);

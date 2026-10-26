@@ -755,7 +755,7 @@ export function releaseNotes(m: ReturnType<typeof manifest>): string {
     "",
     ...(unsigned.length
       ? [
-          `${unsigned.join(" and ")} ${unsigned.length > 1 ? "are" : "is"} not signed with a Developer ID or notarized: none is configured for this repository yet. arm64 carries the linker's ad-hoc signature, x64 none, as upstream links them. An app that embeds them re-signs them; macOS refuses them when a browser downloaded them.`,
+          `${unsigned.join(" and ")} ${unsigned.length > 1 ? "are" : "is"} not signed with a Developer ID or notarized. arm64 carries the linker's ad-hoc signature, x64 none, as upstream links them. An app that embeds them re-signs them; macOS refuses them when a browser downloaded them.`,
           "",
         ]
       : []),

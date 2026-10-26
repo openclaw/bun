@@ -231,17 +231,18 @@ executable memory, library validation off for native addons), notarizes each
 zip and records the result in the manifest. A bare executable cannot have a
 ticket stapled; Gatekeeper looks the notarization up online by its cdhash.
 
-It reads the secrets the OpenClaw release fleet uses (`openclaw/release-workflows`):
+Only publishing runs read the secrets the OpenClaw release fleet uses (`openclaw/release-workflows`):
 `MACOS_SIGNING_P12`, `MACOS_SIGNING_P12_PASSWORD`, `ASC_KEY_ID`,
 `ASC_ISSUER_ID` and `ASC_PRIVATE_KEY_P8`, from the `openclaw-release`
 environment when publishing (which can then require an approval) or from the
-repository. Pull requests never see them. The `openclaw-release` environment
+repository. Pull requests and non-publishing dry runs never receive them, even
+when repository secrets are configured. The `openclaw-release` environment
 sets `OPENCLAW_RELEASE_REQUIRE_SIGNING=true`: a publishing run must sign and
 notarize both darwin targets. Check the environment's variables as well as the
 repository's when auditing this requirement; an unset repository variable does
 not mean the environment guard is disabled.
 
-Dry runs without signing credentials retain upstream's ad-hoc arm64 or unsigned
+Dry runs retain upstream's ad-hoc arm64 or unsigned
 x64 executables. Their manifest records `"kind": "adhoc"` or `"none"` and
 `"notarized": false`; they do not prove a signed publication.
 `sign-macos.sh` runs the same way on a maintainer's Mac with the

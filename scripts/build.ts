@@ -158,7 +158,7 @@ async function main(): Promise<void> {
   }
 
   if (isCI) {
-    // CI: machine/env dump + collapsible groups + annotation-on-failure.
+    // CI: platform diagnostics + collapsible groups + annotation-on-failure.
     printEnvironment();
     const result = await startGroup("Configure", () => configure(input));
     if (args.configureOnly) return;

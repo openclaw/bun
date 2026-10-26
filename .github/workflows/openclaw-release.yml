@@ -208,12 +208,12 @@ jobs:
           merge-multiple: true
       - name: Sign and notarize
         env:
-          # The OpenClaw release fleet's names (openclaw/release-workflows). Pull requests never see them.
-          P12_BASE64: ${{ github.event_name != 'pull_request' && secrets.MACOS_SIGNING_P12 || '' }}
-          P12_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.MACOS_SIGNING_P12_PASSWORD || '' }}
-          NOTARY_KEY_P8: ${{ github.event_name != 'pull_request' && secrets.ASC_PRIVATE_KEY_P8 || '' }}
-          NOTARYTOOL_KEY_ID: ${{ github.event_name != 'pull_request' && secrets.ASC_KEY_ID || '' }}
-          NOTARYTOOL_ISSUER: ${{ github.event_name != 'pull_request' && secrets.ASC_ISSUER_ID || '' }}
+          # Only publishing runs receive signing credentials; dry runs keep the linker-produced archives.
+          P12_BASE64: ${{ needs.plan.outputs.publish == 'true' && github.event_name != 'pull_request' && secrets.MACOS_SIGNING_P12 || '' }}
+          P12_PASSWORD: ${{ needs.plan.outputs.publish == 'true' && github.event_name != 'pull_request' && secrets.MACOS_SIGNING_P12_PASSWORD || '' }}
+          NOTARY_KEY_P8: ${{ needs.plan.outputs.publish == 'true' && github.event_name != 'pull_request' && secrets.ASC_PRIVATE_KEY_P8 || '' }}
+          NOTARYTOOL_KEY_ID: ${{ needs.plan.outputs.publish == 'true' && github.event_name != 'pull_request' && secrets.ASC_KEY_ID || '' }}
+          NOTARYTOOL_ISSUER: ${{ needs.plan.outputs.publish == 'true' && github.event_name != 'pull_request' && secrets.ASC_ISSUER_ID || '' }}
           PUBLISH: ${{ needs.plan.outputs.publish }}
           REQUIRE_SIGNING: ${{ vars.OPENCLAW_RELEASE_REQUIRE_SIGNING }}
         run: |
@@ -229,7 +229,7 @@ jobs:
               echo "::error::OPENCLAW_RELEASE_REQUIRE_SIGNING is set but no MACOS_SIGNING_P12 secret is available"
               exit 1
             fi
-            echo "::notice::No Developer ID configured: darwin executables keep the linker's ad-hoc signature."
+            echo "::notice::Signing credentials are not enabled for this run: Darwin executables remain ad-hoc signed or unsigned."
             exit 0
           fi
           keychain="$RUNNER_TEMP/signing.keychain-db"
