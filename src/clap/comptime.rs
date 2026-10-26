@@ -522,7 +522,7 @@ impl<Id> ComptimeClap<Id> {
     pub(crate) fn parse_with_table<I>(
         table: &'static ConvertedTable,
         iter: &mut I,
-        opt: ParseOptions<'_>,
+        mut opt: ParseOptions<'_>,
     ) -> crate::Result<Self>
     where
         I: ArgIter<'static>,
@@ -546,14 +546,13 @@ impl<Id> ComptimeClap<Id> {
             short_aliases: opt.short_aliases,
             unknown_long_flags_are_positional: opt.unknown_long_flags_are_positional,
             unknown_long_flags_are_errors: opt.unknown_long_flags_are_errors,
+            ignored_long_flags: opt.ignored_long_flags,
         };
 
         while let Some(arg) = stream.next()? {
             let param = arg.param;
-            if param.names.long.is_some() || param.names.short.is_some() {
-                if let Some(on_option) = opt.on_option {
-                    on_option(param.names, arg.value);
-                }
+            if let Some(on_option) = opt.on_option.as_mut() {
+                on_option(param.names, arg.value);
             }
             if param.names.long.is_none() && param.names.short.is_none() {
                 pos.push(arg.value.unwrap());

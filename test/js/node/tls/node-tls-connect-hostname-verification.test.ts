@@ -10,7 +10,9 @@ import { describe, test } from "node:test";
 import tls from "node:tls";
 import {
   expected as expectedServername,
+  observePending,
   observe as observeServername,
+  pendingCases,
   cases as servernameCases,
 } from "./node-tls-servername-fixture.mjs";
 
@@ -616,6 +618,14 @@ describe("TLS servername selection", () => {
   for (const scenario of servernameCases) {
     test(`${scenario.transport} host=${scenario.host} servername=${String(scenario.servername)}`, async () => {
       assert.deepStrictEqual(await observeServername(scenario), expectedServername(scenario));
+    });
+  }
+  for (const scenario of pendingCases) {
+    test(`pre-connect setServername=${JSON.stringify(scenario.servername)} autoSelectFamily=${scenario.autoSelectFamily}`, async () => {
+      assert.deepStrictEqual(await observePending(scenario), {
+        servername: scenario.servername || false,
+        clientServername: scenario.servername || false,
+      });
     });
   }
 });

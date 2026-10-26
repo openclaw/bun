@@ -183,7 +183,7 @@ impl SavedSourceMap {
         source: &bun_ast::Source,
         mut mappings: MutableString,
     ) -> bun_js_printer::Result<()> {
-        // Readers trust the stored blob's header, including during teardown.
+        // Readers trust a stored blob's header, so validate it here.
         if !InternalSourceMap::is_valid_blob(mappings.list.as_slice()) {
             return Ok(());
         }

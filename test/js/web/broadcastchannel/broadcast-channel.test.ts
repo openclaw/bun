@@ -2,6 +2,31 @@ import { bunEnv, bunExe, tempDir } from "harness";
 import type { BroadcastChannelEventMap } from "node:worker_threads";
 import util from "util";
 
+test("large buffer broadcasts make independent copies for every receiver", async () => {
+  const name = crypto.randomUUID();
+  const sender = new BroadcastChannel(name);
+  const receivers = [new BroadcastChannel(name), new BroadcastChannel(name)];
+  try {
+    const pending = receivers.map(channel => {
+      const { promise, resolve, reject } = Promise.withResolvers<Uint8Array>();
+      channel.onmessage = event => resolve(event.data.bytes);
+      channel.onmessageerror = reject;
+      return promise;
+    });
+    const bytes = Buffer.alloc(4 * 1024 * 1024, 0x5a);
+    sender.postMessage({ bytes });
+    const [first, second] = await Promise.all(pending);
+    expect(Buffer.from(first)).toEqual(bytes);
+    expect(Buffer.from(second)).toEqual(bytes);
+    first.fill(0);
+    expect(Buffer.from(second)).toEqual(bytes);
+    expect(bytes).toEqual(Buffer.alloc(bytes.length, 0x5a));
+  } finally {
+    sender.close();
+    receivers.forEach(channel => channel.close());
+  }
+});
+
 test("postMessage results in correct event", done => {
   let c1 = new BroadcastChannel("eventType");
   let c2 = new BroadcastChannel("eventType");
@@ -267,4 +292,13 @@ test("user options are forwarded through custom inspect", () => {
   expect(util.inspect(bc, { compact: true, breakLength: 2 })).toBe(
     "BroadcastChannel { name:\n   'hello',\n  active:\n   true }",
   );
+});
+
+test("custom inspect handles options with numeric keys", () => {
+  const bc = new BroadcastChannel("hello");
+  bc.unref();
+  const inspectCustom = bc[Symbol.for("nodejs.util.inspect.custom")];
+  const opts = { 0: "a", 1: "b", depth: 2 };
+  expect(inspectCustom.call(bc, 2, opts, util.inspect)).toBe("BroadcastChannel { name: 'hello', active: true }");
+  bc.close();
 });

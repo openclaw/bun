@@ -16,6 +16,10 @@
 #include <wtf/text/WTFString.h>
 #include <atomic>
 #include <memory>
+#include <JavaScriptCore/VMTraps.h>
+#include <wtf/Condition.h>
+#include <wtf/Scope.h>
+#include <wtf/WorkQueue.h>
 #if !OS(WINDOWS)
 #include <pthread.h>
 #include <sched.h>
@@ -28,6 +32,48 @@ extern "C" void BunString__makeThreadShareable(BunString* str);
 namespace Bun {
 
 using namespace JSC;
+
+struct VMTrapsBarrierForTesting {
+    WTF::Lock lock;
+    WTF::Condition condition;
+    bool entered { false };
+    bool released { false };
+};
+
+JSC_DEFINE_HOST_FUNCTION(jsFunction_withBlockedVMTraps, (JSGlobalObject * globalObject, CallFrame* callFrame))
+{
+    auto& vm = globalObject->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    static thread_local bool blocked = false;
+    auto callback = callFrame->argument(0);
+    auto callData = getCallData(callback);
+    if (blocked || callData.type == CallData::Type::None) {
+        throwTypeError(globalObject, scope, "Expected a non-nested callback"_s);
+        return {};
+    }
+    auto barrier = std::make_shared<VMTrapsBarrierForTesting>();
+    VMTraps::queue().dispatch([barrier] {
+        Locker locker { barrier->lock };
+        barrier->entered = true;
+        barrier->condition.notifyAll();
+        barrier->condition.wait(barrier->lock, [&] { return barrier->released; });
+    });
+    {
+        Locker locker { barrier->lock };
+        barrier->condition.wait(barrier->lock, [&] { return barrier->entered; });
+    }
+    blocked = true;
+    auto release = makeScopeExit([&] {
+        blocked = false;
+        Locker locker { barrier->lock };
+        barrier->released = true;
+        barrier->condition.notifyAll();
+    });
+    MarkedArgumentBuffer arguments;
+    JSValue result = JSC::call(globalObject, callback, callData, jsUndefined(), arguments);
+    RETURN_IF_EXCEPTION(scope, {});
+    return JSValue::encode(result);
+}
 
 JSC_DEFINE_HOST_FUNCTION(jsFunction_BunString_crossThreadCopyBytes, (JSC::JSGlobalObject * globalObject, JSC::CallFrame* callFrame))
 {

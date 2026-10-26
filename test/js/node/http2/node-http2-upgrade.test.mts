@@ -1,6 +1,7 @@
 /**
- * Tests for the net.Server → Http2SecureServer upgrade path
- * through the inherited tls.Server connection listener.
+ * Tests for the net.Server → Http2SecureServer upgrade path: tls.Server's
+ * 'connection' listener wraps the injected socket in a server-side TLSSocket,
+ * and the secure connection reaches the h2 connection listener.
  *
  * This pattern is used by http2-wrapper, crawlee, and other libraries that
  * accept raw TCP connections and upgrade them to HTTP/2 via
@@ -274,6 +275,49 @@ describe("HTTP/2 upgrade — socket close ordering", () => {
     rawSocket!.once("close", () => socketClosed.resolve());
     rawSocket!.destroy();
     await socketClosed.promise;
+
+    client.close();
+    netServer.close();
+  });
+
+  test("an error on rawSocket is the session's error, not an uncaught exception", async () => {
+    let rawSocket: net.Socket | undefined;
+    const sessionReady = Promise.withResolvers<http2.Http2Session>();
+    const sessionErrored = Promise.withResolvers<{ err: Error; session: http2.Http2Session }>();
+
+    const h2Server = http2.createSecureServer(TLS, (_req, res) => {
+      res.writeHead(200);
+      res.end("done");
+    });
+    h2Server.on("error", () => {});
+    h2Server.on("session", s => sessionReady.resolve(s));
+    h2Server.on("sessionError", (err: Error, session: http2.Http2Session) => sessionErrored.resolve({ err, session }));
+
+    const netServer = net.createServer(socket => {
+      rawSocket = socket;
+      h2Server.emit("connection", socket);
+    });
+
+    const port = await new Promise<number>(resolve => {
+      netServer.listen(0, "127.0.0.1", () => resolve((netServer.address() as net.AddressInfo).port));
+    });
+
+    const client = connectClient(port);
+    await request(client, "GET", "/");
+    const h2Session = await sessionReady.promise;
+    // Not events.once(): the session emits 'error' on its way to 'close'.
+    const sessionClosed = new Promise<void>(resolve => h2Session.once("close", resolve));
+
+    const transportError = new Error("transport failed");
+    rawSocket!.destroy(transportError);
+
+    await sessionClosed;
+    const { err, session } = await sessionErrored.promise;
+    assert.strictEqual(err, transportError);
+    assert.deepStrictEqual(
+      { sameSession: session === h2Session, destroyed: h2Session.destroyed },
+      { sameSession: true, destroyed: true },
+    );
 
     client.close();
     netServer.close();

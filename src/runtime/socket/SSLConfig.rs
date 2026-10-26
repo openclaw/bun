@@ -11,6 +11,7 @@
 //! rule on a foreign type), so they're provided via the [`SSLConfigFromJs`]
 //! extension trait. Import that trait to call `SSLConfig::from_js(..)`.
 
+use bun_jsc::bindgen::{JsLocal, JsScope};
 use core::ffi::c_char;
 
 use bun_jsc::virtual_machine::VirtualMachine;
@@ -27,13 +28,13 @@ use crate::webcore::blob::store::Data as StoreData;
 
 pub(crate) use bun_http::ssl_config::SSLConfig;
 
-#[bun_jsc::host_fn]
 pub(crate) fn set_default_ca_certificates(
-    global: &JSGlobalObject,
-    frame: &jsc::CallFrame,
+    cx: &mut JsScope<'_>,
+    options: JsLocal<'_>,
 ) -> JsResult<JSValue> {
+    let global = cx.global();
     jsc::mark_binding!();
-    let [options] = frame.arguments_as_array::<1>();
+    let options = options.to_js();
     let config = SSLConfig::from_js(VirtualMachine::get(), global, options, false)?
         .ok_or_else(|| global.throw_invalid_arguments(format_args!("Expected CA certificates")))?;
     let config = bun_http::ssl_config::global_registry::intern(config);

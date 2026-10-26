@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import fs, { readdirSync } from "fs";
-import { bunEnv, bunExe, isWindows, tempDir, tempDirWithFiles } from "harness";
+import { bunEnv, bunExe, isCanary, isWindows, tempDir, tempDirWithFiles } from "harness";
 import path from "path";
 
 // Whether `bun init` emits CLAUDE.md depends on a `claude` binary being on
@@ -60,8 +60,10 @@ const initEnv = { ...bunEnv, BUN_AGENT_RULE_DISABLED: "1" };
     expect(readme).toInclude("v" + Bun.version.replaceAll("-debug", ""));
     expect(readme).toInclude("index.ts");
     expect(readme).toInclude("bun check");
-    expect(readme).toInclude("`bun lint`");
+    // A release build has no `bun lint`.
+    expect(readme.includes("`bun lint`")).toBe(isCanary);
     expect(readme).toInclude("`bun fmt`");
+    expect(readme).not.toInclude("{[");
 
     expect(fs.existsSync(path.join(temp, "index.ts"))).toBe(true);
     expect(fs.existsSync(path.join(temp, ".gitignore"))).toBe(true);
@@ -416,7 +418,7 @@ const initEnv = { ...bunEnv, BUN_AGENT_RULE_DISABLED: "1" };
     expect(fs.existsSync(path.join(temp, "src/components/ui"))).toBe(true);
   }, 30_000);
 
-  test.each(["--react", "--react=tailwind", "--react=shadcn"])(
+  test.skipIf(!isCanary).each(["--react", "--react=tailwind", "--react=shadcn"])(
     "bun init %s writes the same [lint] section to bunfig.toml as bun lint --init",
     async flag => {
       await using temp = tempDir("bun-init-lint-section", { "alone/a.js": "" });
@@ -498,19 +500,21 @@ const initEnv = { ...bunEnv, BUN_AGENT_RULE_DISABLED: "1" };
       expect({ checkStdout, checkStderr, checkExited }).toMatchObject({ checkStdout: "", checkExited: 0 });
 
       // `bun lint` reports nothing, not even a warning, and `bun fmt` has nothing to change.
-      await using lint = Bun.spawn({
-        cmd: [bunExe(), "lint", "-f", "json"],
-        cwd: temp,
-        stdio: ["ignore", "pipe", "pipe"],
-        env: bunEnv,
-      });
-      const [lintStdout, lintStderr, lintExited] = await Promise.all([
-        lint.stdout.text(),
-        lint.stderr.text(),
-        lint.exited,
-      ]);
-      const problems = JSON.parse(lintStdout).flatMap((file: { messages: unknown[] }) => file.messages);
-      expect({ problems, lintStderr, lintExited }).toMatchObject({ problems: [], lintExited: 0 });
+      if (isCanary) {
+        await using lint = Bun.spawn({
+          cmd: [bunExe(), "lint", "-f", "json"],
+          cwd: temp,
+          stdio: ["ignore", "pipe", "pipe"],
+          env: bunEnv,
+        });
+        const [lintStdout, lintStderr, lintExited] = await Promise.all([
+          lint.stdout.text(),
+          lint.stderr.text(),
+          lint.exited,
+        ]);
+        const problems = JSON.parse(lintStdout).flatMap((file: { messages: unknown[] }) => file.messages);
+        expect({ problems, lintStderr, lintExited }).toMatchObject({ problems: [], lintExited: 0 });
+      }
 
       await using format = Bun.spawn({
         cmd: [bunExe(), "fmt", "--check"],
@@ -627,4 +631,41 @@ const initEnv = { ...bunEnv, BUN_AGENT_RULE_DISABLED: "1" };
     expect(fs.existsSync(path.join(temp, "CLAUDE.md"))).toBe(false);
     expect(fs.existsSync(path.join(temp, ".cursor"))).toBe(false);
   });
+});
+
+test.each([
+  ["--use-system-ca", "--no-use-system-ca"],
+  ["--no-use-system-ca", "--use-system-ca"],
+])("CA options before init stay options: %j", async (...flags) => {
+  using dir = tempDir("init-ca-options", {
+    "package.json": JSON.stringify({
+      private: true,
+      devDependencies: { "@types/bun": "latest" },
+      peerDependencies: { typescript: "*" },
+    }),
+  });
+  await using registry = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    fetch: () => new Response("not found", { status: 404 }),
+  });
+  await using proc = Bun.spawn({
+    cmd: [bunExe(), ...flags, "init", "--minimal", "--yes"],
+    cwd: String(dir),
+    env: {
+      ...initEnv,
+      NODE_OPTIONS: undefined,
+      NODE_USE_SYSTEM_CA: undefined,
+      npm_config_registry: registry.url.href,
+      BUN_INSTALL_CACHE_DIR: path.join(String(dir), "cache"),
+    },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect(fs.existsSync(path.join(String(dir), "tsconfig.json"))).toBe(true);
+  expect(fs.existsSync(path.join(String(dir), "init"))).toBe(false);
+  expect(stderr).toBe("");
+  expect(stdout).toContain("tsconfig.json");
+  expect(exitCode).toBe(0);
 });

@@ -64,6 +64,7 @@ function markActive(channel) {
   ObjectSetPrototypeOf.$call(null, channel, ActiveChannel.prototype);
   channel._subscribers = [];
   channel._stores = new SafeMap();
+  updateSqliteQueryPublisher(channel, true);
 }
 
 function maybeMarkInactive(channel) {
@@ -72,7 +73,18 @@ function maybeMarkInactive(channel) {
     ObjectSetPrototypeOf.$call(null, channel, Channel.prototype);
     channel._subscribers = undefined;
     channel._stores = undefined;
+    updateSqliteQueryPublisher(channel, false);
   }
+}
+
+function updateSqliteQueryPublisher(channel, active) {
+  if (channel.name !== "sqlite.db.query") return;
+  // Lazy tick-function construction cannot report an error at the recursion limit.
+  if (active) void process.nextTick;
+  const state = require("internal/sqlite");
+  const publish = channel.publish;
+  state.publisher = active ? message => publish.$call(channel, message) : undefined;
+  $newCppFunction("sqlite/NodeSqlite.cpp", "jsSetSqliteQueryPublisher", 1)(state.publisher);
 }
 
 function defaultTransform(data) {

@@ -1,6 +1,7 @@
 import { heapStats, jscDescribe } from "bun:jsc";
 import { describe, expect, test } from "bun:test";
 import { bunEnv, bunExe, isDebug, isLinux, isMacOS, isMusl, isWindows, tempDir } from "harness";
+import { channel } from "node:diagnostics_channel";
 import { existsSync, readdirSync, readlinkSync, rmSync, statSync } from "node:fs";
 import { builtinModules, isBuiltin } from "node:module";
 import { totalmem } from "node:os";
@@ -8,7 +9,225 @@ import path from "node:path";
 import { DatabaseSync, Session, StatementSync, backup, constants } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 
+describe("sqlite.db.query", () => {
+  test("rejects closing parked write statements inside an authorizer callback", () => {
+    for (const method of ["close", Symbol.dispose] as const) {
+      using db = new DatabaseSync(":memory:");
+      db.exec("CREATE TABLE t (x INTEGER)");
+      using statement = db.prepare("INSERT INTO t VALUES (1) RETURNING x");
+      statement.iterate().next();
+      let failure: unknown;
+      db.setAuthorizer(() => {
+        try {
+          statement[method]();
+        } catch (error) {
+          failure = error;
+        }
+        return constants.SQLITE_OK;
+      });
+      try {
+        db.prepare("SELECT 42").get();
+        expect(failure).toEqual(
+          expect.objectContaining({
+            code: "ERR_INVALID_STATE",
+            message: "database cannot be accessed from an authorizer callback",
+          }),
+        );
+      } finally {
+        db.setAuthorizer(null);
+      }
+      statement.close();
+      expect(db.prepare("SELECT x FROM t").all()).toEqual([{ x: 1 }]);
+    }
+  });
+
+  test("keeps statements guarded when an error triggers a cleanup reset", async () => {
+    await using child = Bun.spawn({
+      cmd: [
+        bunExe(),
+        "-e",
+        `const { DatabaseSync } = require('node:sqlite');
+         const q = require('node:diagnostics_channel').channel('sqlite.db.query');
+         const results = [];
+         for (const method of ['get', 'all']) {
+           const db = new DatabaseSync(':memory:');
+           const stmt = db.prepare('SELECT 9007199254740992');
+           let events = 0, rejected = 0, errorCode;
+           const handler = () => {
+             events++;
+             for (const call of [() => stmt.close(), () => stmt[Symbol.dispose](), () => stmt.get()]) {
+               try { call(); } catch (e) { if (e.code === 'ERR_INVALID_STATE') rejected++; }
+             }
+           };
+           q.subscribe(handler);
+           try { stmt[method](); } catch (e) { errorCode = e.code; }
+           q.unsubscribe(handler);
+           results.push({ method, events, rejected, errorCode });
+           db.close();
+         }
+         console.log(JSON.stringify(results));`,
+      ],
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([child.stdout.text(), child.stderr.text(), child.exited]);
+    expect(JSON.parse(stdout)).toEqual([
+      { method: "get", events: 1, rejected: 3, errorCode: "ERR_OUT_OF_RANGE" },
+      { method: "all", events: 1, rejected: 3, errorCode: "ERR_OUT_OF_RANGE" },
+    ]);
+    expect({ stderr, exitCode }).toMatchObject({ exitCode: 0 });
+  });
+
+  test("publishes failed queries while retaining the query exception across nested reads", () => {
+    using db = new DatabaseSync(":memory:");
+    const failure = new Error("query failure");
+    db.function("fail", () => {
+      throw failure;
+    });
+    const queries = channel("sqlite.db.query");
+    const statements: string[] = [];
+    const handler = (message: any) => {
+      statements.push(message.sql);
+      if (message.sql === "SELECT fail()") {
+        expect(db.prepare("SELECT 42 AS answer").get()).toEqual({ answer: 42 });
+      }
+    };
+    queries.subscribe(handler);
+    try {
+      expect(() => db.prepare("SELECT fail()").get()).toThrow(failure);
+      expect(statements).toEqual(["SELECT fail()", "SELECT 42 AS answer"]);
+    } finally {
+      queries.unsubscribe(handler);
+    }
+  });
+
+  test("unguarded subscribers end with RangeError without corrupting the outer query", async () => {
+    await using child = Bun.spawn({
+      cmd: [
+        bunExe(),
+        "-e",
+        `const { DatabaseSync } = require('node:sqlite');
+         const q = require('node:diagnostics_channel').channel('sqlite.db.query');
+         const db = new DatabaseSync(':memory:');
+         let calls = 0;
+         const handler = () => { calls++; db.prepare('SELECT 42 AS answer').get(); };
+         process.once('uncaughtException', e => {
+           q.unsubscribe(handler);
+           console.log(e.name, calls > 1);
+           db.close();
+         });
+         q.subscribe(handler);
+         console.log(db.prepare('SELECT 42 AS answer').get().answer);`,
+      ],
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([child.stdout.text(), child.stderr.text(), child.exited]);
+    expect(stdout.trim().split(/\r?\n/)).toEqual(["42", "RangeError true"]);
+    expect({ stderr, exitCode }).toMatchObject({ exitCode: 0 });
+  });
+
+  test("passes the unchanged Node diagnostics suite", async () => {
+    await using child = Bun.spawn({
+      cmd: [bunExe(), "test", path.join(import.meta.dir, "../test/parallel/test-sqlite-diagnostic-channel.js")],
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([child.stdout.text(), child.stderr.text(), child.exited]);
+    expect({ stdout, stderr, exitCode }).toMatchObject({ exitCode: 0 });
+  });
+  test("publishes 16 synchronous nested queries without corrupting the outer statement", () => {
+    using db = new DatabaseSync(":memory:");
+    const queries = channel("sqlite.db.query");
+    let depth = 0;
+    let maxDepth = 0;
+    let events = 0;
+    const nestedRows: number[] = [];
+    const handler = (message: any, name: string) => {
+      expect(name).toBe("sqlite.db.query");
+      expect(message.database).toBe(db);
+      expect(Object.getPrototypeOf(message)).toBeNull();
+      expect(Object.keys(message)).toEqual(["sql", "database", "duration"]);
+      expect(message.sql).toBe("SELECT 42 AS answer");
+      expect(typeof message.duration).toBe("number");
+      expect(message.duration).toBeGreaterThanOrEqual(0);
+      depth++;
+      maxDepth = Math.max(maxDepth, depth);
+      if (++events < 16) {
+        using statement = db.prepare("SELECT 42 AS answer");
+        nestedRows.push(statement.get()!.answer as number);
+      }
+      depth--;
+    };
+    queries.subscribe(handler);
+    try {
+      using statement = db.prepare("SELECT 42 AS answer");
+      expect(events).toBe(0);
+      expect(statement.get()).toEqual({ answer: 42 });
+      expect(events).toBe(16);
+      expect(maxDepth).toBe(16);
+      expect(nestedRows).toEqual(Array(15).fill(42));
+    } finally {
+      queries.unsubscribe(handler);
+    }
+  });
+
+  test("enables existing and new connections and disables them on unsubscribe", () => {
+    using before = new DatabaseSync(":memory:");
+    const queries = channel("sqlite.db.query");
+    const databases: DatabaseSync[] = [];
+    const handler = (message: any) => databases.push(message.database);
+    queries.subscribe(handler);
+    try {
+      using after = new DatabaseSync(":memory:");
+      before.exec("SELECT 1");
+      after.exec("SELECT 2");
+      expect(databases).toEqual([before, after]);
+      queries.unsubscribe(handler);
+      before.exec("SELECT 3");
+      after.exec("SELECT 4");
+      expect(databases).toHaveLength(2);
+      queries.subscribe(handler);
+      before.exec("SELECT 5");
+      expect(databases).toEqual([before, after, before]);
+    } finally {
+      queries.unsubscribe(handler);
+    }
+  });
+
+  test("reports iterator completion and early return, without reporting statement close", () => {
+    using db = new DatabaseSync(":memory:");
+    const queries = channel("sqlite.db.query");
+    let events = 0;
+    const handler = () => events++;
+    queries.subscribe(handler);
+    try {
+      using statement = db.prepare("SELECT 1 AS x UNION ALL SELECT 2 AS x");
+      const iterator = statement.iterate();
+      expect(events).toBe(0);
+      expect(iterator.next().value).toEqual({ x: 1 });
+      expect(events).toBe(0);
+      iterator.return();
+      expect(events).toBe(1);
+      expect([...statement.iterate()]).toEqual([{ x: 1 }, { x: 2 }]);
+      expect(events).toBe(2);
+      statement.iterate().next();
+      statement.close();
+      expect(events).toBe(2);
+    } finally {
+      queries.unsubscribe(handler);
+    }
+  });
+});
+
 declare module "node:sqlite" {
+  interface StatementSync {
+    close(): void;
+    [Symbol.dispose](): void;
+  }
   class Session {
     private constructor();
   }
@@ -700,6 +919,7 @@ describe("DatabaseSync", () => {
       expect(() => backup(db, ":memory:", undefined)).toThrow(invalidOptions);
       // @ts-expect-error
       expect(() => backup(db, ":memory:", null)).toThrow(invalidOptions);
+      expect(() => Reflect.construct(backup, [db, ":memory:"])).toThrow(TypeError);
 
       // Controls: these are value-gated in Node (explicit undefined is the
       // same as omission) and must NOT throw.
@@ -1579,19 +1799,53 @@ describe.skipIf(!sqliteHasSession)("Session / changeset", () => {
       // On regression ASAN aborts the process before any line is printed.
       // db.close(): deferred on the first authorizer call (catches nothing),
       //   throws ERR_INVALID_STATE on the second (db already marked closed).
-      // sess.close(): record->inUse → ERR_INVALID_STATE.
-      // Symbol.dispose: inUse → silent no-op (tolerant).
+      // sess.close() and Symbol.dispose: record->inUse → ERR_INVALID_STATE.
       expect({ lines, stderr, exitCode }).toEqual({
         lines: [
           { what: "db", len: 20, caught: "ERR_INVALID_STATE", dbOpen: false },
           { what: "sess", len: 20, caught: "ERR_INVALID_STATE", dbOpen: true },
-          { what: "dispose", len: 20, caught: null, dbOpen: true },
+          { what: "dispose", len: 20, caught: "ERR_INVALID_STATE", dbOpen: true },
         ],
         stderr: expect.any(String),
         exitCode: 0,
       });
     },
   );
+
+  test.concurrent.skipIf(!sqliteHasSession)("closing a session inside a SQLite callback throws", async () => {
+    await using proc = Bun.spawn({
+      cmd: [
+        bunExe(),
+        "-e",
+        `
+          const { DatabaseSync, constants } = require("node:sqlite");
+          for (const close of [s => s.close(), s => s[Symbol.dispose]()]) {
+            const db = new DatabaseSync(":memory:");
+            db.exec("CREATE TABLE t(a PRIMARY KEY)");
+            const session = db.createSession();
+            let caught;
+            // The session's preupdate hook runs this pragma while it reads the session.
+            db.setAuthorizer((action, name) => {
+              if (action === constants.SQLITE_PRAGMA && /^table_x?info$/.test(name)) {
+                try { close(session); } catch (e) { caught = e.code + ": " + e.message; }
+              }
+              return constants.SQLITE_OK;
+            });
+            db.exec("INSERT INTO t VALUES (1)");
+            db.setAuthorizer(null);
+            console.log(caught, session.changeset().length > 0);
+            close(session);
+            db.close();
+          }
+        `,
+      ],
+      env: systemMallocEnv,
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    const line = "ERR_INVALID_STATE: session cannot be closed while in a callback true\n";
+    expect({ stdout, stderr, exitCode }).toEqual({ stdout: line + line, stderr: expect.any(String), exitCode: 0 });
+  });
 
   test("default onConflict aborts and returns false", () => {
     const src = new DatabaseSync(":memory:");
@@ -1842,6 +2096,50 @@ describe("DatabaseSync.prototype.setAuthorizer()", () => {
     expect(() => db.prepare("SELECT 1")).toThrow(TypeError);
     db.setAuthorizer(() => 12345);
     expect(() => db.prepare("SELECT 1")).toThrow(RangeError);
+    db.close();
+  });
+
+  // An FTS5 index writes to its shadow tables when the transaction commits, which calls the authorizer.
+  test("close() works while an iterator's return() is committing a write", () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec("CREATE VIRTUAL TABLE ft USING fts5(x)");
+    db.setAuthorizer((_action, table) => {
+      if (table === "ft_data") db.close();
+      return constants.SQLITE_OK;
+    });
+    for (const row of db.prepare("INSERT INTO ft VALUES ('a') RETURNING 1 AS one").iterate()) {
+      expect(row.one).toBe(1);
+      break;
+    }
+    expect(db.isOpen).toBe(false);
+  });
+
+  test("a statement rejects calls while run() commits its iterator's unfinished write", () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec("CREATE VIRTUAL TABLE ft USING fts5(x)");
+    const stmt = db.prepare("INSERT INTO ft VALUES ('a') RETURNING 1");
+    const iterator = stmt.iterate();
+    iterator.next();
+    const errors: unknown[] = [];
+    db.setAuthorizer((_action, table) => {
+      if (table === "ft_data" && errors.length === 0) {
+        for (const call of [() => iterator.next(), () => stmt.get()]) {
+          try {
+            call();
+          } catch (error) {
+            errors.push(error);
+          }
+        }
+      }
+      return constants.SQLITE_OK;
+    });
+    expect(stmt.run().changes).toBe(1);
+    expect(errors).toEqual([
+      expect.objectContaining({ code: "ERR_INVALID_STATE", message: "iterator was invalidated" }),
+      expect.objectContaining({ code: "ERR_INVALID_STATE", message: "statement is already being executed" }),
+    ]);
+    db.setAuthorizer(null);
+    expect(db.prepare("SELECT count(*) AS n FROM ft").get()!.n).toBe(2);
     db.close();
   });
 });
@@ -2691,6 +2989,118 @@ describe("GC lifetime", () => {
     expect(delta).toBeLessThanOrEqual(20);
   });
 
+  // The write commits when the statement finishes. An FTS5 index writes to its shadow tables at commit, which
+  // calls the authorizer.
+  describe("a write statement that iterate() stopped after its first row", () => {
+    const open = (file: string, options = {}) => {
+      const db = new DatabaseSync(file, options);
+      db.exec("CREATE VIRTUAL TABLE ft USING fts5(x)");
+      db.prepare("INSERT INTO ft VALUES ('a') RETURNING 1").iterate().next();
+      return db;
+    };
+
+    test("is finished by the next call on the connection after it's collected", () => {
+      const db = open(":memory:");
+      const asked: unknown[] = [];
+      db.setAuthorizer((_action, table) => (asked.push(table), constants.SQLITE_OK));
+      Bun.gc(true);
+      expect(asked).toEqual([]);
+      db.exec("SELECT 1");
+      expect(asked).toContain("ft_data");
+      db.close();
+    });
+
+    test.each([
+      ["serialize", "database is not open"],
+      ...(sqliteHasLoadExtension ? [["loadExtension", "database is not open"]] : []),
+      ["exec", "database is not open"],
+      ["prepare", "database is not open"],
+      ["all", "statement has been finalized"],
+    ])("%s() throws if the authorizer closes the database", (method, message) => {
+      const db = open(":memory:", { allowExtension: sqliteHasLoadExtension });
+      const target = method === "all" ? db.prepare("SELECT 1") : db;
+      db.setAuthorizer(() => (db[Symbol.dispose](), constants.SQLITE_OK));
+      Bun.gc(true);
+      expect(() => target[method]("SELECT 1")).toThrow(message);
+      expect(db.isOpen).toBe(false);
+    });
+
+    test("is rolled back when it's collected along with a database that has an authorizer", () => {
+      using dir = tempDir("node-sqlite-collected-write", {});
+      const file = path.join(String(dir), "db.sqlite");
+      let asked = 0;
+      (() => open(file).setAuthorizer(() => (asked++, constants.SQLITE_OK)))();
+      Bun.gc(true);
+      expect(asked).toBe(0);
+      const db = new DatabaseSync(file);
+      expect(db.prepare("SELECT count(*) AS n FROM ft").get()!.n).toBe(0);
+      db.close();
+    });
+
+    test("doesn't call the authorizer when the graph that opened its database is disposed", () => {
+      const graph = new Bun.ModuleGraph();
+      const db = graph.run(() => open(":memory:"));
+      let asked = 0;
+      db.setAuthorizer(() => (asked++, constants.SQLITE_OK));
+      graph.dispose();
+      expect(asked).toBe(0);
+      expect(db.isOpen).toBe(false);
+    });
+
+    test.concurrent("doesn't call the authorizer at process exit", async () => {
+      await using proc = Bun.spawn({
+        cmd: [
+          bunExe(),
+          "-e",
+          `
+            const { DatabaseSync } = require("node:sqlite");
+            globalThis.db = new DatabaseSync(":memory:");
+            db.exec("CREATE VIRTUAL TABLE ft USING fts5(x)");
+            globalThis.iterator = db.prepare("INSERT INTO ft VALUES ('a') RETURNING 1").iterate();
+            iterator.next();
+            db.setAuthorizer(() => (require("node:fs").writeSync(1, "asked\\n"), 0));
+          `,
+        ],
+        env: bunEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      expect({ stdout, stderr, exitCode }).toEqual({ stdout: "", stderr: expect.any(String), exitCode: 0 });
+    });
+
+    test.concurrent.each([
+      ["a user function", `db.function("lower2", text => text.toLowerCase())`],
+      ["an authorizer that allowed a write before", `db.setAuthorizer(() => 0), db.exec("INSERT INTO ft VALUES (1)")`],
+    ])("is committed at process exit on a connection with %s", async (_, setup) => {
+      using dir = tempDir("node-sqlite-exit-write", {});
+      const file = path.join(String(dir), "db.sqlite");
+      await using proc = Bun.spawn({
+        cmd: [
+          bunExe(),
+          "-e",
+          `
+            const { DatabaseSync } = require("node:sqlite");
+            const db = new DatabaseSync(process.argv[1]);
+            db.exec("CREATE VIRTUAL TABLE ft USING fts5(x)");
+            ${setup};
+            db.prepare("INSERT INTO ft VALUES ('a'), ('b') RETURNING 1").iterate().next();
+            console.log(db.prepare("INSERT INTO ft VALUES ('c')").run().changes);
+          `,
+          file,
+        ],
+        env: bunEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      expect({ stdout, stderr, exitCode }).toEqual({ stdout: "1\n", stderr: expect.any(String), exitCode: 0 });
+      const db = new DatabaseSync(file);
+      expect(db.prepare("SELECT count(*) AS n FROM ft WHERE ft MATCH 'a OR b OR c'").get()!.n).toBe(3);
+      db.close();
+    });
+  });
+
   test.concurrent("a database swept before its statements leaves nothing that points into its cell", async () => {
     // edenGC() marks and does not sweep: the next DatabaseSync takes the cell
     // of a dead one while the dead statements wait for their blocks' turn.
@@ -2789,8 +3199,10 @@ describe("module exports", () => {
     expect(() => new Session()).toThrow(expect.objectContaining({ code: "ERR_ILLEGAL_CONSTRUCTOR" }));
     // SQLTagStore is Bun-internal (createTagStore()) — not a Node export.
     expect(Object.keys(require("node:sqlite")).sort()).toEqual([
+      "Database",
       "DatabaseSync",
       "Session",
+      "Statement",
       "StatementSync",
       "backup",
       "constants",

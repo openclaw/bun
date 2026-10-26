@@ -71,7 +71,7 @@ jobs:
       - name: Setup Bun
         uses: ./pipeline/.github/actions/setup-bun
         with:
-          bun-version: "1.4.2"
+          bun-version: "1.4.4"
       - name: Test pipeline
         working-directory: pipeline
         run: bun test test/internal/source-lints/openclaw-release.test.ts
@@ -120,7 +120,7 @@ jobs:
       - name: Setup Bun
         uses: ./pipeline/.github/actions/setup-bun
         with:
-          bun-version: "1.4.2"
+          bun-version: "1.4.4"
       - name: Generate provisioning script
         id: provision
         env:
@@ -418,7 +418,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "26.3.0"
+          node-version: "26.12.1"
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: ${{ matrix.artifact }}
@@ -468,7 +468,7 @@ jobs:
       - name: Setup Bun
         uses: ./pipeline/.github/actions/setup-bun
         with:
-          bun-version: "1.4.2"
+          bun-version: "1.4.4"
       - name: Download
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:

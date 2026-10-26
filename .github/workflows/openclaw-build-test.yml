@@ -48,7 +48,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-bun
         with:
-          bun-version: "1.4.2"
+          bun-version: "1.4.4"
       - name: Read toolchain pins
         id: pins
         run: |
@@ -169,7 +169,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-bun
         with:
-          bun-version: "1.4.2"
+          bun-version: "1.4.4"
       - name: Read toolchain pins
         id: pins
         run: |

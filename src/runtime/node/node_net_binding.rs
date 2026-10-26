@@ -5,45 +5,41 @@ use core::cell::Cell;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use bun_io::KeepAlive;
-use bun_jsc::bindgen::JsScope;
-use bun_jsc::{self as jsc, CallFrame, JSFunction, JSGlobalObject, JSValue, JsCell, JsResult};
+use bun_jsc::bindgen::{JsLocal, JsScope};
+use bun_jsc::{self as jsc, JSGlobalObject, JSValue, JsCell, JsResult};
 use bun_uws as uws;
 
-use crate::socket::{Listener, NewSocket, SocketFlags, TCPSocket, TLSSocket};
+use crate::generated_bindgen::socket_body::SocketHandle;
+#[cfg(unix)]
+use crate::socket::TCPSocket;
+use crate::socket::{Listener, NewSocket, SocketFlags};
 
 static AUTO_SELECT_FAMILY_DEFAULT: AtomicBool = AtomicBool::new(true);
 
-pub(crate) fn drain_subprocess_socket(global: &JSGlobalObject) -> JSValue {
-    #[bun_jsc::host_fn]
-    fn drain(_global: &JSGlobalObject, frame: &CallFrame) -> JsResult<JSValue> {
-        #[cfg(unix)]
-        {
-            let [value] = frame.arguments_as_array::<1>();
-            if let Some(socket) = value.as_::<TCPSocket>() {
-                // SAFETY: the argument is a live wrapper; copy its handle before
-                // entering callbacks, which may detach or replace it.
-                let (flags, handle) = unsafe { ((*socket).flags.get(), (*socket).socket.get()) };
-                if !flags.contains(SocketFlags::BYPASS_TLS) {
-                    if let Some(raw) = handle.socket.get() {
-                        // SAFETY: the JS argument keeps the wrapper live; uSockets
-                        // retains a closed native socket across nested callbacks.
-                        unsafe { uws::us_socket_t::drain_readable(raw) };
-                        value.ensure_still_alive();
-                    }
+pub(crate) fn drain_subprocess_socket(
+    _cx: &mut JsScope<'_>,
+    value: JsLocal<'_>,
+) -> JsResult<JSValue> {
+    #[cfg(unix)]
+    {
+        let value = value.to_js();
+        if let Some(socket) = value.as_::<TCPSocket>() {
+            // SAFETY: the argument is a live wrapper; copy its handle before
+            // entering callbacks, which may detach or replace it.
+            let (flags, handle) = unsafe { ((*socket).flags.get(), (*socket).socket.get()) };
+            if !flags.contains(SocketFlags::BYPASS_TLS) {
+                if let Some(raw) = handle.socket.get() {
+                    // SAFETY: the JS argument keeps the wrapper live; uSockets
+                    // retains a closed native socket across nested callbacks.
+                    unsafe { uws::us_socket_t::drain_readable(raw) };
+                    value.ensure_still_alive();
                 }
             }
         }
-        #[cfg(windows)]
-        let _ = frame;
-        Ok(JSValue::UNDEFINED)
     }
-    JSFunction::create(
-        global,
-        "drainSubprocessSocket",
-        __jsc_host_drain,
-        1,
-        Default::default(),
-    )
+    #[cfg(windows)]
+    let _ = value;
+    Ok(JSValue::UNDEFINED)
 }
 
 // This is only used to provide the getDefaultAutoSelectFamilyAttemptTimeout and
@@ -77,24 +73,6 @@ pub(crate) fn set_default_auto_select_family_attempt_timeout(value: u32) -> u32 
     let value = value.max(10);
     AUTO_SELECT_FAMILY_ATTEMPT_TIMEOUT_DEFAULT.set(value);
     value
-}
-
-// codegen (`generated_js2native.rs`) snake-cases the symbol; alias the
-// PascalCase fns so both spellings resolve.
-pub(crate) use self::{BlockList as block_list, SocketAddress as socket_address};
-
-// Forward to the codegen'd `js_${Type}::get_constructor` wrappers — they go through
-// `jsc_abi_extern!` so the extern uses `extern "sysv64"` on win-x64 (matching
-// C++ `JSC_CALLCONV`). A bare `extern "C"` redecl here would be the wrong ABI on
-// Windows and trips `clashing_extern_declarations`.
-#[allow(non_snake_case)]
-pub(crate) fn SocketAddress(global: &JSGlobalObject) -> JSValue {
-    crate::generated_classes::js_SocketAddress::get_constructor(global)
-}
-
-#[allow(non_snake_case)]
-pub(crate) fn BlockList(global: &JSGlobalObject) -> JSValue {
-    crate::generated_classes::js_BlockList::get_constructor(global)
 }
 
 pub(crate) fn new_detached_socket(cx: &mut JsScope<'_>, is_ssl: bool) -> JSValue {
@@ -138,15 +116,15 @@ pub(crate) fn new_detached_socket(cx: &mut JsScope<'_>, is_ssl: bool) -> JSValue
     }
 }
 
-#[bun_jsc::host_fn]
-pub(crate) fn do_connect(global: &JSGlobalObject, frame: &CallFrame) -> JsResult<JSValue> {
-    let [prev, opts] = frame.arguments_as_array::<2>();
-    let maybe_tcp = prev.as_::<TCPSocket>();
-    let maybe_tls = prev.as_::<TLSSocket>();
-    Listener::connect_inner(
-        &global.js_thread_of_caller(frame),
-        maybe_tcp,
-        maybe_tls,
-        opts,
-    )
+pub(crate) fn do_connect<'a>(
+    cx: &mut JsScope<'a>,
+    socket: SocketHandle<'a>,
+    options: JsLocal<'a>,
+) -> JsResult<JSValue> {
+    let (maybe_tcp, maybe_tls) = match socket {
+        SocketHandle::Tcp(socket) => (Some(socket.as_ctx_ptr()), None),
+        SocketHandle::Tls(socket) => (None, Some(socket.as_ctx_ptr())),
+        SocketHandle::Ignored(_) => (None, None),
+    };
+    Listener::connect_inner(&cx.js_thread(), maybe_tcp, maybe_tls, options.to_js())
 }

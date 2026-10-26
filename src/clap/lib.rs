@@ -381,14 +381,55 @@ pub struct ParseOptions<'a> {
     /// An alias written as `--name=value` also matches the two tokens `--name value`. An empty
     /// replacement removes the flag from the arguments.
     pub short_aliases: &'static [(&'static [u8], &'static [u8])],
-    /// Observe each named option before repeated single-value options are collapsed.
-    pub on_option: Option<fn(Names, Option<&[u8]>)>,
+    /// Observe each parameter before repeated single-value options are collapsed.
+    pub on_option: Option<&'a mut dyn FnMut(Names, Option<&[u8]>)>,
     /// A `--flag` or `--flag=value` that no param names is a positional, with its dashes, in its
     /// place among the others. For a command that hands flags on: `bun check --strict`. Otherwise
     /// such a flag is skipped.
     pub unknown_long_flags_are_positional: bool,
     /// Such a flag fails the parse, unless it comes from runtime options in the environment.
     pub unknown_long_flags_are_errors: bool,
+    pub ignored_long_flags: IgnoredLongFlags,
+}
+
+/// Long flags, written without the dashes, that are skipped instead of failing the parse when
+/// `unknown_long_flags_are_errors` is set.
+#[derive(Default, Clone, Copy)]
+pub struct IgnoredLongFlags {
+    /// Skips `--name`, `--no-name`, `--name=value`, `--name true` and `--name false`.
+    pub flags: &'static [&'static [u8]],
+    /// Skips `--name=value` and `--name value`, unless `value` starts with a dash. Also skips
+    /// `--no-name`, like for the command's own flags.
+    pub options: &'static [&'static [u8]],
+    /// Skips every `--name` and `--name=value` whose name starts with one of these.
+    pub prefixes: &'static [&'static [u8]],
+}
+
+impl IgnoredLongFlags {
+    /// Returns `None` if `--name` isn't skipped. Otherwise returns whether `next`, the argument
+    /// after it, is its value. `is_own_flag` tells whether the command has a flag of that name.
+    pub fn value_is_next_arg(
+        &self,
+        name: &[u8],
+        next: &[u8],
+        is_own_flag: impl Fn(&[u8]) -> bool,
+    ) -> Option<bool> {
+        if self.options.contains(&name) {
+            return Some(!next.starts_with(b"-"));
+        }
+        if self.flags.contains(&name)
+            || name.strip_prefix(b"no-").is_some_and(|positive| {
+                self.flags.contains(&positive)
+                    || self.options.contains(&positive)
+                    || (!self.flags.is_empty() && is_own_flag(positive))
+            })
+        {
+            return Some(next == b"true" || next == b"false");
+        }
+        (self.prefixes.iter())
+            .any(|prefix| name.starts_with(prefix))
+            .then_some(false)
+    }
 }
 
 // Help/usage/error rendering — none of this is on the cold-start hot chain
@@ -441,7 +482,8 @@ impl<Id: 'static> Args<Id> {
         self.clap.options(name)
     }
 
-    /// Whether the parameter was passed. Works for flags and for parameters that take values.
+    /// Returns true if the parameter was passed. Works for flags and for parameters that take
+    /// values.
     pub fn has(&self, name: &'static [u8]) -> bool {
         self.clap.has(name)
     }
@@ -469,7 +511,20 @@ pub fn parse<Id: 'static>(
 ) -> crate::Result<Args<Id>> {
     let mut iter = args::OsIterator::init();
 
-    let clap = parse_ex::<Id, _>(params, &mut iter, opt)?;
+    let clap = parse_ex::<Id, _>(
+        params,
+        &mut iter,
+        ParseOptions {
+            diagnostic: opt.diagnostic,
+            on_option: opt.on_option,
+            stop_after_positional_at: opt.stop_after_positional_at,
+            preserve_passthrough_separator: opt.preserve_passthrough_separator,
+            short_aliases: opt.short_aliases,
+            unknown_long_flags_are_positional: opt.unknown_long_flags_are_positional,
+            unknown_long_flags_are_errors: opt.unknown_long_flags_are_errors,
+            ignored_long_flags: opt.ignored_long_flags,
+        },
+    )?;
     Ok(Args { clap })
 }
 
@@ -481,7 +536,20 @@ pub fn parse_with_table<Id: 'static>(
     opt: ParseOptions<'_>,
 ) -> crate::Result<Args<Id>> {
     let mut iter = args::OsIterator::init();
-    let clap = ComptimeClap::<Id>::parse_with_table(table, &mut iter, opt)?;
+    let clap = ComptimeClap::<Id>::parse_with_table(
+        table,
+        &mut iter,
+        ParseOptions {
+            diagnostic: opt.diagnostic,
+            on_option: opt.on_option,
+            stop_after_positional_at: opt.stop_after_positional_at,
+            preserve_passthrough_separator: opt.preserve_passthrough_separator,
+            short_aliases: opt.short_aliases,
+            unknown_long_flags_are_positional: opt.unknown_long_flags_are_positional,
+            unknown_long_flags_are_errors: opt.unknown_long_flags_are_errors,
+            ignored_long_flags: opt.ignored_long_flags,
+        },
+    )?;
     Ok(Args { clap })
 }
 

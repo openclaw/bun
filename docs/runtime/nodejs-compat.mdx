@@ -273,6 +273,8 @@ Isolated test files release their process stdout/stderr polling registrations be
 
 `NODE_OPTIONS` applies Bun-supported Node runtime flags before command-line arguments, including `--require`/`-r` and `--import` preloads. Injected flags are absent from `process.execArgv`. Unsupported Node flags remain ignored; flags outside the Node allowlist warn and are ignored. `process.config.variables.node_without_node_options` remains `true` because support is partial.
 
+CA options (`--use-system-ca`, `--use-openssl-ca`, and `--use-bundled-ca`) and their `--no-` forms use the last occurrence of each pair. `NODE_OPTIONS` is processed before the command line. Flags after a script or executable package name are arguments to that target. Distinct enabled CA stores remain mutually exclusive. Bun's bundled mode also trusts OpenSSL's default certificate file and directory, including `SSL_CERT_FILE` and `SSL_CERT_DIR`; disabling system CAs does not disable those paths. This differs from the official Node.js default trust configuration.
+
 `--max-old-space-size=N` limits the managed JavaScript heap in MiB through the pinned OpenClaw WebKit. ArrayBuffer backing stores are excluded. A full garbage collection that cannot bring the main VM under the limit causes a fatal heap out-of-memory error. Command-line values override `NODE_OPTIONS`; zero restores the default. Underscores may replace dashes in the flag name. This bounds the managed heap rather than total process RSS. Initialization overhead and fatal errors for extremely small or overflowing limits differ between JavaScriptCore and V8; Bun does not reproduce V8's internal assertions for extreme values.
 
 Direct file execution preserves a literal `--` after the script name in `process.argv`, including with `--import` preloads. Explicit `bun run` commands and package scripts consume one separator.
@@ -293,7 +295,7 @@ On POSIX, piped and terminal `process.stdout` and `process.stderr` expose `_hand
 
 ### [`node:tls`](https://nodejs.org/api/tls.html)
 
-`tls.connect()` sends SNI only for an explicit nonempty `servername`; omitted, `undefined`, `null`, and empty values send no SNI. Certificate identity checks still use the explicit servername or connection host. Established Node TLS sockets report `servername: false` when no SNI was sent. HTTPS agents and HTTP/2 choose their own host-derived names, excluding IP hosts. Explicit IP servernames remain rejected, unlike Node.js 24, which sends them with deprecation warning `DEP0123`.
+`tls.connect()` sends SNI only for an explicit nonempty `servername`; omitted, `undefined`, `null`, and empty values send no SNI. A name set with `tlsSocket.setServername()` before connecting is preserved, including with `autoSelectFamily`. Certificate identity checks still use the explicit servername or connection host. Established Node TLS sockets report `servername: false` when no SNI was sent. HTTPS agents and HTTP/2 choose their own host-derived names, excluding IP hosts. Explicit IP servernames remain rejected, unlike Node.js 24, which sends them with deprecation warning `DEP0123`.
 
 Native `fetch()` uses `tls.setDefaultCACertificates()` overrides for new TLS connections. Explicit request or `FetchSession` CAs take precedence; an empty CA list trusts no certificates. Overrides are local to the calling thread, like Node.
 
@@ -322,6 +324,8 @@ Map and Set serialization copies entries and ignores custom own properties, like
 Contextified globals, `DONT_CONTEXTIFY` globals, and the main realm allow a Proxy in their prototype chain, including jsdom Window prototypes. This requires the fork’s pinned OpenClaw WebKit.
 
 The pinned engine initializes VM entry storage and deferred microtask scopes so stale native values do not retain otherwise unreachable objects.
+
+Timeouts are checked when `bun:sqlite` statements return, including trigger and full-text index writes, so delayed timer delivery cannot let an elapsed timeout return normally or leave a write cursor locked.
 
 🟢 Fully implemented, including `vm.Script`, `vm.createContext`, `vm.runInContext`, `vm.runInNewContext`, `vm.runInThisContext`, `vm.compileFunction`, `vm.isContext`, the ES module classes `vm.Module`, `vm.SourceTextModule` and `vm.SyntheticModule` (exported without `--experimental-vm-modules`), and `importModuleDynamically` support. The `timeout`, `breakOnSigint`, `cachedData`, `microtaskMode` and `codeGeneration` options are supported. An `importModuleDynamically` callback that returns a promise for a `vm.Module` resolves `import()` to the module object rather than its namespace. `vm.measureMemory()` reports whole-heap figures for every context.
 
@@ -361,7 +365,7 @@ Queued worker stdout and stderr are delivered before the worker's `exit` event, 
 
 `worker.getHeapStatistics()` takes an owning-thread snapshot while a worker is idle, executing JavaScript, or blocked in `Atomics.wait()`. The snapshot includes freshly allocated external storage. Inspection preserves the atomic wait and pending requests settle if the worker exits.
 
-Immediate engine GC timers wake idle workers when scheduled. These native wakeups do not keep a worker alive.
+Immediate engine GC timers wake idle workers when scheduled. Asynchronous GC requests clear dead native stack slots so those collections can finalize unreachable objects after `Bun.gc(false)`, including on Windows ARM64. These native wakeups do not keep a worker alive.
 
 Worker teardown avoids an extra full collection before final heap destruction. Native cleanup hooks and registered finalizers still run before the exit is acknowledged.
 
@@ -402,6 +406,8 @@ CPU profile duration uses a monotonic clock and includes idle time. Inspector pr
 🟡 Mostly implemented. `bun --interactive` starts a Node.js-compatible REPL. The REPL does not show result previews (they need V8's inspector-based side-effect-free eval). Tab-completion skips `let`/`const`/`class` bindings, and some V8-specific error-message and stack-frame wording differs.
 
 ### [`node:sqlite`](https://nodejs.org/api/sqlite.html)
+
+`sqlite.db.query` diagnostics match Node 26.12.1: completed or reset queries publish synchronously with expanded SQL, the database object and duration in nanoseconds. Nested queries publish nested events; subscribers must guard their own recursion. Tracing is disabled when the channel has no subscribers. Statements support `close()` and `Symbol.dispose`, and `Database`/`Statement` alias the legacy `DatabaseSync`/`StatementSync` constructors.
 
 🟢 Fully implemented. `backup()` runs synchronously and blocks the event loop for the duration of the copy (Node runs it on a worker thread). A `Buffer`/`Uint8Array` database path must be valid UTF-8 (Node passes the raw bytes through; Bun rejects non-UTF-8 with `ERR_INVALID_ARG_VALUE`). On macOS, Bun uses the system `libsqlite3.dylib`. `loadExtension()` requires a full SQLite build, and so do `createSession()`/`applyChangeset()` on older macOS releases. To use a full SQLite build, call `require("bun:sqlite").Database.setCustomSQLite(path)` before opening a database.
 

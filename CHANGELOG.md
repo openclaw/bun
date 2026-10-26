@@ -4,11 +4,37 @@
 
 - Preserve native socket ownership when nesting TLS, including pending writes, read backpressure, shutdown completion and buried HTTP/2 listeners. Keep generic Duplex write completions and queued TLS callbacks alive through reentrant teardown and garbage collection.
 
+- Publish `node:sqlite` query diagnostics with expanded SQL, database identity and duration, including safe synchronous nested queries; support statement close/disposal and the current constructor aliases.
+
+- Copy large ArrayBuffers directly into receiver-owned contents for Worker and MessagePort messages, preserving source buffers and stored serialization bytes.
+
+- Honor elapsed `node:vm` timeouts when native SQLite writes outlast delayed timer delivery, releasing write cursors before propagating the timeout.
+
+- Sync oven-sh/bun through `a8fcd319be58ad4d284330b86602cfb3c8e49c83`, including native-binding schema migration, source-position updates, and runtime hardening while retaining fork compatibility and source-sharing fixes.
+
+- Preserve the relative tail when `path.win32.resolve()` falls back to a different drive's root.
+
+- Avoid a panic when `bun create` selects a certificate store.
+
+- Keep a TLS socket's native context alive while delayed transport shutdown re-enters the event loop.
+
+- Preserve reusable transpiler-cache entries when source maps are explicitly disabled.
+
+- Preserve custom Headers iterators when `server.fetch()` copies request headers.
+
+- Back out Error.cause serialization (#192, #194) pending a performance-neutral design.
+
+- Back out Buffer trailer reservation (#195) for its small-payload serialization cost, pending a design that charges only large-Buffer paths.
+
+- Avoid an extra payload copy when structured cloning or messaging a Buffer or ArrayBuffer inside a container, without changing serialized bytes.
+
 - Sync oven-sh/bun through `ad4089bf49d9f4c3ab7c8d95a58f3e0f0f186054`, including lint, format, binding, WebSocket and SQL updates, while retaining the fork runtime and CI contracts.
 
 - Share identical `node:vm` script and compiled-function source buffers and source-map URI strings through a bounded per-VM weak index, including after compilation-cache eviction.
 
 - Honor `BUN_FEATURE_FLAG_DISABLE_SOURCE_MAPS` on transpiler-cache hits and prevent startup crashes from cached modules without maps. Adapts empty-map validation from [oven-sh/bun#42412](https://github.com/oven-sh/bun/pull/42412); thanks @robobun.
+
+- Preserve TLS SNI set with `tlsSocket.setServername()` before connecting, including address-family selection, while continuing to omit implicit SNI for absent, null, or empty names.
 
 - Sync oven-sh/bun through `f2405c382d43b89d91a2e7c90d9c5f53505a1e71`, including native lint/format commands, while reconciling fork TLS, worker, module-resolution, CLI and parser fixes. Pin the qualified WebKit release `f8521bb45429b3e1df6bc6d9b98b8df4376a89c5`.
 
@@ -326,3 +352,11 @@
 - Close Worker-owned FileHandles and tracked fs descriptors on termination or natural exit, after pending filesystem work returns. Adapts [oven-sh/bun#34260](https://github.com/oven-sh/bun/pull/34260); thanks robobun.
 
 - Settle child IPC send callbacks after peer disconnection, preserving immediate write errors and completing queued sends at channel close. Adapts [oven-sh/bun#43000](https://github.com/oven-sh/bun/pull/43000); thanks robobun.
+
+- Reduce nested-object Worker `postMessage` and `structuredClone` overhead by avoiding transient value-string atomization and discarded flat-object string copies, while preserving stored and cross-process serialized bytes.
+
+- Resolve positive and negative CA options in order, applying `NODE_OPTIONS` before command-line flags across runtime and package commands while preserving Bun's existing trust stores.
+
+- x64 macOS without AVX (older Macs and Rosetta on macOS 14) no longer crashes with SIGILL at startup (openclaw/openclaw#181032).
+
+- Clear dead native stack slots before asynchronous GC requests so parked workers can finalize unreachable objects after `Bun.gc(false)`, including on Windows ARM64.

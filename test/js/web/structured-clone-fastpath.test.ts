@@ -1,7 +1,96 @@
 import { describe, expect, test } from "bun:test";
 import { isASAN, rss } from "harness";
+import { markAsUntransferable, MessageChannel as NodeMessageChannel, receiveMessageOnPort } from "node:worker_threads";
 
 describe("Structured Clone Fast Path", () => {
+  test.each([16 * 1024, 4 * 1024 * 1024])(
+    "MessagePort clones %i-byte shared backing references without detaching",
+    size => {
+      const bytes = Buffer.alloc(size, 0x5a);
+      markAsUntransferable(bytes.buffer);
+      const input: any = {
+        bytes,
+        again: bytes,
+        backing: bytes.buffer,
+        view: new DataView(bytes.buffer, bytes.byteOffset + 1, size - 2),
+      };
+      input.self = input;
+      const { port1, port2 } = new NodeMessageChannel();
+      try {
+        port1.postMessage(input);
+        const copy = receiveMessageOnPort(port2)!.message;
+        expect(copy.self).toBe(copy);
+        expect(copy.again).toBe(copy.bytes);
+        expect(copy.backing).toBe(copy.bytes.buffer);
+        expect(copy.view.buffer).toBe(copy.backing);
+        expect(copy.view.byteOffset).toBe(bytes.byteOffset + 1);
+        expect(copy.view.byteLength).toBe(size - 2);
+        expect(Buffer.from(copy.bytes)).toEqual(bytes);
+        copy.bytes.fill(0);
+        expect(bytes).toEqual(Buffer.alloc(size, 0x5a));
+      } finally {
+        port1.close();
+        port2.close();
+      }
+    },
+  );
+
+  test("rejected messages leave a previously cloned large buffer attached", () => {
+    const bytes = Buffer.alloc(16 * 1024, 0x5a);
+    const { port1, port2 } = new NodeMessageChannel();
+    try {
+      expect(() => port1.postMessage({ bytes, invalid() {} })).toThrow(
+        expect.objectContaining({ name: "DataCloneError" }),
+      );
+      expect(bytes).toEqual(Buffer.alloc(16 * 1024, 0x5a));
+      expect(receiveMessageOnPort(port2)).toBeUndefined();
+    } finally {
+      port1.close();
+      port2.close();
+    }
+  });
+
+  test.each(["clone", "port"])("%s preserves repeated strings and references after a primitive prefix", kind => {
+    const latin1 = "caf\u00e9";
+    const sliced = ("\u0100" + latin1).slice(1);
+    const child = { latin1, sliced, wide: "\u4e2d\u6587", empty: "", absent: undefined, nil: null };
+    const input: any = { first: latin1, second: sliced, third: "prefix", child, again: child };
+    input.self = input;
+    const { port1, port2 } = new NodeMessageChannel();
+    try {
+      let copy;
+      if (kind === "clone") copy = structuredClone(input);
+      else {
+        port1.postMessage(input);
+        copy = receiveMessageOnPort(port2)!.message;
+      }
+      expect(copy).toEqual(input);
+      expect(copy.self).toBe(copy);
+      expect(copy.child).toBe(copy.again);
+      expect(copy.child).not.toBe(child);
+      expect(Object.keys(copy)).toEqual(Object.keys(input));
+    } finally {
+      port1.close();
+      port2.close();
+    }
+  });
+
+  test("a rejected primitive-prefix probe still visits a nested getter once", () => {
+    let calls = 0;
+    const input = {
+      first: "prefix",
+      second: "prefix",
+      child: {
+        get value() {
+          calls++;
+          return "caf\u00e9";
+        },
+      },
+    };
+    expect(structuredClone(input)).toEqual({ first: "prefix", second: "prefix", child: { value: "caf\u00e9" } });
+    expect(calls).toBe(1);
+  });
+
   test("structuredClone should work with empty object", () => {
     const object = {};
     const cloned = structuredClone(object);

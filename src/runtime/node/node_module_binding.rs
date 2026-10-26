@@ -5,7 +5,8 @@
 use bun_alloc::Arena;
 use bun_ast::Loader;
 use bun_core::String as BunString;
-use bun_jsc::{self as jsc, CallFrame, JSGlobalObject, JSValue, JsResult, StringJsc as _};
+use bun_jsc::bindgen::{JsLocal, JsScope};
+use bun_jsc::{self as jsc, JSGlobalObject, JSValue, JsResult, StringJsc as _};
 
 /// 1-based line number of byte offset `lo`, and the source text of that line
 /// (for Node's `filename:line\n<snippet>` error-stack decoration).
@@ -64,12 +65,12 @@ fn error_object(
 
 /// `stripTypeScriptTypesNative(code)` — parse `code` as TypeScript and blank
 /// every type-only span in place (amaro's strip-only mode).
-#[bun_jsc::host_fn]
 pub(crate) fn strip_type_script_types_native(
-    global: &JSGlobalObject,
-    frame: &CallFrame,
+    cx: &mut JsScope<'_>,
+    code: JsLocal<'_>,
 ) -> JsResult<JSValue> {
-    let code = frame.argument(0);
+    let global = cx.global();
+    let code = code.to_js();
     let code_view = code.to_js_string_view(global)?;
     // Node passes well-formed UTF-8 to amaro; Bun's usual conversion preserves lone surrogates as WTF-8.
     let code_bytes = if code_view.is_utf16() {

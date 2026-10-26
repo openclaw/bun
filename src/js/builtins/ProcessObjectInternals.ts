@@ -52,7 +52,7 @@ export function getStdioWriteStream(
     stream._type = "tty";
   } else {
     const fs = require("node:fs");
-    const createStdioSink = $newRustFunction("runtime/webcore/FileSink.rs", "createStdio", 1);
+    const createStdioSink = $bindgen("FileSink.bind.ts", "createStdio");
     stream = new fs.WriteStream(null, { autoClose: false, $fastPath: createStdioSink(fd) });
     stream.readable = false;
     stream._type = "fs";
@@ -124,7 +124,7 @@ export function getStdioWriteStream(
     process.platform !== "win32" &&
     (isTTY || fdType === BunProcessStdinFdType.pipe || fdType === BunProcessStdinFdType.socket)
   ) {
-    const setStdioBlocking = $newRustFunction("subprocess.rs", "setStdioBlocking", 2);
+    const setStdioBlocking = $bindgen("subprocess.bind.ts", "setStdioBlocking");
     stream._handle = {
       get fd() {
         return fd;
@@ -135,8 +135,8 @@ export function getStdioWriteStream(
     };
   }
 
+  // This is undefined if a FileSink couldn't be opened for the fd. The stream then writes through node:fs.
   const underlyingSink = stream[require("internal/fs/streams").kWriteStreamFastPath];
-  $assert(underlyingSink);
   return [stream, underlyingSink];
 }
 
@@ -889,6 +889,8 @@ export function buildAllowedNodeEnvironmentFlags() {
     "--max-old-space-size",
     "--no-addons",
     "--no-deprecation",
+    "--no-use-bundled-ca",
+    "--no-use-openssl-ca",
     "--no-use-system-ca",
     "--no-warnings",
     "--pending-deprecation",

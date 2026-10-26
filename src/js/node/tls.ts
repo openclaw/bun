@@ -42,12 +42,12 @@ const getExtraCACertificates = $newCppFunction("NodeTLS.cpp", "getExtraCACertifi
 // Node warns at the first secure context; the once-per-process native load is what prints it.
 const maybeWarnAboutExtraCACerts = $newCppFunction("NodeTLS.cpp", "loadExtraCACertificates", 0);
 const getSystemCACertificates = $newCppFunction("NodeTLS.cpp", "getSystemCACertificates", 1);
-const canonicalizeIP = $newCppFunction("NodeTLS.cpp", "Bun__canonicalizeIP", 1);
+const canonicalizeIP = $bindgen("cares_jsc.bind.ts", "canonicalizeIP");
 const parseCACertificates = $newCppFunction("NodeTLS.cpp", "parseCACertificates", 1);
-const setDefaultCACertificatesNative = $newRustFunction("runtime/socket/SSLConfig.rs", "setDefaultCACertificates", 1);
+const setDefaultCACertificatesNative = $bindgen("SSLConfig.bind.ts", "setDefaultCACertificates");
 
-const getTLSDefaultCiphers = $newCppFunction("NodeTLS.cpp", "getDefaultCiphers", 0);
-const setTLSDefaultCiphers = $newCppFunction("NodeTLS.cpp", "setDefaultCiphers", 1);
+const getTLSDefaultCiphers = $bindgen("rare_data.bind.ts", "getTLSDefaultCiphers");
+const setTLSDefaultCiphers = $bindgen("rare_data.bind.ts", "setTLSDefaultCiphers");
 const selectServerName = $newCppFunction("NodeTLS.cpp", "selectServerName", 2);
 let _VALID_CIPHERS_SET: Set<string> | undefined;
 function getValidCiphersSet() {
@@ -436,7 +436,7 @@ function checkServerIdentity(hostname, cert) {
 // — Postgres, Valkey, `Bun.connect`, …), so identical options return the same
 // native handle and the same `SSL_CTX*`. Replaces the SHA-256/WeakRef cache
 // that used to live in this file.
-const NativeSecureContext = $rust("SecureContext.rs", "js.getConstructor");
+const NativeSecureContext = $bindgen("SecureContext.bind.ts", "SecureContext");
 
 // Node treats any falsy key/cert/ca as "not provided" (test-tls-options-
 // boolean-check.js exercises false/0/""). The bindgen SSLConfigFile union only
@@ -1026,7 +1026,7 @@ TLSSocket.prototype.getX509Certificate = function getX509Certificate() {
 TLSSocket.prototype[buntls] = function () {
   const ctx = this[ksecureContext];
   // An empty native serverName suppresses its connection-host fallback; tls.connect does not infer SNI.
-  const servername = this.servername || "";
+  const servername = this[kservername] ?? (this.servername || "");
   return {
     ALPNProtocols: this.ALPNProtocols,
     checkServerIdentity: this[kcheckServerIdentity],
@@ -1580,7 +1580,7 @@ function cacheBundledRootCertificates(): string[] {
   return bundledRootCertificates;
 }
 const getUseSystemCA = $bindgen("node_tls_binding.bind.ts", "getUseSystemCA");
-const getUseOpensslCA = $bindgen("node_tls_binding.bind.ts", "getUseOpensslCA");
+const getCAStore = $bindgen("node_tls_binding.bind.ts", "getCAStore");
 
 let defaultCACertificates: string[] | undefined;
 // Mirrors the store root_certs.cpp builds, in node's shape:
@@ -1589,7 +1589,10 @@ function cacheDefaultCACertificates() {
   if (defaultCACertificates) return defaultCACertificates;
   defaultCACertificates = [];
 
-  if (!getUseOpensslCA()) {
+  // As in Node, what OpenSSL's default certificate file and directory hold is not listed.
+  // https://github.com/nodejs/node/blob/v26.3.0/lib/tls.js#L157
+  const store = getCAStore();
+  if (store !== "openssl") {
     const bundled = cacheBundledRootCertificates();
     for (let i = 0; i < bundled.length; ++i) {
       ArrayPrototypePush.$call(defaultCACertificates, bundled[i]);

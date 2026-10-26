@@ -18,6 +18,7 @@ export const cases = [
   ...["socket", "context"].flatMap(transport =>
     [undefined, null, "", "files.proxy.test"].map(servername => ({ host: "127.0.0.1", servername, transport })),
   ),
+  ...[false, 0].map(servername => ({ host: "127.0.0.1", servername, transport: "context" })),
   ...["https", "http2"].flatMap(transport =>
     ["127.0.0.1", "localhost"].flatMap(host =>
       [undefined, null, "", "files.proxy.test"].map(servername => ({ host, servername, transport })),
@@ -123,10 +124,58 @@ export async function observe({ host, servername, transport }) {
   }
 }
 
+export const pendingCases = [false, true].flatMap(autoSelectFamily =>
+  ["set.before.connect", ""].map(servername => ({ autoSelectFamily, servername })),
+);
+
+export async function observePending({ autoSelectFamily, servername }) {
+  const server = tls.createServer({ key, cert }, socket =>
+    socket.end(JSON.stringify({ servername: socket.servername })),
+  );
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const socket = new tls.TLSSocket(undefined, { rejectUnauthorized: false });
+  try {
+    socket.setServername("replaced.before.connect");
+    socket.setServername(servername);
+    socket.connect(
+      {
+        host: "connect.host.test",
+        port: server.address().port,
+        autoSelectFamily,
+        lookup(_host, options, callback) {
+          if (options.all) callback(null, [{ address: "127.0.0.1", family: 4 }]);
+          else callback(null, "127.0.0.1", 4);
+        },
+      },
+      function () {
+        this._start();
+      },
+    );
+    await once(socket, "secure");
+    const clientServername = socket.servername;
+    socket.setEncoding("utf8");
+    let body = "";
+    for await (const chunk of socket) body += chunk;
+    return { ...JSON.parse(body), clientServername };
+  } finally {
+    socket.destroy();
+    await new Promise((resolve, reject) => server.close(error => (error ? reject(error) : resolve())));
+  }
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   for (const scenario of cases) {
     const result = await observe(scenario);
     console.log(JSON.stringify({ ...scenario, result }));
     assert.deepEqual(result, expected(scenario));
+  }
+  for (const scenario of pendingCases) {
+    const result = await observePending(scenario);
+    console.log(JSON.stringify({ ...scenario, result }));
+    assert.deepEqual(result, {
+      servername: scenario.servername || false,
+      clientServername: scenario.servername || false,
+    });
   }
 }

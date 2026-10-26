@@ -89,6 +89,18 @@ const BASE_PARAMS_: &[ParamType] = concat_params!(
         parse_param!(
             "-c, --config <PATH>?              Specify path to Bun config file. Default <d>$cwd<r>/bunfig.toml"
         ),
+        parse_param!(
+            "--use-system-ca                   Use the system's trusted certificate authorities"
+        ),
+        parse_param!(
+            "--no-use-system-ca                Do not use system CAs, overriding $NODE_USE_SYSTEM_CA"
+        ),
+        parse_param!(
+            "--use-openssl-ca                  Use OpenSSL's default CA store instead of the bundled one"
+        ),
+        parse_param!("--no-use-openssl-ca               Do not select OpenSSL's default CA store"),
+        parse_param!("--use-bundled-ca                  Use bundled CA store"),
+        parse_param!("--no-use-bundled-ca               Do not select the bundled CA store"),
         parse_param!("-h, --help                        Display this menu and exit"),
     ],
     &[parse_param!("<POS>...")],
@@ -271,14 +283,6 @@ const RUNTIME_PARAMS_: &[ParamType] = &[
     parse_param!(
         "--zero-fill-buffers                Boolean to force Buffer.allocUnsafe(size) to be zero-filled."
     ),
-    parse_param!(
-        "--use-system-ca                   Use the system's trusted certificate authorities"
-    ),
-    parse_param!(
-        "--no-use-system-ca                Do not use the system's trusted certificate authorities, overriding $NODE_USE_SYSTEM_CA"
-    ),
-    parse_param!("--use-openssl-ca                  Use OpenSSL's default CA store"),
-    parse_param!("--use-bundled-ca                  Use bundled CA store"),
     parse_param!("--tls-min-v1.0                    Set the default TLS minimum to TLSv1.0"),
     parse_param!("--tls-min-v1.1                    Set the default TLS minimum to TLSv1.1"),
     parse_param!("--tls-min-v1.2                    Set the default TLS minimum to TLSv1.2"),
@@ -853,14 +857,20 @@ pub(crate) fn replace_pid_placeholder(name: &[u8]) -> Box<[u8]> {
     out.into_boxed_slice()
 }
 
-pub(crate) use bun_core::Global::{main_use_system_ca, use_openssl_ca};
+pub(crate) use bun_core::Global::main_use_system_ca;
 
 pub(crate) fn get_use_system_ca() -> Option<bool> {
     bun_jsc::virtual_machine::VirtualMachine::get().use_system_ca
 }
 
-pub(crate) fn get_use_openssl_ca() -> bool {
-    use_openssl_ca()
+use crate::generated_bindgen::node_tls_binding::CAStore;
+
+pub(crate) fn get_ca_store() -> CAStore {
+    match Global::ca_store() {
+        Global::CAStore::Bundled => CAStore::Bundled,
+        Global::CAStore::System => CAStore::System,
+        Global::CAStore::OpenSSL => CAStore::Openssl,
+    }
 }
 
 // ─── bunfig loading ──────────────────────────────────────────────────────────
@@ -930,12 +940,19 @@ pub(crate) fn parse(cmd: CommandTag, ctx: Context<'_>) -> crate::Result<api::Tra
 
     let mut diag = clap::Diagnostic::default();
     let table = tag_table(cmd);
+    let mut ca_options = Global::CAOptions::default();
+    let mut on_option = |names: clap::Names, value: Option<&[u8]>| {
+        apply_heap_limit_option(names, value);
+        if let Some(name) = names.long {
+            ca_options.read_flag(name);
+        }
+    };
 
     let args = match clap::parse_with_table::<clap::Help>(
         table,
         clap::ParseOptions {
             diagnostic: Some(&mut diag),
-            on_option: Some(apply_heap_limit_option),
+            on_option: Some(&mut on_option),
             stop_after_positional_at: match cmd {
                 CommandTag::RunCommand => 2,
                 CommandTag::AutoCommand | CommandTag::RunAsNodeCommand => 1,
@@ -1172,6 +1189,8 @@ pub(crate) fn parse(cmd: CommandTag, ctx: Context<'_>) -> crate::Result<api::Tra
         }
     }
 
+    Global::set_ca_store_from_options(ca_options);
+
     // runtime commands
     if matches!(
         cmd,
@@ -1344,7 +1363,7 @@ pub(crate) fn parse(cmd: CommandTag, ctx: Context<'_>) -> crate::Result<api::Tra
             let _ = bun_http::OVERRIDDEN_DEFAULT_USER_AGENT.set(user_agent);
         }
 
-        // Without a flag, `install.prefer` of bunfig.toml stays.
+        // Without a flag, `install.prefer` from bunfig.toml is kept.
         if args.flag(b"--prefer-offline") {
             ctx.debug.offline_mode_setting =
                 Some(bun_options_types::offline_mode::OfflineMode::Offline);
@@ -1641,7 +1660,6 @@ pub(crate) fn parse(cmd: CommandTag, ctx: Context<'_>) -> crate::Result<api::Tra
         if args.flag(b"--zero-fill-buffers") {
             Bun__Node__ZeroFillBuffers.store(true, core::sync::atomic::Ordering::Relaxed);
         }
-        Global::set_ca_store_from_flags(|flag| args.flag(flag));
 
         if args.flag(b"--tls-min-v1.3") && args.flag(b"--tls-max-v1.2") {
             bun_core::pretty_errorln!(

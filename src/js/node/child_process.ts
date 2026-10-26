@@ -72,7 +72,7 @@ const kFromNode = Symbol("kFromNode");
 let childProcessChannel;
 let childProcessSpawn;
 
-const setStdioBlocking = $newRustFunction("subprocess.rs", "setStdioBlocking", 2);
+const setStdioBlocking = $bindgen("subprocess.bind.ts", "setStdioBlocking");
 
 // Stand-in for Node's `Pipe` handle on piped child stdio: consumers read
 // `stream._handle.fd` and call `setBlocking` for synchronous fd-based IPC
@@ -1245,7 +1245,7 @@ class ChildProcess extends EventEmitter {
         if (i > 2 && process.platform !== "win32") {
           const handle = this.#extraStdioHandles[i];
           if (handle && stream._handle === handle) {
-            $rust("node_net_binding.rs", "drainSubprocessSocket")(handle);
+            $bindgen("node_net_binding.bind.ts", "drainSubprocessSocket")(handle);
           }
         }
       }
