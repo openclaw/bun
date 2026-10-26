@@ -47,6 +47,24 @@ Rebuilding a commit that already has a release (a toolchain or pipeline change,
 not a source change) gets a new tag with `--rebuild 2` (`…-r2`). Published
 assets are never replaced: packagers pin their checksums.
 
+### TLS qualification dry runs
+
+Set `qualify-tls` on a manual dry run to test the built artifacts with the
+socket-retention, duplex-end, duplex-close, raw-end, wrapped-close and HTTP/2
+upgrade suites. Leave `tag` empty and `publish` false. The default target set
+runs all six native platforms; musl containers are rejected because their Node.js
+reference runtime is not qualified.
+
+Each smoke job checks out the exact source commit, verifies genuine Node.js
+26.12.1 for its platform and architecture, and runs the six files with the
+artifact's executable and the checked-in test configuration. No dependency
+installation or test timeout override is added. Each file must execute passing
+cases with no failures; declared platform and Debug/ASAN-only skips remain
+visible in the six JUnit reports uploaded as `tls-qualification-<target>`.
+The opted-in smoke job has a 30-minute limit and its test step a 20-minute limit.
+Normal smoke jobs retain their 15-minute limit. These dry runs do not publish
+artifacts or establish sanitizer coverage for release builds.
+
 ## Tag scheme
 
 ```text

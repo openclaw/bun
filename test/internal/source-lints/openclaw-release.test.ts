@@ -26,6 +26,9 @@ import {
   tagFor,
   tagMismatches,
   targets,
+  tlsQualificationFiles,
+  tlsQualificationResult,
+  validateTLSQualification,
   webkitTagPart,
   windowsSignerSubject,
   zip,
@@ -40,6 +43,50 @@ const facts: SourceFacts = {
   version: "1.4.3",
   webkitVersion: "35e8970dfd926abf6661c9d356f5d60d8f611c9b",
 };
+
+test("TLS qualification is opt-in for native untagged dry runs", () => {
+  expect(() => validateTLSQualification(planTargets())).not.toThrow();
+  expect(() => validateTLSQualification(planTargets(), true)).toThrow("dry run without a release tag");
+  expect(() => validateTLSQualification(planTargets(), false, tagFor(facts))).toThrow("dry run without a release tag");
+  for (const name of ["linux-x64-musl", "linux-arm64-musl"] as const) {
+    expect(() => validateTLSQualification([name])).toThrow("musl containers have no qualified Node.js reference");
+  }
+  expect(tlsQualificationFiles).toHaveLength(6);
+  expect(new Set(tlsQualificationFiles).size).toBe(6);
+  const workflow = readFileSync(join(import.meta.dir, "../../../.github/workflows/openclaw-release.yml"), "utf8");
+  expect(workflow).toContain("qualify-tls:\n        description:");
+  expect(workflow).toContain("smoke+=(--qualify-tls --source source --out tls-results)");
+  expect(workflow).toContain("ref: ${{ needs.plan.outputs.commit }}");
+  expect(workflow).toContain('node-version: "26.12.1"');
+});
+
+test("TLS reports require executed passing cases and preserve declared skips", () => {
+  const report =
+    '<testsuites tests="2" skipped="1" failures="0"><testsuite>' +
+    '<testcase name="pass"/><testcase name="skip"><skipped/></testcase></testsuite></testsuites>';
+  expect(tlsQualificationResult(report)).toEqual({ passed: 1, skipped: 1 });
+  for (const xml of [
+    "",
+    '<testsuites skipped="0" failures="0"></testsuites>',
+    report.replace('tests="2"', 'tests="bad"'),
+  ]) {
+    expect(() => tlsQualificationResult(xml)).toThrow("missing a valid tests count");
+  }
+  expect(() => tlsQualificationResult(report.replace("</testsuites>", ""))).toThrow(
+    "incomplete or contains multiple runs",
+  );
+  expect(() => tlsQualificationResult(report + report)).toThrow("incomplete or contains multiple runs");
+  expect(() => tlsQualificationResult(report.replace('tests="2"', 'tests="3"'))).toThrow("counts do not match");
+  expect(() => tlsQualificationResult(report.replace('skipped="1"', 'skipped="0"'))).toThrow("counts do not match");
+  for (const xml of [
+    '<testsuites tests="0" skipped="0" failures="0"></testsuites>',
+    '<testsuites tests="1" skipped="1" failures="0"><testcase><skipped/></testcase></testsuites>',
+    report.replace('failures="0"', 'failures="1"'),
+    report.replace('failures="0"', 'failures="0" errors="1"'),
+    report.replace('<testcase name="pass"/>', "<testcase><failure/></testcase>"),
+  ])
+    expect(() => tlsQualificationResult(xml)).toThrow("passing cases and no failures or errors");
+});
 
 test("a tag names the version, commit date, commit and WebKit revision, and parses back", () => {
   const tag = tagFor(facts);
