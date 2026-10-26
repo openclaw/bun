@@ -87,6 +87,12 @@ interface SocketInternals {
 }
 type SocketInstance = Omit<NetSocket, keyof SocketInternals> & SocketInternals;
 
+// $toClass installs Socket's Duplex prototype at runtime, which the constructor's
+// TypeScript instance type does not reflect.
+function isNodeSocket(value: unknown): value is SocketInstance {
+  return value instanceof Socket;
+}
+
 interface TLSSocketInternals {
   servername: string | false | undefined;
   alpnProtocol: string | false | null;
@@ -596,7 +602,7 @@ function attachTLSEngine(self, connection, options) {
     // Native attachment also needs the JS owner's original transport read error.
     connection.once(kReadError, onUpgradedReadError.bind(null, self));
     let initialData;
-    if (connection instanceof Socket) {
+    if (isNodeSocket(connection)) {
       const readableLength = connection.readableLength;
       if (readableLength) initialData = connection.read(readableLength) || undefined;
       if (
@@ -4702,7 +4708,7 @@ function closeTransportAndJoin(self, handle, isException, token, onClose) {
     !self._closeAfterHandlingError &&
     !self.resetAndClosing;
   const transport = finishedNative ? token.connection : transportToDestroy(self);
-  const join = transport instanceof Socket && (finishedNative ? !token.closeEmitted : !handle);
+  const join = isNodeSocket(transport) && (finishedNative ? !token.closeEmitted : !handle);
   // The existing observer also completes a join requested by an earlier close listener.
   // A new once('close') here would miss that in-progress emission.
   if (join) {
