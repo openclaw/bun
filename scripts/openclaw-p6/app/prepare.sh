@@ -14,8 +14,8 @@ curl --fail --location --retry 2 --output "$git_work/source.tar.xz" \
   "https://www.kernel.org/pub/software/scm/git/git-$git_version.tar.xz"
 printf '%s  %s\n' "$git_sha256" "$git_work/source.tar.xz" | sha256sum --check --status
 tar -xJf "$git_work/source.tar.xz" -C "$git_work"
-nice -n 10 make -C "$git_work/git-$git_version" -j2 prefix=/usr NO_TCLTK=YesPlease NO_GETTEXT=YesPlease all
-nice -n 10 make -C "$git_work/git-$git_version" prefix=/usr NO_TCLTK=YesPlease NO_GETTEXT=YesPlease install
+nice -n 10 make -C "$git_work/git-$git_version" -j2 prefix=/usr NO_TCLTK=YesPlease NO_GETTEXT=YesPlease NO_RUST=YesPlease all
+nice -n 10 make -C "$git_work/git-$git_version" prefix=/usr NO_TCLTK=YesPlease NO_GETTEXT=YesPlease NO_RUST=YesPlease install
 [[ "$(/usr/bin/git --version)" == "git version $git_version" ]]
 /usr/bin/git --version > "$P6_WORK/git-prerequisite-version.txt"
 [[ ! -e /usr/bin/node && ! -e /usr/bin/nodejs && ! -e /usr/bin/js ]]
