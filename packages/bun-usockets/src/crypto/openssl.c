@@ -1206,9 +1206,12 @@ static int us_x509_verify_chain_cb(X509_STORE_CTX *ctx, void *arg) {
   return us_x509_verify_chain(ctx);
 }
 
+static int us_ssl_reverify_client_session(const SSL_CLIENT_HELLO *client_hello);
+
 /* For node:quic, which builds its own SSL_CTX. */
 void us_ssl_ctx_reject_blocked_keys(SSL_CTX *ctx) {
   SSL_CTX_set_cert_verify_callback(ctx, us_x509_verify_chain_cb, NULL);
+  SSL_CTX_set_dos_protection_cb(ctx, us_ssl_reverify_client_session);
 }
 
 /* A self-issued leaf that may not sign certificates is its own anchor when the store holds that very certificate (#44365). */
@@ -1966,13 +1969,75 @@ const char *us_X509_error_code(long err) {
   return code;
 }
 
-static long us_internal_verify_peer_certificate(const SSL *ssl, long def) {
+static int us_x509_session_chain_error(X509_STORE *store, X509_VERIFY_PARAM *param,
+                                     STACK_OF(X509) *chain, int purpose, int allow_untrusted) {
+  int error = X509_V_ERR_UNSPECIFIED;
+  X509_STORE_CTX *ctx = X509_STORE_CTX_new();
+  if (ctx && X509_STORE_CTX_init(ctx, store, sk_X509_value(chain, 0), chain) == 1 &&
+      X509_STORE_CTX_set_default(ctx, purpose == X509_PURPOSE_SSL_CLIENT ? "ssl_client" : "ssl_server") == 1 &&
+      X509_VERIFY_PARAM_set1(X509_STORE_CTX_get0_param(ctx), param) == 1) {
+    int ok = us_x509_verify_cert(ctx, purpose);
+    error = allow_untrusted ? us_x509_store_ctx_blocked_key_error(ctx) : X509_STORE_CTX_get_error(ctx);
+    if (!allow_untrusted && !ok && error == X509_V_OK) error = X509_V_ERR_UNSPECIFIED;
+  }
+  X509_STORE_CTX_free(ctx);
+  return error;
+}
+
+/* BoringSSL restores a session's old verify_result without running our cert callback.
+ * Rebuild its verified chain so newly blocked keys (including omitted anchors) cannot
+ * regain trust, while unused peer certificates retain the full-handshake policy. */
+long us_ssl_verify_result(SSL *ssl) {
+  long result = SSL_get_verify_result(ssl);
+  if (!SSL_session_reused(ssl)) return result;
+  STACK_OF(X509) *chain = SSL_get_peer_full_cert_chain(ssl);
+  if (!chain || sk_X509_num(chain) == 0) return result;
+  ERR_set_mark();
+  int error = us_x509_session_chain_error(SSL_CTX_get_cert_store(SSL_get_SSL_CTX(ssl)),
+      SSL_get0_param(ssl), chain, SSL_is_server(ssl) ? X509_PURPOSE_SSL_CLIENT : X509_PURPOSE_SSL_SERVER, 0);
+  ERR_pop_to_mark();
+  return error == X509_V_OK ? result : error;
+}
+
+/* This hook runs after ticket decryption, before the server derives early-data keys. */
+static int us_ssl_reverify_client_session(const SSL_CLIENT_HELLO *client_hello) {
+  SSL *ssl = client_hello->ssl;
+  if (!SSL_session_reused(ssl) || !(SSL_get_verify_mode(ssl) & SSL_VERIFY_PEER)) return 1;
+  STACK_OF(X509) *chain = SSL_get_peer_full_cert_chain(ssl);
+  return chain && sk_X509_num(chain) != 0 && us_ssl_verify_result(ssl) == X509_V_OK;
+}
+
+/* QUIC must admit the stored chain before releasing 0-RTT keys, not after its handshake. */
+int us_ssl_ctx_session_is_trusted(SSL_CTX *ctx, const unsigned char *der, size_t length, int allow_untrusted) {
+  ERR_set_mark();
+  int trusted = 0;
+  SSL_SESSION *session = SSL_SESSION_from_bytes(der, length, ctx);
+  STACK_OF(X509) *chain = sk_X509_new_null();
+  const STACK_OF(CRYPTO_BUFFER) *certs = session ? SSL_SESSION_get0_peer_certificates(session) : NULL;
+  if (!chain || !certs || sk_CRYPTO_BUFFER_num(certs) == 0) goto cleanup;
+  for (size_t i = 0; i < sk_CRYPTO_BUFFER_num(certs); i++) {
+    X509 *cert = X509_parse_from_buffer(sk_CRYPTO_BUFFER_value(certs, i));
+    if (!cert || !sk_X509_push(chain, cert)) {
+      X509_free(cert);
+      goto cleanup;
+    }
+  }
+  trusted = us_x509_session_chain_error(SSL_CTX_get_cert_store(ctx), SSL_CTX_get0_param(ctx),
+      chain, X509_PURPOSE_SSL_SERVER, allow_untrusted) == X509_V_OK;
+cleanup:
+  sk_X509_pop_free(chain, X509_free);
+  SSL_SESSION_free(session);
+  ERR_pop_to_mark();
+  return trusted;
+}
+
+static long us_internal_verify_peer_certificate(SSL *ssl, long def) {
   if (!ssl) return def;
   long err = def;
   X509 *peer_cert = SSL_get_peer_certificate(ssl);
   if (peer_cert) {
     X509_free(peer_cert);
-    err = SSL_get_verify_result(ssl);
+    err = us_ssl_verify_result(ssl);
   } else {
     const SSL_CIPHER *curr_cipher = SSL_get_current_cipher(ssl);
     if (curr_cipher && SSL_CIPHER_get_auth_nid(curr_cipher) == NID_auth_psk) {

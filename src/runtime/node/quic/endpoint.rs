@@ -2394,6 +2394,12 @@ impl QuicEndpoint {
             session_ticket
                 .as_array_buffer(global)
                 .map(|buf| buf.byte_slice().to_vec())
+                .filter(|blob| {
+                    self.client_tls
+                        .get()
+                        .as_ref()
+                        .is_some_and(|tls| tls.can_resume(blob, config.verify_hostname))
+                })
         } else {
             None
         };

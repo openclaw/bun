@@ -1,4 +1,4 @@
-use core::ffi::c_int;
+use core::ffi::{c_int, c_long};
 use core::ptr::null_mut;
 
 use bun_boringssl_sys as ssl;
@@ -538,6 +538,29 @@ impl TlsContext {
         self.ctx.as_ptr()
     }
 
+    pub(super) fn can_resume(&self, blob: &[u8], verify_hostname: bool) -> bool {
+        // lsquic's iquic_ssl_sess_to_resume_info: version tag, format version,
+        // DER length (all u32), DER, transport-parameter length and bytes.
+        const HEADER_LENGTH: usize = 12;
+        let Some(length) = blob.get(8..HEADER_LENGTH).and_then(|b| b.try_into().ok()) else {
+            return false;
+        };
+        let length = u32::from_be_bytes(length) as usize;
+        let Some(der) = blob.get(HEADER_LENGTH..).and_then(|b| b.get(..length)) else {
+            return false;
+        };
+        // processSessionOptions binds verifyHostname to verifyPeer != "manual".
+        // SAFETY: this context and the borrowed DER remain live during verification.
+        unsafe {
+            us_ssl_ctx_session_is_trusted(
+                self.raw(),
+                der.as_ptr(),
+                der.len(),
+                (!verify_hostname) as c_int,
+            ) == 1
+        }
+    }
+
     pub(super) fn alpn_cstr(config: &TlsConfig) -> Vec<u8> {
         if config.alpn.len() < 2 {
             return Vec::new();
@@ -578,6 +601,14 @@ unsafe extern "C" {
     fn us_ssl_ctx_set_verify_signature_algorithms(ctx: *mut ssl::SSL_CTX) -> c_int;
     /// openssl.c: the blocked public keys every other TLS context of Bun rejects in a peer's chain.
     fn us_ssl_ctx_reject_blocked_keys(ctx: *mut ssl::SSL_CTX);
+    /// openssl.c: the current blocked-key policy also applies to resumed sessions.
+    fn us_ssl_verify_result(ssl: *mut ssl::SSL) -> c_long;
+    fn us_ssl_ctx_session_is_trusted(
+        ctx: *mut ssl::SSL_CTX,
+        der: *const u8,
+        length: usize,
+        allow_untrusted: c_int,
+    ) -> c_int;
 }
 
 /// node's `X509_V_ERR_UNSPECIFIED`, reported when a peer sent no certificate
@@ -615,7 +646,7 @@ pub(super) fn validation_error(ssl: *mut ssl::SSL) -> Option<(&'static str, &'st
         return None;
     }
     // SAFETY: as above.
-    let code = unsafe { ssl::SSL_get_verify_result(ssl) };
+    let code = unsafe { us_ssl_verify_result(ssl) };
     if code == 0 {
         return None;
     }

@@ -255,6 +255,119 @@ test("verifyPeer 'strict' and 'auto' refuse a certificate with a blocked public 
   }
 });
 
+test.each(
+  (["auto", "strict"] as const).flatMap(verifyPeer =>
+    (["blocked-key", "changed-ca", "changed-hostname", "blocked-client-key"] as const).map(policy => ({
+      verifyPeer,
+      policy,
+    })),
+  ),
+)("$verifyPeer checks $policy before sending saved-session early data", async ({ verifyPeer, policy }) => {
+  const fixtures = join(import.meta.dir, "..", "tls", "fixtures");
+  const cert = readFileSync(join(fixtures, "ed25519-cert.pem"));
+  const key = createPrivateKey(readFileSync(join(fixtures, "ed25519-key.pem")));
+  const clients: Awaited<ReturnType<typeof connect>>[] = [];
+  const servers: Awaited<ReturnType<typeof connect>>[] = [];
+  const receipts: Promise<{ body: string; early: boolean }>[] = [];
+  await using server = await listen(
+    session => {
+      servers.push(session);
+      ignoreErrors(session);
+      session.closed.catch(() => {});
+      session.onstream = stream => {
+        stream.closed.catch(() => {});
+        const receipt = (async () => {
+          const chunks: Uint8Array[] = [];
+          for await (const batch of stream) chunks.push(...batch);
+          const row = { body: Buffer.concat(chunks).toString(), early: stream.early };
+          stream.writer.endSync();
+          return row;
+        })();
+        receipt.catch(() => {});
+        receipts.push(receipt);
+      };
+    },
+    {
+      sni: { "*": { keys: [key], certs: [cert] } },
+      alpn: ["quic-test"],
+      ...(policy === "blocked-client-key" ? { verifyClient: true, ca: [readKey("ca1-cert.pem")] } : {}),
+    },
+  );
+
+  async function request(
+    sessionTicket?: Buffer,
+    body?: string,
+    receiveTicket = false,
+    options: Partial<SessionOptions> = {},
+  ) {
+    const ticket = Promise.withResolvers<Buffer>();
+    const session = await connect(server.address!, {
+      alpn: "quic-test",
+      servername: "localhost",
+      ca: [cert],
+      verifyPeer,
+      sessionTicket,
+      ...(policy === "blocked-client-key" ? identity1 : {}),
+      onerror() {},
+      onsessionticket(value) {
+        ticket.resolve(value);
+      },
+      ...options,
+    } as SessionOptions);
+    clients.push(session);
+    session.closed.catch(() => {});
+    const stream = body ? await session.createBidirectionalStream({ body: Buffer.from(body) }) : undefined;
+    stream?.closed.catch(() => {});
+    const outcome = await session.opened.then(
+      info => ({
+        opened: true,
+        earlyDataAttempted: info.earlyDataAttempted,
+        earlyDataAccepted: info.earlyDataAccepted,
+      }),
+      () => ({ opened: false }),
+    );
+    const saved = receiveTicket && outcome.opened ? await ticket.promise : undefined;
+    if (outcome.opened) {
+      if (stream)
+        for await (const _ of stream) {
+        }
+      await session.close();
+    } else await session.closed.catch(() => {});
+    return { outcome, ticket: saved };
+  }
+
+  try {
+    const first = await request(undefined, undefined, true);
+    expect(first.outcome.opened).toBe(true);
+    expect(first.ticket).toBeInstanceOf(Buffer);
+    const positive = await request(first.ticket, "legitimate early data");
+    expect(positive.outcome).toEqual({ opened: true, earlyDataAttempted: true, earlyDataAccepted: true });
+    expect(await Promise.all(receipts)).toEqual([{ body: "legitimate early data", early: true }]);
+    if (policy === "blocked-key" || policy === "blocked-client-key") {
+      addBlockedSPKIForTesting(
+        createHash("sha256")
+          .update(
+            new X509Certificate(policy === "blocked-client-key" ? cert1 : cert).publicKey.export({
+              type: "spki",
+              format: "der",
+            }),
+          )
+          .digest(),
+      );
+    }
+    const options =
+      policy === "changed-ca" ? { ca: [cert1] } : policy === "changed-hostname" ? { servername: "wrong.example" } : {};
+    const blocked = await request(first.ticket, "must never reach the untrusted peer", false, options);
+    expect(blocked.outcome).toEqual({ opened: false });
+    await Promise.all(servers.map(session => session.closed.catch(() => {})));
+    expect(await Promise.all(receipts)).toEqual([{ body: "legitimate early data", early: true }]);
+  } finally {
+    clearBlockedSPKIsForTesting();
+    for (const session of clients) session.destroy();
+    for (const session of servers) session.destroy();
+  }
+});
+
 test("connect() with the default verifyPeer refuses an unverifiable certificate before a pending stream reaches the server", async () => {
   const script = `
     import { createPrivateKey } from "node:crypto";
