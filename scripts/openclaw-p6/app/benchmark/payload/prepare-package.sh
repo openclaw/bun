@@ -25,6 +25,14 @@ python3 - "$here/package-source" <<'PY'
 import os,sys
 from pathlib import Path
 root=Path(sys.argv[1]).resolve()
+boundary=root/'.artifacts/extension-package-boundary'
+if boundary.exists() or boundary.is_symlink():
+ # The declaration fixture has absolute dependency links; retain it outside only this private clone.
+ assert not (root/'.artifacts').is_symlink() and not boundary.is_symlink() and boundary.is_dir(), 'Unexpected generated boundary path'
+ preserved=root.parent/'package-boundary-preserved'
+ assert not preserved.exists() and not preserved.is_symlink(), 'Private boundary preservation already exists'
+ boundary.rename(preserved)
+ print(f'Preserved private generated declaration boundary: {preserved}')
 for directory,dirs,files in os.walk(root,followlinks=False):
  for name in dirs+files:
   p=Path(directory)/name

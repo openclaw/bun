@@ -3,6 +3,7 @@
 import importlib.util
 import json
 import os
+import shutil
 from pathlib import Path
 import tempfile
 import subprocess
@@ -217,6 +218,69 @@ class Contracts(unittest.TestCase):
             put(root/'benchmark-prep/requalification.json', {'status':'phases-passed-pending-cleanup'})
             put(work/'terminal.json', {'exitCode':124})
             self.assertFalse(EXPORT.summary(work, root)['scheduledWorkComplete'])
+
+class PackageCloneContracts(unittest.TestCase):
+    def run_guard(self, clone, script=None):
+        script = (HERE/'payload/prepare-package.sh').read_text() if script is None else script
+        code = script.split('python3 - "$here/package-source" <<\'PY\'\n',1)[1].split('\nPY\n',1)[0]
+        return subprocess.run([sys.executable,'-B','-c',code,str(clone)],capture_output=True,text=True)
+
+    def fixture(self, root):
+        source=root/'canonical';boundary=source/'.artifacts/extension-package-boundary'
+        (boundary/'plugins/matrix').mkdir(parents=True)
+        external=root/'external-dependencies';external.mkdir()
+        (external/'sentinel').write_text('unchanged')
+        (boundary/'plugins/matrix/node_modules').symlink_to(external,target_is_directory=True)
+        (source/'package.json').write_text('{"fixture":true}')
+        clone=root/'package-source'
+        shutil.copytree(source,clone,symlinks=True)
+        return source,clone,external
+
+    def test_preserves_only_private_boundary_and_keeps_canonical_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp).resolve();source,clone,external=self.fixture(root)
+            result=self.run_guard(clone)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertFalse((clone/'.artifacts/extension-package-boundary').exists())
+            preserved=root/'package-boundary-preserved/plugins/matrix/node_modules'
+            self.assertTrue(preserved.is_symlink())
+            self.assertEqual(preserved.resolve(),external)
+            self.assertTrue((source/'.artifacts/extension-package-boundary/plugins/matrix/node_modules').is_symlink())
+            self.assertEqual((source/'package.json').read_bytes(),(clone/'package.json').read_bytes())
+            self.assertEqual((external/'sentinel').read_text(),'unchanged')
+
+    def test_other_external_links_still_fail_after_boundary_preservation(self):
+        for relative in ['extensions/other/node_modules','dist/other-link']:
+            with self.subTest(relative=relative),tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp).resolve();source,clone,external=self.fixture(root)
+                link=clone/relative;link.parent.mkdir(parents=True);link.symlink_to(external,target_is_directory=True)
+                result=self.run_guard(clone)
+                self.assertNotEqual(result.returncode,0)
+                self.assertIn('Private package clone has external link: '+str(link),result.stderr)
+
+    def test_symlinked_boundary_ancestor_and_existing_preservation_are_rejected(self):
+        for shape in ['ancestor','boundary','destination']:
+            with self.subTest(shape=shape),tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp).resolve();source,clone,external=self.fixture(root)
+                if shape=='destination':
+                    (root/'package-boundary-preserved').mkdir()
+                else:
+                    path=clone/('.artifacts' if shape=='ancestor' else '.artifacts/extension-package-boundary')
+                    shutil.rmtree(path);path.symlink_to(external,target_is_directory=True)
+                result=self.run_guard(clone)
+                self.assertNotEqual(result.returncode,0)
+                self.assertEqual((external/'sentinel').read_text(),'unchanged')
+                self.assertTrue((source/'.artifacts/extension-package-boundary/plugins/matrix/node_modules').is_symlink())
+
+    def test_absent_boundary_keeps_internal_links_and_creates_no_preservation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp).resolve();clone=root/'package-source';(clone/'node_modules').mkdir(parents=True)
+            (clone/'internal-link').symlink_to(clone/'node_modules',target_is_directory=True)
+            result=self.run_guard(clone)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertTrue((clone/'internal-link').is_symlink())
+            self.assertFalse((root/'package-boundary-preserved').exists())
+
 
 if __name__ == '__main__':
     unittest.main()

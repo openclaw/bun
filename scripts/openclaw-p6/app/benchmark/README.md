@@ -85,3 +85,10 @@ through subsequent clean reconciliation and quiet admission. Raw phase replay is
 marked pending cleanup until the exporter combines both owners' receipts.
 The assertion mount applies only when the actual Docker image token equals the
 verified AOT image tag; unrelated fixture images retain their normal mounts.
+
+Package preparation preserves the private clone's generated
+`.artifacts/extension-package-boundary` tree outside the package source before
+checking links. This retains the declaration fixture's intentional absolute
+dependency links without touching canonical source or weakening the guard for
+any remaining package input. Symlinked fixture paths and existing preservation
+destinations fail before movement.
