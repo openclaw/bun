@@ -407,6 +407,8 @@ CPU profile duration uses a monotonic clock and includes idle time. Inspector pr
 
 ### [`node:sqlite`](https://nodejs.org/api/sqlite.html)
 
+`sqlite.db.query` diagnostics match Node 26.12.1: completed or reset queries publish synchronously with expanded SQL, the database object and duration in nanoseconds. Nested queries publish nested events; subscribers must guard their own recursion. Tracing is disabled when the channel has no subscribers. Statements support `close()` and `Symbol.dispose`, and `Database`/`Statement` alias the legacy `DatabaseSync`/`StatementSync` constructors.
+
 🟢 Fully implemented. `backup()` runs synchronously and blocks the event loop for the duration of the copy (Node runs it on a worker thread). A `Buffer`/`Uint8Array` database path must be valid UTF-8 (Node passes the raw bytes through; Bun rejects non-UTF-8 with `ERR_INVALID_ARG_VALUE`). On macOS, Bun uses the system `libsqlite3.dylib`. `loadExtension()` requires a full SQLite build, and so do `createSession()`/`applyChangeset()` on older macOS releases. To use a full SQLite build, call `require("bun:sqlite").Database.setCustomSQLite(path)` before opening a database.
 
 ### [`node:test`](https://nodejs.org/api/test.html)

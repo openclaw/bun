@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Publish `node:sqlite` query diagnostics with expanded SQL, database identity and duration, including safe synchronous nested queries; support statement close/disposal and the current constructor aliases.
+
 - Copy large ArrayBuffers directly into receiver-owned contents for Worker and MessagePort messages, preserving source buffers and stored serialization bytes.
 
 - Honor elapsed `node:vm` timeouts when native SQLite writes outlast delayed timer delivery, releasing write cursors before propagating the timeout.
