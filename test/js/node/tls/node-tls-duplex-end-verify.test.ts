@@ -1,8 +1,8 @@
 // A TLS handshake that finishes after this side shut its write direction down keeps the certificate verdict.
 // Runs under node:test, so the same file runs on node (`node --test`) and on bun (`bun test`).
 import assert from "node:assert";
-import fs from "node:fs";
 import { once } from "node:events";
+import fs from "node:fs";
 import net from "node:net";
 import { Duplex, duplexPair } from "node:stream";
 import { test } from "node:test";
