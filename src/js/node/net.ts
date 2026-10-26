@@ -597,7 +597,8 @@ function attachTLSEngine(self, connection, options) {
     connection.once(kReadError, onUpgradedReadError.bind(null, self));
     let initialData;
     if (connection instanceof Socket) {
-      if (connection.readableLength) initialData = connection.read(connection.readableLength) || undefined;
+      const readableLength = connection.readableLength;
+      if (readableLength) initialData = connection.read(readableLength) || undefined;
       if (
         self.destroyed ||
         self[kNativeTLSTransport] !== token ||

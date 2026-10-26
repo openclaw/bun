@@ -632,11 +632,13 @@ impl<const SSL: bool> NewSocket<SSL> {
         }
         if SSL {
             if let Some(raw) = socket.socket.get() {
-                // Same fatal-error producer as write_check_error; these are read-only observations.
+                // SAFETY: the open Connected socket owns this live C socket. This read-only
+                // observer cannot invoke JS or reenter and close it.
                 let fatal = unsafe { us_internal_ssl_fatal_write_error(raw) };
                 if fatal != 0 {
                     return native_write_errno(fatal);
                 }
+                // SAFETY: the same open C socket remains live; neither observer reenters JS.
                 if unsafe { us_socket_ssl_spill_dropped(raw) } != 0 {
                     return sys::SystemErrno::EPIPE as i32;
                 }
@@ -651,7 +653,8 @@ impl<const SSL: bool> NewSocket<SSL> {
         }
         let spill = if SSL {
             self.socket.get().socket.get().map_or(0, |socket| {
-                // The live socket is pinned by NativeTransport. This observes, never changes, fd policy.
+                // SAFETY: native_transport_error established an open Connected socket, and
+                // nothing can reenter before this read-only spill observation.
                 unsafe { us_socket_ssl_spill_pending(socket) }
             })
         } else {
@@ -3351,7 +3354,8 @@ impl<const SSL: bool> NewSocket<SSL> {
     fn transport_idle(&self) -> bool {
         match self.socket.get().socket {
             uws::InternalSocket::UpgradedDuplex(pointer) => {
-                // Installed by DuplexUpgradeContext::duplex_socket and live until detach.
+                // SAFETY: duplex_socket installs the aligned, stable context.upgrade member.
+                // The attached tag keeps it live for this shared borrow until detach.
                 unsafe { &*pointer.cast::<UpgradedDuplex>() }.transport_idle()
             }
             _ => true,
@@ -4599,10 +4603,7 @@ impl DuplexUpgradeContext {
         self.native_failed.set(true);
         let error =
             sys::Error::from_code_int(errno, sys::Tag::write).to_js(&self.upgrade.global.unwrap());
-        Self::on_error(
-            unsafe { bun_ptr::ThisPtr::new(ptr::from_ref(self).cast_mut()) },
-            error,
-        );
+        (self.upgrade.handlers.on_error)(self.upgrade.handlers.ctx, error);
         self.finish_native_shutdown(error, false);
     }
 
@@ -4716,13 +4717,13 @@ impl DuplexUpgradeContext {
                 .clone()
                 .is_some_and(|transport| !transport.previous_write_pending(self.native_id()))
             {
-                Self::start_tls(unsafe { bun_ptr::ThisPtr::new(ptr::from_ref(self).cast_mut()) });
+                Self::start_tls(_pin.this_ptr());
             }
             return;
         }
         self.flush_native();
         if self.native_idle() {
-            Self::on_writable(unsafe { bun_ptr::ThisPtr::new(ptr::from_ref(self).cast_mut()) });
+            Self::on_writable(_pin.this_ptr());
         }
     }
 
@@ -5232,6 +5233,8 @@ pub(crate) fn attach_native_tls_transport(
     let uws::InternalSocket::UpgradedDuplex(pointer) = socket.socket.get().socket else {
         return Ok(false);
     };
+    // SAFETY: the attached tag holds the aligned context.upgrade member; close detaches
+    // it before releasing the context. Take a keep-alive before any reentrant work.
     let upgrade = unsafe { &*pointer.cast::<UpgradedDuplex>() };
     let context = upgrade.keep_alive();
     let transport = match transport {
@@ -5261,6 +5264,8 @@ pub(crate) fn attach_native_tls_transport(
 
 pub(crate) fn native_tls_previous_writes_done(_: &mut JsScope<'_>, socket: &TLSSocket) {
     if let uws::InternalSocket::UpgradedDuplex(pointer) = socket.socket.get().socket {
+        // SAFETY: the attached tag holds the aligned context.upgrade member; close detaches
+        // it before releasing the context. Take a keep-alive before any reentrant work.
         let upgrade = unsafe { &*pointer.cast::<UpgradedDuplex>() };
         let context = upgrade.keep_alive();
         if context.native_previous_js_write.replace(false) {
@@ -5280,6 +5285,8 @@ pub(crate) fn shutdown_native_tls_transport(
     let uws::InternalSocket::UpgradedDuplex(pointer) = socket.socket.get().socket else {
         return false;
     };
+    // SAFETY: the attached tag holds the aligned context.upgrade member; close detaches
+    // it before releasing the context. Take a keep-alive before any reentrant work.
     let upgrade = unsafe { &*pointer.cast::<UpgradedDuplex>() };
     let context = upgrade.keep_alive();
     if !context.uses_native_transport() {
