@@ -2,6 +2,7 @@
 // Runs under node:test, so the same file runs on node (`node --test`) and on bun (`bun test`).
 import assert from "node:assert";
 import fs from "node:fs";
+import { once } from "node:events";
 import net from "node:net";
 import { Duplex, duplexPair } from "node:stream";
 import { test } from "node:test";
@@ -29,8 +30,6 @@ const clientCA = clientCert;
 // Both runtimes refuse an untrusted client. Bun reports the certificate check to 'tlsClientError', Node reports how
 // the connection ended.
 const isBun = process.versions.bun !== undefined;
-// Inherited nested-reset notification gap; see the separate follow-up.
-const inheritedResetTest = isBun ? (await import("bun:test")).test.failing : test;
 
 test("over a Duplex: responds after peer TLS shutdown and transport FIN", async () => {
   const [left, right] = duplexPair({ allowHalfOpen: true });
@@ -1663,9 +1662,15 @@ for (const side of ["client", "server"]) {
         const first = Buffer.alloc(8 * 1024 * 1024, "a");
         writer.write(first, (err?: NodeJS.ErrnoException | null) => log.push(`write callback: ${err?.code}`));
         writer.write("tail", (err?: NodeJS.ErrnoException | null) => log.push(`queued write callback: ${err?.code}`));
-        // A turn later only what the kernel did not take is left. Node writes to the handle of the session below, past its queue.
+        // Output must still be queued somewhere in the writing TLS chain.
         await turn();
-        if (isBun) assert.notStrictEqual((side === "client" ? clients : servers)[0].writableLength, 0);
+        if (isBun) {
+          const lengths = (side === "client" ? clients : servers).map(socket => socket.writableLength);
+          assert.ok(
+            lengths.some(n => n > 0),
+            JSON.stringify({ side, depth, lengths, received, log }),
+          );
+        }
         reader.end();
         await readerEnded;
         assert.deepStrictEqual(
@@ -1696,7 +1701,13 @@ for (const [how, leave] of [
       servers[1].resume();
       clients[1].write(Buffer.alloc(8 * 1024 * 1024, "a"));
       await turn();
-      if (isBun) assert.notStrictEqual(clients[0].writableLength, 0);
+      if (isBun) {
+        const lengths = clients.map(socket => socket.writableLength);
+        assert.ok(
+          lengths.some(n => n > 0),
+          JSON.stringify({ lengths }),
+        );
+      }
       leave(servers[1], servers[0]);
       await Promise.all(closed);
     } finally {
@@ -1792,51 +1803,48 @@ test("2 TLS sessions deep: the timeout of the session below still fires after th
 });
 
 for (const side of ["client", "server"]) {
-  inheritedResetTest(
-    `2 TLS sessions deep: a ${side} hears of a reset that cuts what it wrote, after its TLS socket closed too`,
-    async () => {
-      const accepted = Promise.withResolvers<net.Socket>();
-      const listener = net.createServer(accepted.resolve) as Listening<net.Server>;
-      await new Promise<void>(listening => listener.listen(0, "127.0.0.1", listening));
-      const tcpClient = net.connect(listener.address().port, "127.0.0.1");
-      const tcpServer = await accepted.promise;
-      const outerServer = new tls.TLSSocket(tcpServer, { isServer: true, key, cert });
-      const outerClient = tls.connect({ socket: tcpClient, rejectUnauthorized: false });
-      const innerServer = new tls.TLSSocket(outerServer, { isServer: true, key, cert });
-      const innerClient = tls.connect({ socket: outerClient, rejectUnauthorized: false });
-      const all = [tcpClient, tcpServer, outerClient, outerServer, innerClient, innerServer];
-      const [inner, outer, peerTcp, peers] =
-        side === "client"
-          ? [innerClient, outerClient, tcpServer, [innerServer, outerServer, tcpServer]]
-          : [innerServer, outerServer, tcpClient, [innerClient, outerClient, tcpClient]];
-      try {
-        const told: string[] = [];
-        for (const socket of all) socket.on("error", () => {});
-        await Promise.all([
-          new Promise(secured => innerClient.once("secureConnect", secured)),
-          new Promise(secured => innerServer.once("secure", secured)),
-        ]);
-        // The peer reads nothing, so most of this never leaves.
-        for (const socket of peers) socket.pause();
-        inner.on("error", (err: NodeJS.ErrnoException) => told.push(`TLS socket 'error': ${err.code}`));
-        outer.on("error", (err: NodeJS.ErrnoException) => told.push(`session below 'error': ${err.code}`));
-        inner.write(
-          Buffer.alloc(8 * 1024 * 1024, "a"),
-          (err?: NodeJS.ErrnoException | null) => err && told.push(`write callback: ${err.code}`),
-        );
-        const innerClosed = new Promise(resolve => inner.once("close", resolve));
-        const outerClosed = new Promise(resolve => outer.once("close", resolve));
-        inner.destroy();
-        await innerClosed;
-        peerTcp.resetAndDestroy();
-        await outerClosed;
-        assert.notDeepStrictEqual(told, []);
-      } finally {
-        for (const socket of all) socket.destroy();
-        listener.close();
-      }
-    },
-  );
+  test(`2 TLS sessions deep: a ${side} hears of a reset that cuts what it wrote, after its TLS socket closed too`, async () => {
+    const accepted = Promise.withResolvers<net.Socket>();
+    const listener = net.createServer(accepted.resolve) as Listening<net.Server>;
+    await new Promise<void>(listening => listener.listen(0, "127.0.0.1", listening));
+    const tcpClient = net.connect(listener.address().port, "127.0.0.1");
+    const tcpServer = await accepted.promise;
+    const outerServer = new tls.TLSSocket(tcpServer, { isServer: true, key, cert });
+    const outerClient = tls.connect({ socket: tcpClient, rejectUnauthorized: false });
+    const innerServer = new tls.TLSSocket(outerServer, { isServer: true, key, cert });
+    const innerClient = tls.connect({ socket: outerClient, rejectUnauthorized: false });
+    const all = [tcpClient, tcpServer, outerClient, outerServer, innerClient, innerServer];
+    const [inner, outer, peerTcp, peers] =
+      side === "client"
+        ? [innerClient, outerClient, tcpServer, [innerServer, outerServer, tcpServer]]
+        : [innerServer, outerServer, tcpClient, [innerClient, outerClient, tcpClient]];
+    try {
+      const told: string[] = [];
+      for (const socket of all) socket.on("error", () => {});
+      await Promise.all([
+        new Promise(secured => innerClient.once("secureConnect", secured)),
+        new Promise(secured => innerServer.once("secure", secured)),
+      ]);
+      // The peer reads nothing, so most of this never leaves.
+      for (const socket of peers) socket.pause();
+      inner.on("error", (err: NodeJS.ErrnoException) => told.push(`TLS socket 'error': ${err.code}`));
+      outer.on("error", (err: NodeJS.ErrnoException) => told.push(`session below 'error': ${err.code}`));
+      inner.write(
+        Buffer.alloc(8 * 1024 * 1024, "a"),
+        (err?: NodeJS.ErrnoException | null) => err && told.push(`write callback: ${err.code}`),
+      );
+      const innerClosed = new Promise(resolve => inner.once("close", resolve));
+      const outerClosed = new Promise(resolve => outer.once("close", resolve));
+      inner.destroy();
+      await innerClosed;
+      peerTcp.resetAndDestroy();
+      await outerClosed;
+      assert.notDeepStrictEqual(told, []);
+    } finally {
+      for (const socket of all) socket.destroy();
+      listener.close();
+    }
+  });
 }
 
 // No session the application could have written over: the connection goes at once, whatever its peer does.
@@ -1964,3 +1972,257 @@ test("3 TLS sessions deep: the timeout of the session over TCP still fires after
     close();
   }
 });
+
+// The pre-upgrade plain TCP queue is the native pending-write observation used by node-net.test.ts.
+// Windows can complete the OS write before an immediate takeover, so it cannot pin this boundary.
+for (const side of ["client", "server"] as const) {
+  test(
+    `native takeover: a ${side} keeps its unfinished plain write ahead of TLS`,
+    { skip: process.platform === "win32" || (!isBun && Number(process.versions.node.split(".")[0]) < 24) },
+    async t => {
+      const accepted = Promise.withResolvers<net.Socket>();
+      const listener = net.createServer({ allowHalfOpen: true }, accepted.resolve) as Listening<net.Server>;
+      t.after(() => listener.close());
+      await new Promise<void>(resolve => listener.listen(0, "127.0.0.1", resolve));
+      const rawClient = net.connect({ port: listener.address().port, host: "127.0.0.1", allowHalfOpen: true });
+      t.after(() => rawClient.destroy());
+      const [rawServer] = await Promise.all([accepted.promise, once(rawClient, "connect")]);
+      t.after(() => rawServer.destroy());
+      const errors: Error[] = [];
+      const failed = Promise.withResolvers<never>();
+      void failed.promise.catch(() => {});
+      const guard = <T>(pending: Promise<T>) => Promise.race([pending, failed.promise]);
+      const onError = (error: Error) => {
+        errors.push(error);
+        failed.reject(error);
+      };
+      for (const socket of [rawClient, rawServer]) socket.on("error", onError);
+      const [writer, peer] = side === "client" ? [rawClient, rawServer] : [rawServer, rawClient];
+      await turn(); // Leave both native connect dispatches before issuing the plain write.
+      const preamble = Buffer.alloc(64 * 1024 * 1024, 0x61);
+      let callbacks = 0;
+      const written = Promise.withResolvers<void>();
+      writer.write(preamble, error => {
+        callbacks++;
+        if (error) written.reject(error);
+        else written.resolve();
+      });
+      // This must precede the constructor synchronously: no event-loop turn can drain the OS write.
+      assert.notStrictEqual(writer.writableLength, 0);
+      assert.strictEqual(callbacks, 0);
+      const first =
+        side === "client"
+          ? tls.connect({ socket: writer, rejectUnauthorized: false })
+          : new tls.TLSSocket(writer, { isServer: true, key, cert });
+      t.after(() => first.destroy());
+      first.on("error", onError);
+      first.once("close", () => {
+        if (!first.readableEnded || !first.writableFinished) failed.reject(new Error("TLS closed before finishing"));
+      });
+
+      // Consume only the known plaintext prefix. TLS bytes stay buffered for the new listener.
+      let received = 0;
+      const prefixEnded = () => {
+        if (received < preamble.length) failed.reject(new Error("plaintext closed before the known prefix"));
+      };
+      peer.once("end", prefixEnded);
+      peer.once("close", prefixEnded);
+      while (received < preamble.length) {
+        const chunk = peer.read(Math.min(preamble.length - received, peer.readableLength)) as Buffer | null;
+        if (chunk === null) {
+          assert.strictEqual(peer.readableEnded || peer.destroyed, false, "plaintext ended before the known prefix");
+          await guard(once(peer, "readable"));
+          continue;
+        }
+        assert.ok(chunk.equals(preamble.subarray(received, received + chunk.length)));
+        received += chunk.length;
+      }
+      const second =
+        side === "client"
+          ? new tls.TLSSocket(peer, { isServer: true, key, cert })
+          : tls.connect({ socket: peer, rejectUnauthorized: false });
+      t.after(() => second.destroy());
+      second.on("error", onError);
+      second.once("close", () => {
+        if (!second.readableEnded || !second.writableFinished) failed.reject(new Error("TLS closed before finishing"));
+      });
+      const [client, server] = side === "client" ? [first, second] : [second, first];
+      await guard(Promise.all([once(client, "secureConnect"), once(server, "secure"), written.promise]));
+      const closed = [once(client, "close"), once(server, "close")];
+      let request = "";
+      let response = "";
+      let tlsCallbacks = 0;
+      server.on("data", chunk => (request += chunk));
+      client.on("data", chunk => (response += chunk));
+      const replied = Promise.withResolvers<void>();
+      server.once("end", () =>
+        server.end("reply", () => {
+          tlsCallbacks++;
+          replied.resolve();
+        }),
+      );
+      const ended = once(client, "end");
+      const requested = Promise.withResolvers<void>();
+      client.end("request", () => {
+        tlsCallbacks++;
+        requested.resolve();
+      });
+      await guard(Promise.all([ended, replied.promise, requested.promise, ...closed]));
+      assert.strictEqual(received, preamble.length);
+      assert.strictEqual(callbacks, 1);
+      assert.strictEqual(tlsCallbacks, 2);
+      assert.strictEqual(request, "request");
+      assert.strictEqual(response, "reply");
+      assert.deepStrictEqual(errors, []);
+    },
+  );
+}
+
+test("native nested TLS pauses and resumes reads without calling the lower Socket methods", async () => {
+  const { clients, servers, close } = await nestedSessions(2);
+  const lower = clients[0];
+  const client = clients[1];
+  const server = servers[1];
+  const errors: Error[] = [];
+  const failed = Promise.withResolvers<never>();
+  void failed.promise.catch(() => {});
+  const guard = <T>(pending: Promise<T>) => Promise.race([pending, failed.promise]);
+  for (const socket of [...clients, ...servers])
+    socket.on("error", error => {
+      errors.push(error);
+      failed.reject(error);
+    });
+  client.once("close", () => failed.reject(new Error("paused TLS closed before its payload completed")));
+  try {
+    // A retained Socket (including an HTTP/2 socket proxy) can restrict its public stream methods.
+    // The upper TLSWrap owns native flow control once it has taken the handle.
+    for (const method of ["pause", "resume"])
+      Object.defineProperty(lower, method, {
+        configurable: true,
+        get() {
+          throw new Error(`lower public ${method} was used`);
+        },
+      });
+    client.pause();
+    const payload = Buffer.alloc(512 * 1024, 0x6e);
+    const readable = once(client, "readable");
+    const written = Promise.withResolvers<void>();
+    server.write(payload, error => (error ? written.reject(error) : written.resolve()));
+    await guard(readable);
+    await turn();
+    assert.ok(client.readableLength >= client.readableHighWaterMark);
+    const received = Promise.withResolvers<Buffer>();
+    const chunks: Buffer[] = [];
+    let length = 0;
+    client.on("data", chunk => {
+      chunks.push(chunk);
+      length += chunk.length;
+      if (length === payload.length) received.resolve(Buffer.concat(chunks));
+    });
+    client.resume();
+    assert.ok((await guard(received.promise)).equals(payload));
+    await guard(written.promise);
+    assert.deepStrictEqual(errors, []);
+  } finally {
+    Reflect.deleteProperty(lower, "pause");
+    Reflect.deleteProperty(lower, "resume");
+    close();
+  }
+});
+
+for (const native of [false, true]) {
+  test(
+    `native TLS over a generic lower transport drains ${native ? "native-handle" : "public Writable"} reentry`,
+    { skip: native && !isBun },
+    async () => {
+      let reenter: (() => void) | undefined;
+      const left: Duplex = new Duplex({
+        allowHalfOpen: true,
+        read() {},
+        write(chunk, _encoding, callback) {
+          right.push(chunk);
+          const action = reenter;
+          reenter = undefined;
+          action?.();
+          callback();
+        },
+        final(callback) {
+          right.push(null);
+          callback();
+        },
+      });
+      const right: Duplex = new Duplex({
+        allowHalfOpen: true,
+        read() {},
+        write(chunk, _encoding, callback) {
+          left.push(chunk);
+          callback();
+        },
+        final(callback) {
+          left.push(null);
+          callback();
+        },
+      });
+      const outerServer = new tls.TLSSocket(right, { isServer: true, key, cert });
+      const outerClient = tls.connect({ socket: left, rejectUnauthorized: false });
+      const all: Duplex[] = [left, right, outerClient, outerServer];
+      const errors: Error[] = [];
+      const failed = Promise.withResolvers<never>();
+      void failed.promise.catch(() => {});
+      const guard = <T>(pending: Promise<T>) => Promise.race([pending, failed.promise]);
+      const onError = (error: Error) => {
+        errors.push(error);
+        failed.reject(error);
+      };
+      for (const socket of all) socket.on("error", onError);
+      try {
+        await guard(Promise.all([once(outerClient, "secureConnect"), once(outerServer, "secure")]));
+        const server = new tls.TLSSocket(outerServer, { isServer: true, key, cert });
+        const client = tls.connect({ socket: outerClient, rejectUnauthorized: false });
+        all.push(client, server);
+        for (const socket of [client, server]) {
+          socket.on("error", onError);
+          socket.once("close", () => failed.reject(new Error("reentrant TLS closed before completing")));
+        }
+        await guard(Promise.all([once(client, "secureConnect"), once(server, "secure")]));
+        const received = Promise.withResolvers<string>();
+        let body = "";
+        server.on("data", chunk => {
+          body += chunk;
+          if (body.length === "firstreentered".length) received.resolve(body);
+        });
+        const callbacks: string[] = [];
+        const first = Promise.withResolvers<void>();
+        const second = Promise.withResolvers<void>();
+        let reentries = 0;
+        reenter = () => {
+          reentries++;
+          if (native) {
+            // Existing Bun native write API bypasses the public Writable queue: this must append during flush_native.
+            const data = Buffer.from("reentered");
+            assert.strictEqual((client as any)._handle.write(data), data.length);
+            second.resolve();
+            return;
+          }
+          client.write("reentered", error => {
+            callbacks.push("reentered");
+            if (error) second.reject(error);
+            else second.resolve();
+          });
+        };
+        client.write("first", error => {
+          callbacks.push("first");
+          if (error) first.reject(error);
+          else first.resolve();
+        });
+        assert.strictEqual(await guard(received.promise), "firstreentered");
+        await guard(Promise.all([first.promise, second.promise]));
+        assert.strictEqual(reentries, 1);
+        assert.deepStrictEqual(callbacks, native ? ["first"] : ["first", "reentered"]);
+        assert.deepStrictEqual(errors, []);
+      } finally {
+        for (const socket of all.reverse()) socket.destroy();
+      }
+    },
+  );
+}

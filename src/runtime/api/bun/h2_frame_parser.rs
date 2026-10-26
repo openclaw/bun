@@ -110,7 +110,7 @@ enum BunSocket {
 /// that slot is taken, takes a ref on the socket (`*Writeonly`); `detach` /
 /// `Drop` undo whichever one it was. Readers take a [`BunSocket`] snapshot.
 #[derive(Default)]
-struct NativeSocket(Cell<BunSocket>);
+struct NativeSocket(Cell<BunSocket>, Cell<*mut H2FrameParser>);
 
 impl NativeSocket {
     #[inline]
@@ -132,6 +132,7 @@ impl NativeSocket {
         // rooted by the caller's `socket_js`.
         let socket_nn = NonNull::new(socket).expect("NewSocket m_ctx");
         let socket = bun_ptr::BackRef::from(socket_nn);
+        self.1.set(h2.as_ptr());
         self.0
             .set(if socket.attach_native_callback(NativeCallbacks::H2(h2)) {
                 if SSL {
@@ -151,9 +152,11 @@ impl NativeSocket {
     }
 
     fn detach(&self) {
+        let owner =
+            crate::socket::socket_body::NativeCallbackId::H2(self.1.replace(core::ptr::null_mut()));
         match self.0.replace(BunSocket::None) {
-            BunSocket::Tcp(socket) => socket.detach_native_callback(),
-            BunSocket::Tls(socket) => socket.detach_native_callback(),
+            BunSocket::Tcp(socket) => socket.remove_native_callback(owner),
+            BunSocket::Tls(socket) => socket.remove_native_callback(owner),
             // The ref `attach` took.
             BunSocket::TcpWriteonly(socket) => TCPSocket::deref(socket.get()),
             BunSocket::TlsWriteonly(socket) => TLSSocket::deref(socket.get()),
@@ -2873,6 +2876,10 @@ impl H2FrameParser {
                 return r;
             }
         }
+    }
+
+    pub(crate) fn native_write_pending(&self) -> bool {
+        self.has_backpressure()
     }
 
     fn has_backpressure(&self) -> bool {

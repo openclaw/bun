@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve native socket ownership when nesting TLS, including pending writes, read backpressure, shutdown completion and buried HTTP/2 listeners. Keep generic Duplex write completions and queued TLS callbacks alive through reentrant teardown and garbage collection.
+
 - Sync oven-sh/bun through `ad4089bf49d9f4c3ab7c8d95a58f3e0f0f186054`, including lint, format, binding, WebSocket and SQL updates, while retaining the fork runtime and CI contracts.
 
 - Share identical `node:vm` script and compiled-function source buffers and source-map URI strings through a bounded per-VM weak index, including after compilation-cache eviction.

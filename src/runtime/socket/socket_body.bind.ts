@@ -19,4 +19,19 @@ export const releaseHeldFlight = b.fn({ args: { socket: SocketHandle } });
 export const checkServerIdentityInHandshake = b.fn({ args: { socket: SocketHandle, inHandshake: b.bool } });
 export const firstFlightBeforeFin = b.fn({ args: { socket: SocketHandle } });
 export const isNamedPipeSocket = b.fn({ args: { socket: SocketHandle }, returns: b.bool });
+export const hasNativeSocketListeners = b.fn({ args: { socket: SocketHandle }, returns: b.bool });
 export const getBufferedAmount = b.fn({ args: { socket: SocketHandle }, returns: b.usize });
+
+// Internal StreamBase ownership for node:tls; generic Duplexes retain JSStreamSocket.
+export const attachNativeTLSTransport = b.fn({
+  args: { socket: TLSSocket, transport: SocketHandle, previousWrites: b.bool, initialData: b.any, token: b.any },
+  returns: b.bool,
+  capability: "js",
+  throws: true,
+});
+export const nativeTLSPreviousWritesDone = b.fn({ args: { socket: TLSSocket } });
+export const shutdownNativeTLSTransport = b.fn({
+  args: { socket: SocketHandle, callback: b.any },
+  returns: b.bool,
+  capability: "js",
+});

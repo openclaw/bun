@@ -495,3 +495,129 @@ test.skipIf(!isWindows)(
   },
   60_000,
 );
+
+test("TLS Duplex cycles collect after startup while a retained origin keeps its wrapper alive", async () => {
+  await using proc = Bun.spawn({
+    cmd: [
+      bunExe(),
+      "-e",
+      `
+        const tls = require("node:tls");
+        const { Duplex } = require("node:stream");
+        const { once } = require("node:events");
+        const certs = ${JSON.stringify(tlsCert)};
+        const turn = () => new Promise(resolve => setImmediate(resolve));
+        async function makePair(retain) {
+          let clientSide, serverSide;
+          const side = peer => new Duplex({
+            allowHalfOpen: true,
+            read() {},
+            write(chunk, encoding, callback) { peer().push(chunk); callback(); },
+          });
+          clientSide = side(() => serverSide);
+          serverSide = side(() => clientSide);
+          const server = new tls.TLSSocket(serverSide, { isServer: true, ...certs, allowHalfOpen: true });
+          const client = tls.connect({ socket: clientSide, rejectUnauthorized: false, allowHalfOpen: true });
+          server.on("error", () => {});
+          client.on("error", () => {});
+          // Exercise collection during startup; these locals still retain both sockets.
+          Bun.gc(true);
+          await once(client, "secureConnect");
+          await turn();
+          return { weak: new WeakRef(client._handle), origin: retain ? clientSide : null };
+        }
+        let retained = await makePair(true);
+        const dropped = await makePair(false);
+        for (let i = 0; i < 30; i++) { await turn(); Bun.gc(true); }
+        const retainedAlive = !!retained.weak.deref();
+        const droppedCollected = !dropped.weak.deref();
+        retained.origin = null;
+        await turn();
+        for (let i = 0; i < 30; i++) { await turn(); Bun.gc(true); }
+        console.log(JSON.stringify({ retainedAlive, droppedCollected, releasedCollected: !retained.weak.deref() }));
+      `,
+    ],
+    env: bunEnv,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect(stdout.trim()).toBe('{"retainedAlive":true,"droppedCollected":true,"releasedCollected":true}');
+  expect(exitCode, stderr).toBe(0);
+});
+
+for (const destroyBeforeCompletion of [false, true]) {
+  test(`a TLS Duplex completion retains its owner and is ${destroyBeforeCompletion ? "inert after destroy" : "delivered once"}`, async () => {
+    await using proc = Bun.spawn({
+      cmd: [
+        bunExe(),
+        "-e",
+        `
+        const tls = require("node:tls");
+        const { Duplex } = require("node:stream");
+        const { once } = require("node:events");
+        const certs = ${JSON.stringify(tlsCert)};
+        const turn = () => new Promise(resolve => setImmediate(resolve));
+        async function pending() {
+          let clientSide, serverSide;
+          const side = peer => new Duplex({
+            allowHalfOpen: true,
+            read() {},
+            write(chunk, encoding, callback) { peer().push(chunk); callback(); },
+          });
+          clientSide = side(() => serverSide);
+          serverSide = side(() => clientSide);
+          const server = new tls.TLSSocket(serverSide, { isServer: true, ...certs, allowHalfOpen: true });
+          const client = tls.connect({ socket: clientSide, rejectUnauthorized: false, allowHalfOpen: true });
+          server.on("error", () => {});
+          client.on("error", () => {});
+          await once(client, "secureConnect");
+          await turn();
+          let completion;
+          serverSide.write = (chunk, encoding, callback) => {
+            completion = typeof encoding === "function" ? encoding : callback;
+            return true;
+          };
+          const settled = [];
+          server.write("x", error => settled.push(error?.code ?? null));
+          if (typeof completion !== "function") throw new Error("ciphertext callback was not captured");
+          const weak = new WeakRef(server._handle);
+          if (${destroyBeforeCompletion}) {
+            const closed = once(server, "close");
+            server.destroy();
+            await closed;
+          }
+          return { weak, completion, settled };
+        }
+        const state = await pending();
+        await turn();
+        Bun.gc(true);
+        const callbackRoot = !!state.weak.deref();
+        await turn(); // End the WeakRef keep-alive job before testing the queued owner.
+        state.completion();
+        state.completion = null;
+        // Leave the callback invocation before collecting, without running the queued Immediate.
+        await Promise.resolve();
+        if (!${destroyBeforeCompletion} && state.settled.length !== 0) throw new Error("completion ran before its Immediate");
+        Bun.gc(true);
+        const queuedRoot = !!state.weak.deref();
+        await turn();
+        for (let i = 0; i < 30; i++) { await turn(); Bun.gc(true); }
+        console.log(JSON.stringify({ callbackRoot, queuedRoot, collected: !state.weak.deref(), settled: state.settled }));
+      `,
+      ],
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    const { queuedRoot, ...result } = JSON.parse(stdout.trim());
+    expect(result).toEqual({
+      callbackRoot: true,
+      collected: true,
+      settled: [destroyBeforeCompletion ? "ECANCELED" : null],
+    });
+    if (!destroyBeforeCompletion) expect(queuedRoot).toBe(true);
+    expect(exitCode, stderr).toBe(0);
+  });
+}
