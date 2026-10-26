@@ -5611,7 +5611,9 @@ pub(crate) fn upgrade_duplex_to_tls<'a>(
             // No task has been queued. Consume the connection without queueing its free,
             // as release_unrun does; any reentrant entry pin still delays destruction.
             if duplex_context_ref.take_connection_ref() {
-                duplex_context_ref.ref_count.set(duplex_context_ref.ref_count.get() - 1);
+                duplex_context_ref
+                    .ref_count
+                    .set(duplex_context_ref.ref_count.get() - 1);
             }
             if duplex_context_ref.ref_count.get() == 0 {
                 unsafe { DuplexUpgradeContext::deinit(duplex_context) };

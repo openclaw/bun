@@ -110,8 +110,9 @@ impl NativeSocket {
     }
 
     fn detach(&self) {
-        let owner =
-            crate::socket::socket_body::NativeCallbackId::H2(self.owner.replace(core::ptr::null_mut()));
+        let owner = crate::socket::socket_body::NativeCallbackId::H2(
+            self.owner.replace(core::ptr::null_mut()),
+        );
         match self.socket.replace(BunSocket::None) {
             BunSocket::Tcp(socket) => socket.remove_native_callback(owner),
             BunSocket::Tls(socket) => socket.remove_native_callback(owner),
