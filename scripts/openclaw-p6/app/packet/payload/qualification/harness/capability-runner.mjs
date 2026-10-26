@@ -46,8 +46,14 @@ const sampler=setInterval(scan,100);sampler.unref();
 function signal(c,sig){if(c?.pid)try{process.kill(-c.pid,sig);}catch(error){if(error.code!=='ESRCH')throw error;}}
 const interrupt=()=>{interrupted=true;void stop(gateway).catch(error=>{result.stopError=String(error);});for(const c of children)if(c!==gateway)signal(c,'SIGTERM');};process.on('SIGTERM',interrupt);process.on('SIGINT',interrupt);
 function launch(label,cmd,argv,{native=false}={}){
+ let extra={};
+ if(native&&o.nativeWorkers){
+  const owner=path.join(path.dirname(fileURLToPath(import.meta.url)),'legacy','native_trace.py');
+  const prepared=spawnSync('python3',['-c','import json,runpy,sys; owner=runpy.run_path(sys.argv[1]); print(json.dumps(owner["environment"]({},sys.argv[2])))',owner,path.join(out,'native-workers')],{encoding:'utf8',env,timeout:10000});
+  assert.equal(prepared.status,0,prepared.error?.message??prepared.stderr);
+  extra=JSON.parse(prepared.stdout);
+ }
  const stdout=path.join(out,'logs',label+'.stdout'),stderr=path.join(out,'logs',label+'.stderr'),a=fs.openSync(stdout,'w'),b=fs.openSync(stderr,'w');
- const extra=native&&o.nativeWorkers?{BUN_WORKER_VM_TRACE:path.join(out,'native-workers','worker-%p.jsonl')}:{};
  const child=spawn(cmd,argv,{cwd:source,env:{...env,...extra},detached:true,stdio:['ignore',a,b]});fs.closeSync(a);fs.closeSync(b);
  const row={label,command:[cmd,...argv],pid:child.pid,stdout,stderr,runtimeOverride:extra};child.row=row;children.push(child);result.commands.push(row);
  child.done=new Promise(resolve=>{child.once('error',error=>{row.spawnError=String(error);});child.once('close',(code,sig)=>{Object.assign(row,{code,signal:sig});resolve(row);});});return child;

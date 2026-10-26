@@ -82,9 +82,15 @@ def main():
   env.update(OPENCLAW_SKIP_DOCKER_BUILD='1',OPENCLAW_DOCKER_E2E_REQUIRE_LOCAL_IMAGE='1',OPENCLAW_DOCKER_E2E_IMAGE=image['tag'],OPENCLAW_DOCKER_E2E_REPO_ROOT=str(source),OPENCLAW_SELECTED_SHA=CUT)
   if a.lane=='docker-gateway-network' and 'admin-http-rpc' not in manifest['plugins']['embedded']:p.error('Existing gateway-network lane requires embedded admin-http-rpc')
   script={'docker-gateway-network':'gateway-network-docker.sh','docker-kitchen-sink':'kitchen-sink-plugin-docker.sh','docker-cron':'cron-cli-docker.sh'}[a.lane]
-  if a.lane=='docker-kitchen-sink':env['OPENCLAW_KITCHEN_SINK_NPM_SPEC']='npm:@openclaw/kitchen-sink@0.4.1'
+  if a.lane=='docker-kitchen-sink':
+   original=source/'scripts/e2e/lib/clawhub-artifact-assertions.mjs'
+   if sha(original)!='53bcdc520648dd5951e63ae7a88d553eba9a7c18454d88757520b10b3986c728':p.error('Frozen ClawHub assertion owner differs')
+   env['OPENCLAW_KITCHEN_SINK_NPM_SPEC']='npm:@openclaw/kitchen-sink@0.4.1'
+   env['P6_DOCKER_CLAWHUB_ASSERTIONS']=str(harness/'clawhub-artifact-assertions.mjs')
+   env['P6_DOCKER_CLAWHUB_IMAGE']=image['tag']
   command=['/bin/bash',str(source/'scripts/e2e'/script)]
  proof={'status':'planned-not-qualified','lane':a.lane,'artifact':str(artifact),'binarySha256':a.binary_sha256,'manifestSha256':a.manifest_sha256,'buildReceiptSha256':a.build_receipt_sha256,'source':str(source),'sourceCommit':CUT,'node':str(node),'nodeSha256':sha(node),'runtime':runtime,'variant':plan['variant'],'mode':manifest['mode'],'policyLabel':plan['policyLabel'],'pluginCount':len(manifest['plugins']['embedded']),'out':str(out),'harness':str(harness),'command':command,'performanceEligible':False,'applicationQualified':False,'runtimePath':runtime_path,'runtimePathInventory':runtime_inventory,'runtimeScope':'native-external-JS-runtime-free-PATH' if native else 'functional-Docker-clients-may-use-Node','rawZeroJsTracePolicy':'preserve run/traces/** plus zero-js.json including successful execve records; never replace raw traces with summaries'}
+ if a.lane=='docker-kitchen-sink':proof['testAssertionAdapter']={'path':env['P6_DOCKER_CLAWHUB_ASSERTIONS'],'sha256':sha(env['P6_DOCKER_CLAWHUB_ASSERTIONS']),'expectedHostRoot':'/opt/p6-artifact/runtime','originalSha256':sha(original),'image':env['P6_DOCKER_CLAWHUB_IMAGE']}
  print(json.dumps(proof,indent=2),flush=True)
  if not a.run:return 0
  out.mkdir(parents=True)

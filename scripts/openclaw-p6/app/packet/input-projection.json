@@ -41,7 +41,7 @@
     },
     "guest/manifest.json": {
       "originalSha256": "4280c2f62a9168b812176bab9fb762432a5425fe29821a1720471d2ece242d12",
-      "projectedSha256": "5adc7b1107202bbef7e1bef4d07c16bc779ba4a060334e1dd469c254f8b2c828"
+      "projectedSha256": "7c731171b9247059a043c2360224d6e92642f041372c3f706fac55cb7d9319ee"
     },
     "guest/prepare-guest.py": {
       "originalSha256": "936bf471c1c6e06ac2bb1ec1efec0e8e0c4583853e8fcb0ff1a53fb42cfacd52",
@@ -57,15 +57,15 @@
     },
     "qualification/README.md": {
       "originalSha256": "cbf5adaed9ff418fa5d0092994cf05166efe215cf56a153c8dcff17d3f1e9fbb",
-      "projectedSha256": "35c679361dfe79a18ff0c568bc239713869c2533a32fd4a9d9bcaac1f0e213da"
+      "projectedSha256": "8e2eefd1160e26d374cb3cf6c0328cd73d92953fab1ae7d119d3c920cdb2ec33"
     },
     "qualification/manifest.json": {
       "originalSha256": "6a38454878806509950a1ea7fb9a15ffb2bb79b53f4ef586bee131474a3e9221",
-      "projectedSha256": "623904adcf11bcb37b476f0de7b2a17e09a3a4c5da91cabc5a3e4446dc9f1caa"
+      "projectedSha256": "d6df4521dfc2cabda9cbda41fce4dc4882606fc0ed8be8438828af16beedeea4"
     },
     "qualification/qualify.py": {
       "originalSha256": "c32886e391f27eb8c66d333d07b15b4af4c8081c329bad2fe8dca28b2dd9c2d7",
-      "projectedSha256": "abac81c7af6762874c5954192a0f2eade85aaf902e668a9b3ce283faa8269fb2"
+      "projectedSha256": "f20cbd54444d1cbf673bec08722fd04f982db6db0797522ced529cc9e9bf4ff5"
     },
     "qualification/source-contract.json": {
       "originalSha256": "e2056668fd189ba8505c75fbef695c535930600e08d6e8d7bb0df55f9cf13d2b",
@@ -80,7 +80,7 @@
       "projectedSha256": "29ad1ad089f28720ff1ac2c3036c5153b873856698ecb18122411a0c0d0db277"
     }
   },
-  "manifestSha256": "71c34cdc0397592e9cf7470670fc57f96eb205cfca85e3799336edec47409914",
+  "manifestSha256": "1e5189d5839e9a47df1d5704d1f7b2c09f9a783ca437d3a686ac67af86bc3bb3",
   "runtimeControllerRepair": {
     "terminalClassification": "Actual SIGTERM fixture child exit -15 formerly normalized to 1; retain timeout, cancellation and signal classification after cleanup",
     "guestQmpPath": "Generated C2 guest label shortened consistently for preparation and raw collection, reducing Linux QMP pathname from108 to98bytes"
@@ -136,5 +136,48 @@
       ],
       "reason": "Public artifact omits the historical operator path; package/version/tarball/integrity/dependency fields are unchanged."
     }
+  },
+  "untimedRequalification": {
+    "baseHead": "a61d838fd9404a211d7a179eabae2509f962c01d",
+    "sourceCommit": "4fa442e332745f1f58ccedd27106abdafcf4e019",
+    "buildsApplication": false,
+    "buildsCompiler": false,
+    "phases": [
+      "node-vm-native-workers",
+      "docker-image",
+      "docker-gateway-network",
+      "docker-kitchen-sink"
+    ],
+    "variants": [
+      "js",
+      "c2-off"
+    ],
+    "ordinaryFailure": "retained; comparator allowed only after owned-child cleanup, existing reconciliation, quiet and fresh core gates; live-child forced recovery prevents requalification and scheduled completion",
+    "terminalFailure": "stops work",
+    "gitPrerequisite": {
+      "version": "2.56.0",
+      "url": "https://www.kernel.org/pub/software/scm/git/git-2.56.0.tar.xz",
+      "sha256": "26c56c296b38c0695b26fa95f475f1d01704d2d38e73465ca30b0b2f5dc789d3"
+    },
+    "assertionOverlay": {
+      "source": "scripts/e2e/lib/clawhub-artifact-assertions.mjs",
+      "sourceSha256": "53bcdc520648dd5951e63ae7a88d553eba9a7c18454d88757520b10b3986c728",
+      "overlay": "qualification/harness/clawhub-artifact-assertions.mjs",
+      "overlaySha256": "ebbafe3f5d0c09c5b21a7669d5dc64b02ece869af257faab775effb06d058197",
+      "environment": "OPENCLAW_E2E_HOST_ROOT",
+      "expectedHostRoot": "/opt/p6-artifact/runtime"
+    },
+    "nativeWorkerRepair": {
+      "sourcePatchSha256": "aeb38a730a20c166e1febd004af1dd4b010ef98b420f057c8ab1ab715cf5ef5e",
+      "environmentOwner": "qualification/harness/legacy/native_trace.py",
+      "ordinaryLaunchChanged": false
+    }
+  },
+  "guestInvocationSelectionRepair": {
+    "baseHead": "a61d838fd9404a211d7a179eabae2509f962c01d",
+    "scope": "Select exact admitted --version or p6-mdwe argv while retaining same-binary SQLite child/version evidence and all existing policy checks.",
+    "newRuntimeExecuted": false,
+    "sourcePatchSha256": "99637a9ca74f83911738049d91bd82fd12f2f7474ca257cbf20317f8f33a9e20",
+    "handoffSha256": "a614c23fe089aeb00d7521549672ecd6377acad7b77ae7798df4e37a49de9780"
   }
 }

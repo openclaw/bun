@@ -51,7 +51,7 @@ Docker AOT recipes require mode=aot:
 | core | Direct AOT CLI/config/Doctor, Gateway log+/readyz, streamed deterministic turn, wait/history/provider proof and clean shutdown |
 | zero-js | Same core workload with direct-app-only strace; positive source reads/maps fail, empty/incomplete traces fail |
 | node-vm | Returning Code Mode Node executor/owning Worker/VM operation, no trace override |
-| node-vm-native-workers | Separate diagnostic using BUN_WORKER_VM_TRACE and unchanged native lifecycle parser; not default performance/main-VM proof |
+| node-vm-native-workers | Separate diagnostic using the existing native-trace environment owner (`BUN_DESTRUCT_VM_ON_EXIT=1` plus `BUN_WORKER_VM_TRACE`) and unchanged lifecycle parser; not default performance/main-VM proof |
 | pty | Actual exec pty:true operation requiring terminal stdin/stdout |
 | plugin | Local CJS public-SDK install/load/command/inspect/uninstall; intentionally reads installed JS |
 | elf-floor | Full artifact directory, including all physical ELF sidecars, with source-owner readelf reporter and native ldd version |

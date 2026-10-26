@@ -18,13 +18,17 @@ def value(text):
     return result
 
 
-def analyze(traces, binary, expected):
-    execution = re.compile(r'^execve\(' + re.escape(json.dumps(binary)) + r',.*\)\s+=\s+0$')
+def analyze(traces, binary, expected, argv):
+    application = re.compile(r'^execve\(' + re.escape(json.dumps(binary)) + r',.*\)\s+=\s+0$')
+    execution = re.compile(r'^execve\(' + re.escape(json.dumps(binary)) + r',\s*' +
+                           re.escape(json.dumps([binary, *argv])) + r',.*\)\s+=\s+0$')
     roots = [(name, text) for name, text in traces.items()
              if any(execution.match(line) for line in text.splitlines())]
     if len(roots) != 1:
-        raise ValueError('Expected one trace of the direct application execve')
+        raise ValueError('Expected one trace of the admitted application invocation')
     name, text = roots[0]
+    other_executions = [other for other, body in traces.items() if other != name and
+                        any(application.match(line) for line in body.splitlines())]
     if not re.search(r'^\+\+\+ exited with 0 \+\+\+$', text, re.M):
         raise ValueError('Application trace lacks a successful terminal exit')
     observations = []
@@ -52,6 +56,7 @@ def analyze(traces, binary, expected):
     if any(bits != expected for bits in after):
         raise ValueError('A post-SET application PR_GET_MDWE differs from the requested bits')
     return {'trace': name, 'traceSha256': hashlib.sha256(text.encode()).hexdigest(),
+            'argv': [binary, *argv], 'otherApplicationExecTraces': other_executions,
             'requestedBits': expected, 'successfulSet': True, 'getBefore': before,
             'getAfter': after, 'observations': observations,
             'scope': 'Direct application CLI requested MDWE and the kernel accepted it; no injected GET or memory-mapping probe.'}

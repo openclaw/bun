@@ -45,7 +45,8 @@ def selections(work, root):
     yield from export_selections(work, root)
     prep = root / 'benchmark-prep'
     for name in ['execution.json', 'resources.json', 'app-inputs.json', 'terminal.json',
-                 'benchmark-cleanup.json', 'benchmark-run.json']:
+                 'benchmark-cleanup.json', 'benchmark-run.json', 'git-prerequisite-version.txt',
+                 'requalification-child-cleanup.json']:
         yield work / name, Path('host') / name
     for path in tree_files(work / 'benchmark-phases'):
         yield path, Path('host/phases') / path.relative_to(work / 'benchmark-phases')
@@ -53,7 +54,7 @@ def selections(work, root):
         yield work / 'benchmark-download' / name, Path('host/download') / name
     for name in ['availability.json', 'native-inputs.json', 'cohort-budget.json',
                  'quiet-admission.json', 'host-reconciliation.json', 'post-backup-reconciliation.json',
-                 'comparison-summary.json']:
+                 'comparison-summary.json', 'requalification.json']:
         yield prep / name, Path(name)
     for name in ['producer-receipt.json', 'producer.stdout', 'producer.stderr', 'pack.json', 'bundles.json']:
         yield prep / 'package' / name, Path('package') / name
@@ -76,6 +77,11 @@ def selections(work, root):
             elif re.fullmatch(r'(warmup|sweep-[0-9]+)-[a-z0-9-]+', path.name):
                 for selected in core_files(path):
                     yield selected, Path('work/cohort') / selected.relative_to(cohort)
+    for variant in ('js', 'c2-off'):
+        for phase in ('node-vm-native-workers', 'docker-image', 'docker-gateway-network', 'docker-kitchen-sink'):
+            label = variant + '-' + phase
+            for name in ('result.json', 'raw-index.json', 'raw-evidence.tar.gz'):
+                yield root / 'runtime-results' / label / name, Path('requalification/runtime-results') / label / name
     yield root / 'backup-results/summary.json', Path('backup-results/summary.json')
     for variant in VARIANTS:
         yield root / 'restored-app' / variant / 'verification.json', Path('restored-app') / variant / 'verification.json'
@@ -101,7 +107,14 @@ def summary(work, root):
     cleanup = facts(work / 'benchmark-cleanup.json')
     execution = facts(work / 'execution.json')
     knowledge = facts(root / 'benchmark-prep/work/knowledge-controls.json')
-    complete = (compatibility.get('status') == 'PASS' and comparison.get('performanceQualified') is True and
+    requalification = facts(root / 'benchmark-prep/requalification.json')
+    child_cleanup = facts(work / 'requalification-child-cleanup.json')
+    requalification = {**requalification, 'childCleanup': child_cleanup, 'status': 'passed' if (
+        requalification.get('status') == 'phases-passed-pending-cleanup' and
+        child_cleanup.get('status') == 'children-removed' and child_cleanup.get('forcedRecovery') is False and
+        child_cleanup.get('identity') == execution.get('identity') and
+        child_cleanup.get('executionSha256') == sha(work / 'execution.json')) else 'failed'}
+    complete = (requalification['status'] == 'passed' and compatibility.get('status') == 'PASS' and comparison.get('performanceQualified') is True and
                 comparison.get('status') in ['comparison-passed', 'partial-comparison-passed'] and
                 facts(work / 'benchmark-run.json').get('status') == 'completed' and
                 backup.get('status') == 'passed' and knowledge.get('sourceCommit') == CUT and
@@ -110,7 +123,7 @@ def summary(work, root):
                 cleanup.get('pagingActivated') is False and not (work / 'terminal.json').exists())
     return {'sourceCommit': CUT, 'execution': execution, 'comparison': comparison,
             'nativeCompatibility': {'status': compatibility.get('status', 'not-run')},
-            'untimedBackup': backup, 'untimedKnowledge': knowledge, 'cleanup': cleanup, 'scheduledWorkComplete': complete,
+            'untimedBackup': backup, 'untimedKnowledge': knowledge, 'untimedRequalification': requalification, 'cleanup': cleanup, 'scheduledWorkComplete': complete,
             'applicationQualified': False, 'shipReady': False}
 
 

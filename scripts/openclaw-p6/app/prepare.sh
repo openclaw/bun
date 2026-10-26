@@ -4,7 +4,20 @@ root=/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1
 recipe=/p6-recipe/app
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y --no-install-recommends python3 ca-certificates git curl xz-utils build-essential pkg-config cmake ninja-build libicu-dev libssl-dev zlib1g-dev libatomic1 strace file jq sudo time
+apt-get install -y --no-install-recommends python3 ca-certificates git curl xz-utils build-essential pkg-config cmake ninja-build libicu-dev libssl-dev zlib1g-dev libatomic1 strace file jq sudo time libcurl4-openssl-dev libexpat1-dev
+# Frozen-source validation requires Git 2.45+ and GIT_NO_LAZY_FETCH.
+git_version=2.56.0
+git_sha256=26c56c296b38c0695b26fa95f475f1d01704d2d38e73465ca30b0b2f5dc789d3
+git_work="$P6_WORK/git-prerequisite"
+mkdir -p "$git_work"
+curl --fail --location --retry 2 --output "$git_work/source.tar.xz" \
+  "https://www.kernel.org/pub/software/scm/git/git-$git_version.tar.xz"
+printf '%s  %s\n' "$git_sha256" "$git_work/source.tar.xz" | sha256sum --check --status
+tar -xJf "$git_work/source.tar.xz" -C "$git_work"
+nice -n 10 make -C "$git_work/git-$git_version" -j2 prefix=/usr NO_TCLTK=YesPlease NO_GETTEXT=YesPlease all
+nice -n 10 make -C "$git_work/git-$git_version" prefix=/usr NO_TCLTK=YesPlease NO_GETTEXT=YesPlease install
+[[ "$(/usr/bin/git --version)" == "git version $git_version" ]]
+/usr/bin/git --version > "$P6_WORK/git-prerequisite-version.txt"
 [[ ! -e /usr/bin/node && ! -e /usr/bin/nodejs && ! -e /usr/bin/js ]]
 cd "$P6_WORK"
 python3 -B - "$recipe" <<'PY'

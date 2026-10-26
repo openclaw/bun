@@ -55,9 +55,9 @@ def main():
   analyzer=module(payload/'trace-policy.py','trace_policy')
   row,traces=run('version',['--version'],'version.trace')
   if row['stdout'].strip()!=manifest['expectedStdout'].strip():raise RuntimeError('Version differs from actual host result')
-  report['versionPolicy']=analyzer.analyze(traces,str(binary),manifest['expectedMdwe'])
+  report['versionPolicy']=analyzer.analyze(traces,str(binary),manifest['expectedMdwe'],['--version'])
   row,traces=run('memory',['p6-mdwe'],'app.trace')
-  report['policy']=analyzer.analyze(traces,str(binary),manifest['expectedMdwe'])
+  report['policy']=analyzer.analyze(traces,str(binary),manifest['expectedMdwe'],['p6-mdwe'])
   rows=[json.loads(line[len('P6_MDWE_RESULT '):]) for line in row['stdout'].splitlines() if line.startswith('P6_MDWE_RESULT ')]
   if len(rows)!=1:raise RuntimeError('Expected exactly one actual main-context probe row')
   trace=report['policy']['trace']

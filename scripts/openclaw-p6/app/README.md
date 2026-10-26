@@ -65,12 +65,15 @@ assessment; a zero exit from this workflow means only its named phases completed
 
 After heavy builds, the available host `/dev/kvm` is passed to the app container.
 With at least 1900 seconds left before the reserve, the unchanged prerequisite
-owner installs the pinned guest tools/image, then the unchanged actual-app guest
+owner installs the pinned guest tools/image, then the actual-app guest
 owner tests each built JS/C2 artifact while at least 950 seconds remain. Missing
 KVM, prerequisites, artifact/version receipts, failures and insufficient budget
 are recorded as explicit gaps. This uses native KVM only; it adds no emulated
 timings. The guest phase covers the actual app's main-thread MDWE boundary, not
-Gateway or Worker guest behavior.
+Gateway or Worker guest behavior. Policy analysis selects the exact admitted
+`--version` or `p6-mdwe` invocation, preserving same-binary SQLite child traces
+and the separate version trace. Missing or duplicate matching invocations fail;
+the selected root still must satisfy the existing exit and memory-policy checks.
 
 The comparison follow-on consumes the exact completed app run/attempt and
 artifact digest, plus the compiler pair above. The exported admissions,

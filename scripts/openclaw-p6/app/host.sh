@@ -40,6 +40,32 @@ ensure_running() {
     timeout --kill-after=10s 50s docker start "$P6_CONTAINER" >/dev/null
   fi
 }
+if [[ "$phase" == reconcile-children ]]; then
+  [[ "$mode" == benchmark ]]
+  [[ $(timeout --kill-after=5s 30s docker inspect --format '{{index .Config.Labels "openclaw.p6.owner"}}' "$P6_CONTAINER") == "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" ]]
+  python3 -B - "$P6_WORK/requalification-child-cleanup.json" "$label" <<'PYTHON'
+import hashlib,json,os,subprocess,sys
+from pathlib import Path
+path=Path(sys.argv[1]);label=sys.argv[2]
+ids=subprocess.check_output(['docker','ps','-aq','--filter','label='+label],text=True,timeout=30).split()
+format='{"id":{{json .Id}},"running":{{json .State.Running}},"paused":{{json .State.Paused}},"restarting":{{json .State.Restarting}}}'
+rows=[json.loads(line) for line in subprocess.check_output(['docker','inspect','--format',format,*ids],text=True,timeout=30).splitlines()] if ids else []
+execution=Path(os.environ['P6_WORK'])/'execution.json'
+execution_data=execution.read_bytes()
+record={'status':'before-removal','identity':json.loads(execution_data)['identity'],
+        'executionSha256':hashlib.sha256(execution_data).hexdigest(), 'label':label,
+        'childrenBeforeRemoval':rows,'forcedRecovery':any(row['running'] or row['paused'] or row['restarting'] for row in rows)}
+with path.open('x') as stream:json.dump(record,stream,indent=2);stream.write('\n')
+PYTHON
+  remove_children
+  python3 -B - "$P6_WORK/requalification-child-cleanup.json" <<'PYTHON'
+import json,sys
+from pathlib import Path
+path=Path(sys.argv[1]);record=json.loads(path.read_text());record['status']='children-removed'
+path.write_text(json.dumps(record,indent=2)+'\n')
+PYTHON
+  exit
+fi
 if [[ "$phase" == cleanup ]]; then
   timeout --kill-after=5s 30s docker stop --time 15 "$P6_CONTAINER" >/dev/null 2>&1 || true
   timeout --kill-after=5s 30s docker rm -f "$P6_CONTAINER" >/dev/null 2>&1 || true

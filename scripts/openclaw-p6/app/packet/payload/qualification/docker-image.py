@@ -5,6 +5,7 @@ from pathlib import Path
 
 proof=json.loads(Path(sys.argv[1]).read_text())
 assert proof['lane']=='docker-image' and proof['status']=='planned-not-qualified'
+assert proof['runtime']['path']=='runtime','Docker adapter requires the admitted runtime directory'
 out=Path(proof['out']);source=Path(proof['source']);harness=Path(proof['harness'])
 base='openclaw-p6-final-x64-e2e-bare:'+proof['sourceCommit'][:12]
 tag='openclaw-p6-final-x64-aot:'+proof['binarySha256'][:16]+'-'+proof['manifestSha256'][:8]

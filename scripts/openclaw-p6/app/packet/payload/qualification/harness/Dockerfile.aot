@@ -17,6 +17,7 @@ RUN npm install --prefix /opt/openclaw-e2e ws@8.22.0 jszip@3.10.2 tar@7.5.22 --n
  && ln -s /opt/openclaw-e2e/node_modules /app/node_modules \
  && cp /opt/p6-artifact/runtime/package.json /app/package.json \
  && chmod 0644 /app/package.json
+ENV OPENCLAW_E2E_HOST_ROOT=/opt/p6-artifact/runtime
 ENV P6_AOT_BINARY=/opt/p6-artifact/openclaw
 ENV PATH=/home/appuser/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 USER appuser

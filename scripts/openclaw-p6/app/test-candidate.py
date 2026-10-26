@@ -6,6 +6,7 @@ import io
 import json
 import os
 import runpy
+import shutil
 from pathlib import Path
 import stat
 import subprocess
@@ -28,6 +29,54 @@ def module(name):
 
 
 class CandidateGuards(unittest.TestCase):
+    def test_native_worker_diagnostic_flags_reach_only_the_gateway_launch(self):
+        node = shutil.which('node')
+        self.assertIsNotNone(node, 'Node is required for the actual launcher regression')
+        runner = HERE / 'packet/payload/qualification/harness/capability-runner.mjs'
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            source = root / 'source'
+            fixture = source / 'scripts/e2e/lib/fixtures'
+            fixture.mkdir(parents=True)
+            (source / 'gateway-shutdown-budget.mjs').write_text(
+                'export const GATEWAY_SHUTDOWN_TIMEOUT_MS=1000;\n'
+                'export const GATEWAY_SERVICE_STOP_TIMEOUT_MS=1000;\n')
+            (fixture / 'mock-openai-config.mjs').write_text(
+                'export function applyMockOpenAiModelConfig(config) { config.models={}; }\n')
+            preload = root / 'platform-fixture.mjs'
+            preload.write_text('''import fs from 'node:fs';
+Object.defineProperty(process,'platform',{value:'linux'});
+const readdirSync=fs.readdirSync.bind(fs);
+fs.readdirSync=(path,...args)=>path==='/proc'?[]:readdirSync(path,...args);
+''')
+            for native in (False, True):
+                with self.subTest(native_workers=native):
+                    artifact = root / ('native' if native else 'ordinary')
+                    (artifact / 'runtime').mkdir(parents=True)
+                    binary = artifact / 'openclaw'
+                    binary.write_text(f'#!{sys.executable}\n' + '''import json,os,sys
+from pathlib import Path
+captured={key:value for key,value in os.environ.items() if key.startswith(('BUN_','JSC_'))}
+Path(__file__).with_name('captured-'+sys.argv[1]+'.json').write_text(json.dumps(captured))
+''')
+                    binary.chmod(0o755)
+                    out = root / ('native-out' if native else 'ordinary-out')
+                    command = [node, '--import', str(preload), str(runner), '--artifact', str(artifact),
+                               '--source', str(source), '--out', str(out), '--scenario', 'node-vm']
+                    if native:
+                        command.append('--native-workers')
+                    completed = subprocess.run(command, capture_output=True, text=True, timeout=15,
+                                               env={**os.environ, 'PYTHONDONTWRITEBYTECODE': '1'})
+                    self.assertNotEqual(completed.returncode, 0)
+                    result = json.loads((out / 'result.json').read_text())
+                    self.assertIn('Gateway exited before ready', result['error'])
+                    captured = json.loads((artifact / 'captured-gateway.json').read_text())
+                    expected = ({'BUN_DESTRUCT_VM_ON_EXIT': '1',
+                                 'BUN_WORKER_VM_TRACE': str(out / 'native-workers/worker-%p.jsonl')}
+                                if native else {})
+                    self.assertEqual(captured, expected)
+                    self.assertEqual(json.loads((artifact / 'captured-config.json').read_text()), {})
+
     def test_toolchain_exposes_pnpm_without_installing_the_placeholder(self):
         spec = importlib.util.spec_from_file_location('native_prep', HERE / 'packet/payload/native-prep.py')
         prep = importlib.util.module_from_spec(spec)
@@ -432,6 +481,67 @@ class VariantSelectionContracts(unittest.TestCase):
                     with self.assertRaisesRegex(AssertionError, 'variant selection'):
                         runpy.run_path(str(HERE / 'initialize.py'), run_name='__main__')
                 self.assertFalse((Path(temporary) / 'execution.json').exists())
+
+
+class GuestPolicyInvocation(unittest.TestCase):
+    BINARY = '/mnt/p6/artifact/openclaw'
+    MEMORY = 'execve("/mnt/p6/artifact/openclaw", ["/mnt/p6/artifact/openclaw", "p6-mdwe"], 0x1234 /* 16 vars */) = 0\n'
+    CHILD = 'execve("/mnt/p6/artifact/openclaw", ["/mnt/p6/artifact/openclaw", "--no-install", "/mnt/p6/artifact/runtime/dist/infra/sqlite-readonly-location.worker.js", "--openclaw-sqlite-readonly-child"], 0x5678 /* 19 vars */) = 0\n'
+    VERSION = 'execve("/mnt/p6/artifact/openclaw", ["/mnt/p6/artifact/openclaw", "--version"], 0x9abc /* 16 vars */) = 0\n'
+    POLICY = ('prctl(PR_GET_MDWE, 0, 0, 0, 0) = 0\n'
+              'prctl(PR_SET_MDWE, PR_MDWE_REFUSE_EXEC_GAIN|PR_MDWE_NO_INHERIT, 0, 0, 0) = 0\n'
+              'prctl(PR_GET_MDWE, 0, 0, 0, 0) = 0x3 (PR_MDWE_REFUSE_EXEC_GAIN|PR_MDWE_NO_INHERIT)\n'
+              '+++ exited with 0 +++\n')
+
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location('guest_trace_policy',
+            HERE / 'packet/payload/guest/application/trace-policy.py')
+        self.policy = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.policy)
+
+    def test_memory_invocation_preserves_same_binary_child_and_version(self):
+        traces = {'app.trace.963': self.MEMORY + self.POLICY,
+                  'app.trace.976': self.CHILD + self.POLICY,
+                  'version.trace.959': self.VERSION + self.POLICY}
+        result = self.policy.analyze(traces, self.BINARY, 3, ['p6-mdwe'])
+        self.assertEqual(result['trace'], 'app.trace.963')
+        self.assertEqual(result['traceSha256'], hashlib.sha256(traces['app.trace.963'].encode()).hexdigest())
+        self.assertEqual(result['argv'], [self.BINARY, 'p6-mdwe'])
+        self.assertEqual(result['otherApplicationExecTraces'], ['app.trace.976', 'version.trace.959'])
+        self.assertEqual(result['getBefore'], [0])
+        self.assertEqual(result['getAfter'], [3])
+        self.assertEqual(len(traces), 3)
+
+    def test_missing_wrong_and_ambiguous_invocations_are_rejected(self):
+        for traces in [
+            {},
+            {'app.trace.976': self.CHILD + self.POLICY},
+            {'app.trace.963': self.MEMORY.replace('"p6-mdwe"', '"p6-mdwe-other"') + self.POLICY},
+            {'app.trace.963': self.MEMORY.replace('"p6-mdwe"', '"p6-mdwe", "extra"') + self.POLICY},
+            {'app.trace.963': self.MEMORY.replace(') = 0', ') = -1 ENOENT') + self.POLICY},
+            {'app.trace.963': self.MEMORY + self.POLICY, 'app.trace.964': self.MEMORY + self.POLICY},
+        ]:
+            with self.subTest(traces=list(traces)):
+                with self.assertRaisesRegex(ValueError, 'Expected one trace of the admitted application invocation'):
+                    self.policy.analyze(traces, self.BINARY, 3, ['p6-mdwe'])
+
+    def test_version_uses_its_own_exact_invocation(self):
+        result = self.policy.analyze({'version.trace.959': self.VERSION + self.POLICY,
+                                     'app.trace.963': self.MEMORY + self.POLICY},
+                                    self.BINARY, 3, ['--version'])
+        self.assertEqual(result['trace'], 'version.trace.959')
+        self.assertEqual(result['otherApplicationExecTraces'], ['app.trace.963'])
+
+    def test_selected_invocation_still_requires_exit_and_mdwe_contract(self):
+        for policy, error in [
+            (self.POLICY.replace('exited with 0', 'exited with 1'), 'successful terminal exit'),
+            (self.POLICY.replace('PR_MDWE_REFUSE_EXEC_GAIN|PR_MDWE_NO_INHERIT,', 'PR_MDWE_REFUSE_EXEC_GAIN,'), 'one successful application PR_SET_MDWE'),
+            (self.POLICY.replace(') = 0\n', ') = 1\n', 1), 'unenforced MDWE baseline'),
+            (self.POLICY.replace(') = 0x3', ') = 0x1'), 'post-SET application PR_GET_MDWE'),
+        ]:
+            with self.subTest(error=error):
+                with self.assertRaisesRegex(ValueError, error):
+                    self.policy.analyze({'app.trace.963': self.MEMORY + policy}, self.BINARY, 3, ['p6-mdwe'])
 
 
 if __name__ == '__main__':

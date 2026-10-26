@@ -55,3 +55,33 @@ Normal functional runs and timed cohorts are unchanged. A failed Knowledge
 control is reported independently and prevents scheduled completion; it does
 not rewrite performance availability. Actual artifact qualification remains
 pending execution. The former direct-HTTP fixture was invalid and is removed.
+
+## Untimed restored-artifact requalification
+
+Before backup/functional preparation and the existing quiet admission, the benchmark
+job reuses the runtime controller for JS and C2 native-worker diagnostics, Docker
+image preparation, gateway-network, and kitchen-sink. It never builds an AOT app.
+The original exported core/build/admission/transport records stay unchanged.
+New controller receipts/raw archives export under `requalification/`, with current
+execution and original export identities in `requalification.json`.
+
+Ordinary failure is retained and permits the comparator only after the existing
+label-scoped child cleanup, backup reconciliation, quiet gate, and fresh core proof.
+Timeout/signal exits stop work. A failed or absent requalification prevents
+`scheduledWorkComplete`; comparator success never promotes full qualification.
+
+The owned outer container installs SHA256-pinned Git 2.56.0 before source preparation,
+retaining Git's no-lazy-fetch guard. Kitchen-sink uses a hash-bound read-only assertion
+overlay to accept its explicit `/opt/p6-artifact/runtime` SDK host instead of `/app`.
+The original source and artifact are untouched; symlink and dependency isolation
+checks remain in the overlay.
+
+The replay phase count derives from restored JS/C2 availability. Unavailable
+variants remain explicit; an otherwise valid JS-only comparison stays usable.
+The existing cleanup owner records each labelled child's running state before
+removal. A live-child recovery keeps effective requalification and scheduled
+completion failed, even after an empty census; comparator proof may proceed only
+through subsequent clean reconciliation and quiet admission. Raw phase replay is
+marked pending cleanup until the exporter combines both owners' receipts.
+The assertion mount applies only when the actual Docker image token equals the
+verified AOT image tag; unrelated fixture images retain their normal mounts.

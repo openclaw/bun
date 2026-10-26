@@ -23,8 +23,8 @@ def terminal(code):
     return code == 124 or code >= 128
 
 
-def sequence(phase, reconcile):
-    """Only ordinary backup failure may continue, after host reconciliation."""
+def sequence(phase, reconcile, cleanup):
+    """Ordinary untimed failures may continue only through owned cleanup and quiet gates."""
     before = [('prepare', ['bash', '/p6-recipe/app/prepare.sh']),
               ('stage', ['python3', '-B', '/p6-recipe/app/benchmark/stage.py']),
               ('restore', ['python3', '-B', '/p6-recipe/app/benchmark/restore.py', '--download',
@@ -37,6 +37,12 @@ def sequence(phase, reconcile):
         code = phase(name, command)
         if code:
             return code
+    code = phase('requalification', ['python3', '-B', '/p6-recipe/app/benchmark/requalify.py'])
+    if terminal(code):
+        return code
+    code = cleanup()
+    if code:
+        return code
     code = phase('backup-untimed', ['python3', '-B', str(ROOT / 'benchmark-prep/run-backup.py')])
     if terminal(code):
         return code
@@ -124,7 +130,10 @@ def main():
             command += ['--reconcile-only']
         return bounded('reconcile-backup' if only else 'quiet-admission', command)
 
-    code = sequence(phase, reconcile)
+    def cleanup():
+        return bounded('requalification-children-cleanup', ['bash', str(HERE.parent / 'host.sh'), 'reconcile-children'])
+
+    code = sequence(phase, reconcile, cleanup)
     dump(work / 'benchmark-run.json', {'status': 'completed' if code == 0 else 'failed', 'exitCode': code,
                                       'applicationQualified': False, 'shipReady': False})
     if code:

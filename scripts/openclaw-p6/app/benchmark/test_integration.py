@@ -18,7 +18,7 @@ def module(name):
     spec.loader.exec_module(loaded)
     return loaded
 
-INIT, HOST, EXPORT = module('initialize'), module('host'), module('export')
+INIT, HOST, EXPORT, REQUALIFY = module('initialize'), module('host'), module('export'), module('requalify')
 BASE_ENV = {'GITHUB_REPOSITORY': 'openclaw/bun', 'GITHUB_RUN_ID': '22', 'GITHUB_RUN_ATTEMPT': '1',
             'GITHUB_JOB': 'linux-x64-benchmark', 'GITHUB_SHA': 'b'*40, 'P6_APP_REPOSITORY_ID': '9',
             'P6_APP_RUN_ID': '11', 'P6_APP_RUN_ATTEMPT': '2', 'P6_APP_WORKFLOW_ID': '8',
@@ -57,13 +57,18 @@ class Contracts(unittest.TestCase):
         def reconcile(only):
             seen.append('reconcile' if only else 'quiet')
             return reconciliation
+        def cleanup():
+            seen.append('children-cleanup')
+            return reconciliation
         with patch.dict(os.environ, {'P6_WORK': '/synthetic/work'}):
-            result = HOST.sequence(phase, reconcile)
+            result = HOST.sequence(phase, reconcile, cleanup)
         return result, seen
 
     def test_complete_sequence(self):
         code, seen = self.run_sequence()
         self.assertEqual(code, 0)
+        self.assertLess(seen.index('requalification'), seen.index('children-cleanup'))
+        self.assertLess(seen.index('children-cleanup'), seen.index('backup-untimed'))
         self.assertLess(seen.index('backup-untimed'), seen.index('reconcile'))
         self.assertLess(seen.index('budget'), seen.index('quiet'))
         self.assertEqual(seen[-3:], ['window', 'cohort', 'summary'])
@@ -77,11 +82,63 @@ class Contracts(unittest.TestCase):
         self.assertNotIn('functional', seen)
 
     def test_terminal_and_insufficient_budget_never_continue(self):
-        for fail, code in [('backup-untimed', 124), ('backup-untimed', 143),
+        for fail, code in [('requalification', 124), ('requalification', 143), ('backup-untimed', 124), ('backup-untimed', 143),
                            ('functional', 1), ('budget', 78), ('cohort', 137)]:
             result, seen = self.run_sequence(fail, code)
             self.assertEqual(result, code)
             self.assertEqual(seen[-1], fail)
+
+    def test_failed_requalification_keeps_comparator_after_cleanup(self):
+        code, seen = self.run_sequence('requalification', 1)
+        self.assertEqual(code, 0)
+        self.assertIn('children-cleanup', seen)
+        self.assertIn('functional', seen)
+        self.assertIn('cohort', seen)
+
+    def test_replay_receipts_and_terminal_failure(self):
+        for failure, exit_code in [(None, 0), ('js-only',0), ('js-docker-gateway-network', 1),
+                                   ('js-docker-image', 1), ('js-node-vm-native-workers', 143)]:
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as tmp:
+                root, work = Path(tmp)/'root', Path(tmp)/'work'
+                work.mkdir()
+                def put(path, value):
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text(json.dumps(value))
+                put(work/'execution.json', {'sourceCommit':EXPORT.CUT, 'identity':{'job':'linux-x64-benchmark'}})
+                put(root/'benchmark-prep/availability.json', {'sourceCommit':EXPORT.CUT,
+                    'sourceAppExport':{'runId':11}, 'availableVariants':['js'] if failure == 'js-only' else ['js','c2-off'],
+                    'variants':{v:{'status':'artifact-restored-original-core-qualified'} for v in ['js','c2-off']}})
+                for variant in ['js','c2-off']:
+                    put(root/'admissions'/(variant+'.json'), {'variant':variant})
+                    put(root/'build-receipts'/variant/'result.json', {'variant':variant})
+                called = []
+                def invoke(command):
+                    variant, phase = command[command.index('--variant')+1], command[command.index('--phase')+1]
+                    label = variant+'-'+phase
+                    called.append(label)
+                    code = exit_code if label == failure else 0
+                    put(root/'runtime-results'/label/'result.json', {'sourceCommit':EXPORT.CUT,
+                        'variant':variant, 'phase':phase, 'status':'phase-passed' if code == 0 else 'phase-failed',
+                        'rootBuildAdmissionSha256':REQUALIFY.sha(root/'admissions'/(variant+'.json')),
+                        'actualBuildReceiptSha256':REQUALIFY.sha(root/'build-receipts'/variant/'result.json')})
+                    return code
+                code = REQUALIFY.replay(root, work, invoke)
+                result = REQUALIFY.load(root/'benchmark-prep/requalification.json')
+                self.assertEqual(code, 0 if failure in [None,'js-only'] else exit_code)
+                self.assertEqual(result['status'], 'phases-passed-pending-cleanup' if failure in [None,'js-only'] else 'failed')
+                self.assertFalse(result['applicationBuildStarted'])
+                if failure == 'js-only':
+                    self.assertEqual(result['requiredPhaseCount'],4)
+                    self.assertEqual(result['unavailableVariants'],['c2-off'])
+                    self.assertEqual(result['phases'][-1],{'variant':'c2-off','status':'artifact-unavailable'})
+                if failure == 'js-docker-image':
+                    self.assertNotIn('js-docker-gateway-network', called)
+                    self.assertIn('c2-off-docker-kitchen-sink', called)
+                if exit_code == 143:
+                    self.assertEqual(called, ['js-node-vm-native-workers'])
+                if failure == 'js-docker-gateway-network':
+                    self.assertIn('js-docker-kitchen-sink', called)
+                    self.assertIn('c2-off-docker-kitchen-sink', called)
 
     def test_signal_normalization(self):
         self.assertEqual(HOST.normalized(-15), 143)
@@ -104,12 +161,14 @@ class Contracts(unittest.TestCase):
                 put(prep/relative)
             put(root/'backup-results/js/state/secret')
             put(root/'backup-results/js/result.json', '{}')
+            put(root/'runtime-results/js-docker-kitchen-sink/raw-evidence.tar.gz', 'synthetic raw archive')
             EXPORT.export(work, root)
             paths = [r['path'] for r in json.loads((work/'benchmark-export/index.json').read_text())]
             self.assertIn('work/js-core/result.json', paths)
             self.assertIn('work/js-core/logs/gateway.stdout', paths)
             self.assertIn('work/js-knowledge/knowledge/result.json', paths)
             self.assertIn('backup-results/js/result.json', paths)
+            self.assertIn('requalification/runtime-results/js-docker-kitchen-sink/raw-evidence.tar.gz', paths)
             self.assertFalse(any('secret' in p for p in paths))
 
     def test_export_rejects_symlinked_receipt(self):
@@ -137,6 +196,15 @@ class Contracts(unittest.TestCase):
             put(root/'prep-receipts/compatibility/result.json', {'status':'PASS'})
             self.assertFalse(EXPORT.summary(work, root)['scheduledWorkComplete'])
             put(root/'benchmark-prep/work/knowledge-controls.json', {'status':'passed','sourceCommit':EXPORT.CUT})
+            self.assertFalse(EXPORT.summary(work, root)['scheduledWorkComplete'])
+            put(root/'benchmark-prep/requalification.json', {'status':'phases-passed-pending-cleanup'})
+            self.assertFalse(EXPORT.summary(work, root)['scheduledWorkComplete'])
+            put(work/'requalification-child-cleanup.json', {'status':'children-removed',
+                'identity':identity,'executionSha256':EXPORT.sha(work/'execution.json'),'forcedRecovery':True})
+            self.assertFalse(EXPORT.summary(work, root)['scheduledWorkComplete'])
+            self.assertEqual(EXPORT.summary(work, root)['untimedRequalification']['status'],'failed')
+            put(work/'requalification-child-cleanup.json', {'status':'children-removed',
+                'identity':identity,'executionSha256':EXPORT.sha(work/'execution.json'),'forcedRecovery':False})
             self.assertTrue(EXPORT.summary(work, root)['scheduledWorkComplete'])
             put(root/'benchmark-prep/work/knowledge-controls.json', {'status':'failed','sourceCommit':EXPORT.CUT})
             self.assertFalse(EXPORT.summary(work, root)['scheduledWorkComplete'])
@@ -144,6 +212,9 @@ class Contracts(unittest.TestCase):
             put(root/'backup-results/summary.json', {'status':'failed'})
             self.assertFalse(EXPORT.summary(work, root)['scheduledWorkComplete'])
             put(root/'backup-results/summary.json', {'status':'passed'})
+            put(root/'benchmark-prep/requalification.json', {'status':'failed'})
+            self.assertFalse(EXPORT.summary(work, root)['scheduledWorkComplete'])
+            put(root/'benchmark-prep/requalification.json', {'status':'phases-passed-pending-cleanup'})
             put(work/'terminal.json', {'exitCode':124})
             self.assertFalse(EXPORT.summary(work, root)['scheduledWorkComplete'])
 
