@@ -20,7 +20,7 @@
   "metadata.mjs": "4eeb7f4fe4768f9daa0c06b61849e72401f967da63431c9b7389b1fd45f30c89",
   "native-inputs.template.json": "a57ac168d6705ca3d14a28fc04e81cf6a44ac70639aff7e88b58a3c2c3cb6ec6",
   "package-inventory.mjs": "c406013d6d33cdff0776833c0ab7e027683c361700af4633dc3cfd84ef1a7978",
-  "prepare-package.sh": "c21febafa31d7bd68ad7aa38c21b5b016dacaa860115753e03b8e8f52c9da196",
+  "prepare-package.sh": "cd78b6b1d3176cd079047826b6ee49e9d54e7b44303789d6fee470c185340eaa",
   "prepare-window.py": "7fa1149aa6a0015f15010f20f56bb5b77dd0cd63fa9b1de430e3382f826932a3",
   "project-package.manifest.json": "35c016b93524610121f8cebb541a09c7f365af015c324ac136a36020bdcbb05d",
   "quiet-admission.template.json": "1b208c9312d1bcefeb01461e91eb770ed9905a56df6a866fcaac5e47f3ab6430",

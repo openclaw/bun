@@ -219,6 +219,45 @@ class Contracts(unittest.TestCase):
             put(work/'terminal.json', {'exitCode':124})
             self.assertFalse(EXPORT.summary(work, root)['scheduledWorkComplete'])
 
+class PackageNpmConfigContracts(unittest.TestCase):
+    def test_offline_lockfile_ignores_home_config(self):
+        node, npm = shutil.which('node'), shutil.which('npm')
+        if not node or not npm:
+            self.skipTest('Node and npm are required for the offline npm config regression')
+        npm = Path(npm).resolve()
+        version = json.loads((npm.parent.parent/'package.json').read_text())['version']
+        if version.split('.')[0] != '11':
+            self.skipTest('The config-loading regression requires npm 11')
+        script = (HERE/'payload/prepare-package.sh').read_text()
+        setup = 'export HOME=' + script.split('export HOME=',1)[1].split('\npython3 - ',1)[0]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            here = root/'benchmark-prep'
+            home = here/'package-home'
+            home.mkdir(parents=True)
+            ambient = home/'.npmrc'
+            ambient.write_text('registry=https://ambient.invalid/\n')
+            package = root/'package'
+            package.mkdir()
+            (package/'package.json').write_text('{"name":"p6-npm-config-fixture","version":"1.0.0"}\n')
+            command = ('set -euo pipefail\numask 077\nroot=$1\nhere=$2\n' + setup + '\n'
+                       'printf "%s\\n" "$NPM_CONFIG_USERCONFIG" "$NPM_CONFIG_GLOBALCONFIG" "$TMPDIR" > "$here/config-paths"\n'
+                       '"$3" "$4" install --package-lock-only --ignore-scripts --no-audit --no-fund --offline\n'
+                       '"$3" "$4" config get registry > "$here/registry"\n')
+            result = subprocess.run(['/bin/bash','-c',command,'npm-config-proof',str(root),str(here),node,str(npm)],
+                                    cwd=package,env={'PATH':'/usr/bin:/bin'},capture_output=True,text=True,timeout=30)
+            self.assertEqual(result.returncode,0,result.stderr)
+            user, global_config, task_tmp = map(Path,(here/'config-paths').read_text().splitlines())
+            self.assertNotEqual(user,global_config)
+            for config in [user,global_config]:
+                self.assertEqual(config.parent,task_tmp)
+                self.assertEqual(config.read_bytes(),b'')
+            self.assertEqual((here/'registry').read_text(),'https://registry.npmjs.org/\n')
+            self.assertEqual(ambient.read_text(),'registry=https://ambient.invalid/\n')
+            lock = json.loads((package/'package-lock.json').read_text())
+            self.assertEqual(lock['packages']['']['name'],'p6-npm-config-fixture')
+
+
 class PackageCloneContracts(unittest.TestCase):
     def run_guard(self, clone, script=None):
         script = (HERE/'payload/prepare-package.sh').read_text() if script is None else script

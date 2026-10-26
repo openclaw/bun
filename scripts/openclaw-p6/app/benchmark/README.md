@@ -92,3 +92,8 @@ checking links. This retains the declaration fixture's intentional absolute
 dependency links without touching canonical source or weakening the guard for
 any remaining package input. Symlinked fixture paths and existing preservation
 destinations fail before movement.
+
+Package preparation uses distinct empty npm user and global configuration files
+under its task temporary directory. This ignores ambient home/global npm settings
+without asking npm 11 to load the same `/dev/null` path twice. The integration test
+exercises this setup with an offline, dependency-free lockfile operation.

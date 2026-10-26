@@ -7,8 +7,10 @@ here=$(cd "$(dirname "$0")" && pwd -P)
 [[ ! -e "$here/package-source" && ! -e "$here/package" ]]
 export HOME="$here/package-home" TMPDIR="$here/package-tmp" XDG_CACHE_HOME="$here/package-cache"
 export PATH="$root/opt/node/bin:$root/opt/bin:/usr/bin:/bin" LANG=C.UTF-8 TZ=UTC
-export NPM_CONFIG_USERCONFIG=/dev/null NPM_CONFIG_GLOBALCONFIG=/dev/null NPM_CONFIG_CACHE="$here/package-cache/npm"
 mkdir -p "$HOME" "$TMPDIR" "$XDG_CACHE_HOME"
+NPM_CONFIG_USERCONFIG=$(mktemp "$TMPDIR/npm-user.XXXXXX")
+NPM_CONFIG_GLOBALCONFIG=$(mktemp "$TMPDIR/npm-global.XXXXXX")
+export NPM_CONFIG_USERCONFIG NPM_CONFIG_GLOBALCONFIG NPM_CONFIG_CACHE="$here/package-cache/npm"
 python3 - "$root" "$here" <<'PY'
 import hashlib,json,subprocess,sys
 from pathlib import Path
