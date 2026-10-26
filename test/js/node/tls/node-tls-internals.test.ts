@@ -3,8 +3,8 @@ import { createTest } from "node-harness";
 import { createHash, X509Certificate } from "node:crypto";
 import { once } from "node:events";
 import { readFileSync } from "node:fs";
-import { createConnection } from "node:net";
 import type { AddressInfo } from "node:net";
+import { createConnection } from "node:net";
 import { join } from "node:path";
 import {
   connect,
