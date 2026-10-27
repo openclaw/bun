@@ -55,7 +55,8 @@ const unchanged =
   "static: lib legacy data\nimport(): lib legacy data\nrequire(): lib legacy data\nfirst loaded now: lib late other\nasked: nothing\n";
 
 async function compileAndRun(folder: string, ...flags: string[]) {
-  const executable = join(folder, "program" + flags.join("") + (isWindows ? ".exe" : ""));
+  // A path-valued flag must not rename the embedded entry point after an external module.
+  const executable = join(folder, "program" + (isWindows ? ".exe" : ""));
   const build = await spawned(
     [bunExe(), "build", "--compile", ...flags, "main.ts", "--outfile", executable],
     folder,
