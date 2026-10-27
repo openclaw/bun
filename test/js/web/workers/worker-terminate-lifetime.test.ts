@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { bunEnv, bunExe, isASAN, isDebug, isWindows, tempDir, tls } from "harness";
+import { readdirSync } from "node:fs";
 import { join } from "path";
 
 // Worker VM startup/teardown is much slower under debug and/or ASAN; these
@@ -10,6 +11,284 @@ const slow = isDebug || isASAN;
 const rounds = slow ? 4 : 8;
 const perRound = slow ? 12 : 32;
 const timeout = slow ? 60_000 : 20_000;
+
+describe("BUN_WORKER_VM_TRACE", () => {
+  async function readTrace(path: string, pid: number, parentPid = process.pid) {
+    const text = await Bun.file(path).text();
+    expect(text.endsWith("\n")).toBe(true);
+    const records = text
+      .trimEnd()
+      .split("\n")
+      .map(line => JSON.parse(line));
+    expect(records.length).toBeGreaterThanOrEqual(2);
+    for (const record of records) {
+      expect(record.version).toBe(1);
+      expect(record.pid).toBe(pid);
+      expect(Number.isSafeInteger(record.nativeTid)).toBe(true);
+      expect(record.nativeTid).toBeGreaterThan(0);
+    }
+    expect(records[0]).toEqual({ version: 1, event: "trace-ready", pid, parentPid, nativeTid: records[0].nativeTid });
+    return records;
+  }
+
+  test.each([["--version"], ["--help"], ["-e", "console.log('zero')"]])(
+    "records zero workers for %j",
+    async (...args) => {
+      using dir = tempDir("worker-vm-trace-zero", {});
+      await using proc = Bun.spawn({
+        cmd: [bunExe(), ...args],
+        env: { ...bunEnv, BUN_WORKER_VM_TRACE: join(String(dir), "trace-%p.jsonl") },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      expect(stdout.length).toBeGreaterThan(0);
+      expect(stderr).toBe("");
+      const records = await readTrace(join(String(dir), `trace-${proc.pid}.jsonl`), proc.pid);
+      expect(records).toEqual([
+        records[0],
+        {
+          version: 1,
+          event: "trace-end",
+          pid: proc.pid,
+          nativeTid: records[0].nativeTid,
+          spawned: 0,
+          started: 0,
+          published: 0,
+          destroyed: 0,
+          ended: 0,
+          complete: 1,
+        },
+      ]);
+      expect(exitCode).toBe(0);
+    },
+  );
+
+  test("pairs concurrent, nested, throwing, and early-terminated Worker lifetimes", async () => {
+    using dir = tempDir("worker-vm-trace-lifetimes", {
+      "main.js": `
+        import { Worker } from "node:worker_threads";
+        function exited(worker, throwing = false) {
+          return new Promise((resolve, reject) => {
+            let error;
+            worker.on("error", value => { error = value; if (!throwing) reject(value); });
+            worker.on("exit", code => {
+              if (code === (throwing ? 1 : 0) && (!throwing || error?.message === "intentional")) resolve();
+              else reject(new Error("unexpected worker exit " + code));
+            });
+          });
+        }
+        const pending = ["leaf", "leaf", "leaf", "nested", "throw"].map(kind =>
+          exited(new Worker(new URL("./worker.js", import.meta.url), { name: "same-name", workerData: kind }), kind === "throw"));
+        const early = new Worker(new URL("./worker.js", import.meta.url), { name: "same-name", workerData: "leaf" });
+        pending.push(early.terminate());
+        await Promise.all(pending);
+        console.log("done");
+      `,
+      "worker.js": `
+        import { Worker, workerData } from "node:worker_threads";
+        if (workerData === "throw") throw new Error("intentional");
+        if (workerData === "nested") {
+          const child = new Worker(new URL("./worker.js", import.meta.url), { name: "same-name", workerData: "leaf" });
+          await new Promise((resolve, reject) => {
+            child.on("error", reject);
+            child.on("exit", code => code === 0 ? resolve() : reject(new Error("nested exit " + code)));
+          });
+        }
+      `,
+    });
+    await using proc = Bun.spawn({
+      cmd: [bunExe(), "main.js"],
+      cwd: String(dir),
+      env: { ...bunEnv, BUN_WORKER_VM_TRACE: join(String(dir), "trace-%p.jsonl") },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect({ stdout, stderr }).toEqual({ stdout: "done\n", stderr: "" });
+    const records = await readTrace(join(String(dir), `trace-${proc.pid}.jsonl`), proc.pid);
+    const workers = new Map<number, typeof records>();
+    for (const record of records.slice(1, -1)) {
+      expect(Object.keys(record).sort()).toEqual([
+        "contextId",
+        "event",
+        "nativeTid",
+        "parentContextId",
+        "pid",
+        "version",
+      ]);
+      expect(Number.isSafeInteger(record.contextId)).toBe(true);
+      expect(Number.isSafeInteger(record.parentContextId)).toBe(true);
+      const events = workers.get(record.contextId) ?? [];
+      events.push(record);
+      workers.set(record.contextId, events);
+    }
+    expect(workers.size).toBe(7);
+    let published = 0;
+    let nested = 0;
+    for (const events of workers.values()) {
+      const spawned = events.filter(record => record.event === "thread-spawned");
+      const lifecycle = events.filter(record => record.event !== "thread-spawned");
+      expect(spawned.length).toBe(1);
+      expect(lifecycle.map(record => record.event)).toEqual(
+        lifecycle.length === 2
+          ? ["thread-start", "thread-end"]
+          : ["thread-start", "vm-published", "vm-destroyed", "thread-end"],
+      );
+      expect(new Set(lifecycle.map(record => record.nativeTid)).size).toBe(1);
+      expect(new Set(events.map(record => record.parentContextId)).size).toBe(1);
+      expect(lifecycle[0].nativeTid).not.toBe(records[0].nativeTid);
+      if (lifecycle.length === 4) published++;
+      const parent = workers.get(events[0].parentContextId);
+      if (parent) {
+        nested++;
+        expect(spawned[0].nativeTid).toBe(parent.find(record => record.event === "thread-start").nativeTid);
+      } else {
+        expect(spawned[0].nativeTid).toBe(records[0].nativeTid);
+      }
+    }
+    expect(published).toBeGreaterThanOrEqual(6);
+    expect(published).toBeLessThanOrEqual(7);
+    expect(nested).toBe(1);
+    expect(records.at(-1)).toEqual({
+      version: 1,
+      event: "trace-end",
+      pid: proc.pid,
+      nativeTid: records[0].nativeTid,
+      spawned: 7,
+      started: 7,
+      published,
+      destroyed: published,
+      ended: 7,
+      complete: 1,
+    });
+    expect(exitCode).toBe(0);
+  });
+
+  test("marks process exit with a live Worker incomplete", async () => {
+    using dir = tempDir("worker-vm-trace-incomplete", {});
+    await using proc = Bun.spawn({
+      cmd: [
+        bunExe(),
+        "-e",
+        `
+        const worker = new Worker("data:text/javascript,postMessage('ready'); setInterval(() => {}, 100000);");
+        worker.onerror = error => { console.error(error); process.exit(1); };
+        worker.onmessage = () => { console.log("ready"); process.exit(0); };
+      `,
+      ],
+      env: { ...bunEnv, BUN_WORKER_VM_TRACE: join(String(dir), "trace-%p.jsonl"), BUN_DESTRUCT_VM_ON_EXIT: "0" },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect({ stdout, stderr }).toEqual({ stdout: "ready\n", stderr: "" });
+    const records = await readTrace(join(String(dir), `trace-${proc.pid}.jsonl`), proc.pid);
+    expect(records.filter(record => record.event === "thread-spawned").length).toBe(1);
+    expect(records.filter(record => record.event !== "thread-spawned").map(record => record.event)).toEqual([
+      "trace-ready",
+      "thread-start",
+      "vm-published",
+      "trace-end",
+    ]);
+    expect(records.at(-1)).toEqual({
+      version: 1,
+      event: "trace-end",
+      pid: proc.pid,
+      nativeTid: records[0].nativeTid,
+      spawned: 1,
+      started: 1,
+      published: 1,
+      destroyed: 0,
+      ended: 0,
+      complete: 0,
+    });
+    expect(exitCode).toBe(0);
+  });
+
+  test("uses distinct files for child processes and replaces every %p", async () => {
+    using dir = tempDir("worker-vm-trace-processes", {});
+    await using proc = Bun.spawn({
+      cmd: [
+        bunExe(),
+        "-e",
+        `
+        const child = Bun.spawn([process.execPath, "--version"], { stdout: "ignore", stderr: "inherit" });
+        if (await child.exited !== 0) throw new Error("child failed");
+        console.log(child.pid);
+      `,
+      ],
+      env: { ...bunEnv, BUN_WORKER_VM_TRACE: join(String(dir), "trace-%p-%p.jsonl") },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect(stderr).toBe("");
+    const childPid = Number(stdout.trim());
+    expect(childPid).toBeGreaterThan(0);
+    expect(childPid).not.toBe(proc.pid);
+    expect(readdirSync(String(dir)).sort()).toEqual(
+      [`trace-${proc.pid}-${proc.pid}.jsonl`, `trace-${childPid}-${childPid}.jsonl`].sort(),
+    );
+    for (const pid of [proc.pid, childPid]) {
+      const records = await readTrace(
+        join(String(dir), `trace-${pid}-${pid}.jsonl`),
+        pid,
+        pid === proc.pid ? process.pid : proc.pid,
+      );
+      expect(records.length).toBe(2);
+      expect(records.at(-1).complete).toBe(1);
+    }
+    expect(exitCode).toBe(0);
+  });
+
+  test.each(["", "relative.jsonl", "existing.jsonl", "missing/trace.jsonl"])(
+    "rejects unusable destination %j before user code",
+    async value => {
+      using dir = tempDir("worker-vm-trace-invalid", { "existing.jsonl": "preserve\n" });
+      const path = value === "" || value === "relative.jsonl" ? value : join(String(dir), value);
+      await using proc = Bun.spawn({
+        cmd: [bunExe(), "-e", "console.log('user code ran')"],
+        cwd: String(dir),
+        env: { ...bunEnv, BUN_WORKER_VM_TRACE: path },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+      expect(stdout).toBe("");
+      expect(stderr).toContain("BUN_WORKER_VM_TRACE");
+      expect(await Bun.file(join(String(dir), "existing.jsonl")).text()).toBe("preserve\n");
+      expect(exitCode).toBe(1);
+    },
+  );
+
+  test("cannot enable tracing after process startup", async () => {
+    using dir = tempDir("worker-vm-trace-disabled", {});
+    const path = join(String(dir), "late.jsonl");
+    await using proc = Bun.spawn({
+      cmd: [
+        bunExe(),
+        "-e",
+        `
+        process.env.BUN_WORKER_VM_TRACE = ${JSON.stringify(path)};
+        const worker = new Worker("data:text/javascript,");
+        await new Promise((resolve, reject) => {
+          worker.onerror = reject;
+          worker.addEventListener("close", resolve);
+        });
+        console.log("done");
+      `,
+      ],
+      env: { ...bunEnv, BUN_WORKER_VM_TRACE: undefined },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect({ stdout, stderr }).toEqual({ stdout: "done\n", stderr: "" });
+    expect(readdirSync(String(dir))).toEqual([]);
+    expect(exitCode).toBe(0);
+  });
+});
 
 // Regression: `new Worker(url, { ref: false })` was silently ignored — the
 // Zig-side `user_keep_alive` field was set from it but never read, and the

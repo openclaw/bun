@@ -134,6 +134,17 @@ pub fn build(request: AotBuildRequest<'_, '_>) -> Result<AotBuild, AotBuildFailu
     let Some(embedded_names) = embedded_names else {
         return Err(failure_before_pipeline(false));
     };
+    let names = output::EntryPointNames {
+        module_prefix,
+        shown: &options.paths.entry_point_names,
+        embedded: &embedded_names,
+    };
+    let entry_point_sources = if aot.runs_in_place {
+        Vec::new()
+    } else {
+        names.source_paths(&options.entry_points, input.working_directory)
+    };
+
     transpiler.options.root_dir = Box::from(&options.paths.root_directory[..]);
     transpiler
         .resolver
@@ -168,7 +179,8 @@ pub fn build(request: AotBuildRequest<'_, '_>) -> Result<AotBuild, AotBuildFailu
         bundle.completion = Some(setup.completion);
     }
 
-    let services = BundlerServices::new(NonNull::from(&mut *bundle).cast(), module_prefix);
+    let services = BundlerServices::new(NonNull::from(&mut *bundle).cast(), module_prefix)
+        .with_entry_points(entry_point_sources);
     let result = bun_aot::compile(&options, &services, log);
 
     let embedded = services.shut_down();
@@ -201,11 +213,6 @@ pub fn build(request: AotBuildRequest<'_, '_>) -> Result<AotBuild, AotBuildFailu
 
     match result {
         Ok(compilation) => {
-            let names = output::EntryPointNames {
-                module_prefix,
-                shown: &options.paths.entry_point_names,
-                embedded: &embedded_names,
-            };
             let mut build = output::finish_build(compilation, &names, embedded);
             build.package_names = package_names;
             build.root_directory = options.paths.root_directory;

@@ -8,16 +8,19 @@
  * where the same inputs intentionally resolve to the native toolchain instead.
  */
 import { describe, expect, test } from "bun:test";
-import { bunEnv, bunExe, isMacOS, tempDir } from "harness";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { bunEnv, bunExe, isMacOS, isWindows, tempDir } from "harness";
+import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { resolveConfig, type Config, type PartialConfig, type Toolchain } from "../../scripts/build/config.ts";
+import { link, registerCompileRules } from "../../scripts/build/compile.ts";
 import { webkit } from "../../scripts/build/deps/webkit.ts";
 import { parsePackedFeaturesList } from "../../scripts/build/features-json.ts";
-import { computeFlags, DARWIN_STACK_SIZE } from "../../scripts/build/flags.ts";
+import { computeFlags, DARWIN_STACK_SIZE, linkerMapPath, orderFilePath } from "../../scripts/build/flags.ts";
 import { MACOS_SDK_VERSION, macosSdkCachePath, resolveMacosSdkPath } from "../../scripts/build/macos-sdk.ts";
 import { rustTarget } from "../../scripts/build/rust.ts";
+import { Ninja } from "../../scripts/build/ninja.ts";
+import { quoteArgs } from "../../scripts/build/shell.ts";
 import { machoEntitlementsPlist, machoPostlinkCommand } from "../../scripts/build/shims.ts";
 
 /** A fully-populated fake toolchain — resolveConfig never spawns any of these. */
@@ -28,7 +31,7 @@ function mockToolchain(overrides: Partial<Toolchain> = {}): Toolchain {
     clangVersion: "23.1.1",
     clangResourceDir: "/fake/llvm/lib/clang/23",
     ar: "/fake/llvm/bin/llvm-ar",
-    ld: "/fake/llvm/bin/ld.lld",
+    ld: isMacOS ? "" : "/fake/llvm/bin/ld.lld",
     ld64Lld: "/fake/llvm/bin/ld64.lld",
     rustLlvmVersion: "23.1.1",
     rustSysroot: undefined,
@@ -59,6 +62,47 @@ function mockToolchain(overrides: Partial<Toolchain> = {}): Toolchain {
 function resolveDarwin(partial: PartialConfig = {}, toolchain = mockToolchain()): Config {
   return resolveConfig({ os: "darwin", arch: "aarch64", buildType: "Release", ...partial }, toolchain);
 }
+
+test.skipIf(isWindows || Bun.which("ninja") === null)(
+  "macOS linker file paths survive the generated shell command",
+  () => {
+    using dir = tempDir("macos-link-paths", {
+      "probe.ts": "console.log(JSON.stringify(process.argv.slice(2)));",
+    });
+    const root = String(dir);
+    const buildDir = join(root, "build 'quoted' $literal");
+    mkdirSync(buildDir, { recursive: true });
+    const cxx = join(root, "linker 'quoted' path");
+    writeFileSync(cxx, `#!/bin/sh\nexec ${quoteArgs([bunExe(), join(root, "probe.ts")], false)} "$@"\n`);
+    chmodSync(cxx, 0o755);
+    const cfg = resolveDarwin({ buildDir, lto: false });
+    cfg.cwd = join(root, "source 'quoted' $literal");
+    cfg.cxx = cxx;
+    // Exercise the native linker command without a cross-link postprocessing tool.
+    cfg.crossTarget = undefined;
+    cfg.ld = "";
+    const n = new Ninja({ buildDir });
+    registerCompileRules(n, cfg);
+    const out = link(n, cfg, "bun-profile", [], { libs: [], flags: computeFlags(cfg).ldflags });
+    const file = join(buildDir, "build.ninja");
+    writeFileSync(file, n.toString());
+    const expanded = Bun.spawnSync([Bun.which("ninja")!, "-f", file, "-t", "commands", "-s", n.rel(out)], {
+      cwd: buildDir,
+      env: bunEnv,
+    });
+    expect(expanded.stderr.toString()).toBe("");
+    expect(expanded.exitCode).toBe(0);
+    const executed = Bun.spawnSync(["/bin/sh", "-c", expanded.stdout.toString()], { cwd: buildDir, env: bunEnv });
+    expect(executed.stderr.toString()).toBe("");
+    const args: string[] = JSON.parse(executed.stdout.toString());
+    expect(args).toContain(`-Wl,-map,${linkerMapPath(cfg)}`);
+    expect(args).toContain(`-Wl,-object_path_lto,${buildDir}/bun-profile.lto.o`);
+    expect(args).toContain(`-Wl,-order_file,${orderFilePath(cfg)}`);
+    expect(args[args.indexOf("-exported_symbols_list") + 1]).toBe(join(cfg.cwd, "src/symbols.txt"));
+    expect(args.slice(-2)).toEqual(["-o", n.rel(out)]);
+    expect(executed.exitCode).toBe(0);
+  },
+);
 
 describe.skipIf(isMacOS)("macOS cross-compile config (non-darwin host)", () => {
   test("darwin target resolves to a cross-compile with ld64.lld and llvm-strip", () => {
