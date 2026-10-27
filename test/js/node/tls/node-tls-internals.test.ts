@@ -4,6 +4,7 @@ import { createHash, X509Certificate } from "node:crypto";
 import { once } from "node:events";
 import { readFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
+import { createConnection } from "node:net";
 import { join } from "node:path";
 import {
   connect,
@@ -286,6 +287,86 @@ describe("blocked public keys", () => {
     test("every certificate the peer sent is checked when the chain does not verify", async () => {
       addBlockedSPKIForTesting(unrelatedSpkiHash);
       expect(await connectTo(await server(), { ca: unrelatedCert })).toEqual({ error: "CERT_REVOKED" });
+    });
+  });
+
+  describe.each(["TLSv1.2", "TLSv1.3"] as const)("resumed %s sessions", version => {
+    async function sessionFrom(server: Server, options: ConnectionOptions) {
+      const { promise, resolve, reject } = Promise.withResolvers<Buffer>();
+      server.once("secureConnection", socket => socket.write("session fixture"));
+      const client = connect({
+        host: "127.0.0.1",
+        port: (server.address() as AddressInfo).port,
+        checkServerIdentity: () => undefined,
+        minVersion: version,
+        maxVersion: version,
+        ...options,
+      });
+      clients.push(client);
+      client.once("session", resolve);
+      client.once("error", reject);
+      client.once("close", () => reject(new Error("closed before receiving a session")));
+      client.resume();
+      const session = await promise;
+      expect(authorization(client)).toEqual({ authorized: true, authorizationError: null });
+      return session;
+    }
+
+    async function resumedConnection(server: Server, options: ConnectionOptions) {
+      const result = await connectTo(server, { minVersion: version, maxVersion: version, ...options });
+      return { result, reused: clients.at(-1)!.isSessionReused() };
+    }
+
+    for (const wrapped of [false, true]) {
+      test(`a persisted session cannot restore a blocked intermediate${wrapped ? " through an existing socket" : ""}`, async () => {
+        const server = await listen({ key: leafKey, cert: leafChain, minVersion: version, maxVersion: version });
+        const session = await sessionFrom(server, { ca: rootCert });
+        const options = () => ({
+          ca: rootCert,
+          session,
+          ...(wrapped
+            ? { socket: createConnection({ host: "127.0.0.1", port: (server.address() as AddressInfo).port }) }
+            : {}),
+        });
+        expect(await resumedConnection(server, options())).toEqual({
+          result: { authorized: true, authorizationError: null },
+          reused: true,
+        });
+        addBlockedSPKIForTesting(intermediateSpkiHash);
+        expect((await resumedConnection(server, options())).result).toEqual({ error: "CERT_REVOKED" });
+      });
+    }
+
+    test("a blocked trust anchor is checked even when it was not sent by the peer", async () => {
+      const server = await listen({ key: leafKey, cert: leafChain, minVersion: version, maxVersion: version });
+      const session = await sessionFrom(server, { ca: rootCert });
+      addBlockedSPKIForTesting(spkiSha256(rootCert));
+      expect((await resumedConnection(server, { ca: rootCert, session })).result).toEqual({ error: "CERT_REVOKED" });
+    });
+
+    test("rejectUnauthorized: false reports a newly blocked resumed key", async () => {
+      const server = await listen({ key: leafKey, cert: leafChain, minVersion: version, maxVersion: version });
+      const session = await sessionFrom(server, { ca: rootCert });
+      addBlockedSPKIForTesting(intermediateSpkiHash);
+      expect(await resumedConnection(server, { ca: rootCert, session, rejectUnauthorized: false })).toEqual({
+        result: { authorized: false, authorizationError: "CERT_REVOKED" },
+        reused: true,
+      });
+    });
+
+    test("an unused blocked peer certificate does not invalidate a resumed verified chain", async () => {
+      const server = await listen({
+        key: leafKey,
+        cert: `${leafChain}\n${unrelatedCert}`,
+        minVersion: version,
+        maxVersion: version,
+      });
+      const session = await sessionFrom(server, { ca: rootCert });
+      addBlockedSPKIForTesting(unrelatedSpkiHash);
+      expect(await resumedConnection(server, { ca: rootCert, session })).toEqual({
+        result: { authorized: true, authorizationError: null },
+        reused: true,
+      });
     });
   });
 

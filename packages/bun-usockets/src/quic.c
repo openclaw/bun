@@ -1409,6 +1409,7 @@ us_quic_socket_context_t *us_create_quic_client_context(
      * this path, and set_cert_store takes the getter's up-ref. */
     SSL_CTX_set_cert_store(ssl, us_get_shared_default_ca_store(us_default_use_system_ca()));
     SSL_CTX_set_custom_verify(ssl, SSL_VERIFY_PEER, us_quic_client_verify);
+    SSL_CTX_set_reverify_on_resume(ssl, 1);
     if (!us_ssl_ctx_set_verify_signature_algorithms(ssl)) { SSL_CTX_free(ssl); return NULL; }
 
     us_quic_socket_context_t *ctx = (us_quic_socket_context_t *)
