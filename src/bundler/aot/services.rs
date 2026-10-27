@@ -304,7 +304,7 @@ impl SourceProvider for BundlerServices {
     }
 
     fn has_resolve_plugins(&self) -> bool {
-        self.plugins.is_some()
+        self.plugins.is_some() || !self.entry_point_sources.is_empty()
     }
 
     fn find_file(&self, _host: &dyn Host, search: &FileSearch<'_>) -> FoundCode {
