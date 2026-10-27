@@ -1970,12 +1970,17 @@ const char *us_X509_error_code(long err) {
 }
 
 static int us_x509_session_chain_error(X509_STORE *store, X509_VERIFY_PARAM *param,
-                                     STACK_OF(X509) *chain, int purpose, int allow_untrusted) {
+                                     STACK_OF(X509) *chain, int purpose, int allow_untrusted, SSL *ssl) {
   int error = X509_V_ERR_UNSPECIFIED;
   X509_STORE_CTX *ctx = X509_STORE_CTX_new();
+  /* Keep the full-handshake final error: its verify callback may continue the
+   * chain walk and needs the current SSL owner in the store context's ex_data. */
   if (ctx && X509_STORE_CTX_init(ctx, store, sk_X509_value(chain, 0), chain) == 1 &&
+      (!ssl || X509_STORE_CTX_set_ex_data(ctx, SSL_get_ex_data_X509_STORE_CTX_idx(), ssl) == 1) &&
       X509_STORE_CTX_set_default(ctx, purpose == X509_PURPOSE_SSL_CLIENT ? "ssl_client" : "ssl_server") == 1 &&
       X509_VERIFY_PARAM_set1(X509_STORE_CTX_get0_param(ctx), param) == 1) {
+    int (*verify_callback)(int, X509_STORE_CTX *) = ssl ? SSL_get_verify_callback(ssl) : NULL;
+    if (verify_callback) X509_STORE_CTX_set_verify_cb(ctx, verify_callback);
     int ok = us_x509_verify_cert(ctx, purpose);
     error = allow_untrusted ? us_x509_store_ctx_blocked_key_error(ctx) : X509_STORE_CTX_get_error(ctx);
     if (!allow_untrusted && !ok && error == X509_V_OK) error = X509_V_ERR_UNSPECIFIED;
@@ -1994,7 +1999,7 @@ long us_ssl_verify_result(SSL *ssl) {
   if (!chain || sk_X509_num(chain) == 0) return result;
   ERR_set_mark();
   int error = us_x509_session_chain_error(SSL_CTX_get_cert_store(SSL_get_SSL_CTX(ssl)),
-      SSL_get0_param(ssl), chain, SSL_is_server(ssl) ? X509_PURPOSE_SSL_CLIENT : X509_PURPOSE_SSL_SERVER, 0);
+      SSL_get0_param(ssl), chain, SSL_is_server(ssl) ? X509_PURPOSE_SSL_CLIENT : X509_PURPOSE_SSL_SERVER, 0, ssl);
   ERR_pop_to_mark();
   return error == X509_V_OK ? result : error;
 }
@@ -2023,7 +2028,7 @@ int us_ssl_ctx_session_is_trusted(SSL_CTX *ctx, const unsigned char *der, size_t
     }
   }
   trusted = us_x509_session_chain_error(SSL_CTX_get_cert_store(ctx), SSL_CTX_get0_param(ctx),
-      chain, X509_PURPOSE_SSL_SERVER, allow_untrusted) == X509_V_OK;
+      chain, X509_PURPOSE_SSL_SERVER, allow_untrusted, NULL) == X509_V_OK;
 cleanup:
   sk_X509_pop_free(chain, X509_free);
   SSL_SESSION_free(session);
