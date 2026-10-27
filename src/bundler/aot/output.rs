@@ -25,19 +25,41 @@ impl EntryPointNames<'_> {
             None => shown,
         }
     }
+
+    pub(crate) fn source_paths(
+        &self,
+        entry_points: &[Vec<u8>],
+        working_directory: &[u8],
+    ) -> Vec<(Vec<u8>, Vec<u8>)> {
+        let mut paths = Vec::with_capacity(2 * entry_points.len());
+        // The embedded file wins over a source-name alias, as in StandaloneModuleGraph::resolve_module.
+        for names in [self.embedded, self.shown] {
+            for (name, entry) in names.iter().zip(entry_points) {
+                let source = super::paths::absolute_path(working_directory, entry);
+                let name = sanitized_segments(name).collect::<Vec<_>>().join(&b"/"[..]);
+                let public_path = [self.module_prefix, &name].concat();
+                paths.push((public_path, source));
+            }
+        }
+        paths.sort_by(|a, b| a.0.cmp(&b.0));
+        paths.dedup_by(|a, b| a.0 == b.0);
+        paths
+    }
 }
 
 /// In a public path, a `..` that leaves the root directory of the build is `_.._`.
 fn is_shown_as(name: &[u8], shown: &[u8]) -> bool {
-    let segments = bun_core::strings::split(name, b"/");
-    let segments = segments.map(|segment| {
+    sanitized_segments(name).eq(bun_core::strings::split(shown, b"/"))
+}
+
+fn sanitized_segments(name: &[u8]) -> impl Iterator<Item = &[u8]> {
+    bun_core::strings::split(name, b"/").map(|segment| {
         if segment == b".." {
             &b"_.._"[..]
         } else {
             segment
         }
-    });
-    segments.eq(bun_core::strings::split(shown, b"/"))
+    })
 }
 
 impl AotEntryPoint {
@@ -212,6 +234,59 @@ mod tests {
         );
         assert_eq!(names.file_name(b"/$bunfs/root/a.ts?text"), b"a.ts?text");
         assert_eq!(names.file_name(b"/project/a.ts"), b"/project/a.ts");
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    fn entry_sources_use_the_prepared_public_and_embedded_names() {
+        let entry_names = EntryPointNames {
+            module_prefix: PREFIX,
+            shown: &names(&["main.ts", "../lib/value.ts", "custom/facade.js", "program"]),
+            embedded: &names(&[
+                "program",
+                "_.._/lib/value.js",
+                "custom/facade.js",
+                "collision.js",
+            ]),
+        };
+        let sources = entry_names.source_paths(
+            &names(&[
+                "src/main.ts",
+                "lib/value.ts",
+                "src/facade.js",
+                "src/collision.ts",
+            ]),
+            b"/project",
+        );
+        assert_eq!(
+            sources,
+            vec![
+                (
+                    b"/$bunfs/root/_.._/lib/value.js".to_vec(),
+                    b"/project/lib/value.ts".to_vec()
+                ),
+                (
+                    b"/$bunfs/root/_.._/lib/value.ts".to_vec(),
+                    b"/project/lib/value.ts".to_vec()
+                ),
+                (
+                    b"/$bunfs/root/collision.js".to_vec(),
+                    b"/project/src/collision.ts".to_vec()
+                ),
+                (
+                    b"/$bunfs/root/custom/facade.js".to_vec(),
+                    b"/project/src/facade.js".to_vec()
+                ),
+                (
+                    b"/$bunfs/root/main.ts".to_vec(),
+                    b"/project/src/main.ts".to_vec()
+                ),
+                (
+                    b"/$bunfs/root/program".to_vec(),
+                    b"/project/src/main.ts".to_vec()
+                ),
+            ]
+        );
     }
 
     #[test]

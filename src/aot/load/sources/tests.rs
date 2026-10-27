@@ -865,7 +865,8 @@ fn evaluated_function_is_found_by_file_and_call() {
             FnKind::Expr
         );
         let paths = sources.module_paths(function.file);
-        assert!(paths.public_path.starts_with(b"/$bun/text/"));
+        let expected = b"/$bun/text/%2f%24bunfs%2froot%2fmain.js/0.cjs";
+        assert_eq!(paths.public_path, expected);
         assert_eq!(paths.display_path, paths.public_path);
         assert_eq!(sources.diagnostic_path(function.file), paths.public_path);
 
@@ -896,6 +897,59 @@ fn uncompiled_text_has_no_function() {
         );
         assert_eq!(sources.evaluated_function(main, site.call), None);
         assert!(sources.evaluated_functions_of(main).is_empty());
+        assert_eq!(
+            sources.module_paths(text_file).public_path,
+            b"/$bun/text/%2f%24bunfs%2froot%2fmain.js/0.cjs"
+        );
+    });
+}
+
+#[test]
+fn nested_evaluated_text_uses_finalized_parent_path() {
+    let source = r#"export const outer = Function("return Function('return 42')");"#;
+    with_project_view(&[("main.js", source)], |view| {
+        let sources = view.sources;
+        let main = sources.entry_points()[0].file;
+        let [(_, outer)] = *sources.evaluated_functions_of(main) else {
+            panic!("expected one outer evaluated text");
+        };
+        let [(_, inner)] = *sources.evaluated_functions_of(outer.file) else {
+            panic!("expected one nested evaluated text");
+        };
+        assert_eq!(
+            sources.module_paths(outer.file).public_path,
+            b"/$bun/text/%2f%24bunfs%2froot%2fmain.js/0.cjs"
+        );
+        let paths = sources.module_paths(inner.file);
+        assert_eq!(
+            paths.public_path,
+            b"/$bun/text/%2f%24bun%2ftext%2f%252f%2524bunfs%252froot%252fmain.js%2f0.cjs/0.cjs"
+        );
+        assert_eq!(paths.display_path, paths.public_path);
+        assert_eq!(sources.diagnostic_path(inner.file), paths.public_path);
+        assert_eq!(sources.evaluator_of(inner.file), Some(outer.file));
+    });
+}
+
+#[test]
+fn evaluated_text_public_index_includes_rejected_text() {
+    let source = r#"Function("return ("); export const answer = Function("return 42");"#;
+    with_project_view(&[("main.js", source)], |view| {
+        let (files, sources) = (view.files(), view.sources);
+        let main = sources.entry_points()[0].file;
+        let parsed = parsed_source(files, main).unwrap();
+        assert_eq!(parsed.builtins.evaluated_texts().len(), 2);
+        assert_eq!(parsed.evaluated_text_sites.len(), 1);
+        let [(_, function)] = *sources.evaluated_functions_of(main) else {
+            panic!("expected one compiled text");
+        };
+        let paths = sources.module_paths(function.file);
+        assert_eq!(
+            paths.public_path,
+            b"/$bun/text/%2f%24bunfs%2froot%2fmain.js/1.cjs"
+        );
+        assert_eq!(paths.display_path, paths.public_path);
+        assert_eq!(sources.diagnostic_path(function.file), paths.public_path);
     });
 }
 

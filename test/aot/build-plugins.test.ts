@@ -36,6 +36,72 @@ const cases: Record<string, { files: Record<string, string>; prints: string }> =
     },
     prints: "other\n",
   },
+  "a lazy initializer reads the resolved runtime export before the type source is evaluated": {
+    files: {
+      "package.json": JSON.stringify({ type: "module", sideEffects: false }),
+      "tsconfig.json": JSON.stringify({
+        compilerOptions: {
+          strict: true,
+          target: "ESNext",
+          module: "ESNext",
+          moduleResolution: "bundler",
+          noEmit: true,
+          allowImportingTsExtensions: true,
+          paths: { library: ["./types/diagnostics.ts"] },
+        },
+        files: ["main.ts"],
+      }),
+      "main.ts": `import { has } from "./consumer.ts"; console.log(has("runtime")); await import("./types/constant.ts");`,
+      "consumer.ts": `import { code } from "library"; const codes = new Set([code]); export function has(value: string): boolean { return codes.has(value); }`,
+      "types/diagnostics.ts": `export { code } from "./constant.ts";`,
+      "types/constant.ts": `export const code: string = "type source";`,
+      "runtime/diagnostics.ts": `export { code } from "./constant.ts";`,
+      "runtime/constant.ts": `export const code: string = "runtime";`,
+      "plugin.ts": `import { join } from "path"; export default { name: "runtime-library", setup(b: any) { b.onResolve({ filter: /^library$/ }, () => ({ path: join(import.meta.dir, "runtime/diagnostics.ts") })); } };`,
+    },
+    prints: "true\n",
+  },
+  ...Object.fromEntries(
+    [false, true].map(nested => [
+      `a returned argument preserves JavaScript values across a declared import (nested call: ${nested})`,
+      {
+        files: {
+          "package.json": JSON.stringify({ type: "module" }),
+          "tsconfig.json": JSON.stringify({
+            compilerOptions: {
+              strict: true,
+              target: "ESNext",
+              module: "Preserve",
+              moduleResolution: "bundler",
+              noEmit: true,
+              allowImportingTsExtensions: true,
+              types: [],
+              lib: ["ESNext"],
+              paths: { sdk: ["./sdk.d.ts"] },
+            },
+            files: ["main.ts"],
+          }),
+          "sdk.d.ts": `export declare function prepareSource(code: string): string;`,
+          "sdk.ts": `${nested ? "function consume(code: string): number { return code.length; }\n" : ""}export function prepareSource(code: string): string { ${nested ? "consume(code); " : ""}return code; }`,
+          "main.ts": `import { prepareSource } from "sdk";
+import { receive } from "./bridge.mjs";
+type Input = { source: string };
+async function run(input: Input): Promise<string> { return prepareSource(input.source); }
+await receive(input => run(input as Input));`,
+          "bridge.d.mts": `export declare function receive<Output, Input = unknown>(handler: (input: Input) => Promise<Output>): Promise<void>;`,
+          "bridge.mjs": `import { prepareSource } from "./sdk.ts";
+export async function receive(handler) {
+  for (const source of ["hello", 42]) {
+    const value = await handler({ source }); console.log(typeof value + ":" + value);
+  }
+  const value = prepareSource(42); console.log("direct:" + typeof value + ":" + value);
+}`,
+          "plugin.ts": `import { join } from "path"; export default { name: "sdk-code", setup(b: any) { b.onResolve({ filter: /^sdk$/ }, () => ({ path: join(import.meta.dir, "sdk.ts") })); } };`,
+        },
+        prints: "string:hello\nnumber:42\ndirect:number:42\n",
+      },
+    ]),
+  ),
   "a module that is in no file": {
     files: {
       "main.ts": `// @ts-ignore\nimport { answer, twice } from "virtual:config"; console.log(answer, twice(4));`,

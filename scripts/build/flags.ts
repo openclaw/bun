@@ -53,8 +53,8 @@ export type FlagValue = string | string[] | ((cfg: Config) => string | string[])
 /**
  * Main-thread stack size for darwin executables (18 MB — JSC's interpreter
  * and the bundler's visitor recursion both go deep). Passed to the linker as
- * `-Wl,-stack_size` on native darwin links; ld64.lld parses but doesn't
- * implement that option, so cross links additionally patch LC_MAIN.stacksize
+ * `-Wl,-stack_size` on darwin links; ld64.lld parses but doesn't
+ * implement that option, so its links additionally patch LC_MAIN.stacksize
  * post-link with the same value (shims/macho-postlink.c). Keep in sync with
  * the Windows `/STACK:` reserve and the Linux `-z stack-size` below.
  */
@@ -254,15 +254,11 @@ export const globalFlags: Flag[] = [
     // ld64.lld's --icf=safe knows which functions never have their address
     // taken and can be folded without breaking pointer-identity comparisons
     // (the same table -faddrsig emits by default on ELF for the Linux
-    // -Wl,-icf=safe). Cross-only: lld consumes the section and drops it
-    // from the output, but Apple's ld doesn't know it and would copy ~8
-    // bytes of dead __DATA per TU into the native binary — and `strip`
-    // won't remove a regular data section post-link. Flip the predicate to
-    // plain `c.darwin` once someone confirms on a Mac that Apple's ld
-    // discards it.
+    // -Wl,-icf=safe). lld consumes the section and drops it from the output,
+    // but Apple's ld would copy unused __DATA into the binary.
     flag: "-faddrsig",
-    when: c => c.darwin && c.crossTarget !== undefined,
-    desc: "macOS cross: address-significance table for the linker's safe ICF",
+    when: c => c.darwin && linksWithLld(c),
+    desc: "macOS lld: address-significance table for the linker's safe ICF",
   },
 
   // ─── CPU target ───
@@ -1201,7 +1197,7 @@ export const linkerFlags: Flag[] = [
     desc: "18MB stack, skip compact unwind",
   },
   {
-    // Force the linker to reserve + emit LC_CODE_SIGNATURE on arm64 cross
+    // Force the linker to reserve + emit LC_CODE_SIGNATURE on arm64 ld64.lld
     // links so the post-link fixup (shims/macho-postlink.c) has a signature
     // to replace after patching the stack size — arm64 macOS refuses to exec
     // unsigned binaries. x64 deliberately ships UNSIGNED, matching the
@@ -1209,8 +1205,8 @@ export const linkerFlags: Flag[] = [
     // unsigned binaries fine, an ad-hoc signature buys nothing there, and
     // the CodeDirectory costs 32 bytes per 4 KB page ≈ 0.8% of the binary).
     flag: "-Wl,-adhoc_codesign",
-    when: c => c.darwin && c.crossTarget !== undefined && c.arm64,
-    desc: "macOS arm64 cross-link: emit an ad-hoc LC_CODE_SIGNATURE for macho-postlink to replace",
+    when: c => c.darwin && linksWithLld(c) && c.arm64,
+    desc: "macOS arm64 lld link: emit an ad-hoc LC_CODE_SIGNATURE for macho-postlink to replace",
   },
   {
     // `bun build --compile` grows the __BUN placeholder segment in place and
@@ -1225,8 +1221,8 @@ export const linkerFlags: Flag[] = [
     // holds a single 8-byte JSC::SourceProfiler hook and is only meaningful
     // as a dyld-shared-cache page-grouping hint, which executables don't use.
     flag: "-Wl,-rename_segment,__DATA_DIRTY,__DATA",
-    when: c => c.darwin && c.crossTarget !== undefined,
-    desc: "macOS cross-link: keep __BUN as the last content segment so `bun build --compile` can grow it",
+    when: c => c.darwin && linksWithLld(c),
+    desc: "macOS lld link: keep __BUN as the last content segment so `bun build --compile` can grow it",
   },
   {
     // Identical-code folding, on top of -dead_strip: dead_strip removes
@@ -1236,32 +1232,36 @@ export const linkerFlags: Flag[] = [
     // mode is what folded callBigIntConstructor into constructBigInt on
     // Windows (/OPT:ICF) and broke `expect.any()`. Matches the Linux
     // release link's -Wl,-icf=safe. lld-only: Apple's ld has no ICF, so
-    // this is a cross-only divergence (smaller binary than native). The
-    // prebuilt WebKit archives are compiled with -faddrsig too, so WebKit
+    // this applies only when ld64.lld is selected. The prebuilt WebKit
+    // archives are compiled with -faddrsig too, so WebKit
     // code participates in the folding.
     flag: c => `-Wl,--icf=${icfMode(c)}`,
     when: c => c.darwin && linksWithLld(c),
-    desc: "macOS cross-link: fold identical address-insignificant functions (release)",
+    desc: "macOS lld link: fold identical address-insignificant functions (release)",
   },
   {
     // -ld_new selects Apple's new linker — only meaningful (and only
-    // understood) when Apple's ld driver does the link. ld64.lld (the
-    // cross-link path) parses it as `-l d_new` and fails.
+    // understood) when Apple's ld driver does the link. ld64.lld parses
+    // it as `-l d_new` and fails.
     flag: "-Wl,-ld_new",
-    when: c => c.darwin && c.crossTarget === undefined,
-    desc: "Use new Apple linker (native darwin links only)",
+    when: c => c.darwin && !linksWithLld(c),
+    desc: "Use new Apple linker",
   },
   {
-    // Cross-link from a non-darwin host: same pattern as Android/FreeBSD —
-    // target triple + explicit linker. -isysroot is added by the deployment-
+    // Select ld64.lld explicitly, adding a target triple for cross builds.
+    // -isysroot is added by the deployment-
     // target flag below; the clang driver forwards it to ld64.lld as
     // -syslibroot. -mlinker-version≥520 makes the driver emit the modern
     // -platform_version argument ld64.lld requires (without it the driver
     // assumes an ancient host ld64 and emits nothing usable); the exact
     // value only gates driver behavior, so track a recent ld64 release.
-    flag: c => [`--target=${c.crossTarget!}`, "-mlinker-version=705", `--ld-path=${c.ld}`],
-    when: c => c.darwin && c.crossTarget !== undefined,
-    desc: "macOS cross-link: target triple + ld64.lld + modern linker arg style",
+    flag: c => [
+      ...(c.crossTarget === undefined ? [] : [`--target=${c.crossTarget}`]),
+      "-mlinker-version=705",
+      quote(`--ld-path=${c.ld}`, c.host.os === "windows"),
+    ],
+    when: c => c.darwin && linksWithLld(c),
+    desc: "macOS lld link: explicit linker + modern linker arg style",
     toolchain: true,
   },
   {
@@ -1275,8 +1275,8 @@ export const linkerFlags: Flag[] = [
     // `bun build --compile` rewrites the segment at 16 KB alignment anyway
     // (exe_format/macho.rs). arm64 uses 16 KB pages, so it's unaffected.
     flag: ["-Wl,-sectalign,__BUN,__bun,0x1000"],
-    when: c => c.darwin && c.crossTarget !== undefined && c.x64,
-    desc: "macOS x64 cross-link: keep the __BUN segment's filesize ≤ vmsize under ld64.lld",
+    when: c => c.darwin && linksWithLld(c) && c.x64,
+    desc: "macOS x64 lld link: keep the __BUN segment's filesize ≤ vmsize under ld64.lld",
   },
   {
     // Must also be passed at link: ld64 reads this to write LC_BUILD_VERSION.minos.
@@ -1293,7 +1293,7 @@ export const linkerFlags: Flag[] = [
     desc: "Suppress all linker warnings (workaround: no selective suppress for alignment warnings as of 2025-07)",
   },
   {
-    flag: c => ["-dead_strip", "-dead_strip_dylibs", `-Wl,-map,${linkerMapPath(c)}`],
+    flag: c => ["-dead_strip", "-dead_strip_dylibs", quote(`-Wl,-map,${linkerMapPath(c)}`, c.host.os === "windows")],
     when: c => c.darwin && c.release,
     desc: "Dead-code strip + emit linker map",
   },
@@ -1305,7 +1305,7 @@ export const linkerFlags: Flag[] = [
     // and the dSYM empty. -object_path_lto persists the LTO-codegen'd object
     // at a stable path inside the build dir and points the debug map at it.
     // The link holds bitcode with `lto` off too: the Rust crates (linkLtoIsRustOnly).
-    flag: c => `-Wl,-object_path_lto,${c.buildDir}/${bunExeName(c)}.lto.o`,
+    flag: c => quote(`-Wl,-object_path_lto,${c.buildDir}/${bunExeName(c)}.lto.o`, c.host.os === "windows"),
     when: c => c.darwin && (c.lto || linkLtoIsRustOnly(c)),
     desc: "Persist the LTO-generated object so dsymutil can extract its DWARF into the dSYM",
   },
@@ -1315,7 +1315,7 @@ export const linkerFlags: Flag[] = [
     // starting up, and Apple's linker sorts them to the front of __text. Where
     // the file comes from is the same as on linux (see that entry). Unknown
     // names are silently skipped, so a stale file only costs part of the win.
-    flag: c => `-Wl,-order_file,${orderFilePath(c)}`,
+    flag: c => quote(`-Wl,-order_file,${orderFilePath(c)}`, c.host.os === "windows"),
     when: c => c.darwin && usesOrderFile(c),
     desc: "Sort startup-hot functions to the front of __text (cuts resident binary pages)",
   },
@@ -1583,7 +1583,7 @@ export const linkerFlags: Flag[] = [
     desc: "Write the exe's import library under obj/",
   },
   {
-    flag: c => ["-exported_symbols_list", `${c.cwd}/src/symbols.txt`],
+    flag: c => ["-exported_symbols_list", quote(`${c.cwd}/src/symbols.txt`, c.host.os === "windows")],
     when: c => c.darwin,
     desc: "Exported symbol list",
   },

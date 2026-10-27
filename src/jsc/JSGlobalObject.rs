@@ -686,11 +686,13 @@ impl JSGlobalObject {
         namespace_: &BunString,
         path: &BunString,
         source: &BunString,
+        kind: &BunString,
     ) -> JsResult<Option<JSValue>> {
         crate::mark_binding();
         let ns = (namespace_.length() > 0).then_some(namespace_);
-        let result =
-            crate::from_js_host_call(self, || Bun__runOnResolvePlugins(self, ns, path, source))?;
+        let result = crate::from_js_host_call(self, || {
+            Bun__runOnResolvePlugins(self, ns, path, source, kind)
+        })?;
         if result.is_undefined_or_null() {
             return Ok(None);
         }
@@ -1384,6 +1386,7 @@ unsafe extern "C" {
         namespace_: Option<&BunString>,
         path: &BunString,
         source: &BunString,
+        kind: &BunString,
     ) -> JSValue;
     safe fn Bun__hasPlugins(global: &JSGlobalObject) -> bool;
     safe fn Bun__resolveVirtualModule(

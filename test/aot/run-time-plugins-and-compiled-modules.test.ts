@@ -155,6 +155,34 @@ describe.concurrent("plugins registered at run time", () => {
     timeout,
   );
 
+  test(
+    "extensionless SDK imports in external modules reach runtime resolution hooks",
+    () =>
+      slot(async () => {
+        using dir = tempDir("aot-external-plugin-alias", {
+          "tsconfig.json": tsconfig,
+          "sdk.cjs": `exports.value = 42;`,
+          "external.mjs": `import { value } from "uninstalled-package/sdk"; export { value };`,
+          "main.ts": String.raw`
+            import { createRequire } from "node:module";
+            import { join } from "node:path";
+            Bun.plugin({
+              name: "external-sdk-alias",
+              setup(build) {
+                build.onResolve({ filter: /^uninstalled-package\/sdk$/ }, () => ({
+                  path: join(process.cwd(), "sdk.cjs"), namespace: "file",
+                }));
+              },
+            });
+            console.log(createRequire(import.meta.url)("./external.mjs").value);
+          `,
+        });
+        const { stdout, stderr, exitCode } = await compileAndRun(String(dir), "--aot", "--external=./external.mjs");
+        expect({ stdout, stderr, exitCode }).toEqual({ stdout: "42\n", stderr: "", exitCode: 0 });
+      }),
+    timeout,
+  );
+
   test("plugins for other modules register under bun run", async () => {
     using dir = tempDir("aot-run-time-plugin", { ...library, "main.ts": accepted });
     const { stdout, exitCode } = await spawned([bunExe(), "run", "main.ts"], String(dir), bunEnv);

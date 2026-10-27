@@ -244,12 +244,11 @@ export function emitBun(n: Ninja, cfg: Config, sources: Sources): BunOutput {
   // Full include / define set: bun's own + what deps provide + buildDir (for
   // the generated versions header).
   const allIncludes = [...bunIncludes(cfg), cfg.buildDir, ...depIncludes];
-  const includeFlags = allIncludes.map(inc => `-I${inc}`);
   const defineFlags = [...flags.defines, ...depDefines].map(d => `-D${d}`);
 
   // Final flag arrays for compile.
-  const cxxFlagsFull = [...flags.cxxflags, ...includeFlags, ...defineFlags];
-  const cFlagsFull = [...flags.cflags, ...includeFlags, ...defineFlags];
+  const cxxFlagsFull = [...flags.cxxflags, ...defineFlags];
+  const cFlagsFull = [...flags.cflags, ...defineFlags];
 
   // The generated files compiles wait for, behind one phony so each compile
   // edge names one order-only input instead of repeating the list (the ninja
@@ -273,6 +272,7 @@ export function emitBun(n: Ninja, cfg: Config, sources: Sources): BunOutput {
   // they still run. cxx transitively waits: cxx → PCH → deps+cppAll.
   const pchOut = pch(n, cfg, "src/jsc/bindings/root-pch.h", {
     flags: cxxFlagsFull,
+    includes: allIncludes,
     implicitInputs: depHeaderSignal,
     orderOnlyInputs: [codegenReady],
   });
@@ -349,7 +349,7 @@ export function emitBun(n: Ninja, cfg: Config, sources: Sources): BunOutput {
     n.addCompileCommand({
       directory: cfg.buildDir,
       file: src,
-      arguments: [cfg.cxx, ...cxxFlagsFull, "-c", src],
+      arguments: [cfg.cxx, ...cxxFlagsFull, ...allIncludes.map(inc => `-I${inc}`), "-c", src],
     });
   }
 
@@ -360,6 +360,7 @@ export function emitBun(n: Ninja, cfg: Config, sources: Sources): BunOutput {
     const extraFlags = extraFlagsFor(cfg, relSrc);
     const opts: Parameters<typeof cxx>[3] = {
       flags: [...cxxFlagsFull, ...extraFlags],
+      includes: allIncludes,
     };
     if (!noPchSources.has(src)) {
       // PCH has implicit deps on depHeaderSignal. cxx has implicit dep on PCH.
@@ -381,6 +382,7 @@ export function emitBun(n: Ninja, cfg: Config, sources: Sources): BunOutput {
   const compileC = (src: string): string => {
     const obj = cc(n, cfg, src, {
       flags: cFlagsFull,
+      includes: allIncludes,
       implicitInputs: depHeaderSignal,
       orderOnlyInputs: codegenOrderOnly,
     });
@@ -398,6 +400,7 @@ export function emitBun(n: Ninja, cfg: Config, sources: Sources): BunOutput {
   cObjects.push(
     cc(n, cfg, codegen.internalModulesAsm, {
       flags: cFlagsFull,
+      includes: allIncludes,
       implicitInputs: [codegen.internalModulesBin],
     }),
   );
@@ -405,6 +408,7 @@ export function emitBun(n: Ninja, cfg: Config, sources: Sources): BunOutput {
     cObjects.push(
       cc(n, cfg, resolve(cfg.cwd, "src", "builtin_sources", "archive.S"), {
         flags: cFlagsFull,
+        includes: allIncludes,
         implicitInputs: [codegen.builtinSourcesArchive],
       }),
     );

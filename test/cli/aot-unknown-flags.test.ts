@@ -117,6 +117,8 @@ describe.concurrent("an unknown flag that starts with --aot is an error", () => 
     ["aotExplains", '"guards"', "aotExplain"],
     ["aotDisabled", '"flow-results"', "aotDisable"],
     ["aotHeats", '"everything-is-cold"', "aotHeat"],
+    ["aotCountBranch", "true", "aotCountBranches"],
+    ["aotCountArrival", "true", "aotCountArrivals"],
     ["aott", "true", "aot"],
     ["aot_log_type_mismatches", "true", "aotLogTypeMismatches"],
     ["aotSomethingElse", "1", null],
@@ -132,7 +134,7 @@ describe.concurrent("an unknown flag that starts with --aot is an error", () => 
 `,
     });
     expect((await bun(String(dir), "build.ts")).stdout).toBe(
-      `compile.${key} is not a valid option.${meant ? ` Did you mean compile.${meant}?` : ""} Options that start with "aot": aot, aotDisable, aotExplain, aotHeat, aotLogTypeMismatches\n`,
+      `compile.${key} is not a valid option.${meant ? ` Did you mean compile.${meant}?` : ""} Options that start with "aot": aot, aotCountArrivals, aotCountBranches, aotDisable, aotExplain, aotHeat, aotLogTypeMismatches\n`,
     );
   });
 
@@ -143,6 +145,8 @@ describe.concurrent("an unknown flag that starts with --aot is an error", () => 
     ["aotExplain", '"guards"', "undefined"],
     ["aotDisable", '["flow-results"]', '{ outfile: "./out", aot: true }'],
     ["aotHeat", '"everything-is-cold"', '{ outfile: "./out", aot: true }'],
+    ["aotCountBranches", "true", '{ outfile: "./out", aot: true }'],
+    ["aotCountArrivals", "true", '{ outfile: "./out", aot: true }'],
   ])("Bun.build: %s: %s beside compile: %s", async (key, value, compile) => {
     using dir = tempDir("aot-option-beside-compile", {
       ...files,
