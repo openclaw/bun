@@ -928,8 +928,7 @@ describe("a fatal post-handshake SSL error over a Duplex", () => {
     expect(code).toBe(ALERT_BAD_RECORD_MAC);
   });
 
-  // Known inherited gap: a fatal SSL error closes the Duplex before Node does; see the separate close-timing follow-up.
-  it.failing("is reported on a server socket", async () => {
+  it("is reported on a server socket", async () => {
     const result = await withFaultProxy({ connect: tlsConnect, serverOverDuplex: true }, peers => {
       const { client, server, toServer } = peers;
       const events = faultEvents(server, client);
@@ -2671,11 +2670,17 @@ describe("a TLS socket over a Duplex transport reports that transport's error", 
     expect(events).toEqual(["error:transport failed", "close destroyed=true"]);
   });
 
-  it("destroying TLS destroys its transport without ending it", async () => {
+  it.each([
+    ["isolated-immediate", 1],
+    ["isolated-after-check", 1],
+    ["consecutive-immediate-after-check", 2],
+    ["consecutive-after-check-immediate", 2],
+  ] as const)("destroying TLS destroys its transport without ending it: %s", async (scenario, expectedCases) => {
     // Node 24 destroys the transport without accessing end, even if destroy is a no-op.
     // Observe natural quiescence before cleanup so a delayed end getter cannot escape the assertion.
+    // Each process gets its own test budget; consecutive operations stay in the same child.
     await using proc = Bun.spawn({
-      cmd: [bunExe(), join(import.meta.dir, "tls-destroy-transport-fixture.cjs")],
+      cmd: [bunExe(), join(import.meta.dir, "tls-destroy-transport-fixture.cjs"), "--scenario", scenario],
       env: bunEnv,
       stdout: "pipe",
       stderr: "pipe",
@@ -2686,13 +2691,8 @@ describe("a TLS socket over a Duplex transport reports that transport's error", 
       .split("\n")
       .map(line => JSON.parse(line));
     const scenarios = rows.filter(row => row.type === "scenario-result");
-    expect(scenarios.map(row => row.scenario)).toEqual([
-      "isolated-immediate",
-      "isolated-after-check",
-      "consecutive-immediate-after-check",
-      "consecutive-after-check-immediate",
-    ]);
-    expect(scenarios.flatMap(row => row.cases)).toHaveLength(6);
+    expect(scenarios.map(row => row.scenario)).toEqual([scenario]);
+    expect(scenarios[0].cases).toHaveLength(expectedCases);
     for (const scenario of scenarios) {
       expect(scenario).toMatchObject({
         pass: true,
@@ -2714,7 +2714,7 @@ describe("a TLS socket over a Duplex transport reports that transport's error", 
         });
       }
     }
-    expect(rows.at(-1)).toMatchObject({ type: "parent-result", pass: true, timedOut: false });
+    expect(rows.at(-1)).toMatchObject({ type: "scenario-result", scenario, pass: true });
     expect(stderr).toBe("");
     expect(exitCode).toBe(0);
   });
