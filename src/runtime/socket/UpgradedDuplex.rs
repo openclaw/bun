@@ -900,6 +900,8 @@ impl UpgradedDuplex {
     pub(super) fn teardown(&self) {
         bun_output::scoped_log!(UpgradedDuplex, "deinit");
         if !self.handlers.ctx.is_null() {
+            // SAFETY: ctx points to the containing DuplexUpgradeContext,
+            // which outlives this field through Drop.
             let context = unsafe { &*self.handlers.ctx.cast::<super::DuplexUpgradeContext>() };
             context.teardown_native(self.origin.get().is_empty());
         }
@@ -1047,7 +1049,7 @@ pub(crate) fn on_write_complete<'a>(
 ) -> JsResult<()> {
     let global = cx.global();
     if let Some(pointer) = host_fn::get_function_data(callee.to_js()) {
-        // The bound callback roots its owner; live teardown neuters this target.
+        // SAFETY: The bound callback roots its owner; live teardown neuters this target.
         let this = unsafe { &*pointer.cast::<UpgradedDuplex>() };
         let _context = this.keep_alive();
         let error = error.to_js();
@@ -1089,7 +1091,7 @@ pub(crate) fn dispatch_write_complete(cx: &mut JsScope<'_>, callee: JsLocal<'_>,
     let Some(pointer) = host_fn::get_function_data(callee.to_js()) else {
         return;
     };
-    // The queued bound dispatcher roots the owner until the numeric completion is delivered.
+    // SAFETY: The queued bound dispatcher roots the owner until the numeric completion is delivered.
     let this = unsafe { &*pointer.cast::<UpgradedDuplex>() };
     let _context = this.keep_alive();
     if this.pending_writes.get() == 0 {
@@ -1136,7 +1138,7 @@ pub(crate) fn on_close_js(cx: &mut JsScope<'_>, callee: JsLocal<'_>) -> JsResult
 
 pub(crate) fn dispatch_close(_: &mut JsScope<'_>, callee: JsLocal<'_>) {
     if let Some(pointer) = host_fn::get_function_data(callee.to_js()) {
-        // Live teardown neuters the target; the bound dispatcher keeps its owner traced.
+        // SAFETY: Live teardown neuters the target; the bound dispatcher keeps its owner traced.
         let this = unsafe { &*pointer.cast::<UpgradedDuplex>() };
         let _context = this.keep_alive();
         this.close();

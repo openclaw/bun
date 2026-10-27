@@ -2442,41 +2442,38 @@ describe("a TLS socket over a Duplex transport follows that transport's teardown
       expect(await lifecycle).toEqual(["transport close", "close:false"]);
     });
 
-    it.each([true, false])(
-      "a peer FIN closes a wrapped net.Socket with allowHalfOpen: %p",
-      async allowHalfOpen => {
-        const peerSawFin = Promise.withResolvers<void>();
-        const acceptedPeer = Promise.withResolvers<net.Socket>();
-        await using server = net.createServer({ allowHalfOpen: true }, peer => {
-          peer.on("error", () => {});
-          peer.resume();
-          peer.on("end", () => {
-            peerSawFin.resolve();
-            peer.end();
-          });
-          acceptedPeer.resolve(peer);
+    it.each([true, false])("a peer FIN closes a wrapped net.Socket with allowHalfOpen: %p", async allowHalfOpen => {
+      const peerSawFin = Promise.withResolvers<void>();
+      const acceptedPeer = Promise.withResolvers<net.Socket>();
+      await using server = net.createServer({ allowHalfOpen: true }, peer => {
+        peer.on("error", () => {});
+        peer.resume();
+        peer.on("end", () => {
+          peerSawFin.resolve();
+          peer.end();
         });
-        await once(server.listen(0, "127.0.0.1"), "listening");
-        const transport = net.connect({
-          port: (server.address() as AddressInfo).port,
-          host: "127.0.0.1",
-          allowHalfOpen,
-        });
-        await once(transport, "connect");
-        const peer = await acceptedPeer.promise;
-        // Keep a plain write queued across the TLS wrap. The EOF must come from
-        // the peer: push(null) only ends the transport's JavaScript readable.
-        transport.cork();
-        transport.write("x");
-        const client = tls.connect({ socket: transport, rejectUnauthorized: false });
-        const lifecycle = recordLifecycle(client);
-        const transportClosed = once(transport, "close");
-        peer.end();
-        expect(await lifecycle).toEqual(["end", "error:ECONNRESET", "close:true"]);
-        await Promise.all([transportClosed, peerSawFin.promise]);
-        expect(transport.destroyed).toBe(true);
-      },
-    );
+        acceptedPeer.resolve(peer);
+      });
+      await once(server.listen(0, "127.0.0.1"), "listening");
+      const transport = net.connect({
+        port: (server.address() as AddressInfo).port,
+        host: "127.0.0.1",
+        allowHalfOpen,
+      });
+      await once(transport, "connect");
+      const peer = await acceptedPeer.promise;
+      // Keep a plain write queued across the TLS wrap. The EOF must come from
+      // the peer: push(null) only ends the transport's JavaScript readable.
+      transport.cork();
+      transport.write("x");
+      const client = tls.connect({ socket: transport, rejectUnauthorized: false });
+      const lifecycle = recordLifecycle(client);
+      const transportClosed = once(transport, "close");
+      peer.end();
+      expect(await lifecycle).toEqual(["end", "error:ECONNRESET", "close:true"]);
+      await Promise.all([transportClosed, peerSawFin.promise]);
+      expect(transport.destroyed).toBe(true);
+    });
   });
 });
 

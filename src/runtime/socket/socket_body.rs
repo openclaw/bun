@@ -5623,6 +5623,8 @@ pub(crate) fn upgrade_duplex_to_tls<'a>(
                     .set(duplex_context_ref.ref_count.get() - 1);
             }
             if duplex_context_ref.ref_count.get() == 0 {
+                // SAFETY: No task was queued and all entry/connection pins are gone;
+                // this is the original allocation pointer.
                 unsafe { DuplexUpgradeContext::deinit(duplex_context) };
             }
             return Err(error);
