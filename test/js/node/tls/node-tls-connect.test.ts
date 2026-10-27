@@ -4523,6 +4523,69 @@ describe.each([
       destroyed: false,
     });
   });
+
+  for (const outcome of ["success", "error", "destroy"] as const) {
+    it.skipIf(!exe)(`joins the held close_notify write completion: ${outcome}`, async () => {
+      const result = await runShutdownFixture(exe!, "duplex-end-completion", outcome);
+      const whileHeld = {
+        endCalls: 0,
+        transportFinishes: 0,
+        transportCloses: 0,
+        transportErrors: 0,
+        clientFinishes: 0,
+        clientCloses: 0,
+        clientErrors: 0,
+        endCallbacks: 0,
+        writableEnded: false,
+      };
+      const common = {
+        log: [],
+        whileHeld,
+        clientErrorCode: null,
+        transportErrorCode: null,
+        endCallbackCode: null,
+      };
+      if (outcome === "success") {
+        expect(result).toEqual({
+          ...common,
+          completionTurn: whileHeld,
+          afterRelease: {
+            ...whileHeld,
+            endCalls: 1,
+            transportFinishes: 1,
+            clientFinishes: 1,
+            endCallbacks: 1,
+            writableEnded: true,
+          },
+        });
+      } else if (outcome === "error") {
+        // Node finishes the upper writable after shutdown has started, but the
+        // transport error must still close both streams without ending the lower.
+        expect(result).toEqual({
+          ...common,
+          clientErrorCode: "EPIPE",
+          transportErrorCode: "EPIPE",
+          afterRelease: {
+            ...whileHeld,
+            transportCloses: 1,
+            transportErrors: 1,
+            clientFinishes: 1,
+            clientCloses: 1,
+            clientErrors: 1,
+            endCallbacks: 1,
+          },
+        });
+      } else {
+        const closed = { ...whileHeld, clientCloses: 1, transportCloses: 1, endCallbacks: 1 };
+        expect(result).toEqual({
+          ...common,
+          beforeRelease: closed,
+          afterRelease: closed,
+          endCallbackCode: "ERR_STREAM_DESTROYED",
+        });
+      }
+    });
+  }
 });
 
 // Runs report(mode, version) of a fixture module in node, for every row at

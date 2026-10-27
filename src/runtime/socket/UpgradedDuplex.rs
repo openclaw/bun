@@ -71,7 +71,7 @@ pub(crate) struct UpgradedDuplex {
     /// The transport closed before the TLS engine existed (same window as
     /// [`Self::pending_data`]). Consumed by the queued `StartTLS` task.
     pub pending_close: Cell<bool>,
-    /// [`Self::shutdown`] arrived before the engine existed. [`Self::drain_pending`] replays it.
+    /// Shutdown is waiting for the engine or the generic transport's ciphertext completion.
     pub pending_shutdown: Cell<bool>,
     /// `pause_stream` paused the wrapped stream and `resume_stream` has not run since.
     paused_origin: Cell<bool>,
@@ -793,10 +793,16 @@ impl UpgradedDuplex {
             _keep_alive.shutdown_native();
             return;
         }
-        if self.origin.get().is_empty() || self.shutdown_queued.replace(true) {
+        if self.origin.get().is_empty() || self.write_failed.get() || self.shutdown_queued.get() {
+            return;
+        }
+        if self.pending_writes.get() > 0 {
+            self.pending_shutdown.set(true);
             return;
         }
         let Some(global) = self.global else { return };
+        self.pending_shutdown.set(false);
+        self.shutdown_queued.set(true);
         self.pending_writes.set(self.pending_writes.get() + 1);
         let callback = bun_jsc::JSFunction::create(
             &global,
@@ -1112,7 +1118,10 @@ pub(crate) fn dispatch_write_complete(cx: &mut JsScope<'_>, callee: JsLocal<'_>,
             (this.handlers.on_error)(this.handlers.ctx, error);
         }
     } else if this.transport_idle() && !this.origin.get().is_empty() {
-        (this.handlers.on_writable)(this.handlers.ctx);
+        this.drain_pending_shutdown();
+        if !this.origin.get().is_empty() && !this.write_failed.get() && this.transport_idle() {
+            (this.handlers.on_writable)(this.handlers.ctx);
+        }
     }
 }
 
