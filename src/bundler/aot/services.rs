@@ -221,6 +221,7 @@ pub(crate) struct BundlerServices {
     macros: MacroThread,
     /// Those that no thread holds.
     file_finders: Guarded<Vec<FileFinder>>,
+    entry_point_sources: Vec<(Vec<u8>, Vec<u8>)>,
 }
 
 impl BundlerServices {
@@ -240,7 +241,13 @@ impl BundlerServices {
             embedded: EmbeddedFiles::default(),
             macros: MacroThread::new(),
             file_finders: Guarded::new(Vec::new()),
+            entry_point_sources: Vec::new(),
         }
+    }
+
+    pub(crate) fn with_entry_points(mut self, sources: Vec<(Vec<u8>, Vec<u8>)>) -> Self {
+        self.entry_point_sources = sources;
+        self
     }
 
     pub(crate) fn shut_down(self) -> Vec<OutputFile> {
@@ -263,14 +270,41 @@ impl SourceProvider for BundlerServices {
     }
 
     fn resolve(&self, request: &ResolveRequest<'_>, log: &mut Log) -> Result<Resolution, Failed> {
-        match &self.plugins {
-            Some(plugins) => plugins.resolve(request, log),
-            None => Ok(Resolution::NotHandled),
+        if let Some(plugins) = &self.plugins {
+            let resolution = plugins.resolve(request, log)?;
+            if !matches!(resolution, Resolution::NotHandled) {
+                return Ok(resolution);
+            }
         }
+        if self.entry_point_sources.is_empty()
+            || !bun_options_types::standalone_path::is_bun_standalone_file_path(request.specifier)
+        {
+            return Ok(Resolution::NotHandled);
+        }
+        let found = bun_resolver::standalone_module_graph::resolve_embedded_path(
+            b"",
+            request.specifier,
+            |path| {
+                let mut path = path.to_vec();
+                bun_paths::resolve_path::platform_to_posix_in_place::<u8>(&mut path);
+                let index = self
+                    .entry_point_sources
+                    .binary_search_by(|entry| entry.0.cmp(&path))
+                    .ok()?;
+                Some(&self.entry_point_sources[index].1)
+            },
+        );
+        Ok(match found {
+            Some(path) => Resolution::Module {
+                namespace: b"file".to_vec(),
+                path: path.clone(),
+            },
+            None => Resolution::NotHandled,
+        })
     }
 
     fn has_resolve_plugins(&self) -> bool {
-        self.plugins.is_some()
+        self.plugins.is_some() || !self.entry_point_sources.is_empty()
     }
 
     fn find_file(&self, _host: &dyn Host, search: &FileSearch<'_>) -> FoundCode {

@@ -29,6 +29,7 @@ import {
 import { getEventListeners, once, setMaxListeners } from "node:events";
 import net from "node:net";
 import os from "node:os";
+import { text } from "node:stream/consumers";
 import tls from "node:tls";
 import { promisify } from "node:util";
 import path from "path";
@@ -59,6 +60,71 @@ function isValidSemver(string: string): boolean {
 
   return valid;
 }
+
+describe("ChildProcess stdio properties", () => {
+  it.each([null, undefined, { synthetic: true }])("can assign stdio before reading it: %p", value => {
+    const child = new ChildProcess();
+    const properties = { stdin: value, stdout: value, stderr: value, stdio: value };
+
+    // Execa creates an unspawned ChildProcess this way after a synchronous spawn error.
+    expect(Object.assign(child, properties)).toBe(child);
+    for (const property of Object.keys(properties)) {
+      expect(Object.getOwnPropertyDescriptor(child, property)).toEqual({
+        value,
+        writable: true,
+        enumerable: true,
+        configurable: true,
+      });
+      expect(child[property]).toBe(value);
+    }
+
+    expect(Object.assign({}, child)).toMatchObject(properties);
+  });
+
+  it.each(["pipe", "ignore"])("spawn replaces assigned stdio with %s streams", async stdio => {
+    const child = new ChildProcess();
+    Object.assign(child, { stdin: null, stdout: null, stderr: null, stdio: [null, null, null] });
+    const closed = once(child, "close");
+    try {
+      // @ts-ignore ChildProcess.spawn() is an internal Node API.
+      child.spawn({
+        file: bunExe(),
+        args: [bunExe(), "-e", 'process.stdin.pipe(process.stdout); process.stderr.write("stderr");'],
+        stdio,
+      });
+      expect(child.stdio).toEqual([child.stdin, child.stdout, child.stderr]);
+      if (stdio === "pipe") {
+        expect(child.stdin).not.toBeNull();
+        expect(child.stdout).not.toBeNull();
+        expect(child.stderr).not.toBeNull();
+        const output = Promise.all([text(child.stdout!), text(child.stderr!), closed]);
+        child.stdin!.end("stdin");
+        expect(await output).toEqual(["stdin", "stderr", [0, null]]);
+      } else {
+        expect(child.stdio).toEqual([null, null, null]);
+        expect(await closed).toEqual([0, null]);
+      }
+    } finally {
+      child.kill();
+    }
+  });
+
+  it("spawn replaces assigned stdio after a missing executable", async () => {
+    using dir = tempDir("child-process-missing-stdio", {});
+    const child = new ChildProcess();
+    Object.assign(child, { stdin: null, stdout: null, stderr: null, stdio: [null, null, null] });
+    const error = once(child, "error");
+    const closed = new Promise(resolve => child.once("close", resolve));
+    // @ts-ignore ChildProcess.spawn() is an internal Node API.
+    child.spawn({ file: path.join(String(dir), "missing"), args: [], stdio: "pipe" });
+    expect(child.stdin).not.toBeNull();
+    expect(child.stdout).not.toBeNull();
+    expect(child.stderr).not.toBeNull();
+    expect(child.stdio).toEqual([child.stdin, child.stdout, child.stderr]);
+    const [[err]] = await Promise.all([error, closed]);
+    expect(err.code).toBe("ENOENT");
+  });
+});
 
 describe("ChildProcess.spawn()", () => {
   it("should emit `spawn` on spawn", async () => {

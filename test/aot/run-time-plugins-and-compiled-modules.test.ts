@@ -55,7 +55,8 @@ const unchanged =
   "static: lib legacy data\nimport(): lib legacy data\nrequire(): lib legacy data\nfirst loaded now: lib late other\nasked: nothing\n";
 
 async function compileAndRun(folder: string, ...flags: string[]) {
-  const executable = join(folder, "program" + flags.join("") + (isWindows ? ".exe" : ""));
+  // A path-valued flag must not rename the embedded entry point after an external module.
+  const executable = join(folder, "program" + (isWindows ? ".exe" : ""));
   const build = await spawned(
     [bunExe(), "build", "--compile", ...flags, "main.ts", "--outfile", executable],
     folder,
@@ -151,6 +152,34 @@ describe.concurrent("plugins registered at run time", () => {
         using dir = tempDir("aot-run-time-plugin", { ...library, "main.ts": accepted });
         const { stdout, exitCode } = await compileAndRun(String(dir), "--aot");
         expect({ stdout, exitCode }).toEqual({ stdout: acceptedOutput, exitCode: 0 });
+      }),
+    timeout,
+  );
+
+  test(
+    "extensionless SDK imports in external modules reach runtime resolution hooks",
+    () =>
+      slot(async () => {
+        using dir = tempDir("aot-external-plugin-alias", {
+          "tsconfig.json": tsconfig,
+          "sdk.cjs": `exports.value = 42;`,
+          "external.mjs": `import { value } from "uninstalled-package/sdk"; export { value };`,
+          "main.ts": String.raw`
+            import { createRequire } from "node:module";
+            import { join } from "node:path";
+            Bun.plugin({
+              name: "external-sdk-alias",
+              setup(build) {
+                build.onResolve({ filter: /^uninstalled-package\/sdk$/ }, () => ({
+                  path: join(process.cwd(), "sdk.cjs"), namespace: "file",
+                }));
+              },
+            });
+            console.log(createRequire(import.meta.url)("./external.mjs").value);
+          `,
+        });
+        const { stdout, stderr, exitCode } = await compileAndRun(String(dir), "--aot", "--external=./external.mjs");
+        expect({ stdout, stderr, exitCode }).toEqual({ stdout: "42\n", stderr: "", exitCode: 0 });
       }),
     timeout,
   );

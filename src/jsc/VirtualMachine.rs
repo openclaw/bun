@@ -5537,7 +5537,7 @@ impl VirtualMachine {
         mode: ResolveMode,
     ) -> JsResult<Result<bun_core::String, JSValue>> {
         if global.has_plugins() {
-            match run_on_resolve(global, specifier, source)? {
+            match run_on_resolve(global, specifier, source, mode)? {
                 None => {}
                 Some(Err(error)) => return Ok(Err(error)),
                 Some(Ok(answer)) => {
@@ -5548,12 +5548,13 @@ impl VirtualMachine {
                     // installed, if `onResolve` answers about it as well.
                     let answer_utf8 = answer.to_utf8();
                     let is_bare = bun_resolver::is_package_path(&answer_utf8)
-                        && ModuleLoader::plugin_namespace_and_path(&answer_utf8)
-                            .is_some_and(|(namespace, _)| namespace.is_empty());
+                        && ModuleLoader::split_plugin_specifier(&answer_utf8)
+                            .0
+                            .is_empty();
                     drop(answer_utf8);
                     let is_own = is_bare
                         && (answer.eql(specifier)
-                            || match run_on_resolve(global, &answer, source)? {
+                            || match run_on_resolve(global, &answer, source, mode)? {
                                 None => false,
                                 Some(Ok(_)) => true,
                                 Some(Err(error)) => return Ok(Err(error)),
@@ -8036,11 +8037,10 @@ fn run_on_resolve(
     global: &JSGlobalObject,
     specifier: &bun_core::String,
     importer: &bun_core::String,
+    mode: ResolveMode,
 ) -> JsResult<Option<Result<bun_core::String, JSValue>>> {
     let specifier = specifier.to_utf8();
-    let Some((namespace, path)) = ModuleLoader::plugin_namespace_and_path(&specifier) else {
-        return Ok(None);
-    };
+    let (namespace, path) = ModuleLoader::split_plugin_specifier(&specifier);
     // The importer's key ends in the query it was imported with.
     let importer = importer.to_utf8();
     let importer = match bun_core::strings::index_of_char_usize(&importer, b'?') {
@@ -8051,6 +8051,7 @@ fn run_on_resolve(
         &bun_core::StringView::from_bytes(if namespace == b"file" { b"" } else { namespace }),
         &bun_core::StringView::borrow_utf8(path),
         &bun_core::StringView::borrow_utf8(importer),
+        &bun_core::StringView::from_bytes(mode.import_kind().label()),
     )?
     else {
         return Ok(None);
