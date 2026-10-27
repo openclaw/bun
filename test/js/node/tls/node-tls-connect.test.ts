@@ -2269,7 +2269,7 @@ describe("a TLS socket over a Duplex transport follows that transport's teardown
       await once(server.listen(0, "127.0.0.1"), "listening");
       const transport = net.connect({ port: (server.address() as AddressInfo).port, host: "127.0.0.1" });
       await once(transport, "connect");
-      // A held write sends the wrap to the engine that runs over the stream.
+      // Keep a plain write queued across the TLS wrap.
       transport.cork();
       transport.write("x");
       const client = tls.connect({ socket: transport, rejectUnauthorized: false });
@@ -2443,13 +2443,10 @@ describe("a TLS socket over a Duplex transport follows that transport's teardown
     });
 
     it.each([true, false])(
-      "a connected net.Socket with allowHalfOpen: %p is closed with the socket",
+      "a peer FIN closes a wrapped net.Socket with allowHalfOpen: %p",
       async allowHalfOpen => {
-        // A half-open socket does not close itself after its EOF, and the TLS
-        // socket does not destroy a net.Socket. So the close of the TLS socket
-        // has to end it, also when no engine exists yet. A FIN over loopback
-        // arrives after the engine started, so the EOF is pushed by hand.
         const peerSawFin = Promise.withResolvers<void>();
+        const acceptedPeer = Promise.withResolvers<net.Socket>();
         await using server = net.createServer({ allowHalfOpen: true }, peer => {
           peer.on("error", () => {});
           peer.resume();
@@ -2457,6 +2454,7 @@ describe("a TLS socket over a Duplex transport follows that transport's teardown
             peerSawFin.resolve();
             peer.end();
           });
+          acceptedPeer.resolve(peer);
         });
         await once(server.listen(0, "127.0.0.1"), "listening");
         const transport = net.connect({
@@ -2465,13 +2463,15 @@ describe("a TLS socket over a Duplex transport follows that transport's teardown
           allowHalfOpen,
         });
         await once(transport, "connect");
-        // A held write sends the wrap to the engine that runs over the stream.
+        const peer = await acceptedPeer.promise;
+        // Keep a plain write queued across the TLS wrap. The EOF must come from
+        // the peer: push(null) only ends the transport's JavaScript readable.
         transport.cork();
         transport.write("x");
         const client = tls.connect({ socket: transport, rejectUnauthorized: false });
         const lifecycle = recordLifecycle(client);
         const transportClosed = once(transport, "close");
-        transport.push(null);
+        peer.end();
         expect(await lifecycle).toEqual(["end", "error:ECONNRESET", "close:true"]);
         await Promise.all([transportClosed, peerSawFin.promise]);
         expect(transport.destroyed).toBe(true);
