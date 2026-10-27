@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Allow assigning `ChildProcess` stdio properties before their first read, including Execa's synchronous spawn-error handling.
+
 - Resolve literal embedded entry paths through the current source-provider fast path, even without user plugins.
 
 - Keep self-as-Bun disk scripts, runtime plugin source/resolution hooks, and deterministic generated-function paths working in the current upstream AOT compiler.
