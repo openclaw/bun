@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Remove obsolete AOT generic-version decline reporting for the current WebKit schema.
+
 - Sync the AOT integration with upstream lazy stub generation, per-program library retries, and IPC retention; use upstream typed-query expected-result flags.
 
 - Rebase the AOT integration onto upstream main and its pinned WebKit while preserving Worker lifecycle tracing and scheduling.
