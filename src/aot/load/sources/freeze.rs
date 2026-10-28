@@ -3,7 +3,7 @@ use bun_sema::check::aot::FunctionRef;
 use bun_sema::hir::ExprId;
 use bun_sema::node::NodeData;
 use bun_sema::program::{CodeAnswer, CompiledModule, FileId, Files};
-use bun_sema::util::{FxHashSet, SharedSort};
+use bun_sema::util::{FxHashMap, FxHashSet, SharedSort};
 use bun_sema_driver::host::to_native;
 
 use super::{
@@ -12,6 +12,7 @@ use super::{
 use crate::builtins::RuntimeModule;
 use crate::diagnostics::{DiagnosticBuffer, InternalError, Span};
 use crate::ir::{InParallel, for_each_mut};
+use crate::load::evaluated_texts::create_virtual_path;
 use crate::load::loaders::{BY_NAME, loader_by_name};
 use crate::load::module_paths::{
     FileMaps, PathContext, PathInput, check_unique_public_paths, collect_entry_point_paths,
@@ -73,6 +74,7 @@ pub(crate) fn freeze_sources(
     for (_, frozen) in runs {
         all.append(frozen.expect("every task ran")?);
     }
+    relocate_evaluated_text_paths(&mut all.entries, &all.evaluated_texts)?;
     let modules = &mut all.runtime_module_files;
     modules.shared_sort_unstable_by_key(|entry| entry.0.registry_id());
     let functions = &mut all.evaluated_functions;
@@ -96,6 +98,41 @@ pub(crate) fn freeze_sources(
         diagnostics: all.diagnostics,
         counters: all.counters,
     })
+}
+
+fn relocate_evaluated_text_paths(
+    entries: &mut [SourceEntry],
+    texts: &[((FileId, usize), FileId)],
+) -> Result<(), InternalError> {
+    let mut children: FxHashMap<FileId, Vec<(usize, FileId)>> = FxHashMap::default();
+    let mut evaluated = FxHashSet::default();
+    for &((origin, index), text) in texts {
+        children.entry(origin).or_default().push((index, text));
+        evaluated.insert(text);
+    }
+    let mut pending: Vec<FileId> = children
+        .keys()
+        .filter(|origin| !evaluated.contains(origin))
+        .copied()
+        .collect();
+    while let Some(origin) = pending.pop() {
+        let Some(texts) = children.remove(&origin) else {
+            continue;
+        };
+        for (index, text) in texts {
+            // Nested evaluated text must use its parent's finalized public name.
+            let path = create_virtual_path(&entries[origin.idx()].public_path, index);
+            let entry = &mut entries[text.idx()];
+            entry.public_path = path.clone().into_boxed_slice();
+            entry.display_path = path.clone().into_boxed_slice();
+            entry.diagnostic_path = path.into_boxed_slice();
+            pending.push(text);
+        }
+    }
+    if !children.is_empty() {
+        return Err(create_load_error(b"cyclic evaluated text origins", b""));
+    }
+    Ok(())
 }
 
 /// The image has one module table: a module of the application and one of Bun's own cannot have the same path either.
@@ -134,6 +171,7 @@ struct FrozenRun {
     web_assembly_files: Vec<FileId>,
     pages: Vec<(FileId, Box<[u8]>)>,
     evaluated_functions: Vec<((FileId, ExprId), FunctionRef)>,
+    evaluated_texts: Vec<((FileId, usize), FileId)>,
 }
 
 impl FrozenRun {
@@ -148,6 +186,7 @@ impl FrozenRun {
         self.pages.append(&mut following.pages);
         self.evaluated_functions
             .append(&mut following.evaluated_functions);
+        self.evaluated_texts.append(&mut following.evaluated_texts);
     }
 
     fn add_compiled_file(
@@ -178,6 +217,8 @@ impl FrozenRun {
             let span = Span::of_node(hir, file, NodeData::Expr(string));
             counters.gave_up(LimitId::MaxFoldedStringBytes, Some(span));
         }
+        // The suffix counts rejected texts too, matching the resolver's original ordinal.
+        let mut text_indices = payload.builtins.evaluated_texts().iter().enumerate();
         for site in &payload.evaluated_text_sites {
             let answer = compiled.implied_answers.get(site.implied_answer as usize);
             let Some(&CodeAnswer::File(text_file)) = answer else {
@@ -187,7 +228,15 @@ impl FrozenRun {
                     file_name,
                 ));
             };
+            let Some((index, _)) = text_indices.find(|(_, text)| text.call == site.call) else {
+                let file_name = files.module(file).file_name();
+                return Err(create_load_error(
+                    b"no index for evaluated text in ",
+                    file_name,
+                ));
+            };
             let text = parsed_source(files, text_file);
+            self.evaluated_texts.push(((file, index), text_file));
             if let Some(function) = text.and_then(|text| text.evaluated_function) {
                 let function = FunctionRef {
                     file: text_file,
