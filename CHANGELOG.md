@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Initialize expected-result flags for the current WebKit schema without enabling unproven query-row typing.
+
 - Rebase the AOT integration onto upstream main and its pinned WebKit while preserving Worker lifecycle tracing and scheduling.
 
 - Sync with upstream static-field and prototype-store scaling fixes while preserving retained runtime and loader behavior.

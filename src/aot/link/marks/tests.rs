@@ -508,6 +508,7 @@ fn expected_result_keeps_its_layouts() {
             let expected = ExpectedResult {
                 ty: TypeTable::OBJECT,
                 layouts: vec![layout],
+                flags: Default::default(),
             };
             expected_results.push(unit.fragment.add_expected_result(expected));
         }

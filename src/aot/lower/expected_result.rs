@@ -154,7 +154,11 @@ impl FileLowering<'_, '_, '_, '_> {
             self.gave_up(limit, position);
             return None;
         };
-        let expected = ExpectedResult { ty, layouts };
+        let expected = ExpectedResult {
+            ty,
+            layouts,
+            flags: Default::default(),
+        };
         // A built-in may build what its type argument says: `response.json<T>()`.
         let builtin_types = self.inputs.builtin_types;
         let is_builtin = target
