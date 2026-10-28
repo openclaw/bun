@@ -186,7 +186,7 @@ export function registerCodegenRules(n: Ninja, cfg: CodegenFields): void {
     outputs: [codegenDirStamp(cfg)],
     rule: "mkdir_stamp",
     inputs: [],
-    vars: { dir: n.rel(cfg.codegenDir) },
+    vars: { dir: q(n.rel(cfg.codegenDir)) },
   });
 
   // Stamps dir — holds bun_install stamp files.
@@ -195,7 +195,7 @@ export function registerCodegenRules(n: Ninja, cfg: CodegenFields): void {
     outputs: [resolve(stampsDir, ".dir")],
     rule: "mkdir_stamp",
     inputs: [],
-    vars: { dir: n.rel(stampsDir) },
+    vars: { dir: q(n.rel(stampsDir)) },
   });
 }
 
@@ -399,7 +399,7 @@ function emitPackageInstall(n: Ninja, cfg: CodegenFields, pkgDir: string): strin
     orderOnlyInputs: [resolve(cfg.buildDir, "stamps", ".dir")],
     // stamp must be absolute — the command `cd $dir && ... && touch $stamp`
     // runs from $dir, not from buildDir. n.rel() would break that.
-    vars: { dir: pkgDir, stamp },
+    vars: { dir: shJoin(cfg, [pkgDir]), stamp: shJoin(cfg, [stamp]) },
   });
 
   return stamp;
@@ -439,7 +439,7 @@ function emitBunError({ n, cfg, sources, o, dirStamp }: Ctx): void {
     implicitInputs: [installStamp, o.rootInstall],
     orderOnlyInputs: [dirStamp],
     vars: {
-      cwd: sourceDir,
+      cwd: shJoin(cfg, [sourceDir]),
       desc: "bun-error",
       args: shJoin(cfg, [
         "index.tsx",
@@ -521,7 +521,11 @@ function emitCompressedEmbeds({ n, cfg, o, dirStamp }: Ctx): void {
       rule: "codegen",
       inputs: [script, ...inputs],
       orderOnlyInputs: [dirStamp],
-      vars: { cwd: cfg.cwd, desc: `compressed/${name}.zst`, args: shJoin(cfg, [script, out, ...inputs]) },
+      vars: {
+        cwd: shJoin(cfg, [cfg.cwd]),
+        desc: `compressed/${name}.zst`,
+        args: shJoin(cfg, [script, out, ...inputs]),
+      },
     });
     o.all.push(out);
     // Debug reads the originals at runtime; only release embeds these.
@@ -541,7 +545,7 @@ function emitLintDocs({ n, cfg, sources, o, dirStamp }: Ctx): void {
     inputs: [script, ...sources.lintRuleDocs],
     orderOnlyInputs: [dirStamp],
     vars: {
-      cwd: cfg.cwd,
+      cwd: shJoin(cfg, [cfg.cwd]),
       desc: "lint-rule-pages.txt",
       args: shJoin(cfg, [script, resolve(cfg.cwd, "docs", "lint", "rules"), ...outputs]),
     },
@@ -561,7 +565,7 @@ function emitRuntimeJs({ n, cfg, o, dirStamp }: Ctx): void {
     implicitInputs: [o.rootInstall],
     orderOnlyInputs: [dirStamp],
     vars: {
-      cwd: cfg.cwd,
+      cwd: shJoin(cfg, [cfg.cwd]),
       desc: "runtime.out.js",
       args: shJoin(cfg, [
         src,
@@ -603,7 +607,7 @@ function emitNodeFallbacks({ n, cfg, sources, o, dirStamp }: Ctx): void {
     implicitInputs: [installStamp],
     orderOnlyInputs: [dirStamp],
     vars: {
-      cwd: sourceDir,
+      cwd: shJoin(cfg, [sourceDir]),
       desc: "node-fallbacks/*.js",
       // `bun run build-fallbacks` resolves to `./build-fallbacks.ts` in cwd
       args: shJoin(cfg, ["run", "build-fallbacks", outDir, ...sources.nodeFallbacks]),
@@ -623,7 +627,7 @@ function emitNodeFallbacks({ n, cfg, sources, o, dirStamp }: Ctx): void {
     implicitInputs: [installStamp],
     orderOnlyInputs: [dirStamp],
     vars: {
-      cwd: sourceDir,
+      cwd: shJoin(cfg, [sourceDir]),
       desc: "node-fallbacks/react-refresh.js",
       args: shJoin(cfg, [
         "build",
@@ -665,7 +669,7 @@ function emitStringMaps({ n, cfg, sources, o, dirStamp }: Ctx): void {
       inputs: [script, src],
       orderOnlyInputs: [dirStamp],
       vars: {
-        cwd: cfg.cwd,
+        cwd: shJoin(cfg, [cfg.cwd]),
         desc: `string-map ${stem}`,
         args: shJoin(cfg, [script, src, out]),
       },
@@ -701,7 +705,7 @@ function emitErrorCode({ n, cfg, o, dirStamp }: Ctx): void {
     inputs,
     orderOnlyInputs: [dirStamp],
     vars: {
-      cwd: cfg.cwd,
+      cwd: shJoin(cfg, [cfg.cwd]),
       desc: "ErrorCode+*.h",
       args: shJoin(cfg, [script, cfg.codegenDir, cfg.typesDir]),
     },
@@ -744,7 +748,7 @@ function emitHostExports({ n, cfg, sources, o, dirStamp }: Ctx): void {
     implicitInputs: rsInputs,
     orderOnlyInputs: [dirStamp],
     vars: {
-      cwd: cfg.cwd,
+      cwd: shJoin(cfg, [cfg.cwd]),
       desc: "generated_host_exports.rs",
       args: shJoin(cfg, [script, cfg.codegenDir]),
     },
@@ -794,7 +798,7 @@ function emitCppBind({ n, cfg, sources, o, dirStamp }: Ctx): void {
     ],
     orderOnlyInputs: [dirStamp],
     vars: {
-      cwd: cfg.cwd,
+      cwd: shJoin(cfg, [cfg.cwd]),
       desc: "cpp.rs (cppbind)",
       // cppbind.ts takes: <srcdir> <codegendir> <cxx-sources>.
       args: shJoin(cfg, [script, resolve(cfg.cwd, "src"), cfg.codegenDir, cxxSourcesFile]),
@@ -861,7 +865,7 @@ function emitJsModules({ n, cfg, sources, o, dirStamp, engine }: Ctx): void {
     implicitInputs: guardInputs({ cfg, engine }).filter(path => !sources.jsCodegen.includes(path)),
     orderOnlyInputs: [dirStamp],
     vars: {
-      cwd: cfg.cwd,
+      cwd: shJoin(cfg, [cfg.cwd]),
       desc: "JS modules (bundle-modules)",
       // Note: arg is BUILD_PATH (buildDir), not CODEGEN_PATH. The script
       // derives CODEGEN_DIR = join(BUILD_PATH, "codegen") internally.
@@ -913,7 +917,7 @@ function emitBakeCodegen({ n, cfg, sources, o, dirStamp }: Ctx): void {
     inputs: [script, ...sources.bakeRuntime],
     orderOnlyInputs: [dirStamp],
     vars: {
-      cwd: cfg.cwd,
+      cwd: shJoin(cfg, [cfg.cwd]),
       desc: "bake.{client,server,error}.js",
       args: shJoin(cfg, ["run", script, debugFlag(cfg), `--codegen-root=${cfg.codegenDir}`]),
     },
@@ -968,7 +972,7 @@ export function emitBindgen({ n, cfg, sources, o, dirStamp, engine }: Ctx): void
     implicitInputs: [...declaredTypeInputs(cfg), ...guardInputs({ cfg, engine })],
     orderOnlyInputs: [dirStamp],
     vars: {
-      cwd: cfg.cwd,
+      cwd: shJoin(cfg, [cfg.cwd]),
       desc: ".bind.ts → Generated*.{cpp,h}, generated_bindgen_*.rs",
       args: shJoin(cfg, [
         script,
@@ -1058,7 +1062,7 @@ function emitObjectLuts({ n, cfg, o, dirStamp, engine }: Ctx): void {
       implicitInputs: [script, perlScript, ...hashTableInputs({ cfg, engine })],
       orderOnlyInputs: [dirStamp],
       vars: {
-        cwd: cfg.cwd,
+        cwd: shJoin(cfg, [cfg.cwd]),
         desc: basename(out),
         args: shJoin(cfg, [script, src, out, ...builtinUsesArguments({ cfg, engine })]),
       },

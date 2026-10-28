@@ -3882,7 +3882,9 @@ impl<'h> Resolver<'h> {
     /// `package.json`.
     fn package_entry(&self, dir: &[u8], look: Look) -> Option<Vec<u8>> {
         let package = self.get_package_json_info(dir, look);
-        self.directory_entry(dir, package, true, look)
+        let found = self.directory_entry(dir, package, true, look)?;
+        self.get_package_id(&found, dir, package, look);
+        Some(found)
     }
 
     /// `loadNodeModuleFromDirectoryWorker`: the file the directory `candidate` resolves to, which

@@ -1348,6 +1348,15 @@ class ChildProcess extends EventEmitter {
   #stdioObject: (StdioStream | null | undefined)[] | undefined;
   #stdioOptions;
 
+  #initializeStdio() {
+    ObjectAssign(this, {
+      stdin: (this.#stdin = this.#getBunSpawnIo(0, false)),
+      stdout: (this.#stdout = this.#getBunSpawnIo(1, false)),
+      stderr: (this.#stderr = this.#getBunSpawnIo(2, false)),
+    });
+    ObjectAssign(this, { stdio: (this.#stdioObject = this.#createStdioObject()) });
+  }
+
   #createStdioObject() {
     const opts = this.#stdioOptions;
     const length = opts.length;
@@ -1533,6 +1542,7 @@ class ChildProcess extends EventEmitter {
         if (options[kFromNode]) this.#closesNeeded += 1;
       }
 
+      this.#initializeStdio();
       if (hasSocketsToEagerlyLoad) {
         for (let item of this.stdio!) {
           item?.ref?.();
@@ -1561,6 +1571,8 @@ class ChildProcess extends EventEmitter {
           this.#stdioOptions[0] = "undefined";
           this.#stdioOptions[1] = "undefined";
           this.#stdioOptions[2] = "undefined";
+        } else {
+          this.#initializeStdio();
         }
       } else {
         if (exCode !== undefined) {
@@ -1696,6 +1708,14 @@ class ChildProcess extends EventEmitter {
           });
           return value;
         },
+        set: function (value) {
+          Object.defineProperty(this, "stdin", {
+            value,
+            enumerable: true,
+            configurable: true,
+            writable: true,
+          });
+        },
         enumerable: true,
         configurable: true,
       },
@@ -1710,6 +1730,14 @@ class ChildProcess extends EventEmitter {
             writable: true,
           });
           return value;
+        },
+        set: function (value) {
+          Object.defineProperty(this, "stdout", {
+            value,
+            enumerable: true,
+            configurable: true,
+            writable: true,
+          });
         },
         enumerable: true,
         configurable: true,
@@ -1726,6 +1754,14 @@ class ChildProcess extends EventEmitter {
           });
           return value;
         },
+        set: function (value) {
+          Object.defineProperty(this, "stderr", {
+            value,
+            enumerable: true,
+            configurable: true,
+            writable: true,
+          });
+        },
         enumerable: true,
         configurable: true,
       },
@@ -1740,6 +1776,14 @@ class ChildProcess extends EventEmitter {
             writable: true,
           });
           return value;
+        },
+        set: function (value) {
+          Object.defineProperty(this, "stdio", {
+            value,
+            enumerable: true,
+            configurable: true,
+            writable: true,
+          });
         },
         enumerable: true,
         configurable: true,
