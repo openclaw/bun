@@ -1,7 +1,7 @@
 // An executable compiled ahead of time leaves the command line and JIT out unless explicitly retained.
 // What the program itself can use stays. Each way into what was left out answers with a sentence.
 import { describe, expect, test } from "bun:test";
-import { bunEnv, isWindows } from "harness";
+import { bunEnv, bunExe, isWindows, tempDir } from "harness";
 import { join } from "node:path";
 import { canTrim, model } from "../bundler/compile-trim-features";
 import { unsupported } from "./harness/compiler";
@@ -42,7 +42,7 @@ const compilers = ["AotCompiler", "Check", "ImageCompiler", "JIT"];
 const noCommandLine =
   "can't be used with this executable because it doesn't include the Bun command line. Run bun instead";
 
-function removedFeaturesOf(executable: Build): string[] {
+function removedFeaturesOf(executable: Pick<Build, "file" | "name">): string[] {
   const removed = readRemovedFeatures(executable.file);
   if (removed === undefined) throw new Error(`${executable.name} has no list of removed features`);
   return model.features
@@ -129,7 +129,7 @@ function removedFeaturesOf(executable: Build): string[] {
     const folder = String(dir);
     expect(await run([bunExe(), "build.ts"], folder)).toEqual({ stdout: "", stderr: "", exitCode: 0 });
     const app = join(folder, "app");
-    const removed = removedFeaturesOf(app);
+    const removed = removedFeaturesOf({ file: app, name: "retained-run" });
     expect(removed).not.toContain("Tools");
     expect(removed).not.toContain("Interpreter");
     expect(removed).toContain("JIT");
