@@ -602,7 +602,8 @@ for (const destroyBeforeCompletion of [false, true]) {
         Bun.gc(true);
         const queuedRoot = !!state.weak.deref();
         await turn();
-        for (let i = 0; i < 30; i++) { await turn(); Bun.gc(true); }
+        // Collect before module re-entry to avoid retaining the owner through stale native spill slots.
+        for (let i = 0; i < 30; i++) { await new Promise(resolve => setImmediate(() => { Bun.gc(true); resolve(); })); }
         console.log(JSON.stringify({ callbackRoot, queuedRoot, collected: !state.weak.deref(), settled: state.settled }));
       `,
       ],
