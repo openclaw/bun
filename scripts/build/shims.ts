@@ -11,14 +11,14 @@
  */
 
 import { resolve } from "node:path";
-import type { Config } from "./config.ts";
+import { linksWithLld, type Config } from "./config.ts";
 import { DARWIN_STACK_SIZE } from "./flags.ts";
 import type { Ninja } from "./ninja.ts";
 import { quote } from "./shell.ts";
 import { toolIdentityFile } from "./tools.ts";
 
 /**
- * macOS-from-Linux cross links need a post-link fixup pass over every
+ * Darwin links made by ld64.lld need a post-link fixup pass over every
  * Mach-O executable they produce (the linked bun-profile/bun-debug AND the
  * stripped bun):
  *
@@ -41,7 +41,7 @@ import { toolIdentityFile } from "./tools.ts";
  * postlink $out ...`.
  */
 export function needsMachoPostlink(cfg: Config): boolean {
-  return cfg.darwin && cfg.crossTarget !== undefined;
+  return cfg.darwin && linksWithLld(cfg);
 }
 
 /** Host-compiled fixup tool. Lives next to the executables it patches. */
@@ -50,7 +50,7 @@ export function machoPostlinkToolPath(cfg: Config): string {
 }
 
 /**
- * Entitlements applied to the cross-built binary. Matches what the release
+ * Entitlements applied to the ld64.lld-built binary. Matches what the release
  * pipeline's `codesign --entitlements` uses for native builds: the debug
  * plist additionally grants get-task-allow / cs.debugger so lldb can attach.
  */

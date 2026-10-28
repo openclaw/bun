@@ -47,6 +47,11 @@ use crate::posix_event_loop::EventLoopCtx;
 #[cfg(target_os = "macos")]
 use crate::posix_event_loop::{FilePoll, Owner, poll_tag};
 
+pub fn parent_pid() -> u32 {
+    // SAFETY: getppid has no preconditions and cannot fail.
+    unsafe { libc::getppid() as u32 }
+}
+
 /// Unit struct — `FilePoll.Owner` needs a real pointer, but we have no
 /// per-instance state.
 pub struct ParentDeathWatchdog;
