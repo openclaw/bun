@@ -39,6 +39,28 @@ Bun.build({
 
 Bun.build({
   entrypoints: ["hey"],
+  compile: { aot: true, aotCountBranches: true, aotCountArrivals: true },
+});
+
+Bun.build({
+  entrypoints: ["hey"],
+  compile: { aotCountBranches: false, aotCountArrivals: false },
+});
+
+Bun.build({
+  entrypoints: ["hey"],
+  // @ts-expect-error Counter instrumentation switches are boolean.
+  compile: { aot: true, aotCountBranches: "true" },
+});
+
+Bun.build({
+  entrypoints: ["hey"],
+  // @ts-expect-error Counter instrumentation switches are boolean.
+  compile: { aot: true, aotCountArrivals: 1 },
+});
+
+Bun.build({
+  entrypoints: ["hey"],
   // @ts-expect-error
   compile: { aot: true, aotExplain: "decline" },
 });
