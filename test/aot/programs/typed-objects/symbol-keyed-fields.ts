@@ -75,7 +75,12 @@ function update(value: Literal): number {
 const socket = new Socket("a", 7);
 let total = 0;
 for (let i = 0; i < 10; i++) total += socket.bump();
-console.log(total, readRequest({ url: "/x", [kHandle]: 3 }), Object.getOwnPropertySymbols(socket).length, Object.keys(socket).join());
+console.log(
+  total,
+  readRequest({ url: "/x", [kHandle]: 3 }),
+  Object.getOwnPropertySymbols(socket).length,
+  Object.keys(socket).join(),
+);
 const derived = new Derived();
 console.log(derived.describe(), derived[kCallback].name, derived[kCallback]());
 console.log(Reflect.ownKeys(derived).map(String).join());
@@ -86,5 +91,36 @@ console.log(sum([derived, new Other(), { [kSame]: 10 }]));
 const named = { [kCallback]: function () {}, [kNoDescription]: () => {}, [kSame]: class {} };
 console.log(JSON.stringify([named[kCallback].name, named[kNoDescription].name, named[kSame].name]));
 const { [kSame]: first, x } = literal;
-console.log(first, x, derived?.[kSame], (derived as Derived | undefined)?.[kSameAgain], kSame in literal, kHandle in literal);
+console.log(
+  first,
+  x,
+  derived?.[kSame],
+  (derived as Derived | undefined)?.[kSameAgain],
+  kSame in literal,
+  kHandle in literal,
+);
 console.log(delete literal[kSameAgain], kSameAgain in literal, Reflect.ownKeys(literal).map(String).join());
+
+// A base that exposes this requires field-order metadata across a symbol initializer that runs code.
+const kInitialization = Symbol("initialization");
+let escapedBeforeFields: object | undefined;
+class EscapingBase {
+  constructor() {
+    escapedBeforeFields = this;
+  }
+}
+function initializeFlag(): boolean {
+  return false;
+}
+class StagedSymbolField extends EscapingBase {
+  [kInitialization] = initializeFlag();
+  after = 1;
+}
+const staged = new StagedSymbolField();
+console.log(
+  escapedBeforeFields === staged,
+  Object.hasOwn(staged, kInitialization),
+  staged[kInitialization],
+  Object.getOwnPropertySymbols(staged)[0] === kInitialization,
+  Object.keys(staged).join(),
+);

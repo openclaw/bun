@@ -4028,6 +4028,29 @@ declare module "bun" {
      */
     aot?: boolean;
     /**
+     * With `aot`: count compiled function entries and both sides of each branch.
+     *
+     * Set `BUN_JSC_aotCountsPath` when running the executable to write the counts.
+     * Set `BUN_JSC_aotMapFilePath` when building to map counter IDs to source locations.
+     * Instrumentation adds runtime overhead; leave it off for performance measurements.
+     *
+     * Equivalent CLI flag: `--aot-count-branches`
+     *
+     * @default false
+     */
+    aotCountBranches?: boolean;
+    /**
+     * With `aot`: count the kinds of values reaching property lookups by name.
+     *
+     * Set `BUN_JSC_aotCountsPath` when running the executable to write the counts.
+     * Instrumentation adds runtime overhead; leave it off for performance measurements.
+     *
+     * Equivalent CLI flag: `--aot-count-arrivals`
+     *
+     * @default false
+     */
+    aotCountArrivals?: boolean;
+    /**
      * With `aot`: strip function names and file names from the executable and write a source map
      * next to it. `sourcemap: "external"` does the same.
      *
@@ -9231,6 +9254,7 @@ declare module "bun" {
      * Callback invoked when the PTY stream closes (EOF or read error).
      * `exitCode` is a PTY lifecycle status (0 = clean EOF, 1 = error), NOT the subprocess exit code.
      * Use {@link Subprocess.exited} or the `onExit` callback for the process exit information.
+     * While output is paused, EOF waits for `resume()` and delivery of the remaining output.
      * @param terminal The terminal instance
      * @param exitCode PTY lifecycle status (0 for EOF, 1 for error)
      * @param signal Always `null`; reserved for future signal reporting
@@ -9288,6 +9312,23 @@ declare module "bun" {
      * @returns The number of bytes accepted (the byte length of `data`)
      */
     write(data: string | BufferSource): number;
+
+    /**
+     * Stop reading PTY output and invoking `data`, including from inside a `data` callback.
+     * Once the OS output buffer fills, the child's writes block. Input writes, `drain`,
+     * terminal settings, and the ref/unref choice are unchanged.
+     * Pausing preserves whether the terminal keeps the event loop alive while its child runs.
+     * Idempotent; has no effect after close or EOF.
+     */
+    pause(): void;
+
+    /**
+     * Restart reading PTY output on a later event-loop turn; never invokes `data` synchronously.
+     * The PTY `exit` callback fires after output resumes and drains.
+     * Whether `Subprocess.exited` resolves before resume depends on the operating system.
+     * Idempotent; has no effect after close or EOF.
+     */
+    resume(): void;
 
     /**
      * Resize the terminal.
