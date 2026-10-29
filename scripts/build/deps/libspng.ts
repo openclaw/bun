@@ -30,13 +30,12 @@ export const libspng: Dependency = {
   build: cfg => ({
     kind: "direct",
     sources: ["spng/spng.c"],
-    includes: ["spng"],
+    includes: ["spng", depBuildDir(cfg, "zlib")],
     defines: {
       SPNG_STATIC: true,
       // 4 = SSE4.1 defilter paths (pabsw/pblendvb); our x64 floor is nehalem. No-op on arm64 (NEON is auto-detected).
       ...(cfg.x64 ? { SPNG_SSE: 4 } : {}),
     },
-    cflags: [`-I${depBuildDir(cfg, "zlib")}`],
   }),
 
   provides: () => ({

@@ -461,6 +461,8 @@ pub(crate) mod js_bundler {
     #[derive(Default)]
     struct RawCompileFlags {
         aot: bool,
+        counts_branches: bool,
+        counts_arrivals: bool,
         logs_type_mismatches: bool,
         explain: Vec<Vec<u8>>,
         validates: bool,
@@ -484,6 +486,12 @@ pub(crate) mod js_bundler {
             let mut raw = RawCompileFlags {
                 aot: compile
                     .get_boolean_loose(global_this, "aot")?
+                    .unwrap_or(false),
+                counts_branches: compile
+                    .get_boolean_strict(global_this, "aotCountBranches")?
+                    .unwrap_or(false),
+                counts_arrivals: compile
+                    .get_boolean_strict(global_this, "aotCountArrivals")?
                     .unwrap_or(false),
                 logs_type_mismatches: compile
                     .get_boolean_loose(global_this, "aotLogTypeMismatches")?
@@ -614,6 +622,8 @@ pub(crate) mod js_bundler {
                     .chain(with_key("disable", &self.disable))
                     .chain(self.heat.iter().map(|word| ("heat", Some(word.as_slice()))))
                     .chain(with_key("testing", &self.testing))
+                    .chain(self.counts_branches.then_some(("count-branches", None)))
+                    .chain(self.counts_arrivals.then_some(("count-arrivals", None)))
                     .collect(),
                 is_cross_compile: !compile.compile_target.is_this_bun(),
                 exec_argv: &compile.exec_argv.list,

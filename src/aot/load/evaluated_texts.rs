@@ -115,7 +115,7 @@ fn has_replaced_expression(hir: &File<'_>, decisions: &Decisions<'_>) -> bool {
     })
 }
 
-fn create_virtual_path(importer: &[u8], index: usize) -> Vec<u8> {
+pub(super) fn create_virtual_path(importer: &[u8], index: usize) -> Vec<u8> {
     let mut path = [HOST_ROOT, VIRTUAL_DIRECTORY].concat();
     append_encoded_segment(&mut path, importer);
     path.push(b'/');

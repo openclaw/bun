@@ -192,12 +192,13 @@ PendingVirtualModuleResult::PendingVirtualModuleResult(VM& vm, Structure* struct
 {
 }
 
-void PendingVirtualModuleResult::finishCreation(VM& vm, const WTF::String& specifier, const WTF::String& referrer)
+void PendingVirtualModuleResult::finishCreation(VM& vm, const WTF::String& specifier, const WTF::String& referrer, JSModuleGraph* graph)
 {
     Base::finishCreation(vm);
     Base::internalField(0).set(vm, this, JSC::jsString(vm, specifier));
     Base::internalField(1).set(vm, this, JSC::jsString(vm, referrer));
     Base::internalField(2).set(vm, this, JSC::JSPromise::create(vm, globalObject()->promiseStructure()));
+    Base::internalField(3).set(vm, this, graph ? JSValue(graph) : jsUndefined());
 }
 
 template<typename Visitor>
@@ -210,10 +211,10 @@ void PendingVirtualModuleResult::visitChildrenImpl(JSCell* cell, Visitor& visito
 
 DEFINE_VISIT_CHILDREN(PendingVirtualModuleResult);
 
-PendingVirtualModuleResult* PendingVirtualModuleResult::create(JSC::JSGlobalObject* globalObject, const WTF::String& specifier, const WTF::String& referrer, bool wasModuleLock)
+PendingVirtualModuleResult* PendingVirtualModuleResult::create(JSC::JSGlobalObject* globalObject, const WTF::String& specifier, const WTF::String& referrer, bool wasModuleLock, JSModuleGraph* graph)
 {
     auto* virtualModule = create(globalObject->vm(), static_cast<Zig::GlobalObject*>(globalObject)->pendingVirtualModuleResultStructure());
-    virtualModule->finishCreation(globalObject->vm(), specifier, referrer);
+    virtualModule->finishCreation(globalObject->vm(), specifier, referrer, graph);
     virtualModule->wasModuleMock = wasModuleLock;
     return virtualModule;
 }
@@ -372,7 +373,8 @@ static JSValue handleVirtualModuleResult(
     BunString* specifier,
     BunString* referrer,
     bool wasModuleMock = false,
-    JSCommonJSModule* commonJSModule = nullptr)
+    JSCommonJSModule* commonJSModule = nullptr,
+    JSModuleGraph* graph = nullptr)
 {
     auto& vm = JSC::getVM(globalObject);
     auto scope = DECLARE_THROW_SCOPE(vm);
@@ -429,6 +431,44 @@ static JSValue handleVirtualModuleResult(
             RELEASE_AND_RETURN(scope, reject(JSValue::decode(res->result.err)));
         }
 
+        if (res->result.value.isCommonJSModule) {
+            if (commonJSModule) {
+                commonJSModule->evaluate(globalObject, specifier->toWTFString(BunString::ZeroCopy), res->result.value);
+                RETURN_IF_EXCEPTION(scope, {});
+                return commonJSModule;
+            }
+            auto* specifierValue = Bun::toJS(globalObject, *specifier);
+            RETURN_IF_EXCEPTION(scope, {});
+            auto created = Bun::createCommonJSModule(globalObject, graph, specifierValue, res->result.value);
+            EXCEPTION_ASSERT(created.has_value() == !scope.exception());
+            if (!created.has_value()) {
+                return rejectOrResolve({});
+            }
+            return resolve(JSSourceCode::create(vm, WTF::move(created.value())));
+        }
+
+        if (res->result.value.tag == SyntheticModuleType::JSONForObjectLoader
+            || res->result.value.tag == SyntheticModuleType::ExportsObject) {
+            JSValue value;
+            if (res->result.value.tag == SyntheticModuleType::JSONForObjectLoader) {
+                value = JSC::JSONParseWithException(globalObject, res->result.value.source_code.toWTFString(BunString::NonNull));
+                if (scope.exception()) {
+                    return rejectOrResolve({});
+                }
+            } else {
+                value = JSValue::decode(res->result.value.jsvalue_for_export);
+            }
+            if (!value) {
+                return reject(JSC::createSyntaxError(globalObject, "Failed to parse Object"_s));
+            }
+            if (commonJSModule) {
+                commonJSModule->setExportsObject(value);
+                commonJSModule->hasEvaluated = true;
+                return commonJSModule;
+            }
+            return rejectOrResolve(createJSValueModuleSourceCode(globalObject, value, specifier->toWTFString(BunString::ZeroCopy)));
+        }
+
         auto provider = Zig::SourceProvider::create(globalObject, res->result.value);
         return resolve(JSC::JSSourceCode::create(vm, JSC::SourceCode(provider)));
     }
@@ -467,7 +507,7 @@ static JSValue handleVirtualModuleResult(
         ASSERT(callData.type != CallData::Type::None);
         auto specifierString = specifier->toWTFString(BunString::ZeroCopy);
         auto referrerString = referrer->toWTFString(BunString::ZeroCopy);
-        PendingVirtualModuleResult* pendingModule = PendingVirtualModuleResult::create(globalObject, specifierString, referrerString, wasModuleMock);
+        PendingVirtualModuleResult* pendingModule = PendingVirtualModuleResult::create(globalObject, specifierString, referrerString, wasModuleMock, graph);
         JSC::JSPromise* internalPromise = pendingModule->internalPromise();
         MarkedArgumentBuffer arguments;
         arguments.append(promise);
@@ -706,7 +746,7 @@ JSValue fetchCommonJSModule(
         JSC::JSValue virtualModuleResult = Bun::runVirtualModule(globalObject, &specifier, wasModuleMock);
         RETURN_IF_EXCEPTION(scope, {});
         if (virtualModuleResult) {
-            JSValue promiseOrCommonJSModule = handleVirtualModuleResult<true>(globalObject, virtualModuleResult, res, &specifier, referrer, wasModuleMock, target);
+            JSValue promiseOrCommonJSModule = handleVirtualModuleResult<true>(globalObject, virtualModuleResult, res, &specifier, referrer, wasModuleMock, target, target->moduleGraph());
             RETURN_IF_EXCEPTION(scope, {});
 
             // If we assigned module.exports to the virtual module, we're done here.
@@ -775,7 +815,7 @@ JSValue fetchCommonJSModule(
         JSC::JSValue virtualModuleResult = Bun::runVirtualModule(globalObject, &specifier, wasModuleMock);
         RETURN_IF_EXCEPTION(scope, {});
         if (virtualModuleResult) {
-            JSValue promiseOrCommonJSModule = handleVirtualModuleResult<true>(globalObject, virtualModuleResult, res, &specifier, referrer, wasModuleMock, target);
+            JSValue promiseOrCommonJSModule = handleVirtualModuleResult<true>(globalObject, virtualModuleResult, res, &specifier, referrer, wasModuleMock, target, target->moduleGraph());
             RETURN_IF_EXCEPTION(scope, {});
 
             // If we assigned module.exports to the virtual module, we're done here.
@@ -1115,7 +1155,7 @@ static JSValue fetchESMSourceCode(
         JSC::JSValue virtualModuleResult = Bun::runVirtualModule(globalObject, specifier, wasModuleMock);
         RETURN_IF_EXCEPTION(scope, {});
         if (virtualModuleResult) {
-            RELEASE_AND_RETURN(scope, handleVirtualModuleResult<allowPromise>(globalObject, virtualModuleResult, res, specifier, referrer, wasModuleMock));
+            RELEASE_AND_RETURN(scope, handleVirtualModuleResult<allowPromise>(globalObject, virtualModuleResult, res, specifier, referrer, wasModuleMock, nullptr, graph));
         }
     }
 
@@ -1212,7 +1252,7 @@ static JSValue fetchESMSourceCode(
         JSC::JSValue virtualModuleResult = Bun::runVirtualModule(globalObject, specifier, wasModuleMock);
         RETURN_IF_EXCEPTION(scope, {});
         if (virtualModuleResult) {
-            RELEASE_AND_RETURN(scope, handleVirtualModuleResult<allowPromise>(globalObject, virtualModuleResult, res, specifier, referrer, wasModuleMock));
+            RELEASE_AND_RETURN(scope, handleVirtualModuleResult<allowPromise>(globalObject, virtualModuleResult, res, specifier, referrer, wasModuleMock, nullptr, graph));
         }
     }
 
@@ -1384,8 +1424,10 @@ BUN_DEFINE_HOST_FUNCTION(jsFunctionOnLoadObjectResultResolve, (JSC::JSGlobalObje
     PendingVirtualModuleResult* pendingModule = uncheckedDowncast<PendingVirtualModuleResult>(callFrame->argument(1));
     JSC::JSValue specifierString = pendingModule->internalField(0).get();
     JSC::JSValue referrerString = pendingModule->internalField(1).get();
+    JSC::JSValue graphValue = pendingModule->internalField(3).get();
     pendingModule->internalField(0).set(vm, pendingModule, JSC::jsUndefined());
     pendingModule->internalField(1).set(vm, pendingModule, JSC::jsUndefined());
+    pendingModule->internalField(3).set(vm, pendingModule, JSC::jsUndefined());
     JSC::JSPromise* promise = pendingModule->internalPromise();
 
     auto scope = DECLARE_THROW_SCOPE(vm);
@@ -1398,7 +1440,8 @@ BUN_DEFINE_HOST_FUNCTION(jsFunctionOnLoadObjectResultResolve, (JSC::JSGlobalObje
 
     bool wasModuleMock = pendingModule->wasModuleMock;
 
-    JSC::JSValue result = handleVirtualModuleResult<false>(static_cast<Zig::GlobalObject*>(globalObject), objectResult, &res, &specifier, &referrer, wasModuleMock);
+    auto* graph = graphValue.isUndefined() ? nullptr : uncheckedDowncast<JSModuleGraph>(graphValue);
+    JSC::JSValue result = handleVirtualModuleResult<false>(static_cast<Zig::GlobalObject*>(globalObject), objectResult, &res, &specifier, &referrer, wasModuleMock, nullptr, graph);
     if (!scope.exception() && !res.success) [[unlikely]] {
         throwException(globalObject, scope, result);
     }
@@ -1420,6 +1463,7 @@ BUN_DEFINE_HOST_FUNCTION(jsFunctionOnLoadObjectResultReject, (JSC::JSGlobalObjec
     PendingVirtualModuleResult* pendingModule = uncheckedDowncast<PendingVirtualModuleResult>(callFrame->argument(1));
     pendingModule->internalField(0).set(vm, pendingModule, JSC::jsUndefined());
     pendingModule->internalField(1).set(vm, pendingModule, JSC::jsUndefined());
+    pendingModule->internalField(3).set(vm, pendingModule, JSC::jsUndefined());
     JSC::JSPromise* promise = pendingModule->internalPromise();
 
     pendingModule->internalField(2).set(vm, pendingModule, JSC::jsUndefined());
