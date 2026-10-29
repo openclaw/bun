@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Refresh generated IR expectations for the current upstream WebKit generator and type-prediction passes.
+
 - Sync upstream large-program loading, deterministic generated paths, and runtime corrections; keep regression coverage while using upstream path naming.
 
 - Sync upstream CommonJS cycle and JSX handling, trim retention, and cold-call outlining while preserving the AOT fork fixes.
