@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Align the circular CommonJS error regression with upstream AOT behavior matching the source loader.
+
 - Refresh generated AOT IR snapshots for the current WebKit optimizer while preserving their source programs and handwritten runtime checks.
 
 - Expose new WebKit flow-result sections and match the extended callback layout.

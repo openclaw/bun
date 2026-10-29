@@ -1,7 +1,6 @@
-// A CommonJS file calls import() of the ES module that is being required and imports it, and then throws. The require() and the import() both fail with that error.
-// `bun run` loses the error: the module runs as if the file had finished, or fails to link for a name that the file has set.
-// Reference: bun build --compile
-globalThis.say = (...words) => console.log(...words);
+// A CommonJS file imports the ES module that is being required, then throws.
+// Match the source loader: a reentrant import may settle before it learns that the file threw.
+globalThis.say = (...words) => console.log(...words.map(word => typeof word === "string" ? word.replaceAll(__dirname, "<fixture>") : word));
 try {
   require("./bare/module.mjs");
   say("bare: required");
