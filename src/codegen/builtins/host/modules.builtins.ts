@@ -84,6 +84,9 @@ const objectsMadeByNativeModuleMacro: readonly b.BuiltinPath[] = [
 ];
 
 export default b.declarations(
+  b.namespace("%ModuleRequirePrototype%", {}),
+  b.inherits("%ModuleRequirePrototype%", "Function.prototype"),
+  b.inherits("%ModuleRequire%", "%ModuleRequirePrototype%"),
   b.namespace("%ModuleCache%", {}),
   b.namespace("%ModuleExtensions%", {}),
   b.namespace(

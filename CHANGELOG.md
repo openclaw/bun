@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Match the current WebKit AOT require-prototype host role and preserve per-global CommonJS prototype identity.
+
 - Use current upstream IR expectations in place of obsolete fork-generated snapshots.
 
 - Sync upstream main, shared-library AOT entry grouping, once-per-build macros, and runtime fixes while preserving the retained-runtime fork.

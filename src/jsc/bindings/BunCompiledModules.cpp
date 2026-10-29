@@ -586,6 +586,11 @@ static JSObject* requireCache(JSGlobalObject* realm)
     return uncheckedDowncast<Zig::GlobalObject>(realm)->lazyRequireCacheObject();
 }
 
+static JSObject* requirePrototype(JSGlobalObject* realm)
+{
+    return asObject(uncheckedDowncast<Zig::GlobalObject>(realm)->requireFunctionUnbound()->getPrototypeDirect());
+}
+
 static JSObject* requireExtensions(JSGlobalObject* realm)
 {
     return uncheckedDowncast<Zig::GlobalObject>(realm)->lazyRequireExtensionsObject();
@@ -653,6 +658,7 @@ const AOT::ModuleHost compiledModuleHost = {
     &isImportOfMainModule,
     &runMainModule,
     &createModuleNotFoundError,
+    &requirePrototype,
 };
 
 JSValue createNotInExecutableError(JSGlobalObject* globalObject, ErrorCode code, const String& path, NotInExecutable what)
