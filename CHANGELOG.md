@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Match WebKit’s thread-pool ABI and reclaim unused per-thread allocator memory without reading a missing callback.
+
 - Align the circular CommonJS error regression with upstream AOT behavior matching the source loader.
 
 - Refresh generated AOT IR snapshots for the current WebKit optimizer while preserving their source programs and handwritten runtime checks.

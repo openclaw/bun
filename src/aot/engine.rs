@@ -489,12 +489,22 @@ struct BunAOTResult {
 #[repr(C)]
 struct HostThreadPool {
     schedule: unsafe extern "C" fn(run: unsafe extern "C" fn(*mut c_void), argument: *mut c_void),
+    give_free_memory_of_current_thread_back: Option<extern "C" fn()>,
 }
 
 /// The engine's loops run on the threads that the front end's did.
 static REGION_THREADS: HostThreadPool = HostThreadPool {
     schedule: bun_sema_driver::run_on_region_thread,
+    give_free_memory_of_current_thread_back: if bun_alloc::USE_MIMALLOC {
+        Some(give_free_memory_of_current_thread_back)
+    } else {
+        None
+    },
 };
+
+extern "C" fn give_free_memory_of_current_thread_back() {
+    bun_alloc::mimalloc::mi_collect(false);
+}
 
 unsafe extern "C" {
     fn Bun__AOT__initializeOptions(options: *mut CompileOptions);
