@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Sync upstream large-program loading, deterministic generated paths, and runtime corrections; keep regression coverage while using upstream path naming.
+
 - Sync upstream CommonJS cycle and JSX handling, trim retention, and cold-call outlining while preserving the AOT fork fixes.
 
 - Preserve deterministic evaluated-text display names with lazily initialized source paths.
