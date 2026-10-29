@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve deterministic evaluated-text display names with lazily initialized source paths.
+
 - Sync AOT async tail calls, segmented cell-cage allocation, strict IR checks, and upstream runtime fixes while preserving retained runtime and loader support.
 
 - Sync upstream exception checks and runtime safety fixes; omit system CA prefetch from standalone executables.

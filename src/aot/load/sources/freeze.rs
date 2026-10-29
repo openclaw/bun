@@ -129,7 +129,7 @@ fn relocate_evaluated_text_paths(
             let path = create_virtual_path(&entries[origin.idx()].public_path, index);
             let entry = &mut entries[text.idx()];
             entry.public_path = path.clone().into_boxed_slice();
-            entry.display_path = path.clone().into_boxed_slice();
+            entry.display_path = OnceLock::from(path.clone().into_boxed_slice());
             entry.diagnostic_path = path.into_boxed_slice();
             pending.push(text);
         }
