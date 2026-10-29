@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Refresh generated AOT IR snapshots for the current WebKit optimizer while preserving their source programs and handwritten runtime checks.
+
 - Expose new WebKit flow-result sections and match the extended callback layout.
 
 - Match WebKit’s synthetic-export wire format while keeping existing exports fixed and conditional require values dynamic.
