@@ -2607,8 +2607,8 @@ impl<'a> LinkerContext<'a> {
     /// Each chunk's final content hash: its own isolated hash (plus the
     /// asset paths its output pieces reference) and that of every chunk it
     /// transitively reaches through cross-chunk imports or output pieces, so a
-    /// change anywhere below a chunk renames it. Cycles are fine: reachability
-    /// is a fixpoint over bitsets, and each chunk digests its own hash first,
+    /// change anywhere below a chunk renames it. Cycles share one reachable set,
+    /// propagated in dependency order, and each chunk digests its own hash first,
     /// then the rest of its closure in chunk order (so two chunks that reach
     /// each other still differ).
     ///
@@ -2679,34 +2679,25 @@ impl<'a> LinkerContext<'a> {
             edges.push(out);
         }
 
-        let mut reach: Vec<AutoBitSet> = Vec::with_capacity(n);
-        for i in 0..n {
+        let components = crate::linker_context::chunk_hash_components::components(&edges);
+        let mut reach: Vec<AutoBitSet> = Vec::with_capacity(components.members.len());
+        for members in &components.members {
             let mut bits = AutoBitSet::init_empty(n)?;
-            bits.set(i);
+            for &i in members {
+                bits.set(i);
+            }
             reach.push(bits);
         }
-        loop {
-            let mut changed = false;
-            for i in 0..n {
-                for &j in &edges[i] {
-                    let j = j as usize;
-                    if j == i || reach[j].subset_of(&reach[i]) {
-                        continue;
-                    }
-                    let other = reach[j].clone()?;
-                    reach[i].set_union(&other);
-                    changed = true;
-                }
-            }
-            if !changed {
-                break;
+        for i in (0..components.members.len()).rev() {
+            for &j in &components.dependencies[i] {
+                let (before, after) = reach.split_at_mut(j);
+                before[i].set_union(&after[0]);
             }
         }
 
-        let closure: Vec<u64> = reach
-            .iter()
-            .enumerate()
-            .map(|(i, bits)| {
+        let closure: Vec<u64> = (0..n)
+            .map(|i| {
+                let bits = &reach[components.component_of[i]];
                 let mut hash = ContentHasher::default();
                 hash.write(&own[i].to_ne_bytes());
                 let mut iter = bits.iterator::<true, true>();
@@ -2734,7 +2725,7 @@ impl<'a> LinkerContext<'a> {
             for i in 0..n {
                 let mut hash = ContentHasher::default();
                 let mut any = false;
-                let mut iter = reach[i].iterator::<true, true>();
+                let mut iter = reach[components.component_of[i]].iterator::<true, true>();
                 while let Some(j) = iter.next() {
                     if j != i && names[j].len() != min_len[j] {
                         hash.write_ints(&[j as u32, names[j].len() as u32]);

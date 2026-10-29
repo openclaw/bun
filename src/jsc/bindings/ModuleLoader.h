@@ -55,9 +55,9 @@ struct OnLoadResult {
 
 extern "C" bool isBunTest;
 
-class PendingVirtualModuleResult : public JSC::JSInternalFieldObjectImpl<3> {
+class PendingVirtualModuleResult : public JSC::JSInternalFieldObjectImpl<4> {
 public:
-    using Base = JSC::JSInternalFieldObjectImpl<3>;
+    using Base = JSC::JSInternalFieldObjectImpl<4>;
 
     template<typename, JSC::SubspaceAccess mode> static JSC::GCClient::IsoSubspace* subspaceFor(JSC::VM& vm)
     {
@@ -67,7 +67,7 @@ public:
     }
 
     JS_EXPORT_PRIVATE static PendingVirtualModuleResult* create(VM&, Structure*);
-    static PendingVirtualModuleResult* create(JSC::JSGlobalObject* globalObject, const WTF::String& specifier, const WTF::String& referrer, bool wasModuleMock);
+    static PendingVirtualModuleResult* create(JSC::JSGlobalObject* globalObject, const WTF::String& specifier, const WTF::String& referrer, bool wasModuleMock, JSModuleGraph* graph);
     static Structure* createStructure(VM&, JSGlobalObject*, JSValue);
 
     JSC::JSPromise* internalPromise();
@@ -76,7 +76,7 @@ public:
     DECLARE_VISIT_CHILDREN;
 
     PendingVirtualModuleResult(JSC::VM&, JSC::Structure*);
-    void finishCreation(JSC::VM&, const WTF::String& specifier, const WTF::String& referrer);
+    void finishCreation(JSC::VM&, const WTF::String& specifier, const WTF::String& referrer, JSModuleGraph* graph);
 
     bool wasModuleMock = false;
 };
