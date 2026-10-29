@@ -672,8 +672,8 @@ const stillErrors: [string, string, string[]][] = [
     ["TS2322"],
   ],
   [
-    "a private class member missing from Bun",
-    `class Private { private value = 1; }\nconst runtime: Private = Bun;\nconsole.log(runtime);\n`,
+    "a private class member missing from Bun with partial declarations",
+    `declare module "bun" { export const version: string; }\nclass Private { private value = 1; }\nconst runtime: Private = Bun;\nconsole.log(runtime);\n`,
     ["TS2741"],
   ],
   [
@@ -838,6 +838,22 @@ for (const fits of [true, false])
   );
 
 describe.concurrent("without Bun's type declarations", () => {
+  test(
+    "partially declared Bun assigned to runtime interfaces",
+    () =>
+      slot(async () => {
+        const files = provided["Bun assigned to runtime interfaces directly and through Reflect.get"].files;
+        using dir = tempDir("aot-partial-bun-types", {
+          ...files,
+          "main.ts": `declare module "bun" { export const version: string; }\n${files["main.ts"]}`,
+        });
+        expect(await check(String(dir), "--aot")).toEqual(built);
+        expect(await build(String(dir))).toEqual(built);
+        expect(await run(String(dir), "compiled")).toEqual(await run(String(dir), "plain"));
+      }),
+    buildTimeout,
+  );
+
   test.each(stillErrors)(
     "bun check --aot and a build stop at %s",
     (_what, source, errors) =>
