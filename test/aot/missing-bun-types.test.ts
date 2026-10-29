@@ -183,6 +183,19 @@ console.log(typeof version, typeof directory, server, other);
     checkSays: [],
     prints: "string string undefined undefined\n",
   },
+  "Bun assigned to runtime interfaces directly and through Reflect.get": {
+    files: {
+      "main.ts": `type Runtime = { Transpiler: unknown; plugin: unknown; serve: unknown; file: unknown; sleep: unknown; spawn: unknown };
+const direct: Runtime = Bun;
+const reflected: { Transpiler: unknown; plugin: unknown } = Reflect.get(globalThis, "Bun");
+const single: { plugin: unknown } = Bun;
+console.log(typeof direct.Transpiler, typeof reflected.plugin, typeof single.plugin);
+`,
+      "tsconfig.json": JSON.stringify({ compilerOptions: { strict: true, types: [] } }),
+    },
+    checkSays: [],
+    prints: "function function function\n",
+  },
   "callbacks for what has no declaration": {
     files: {
       "main.ts": `process.on("exit", code => console.log("exit", code));
@@ -649,6 +662,21 @@ const stillErrors: [string, string, string[]][] = [
   ["a name that is nearly one of Bun's", `consle.log("typo");\n`, ["TS2552"]],
   ["a type error", `const port: number = "3000";\nconsole.log(port);\n`, ["TS2322"]],
   [
+    "a missing member in an assignment from the program's own object",
+    `const own = { JSON };\nconst runtime: { JSON: JSON; plugin: unknown } = own;\nconsole.log(runtime);\n`,
+    ["TS2741"],
+  ],
+  [
+    "a declared Bun member with the wrong type beside an undeclared member",
+    `declare module "bun" { export const version: string; }\nconst runtime: { missing: unknown; version: number } = Bun;\nconsole.log(runtime);\n`,
+    ["TS2322"],
+  ],
+  [
+    "a private class member missing from Bun",
+    `class Private { private value = 1; }\nconst runtime: Private = Bun;\nconsole.log(runtime);\n`,
+    ["TS2741"],
+  ],
+  [
     "a wrong use of what TypeScript's own libraries declare",
     `const size: string = new Map<string, number>().size;\nconsole.log(size, [1].lenght);\n`,
     ["TS2322", "TS2551"],
@@ -1054,6 +1082,19 @@ test(
       });
       expect(await build(String(dir))).toEqual(built);
       expect(await run(String(dir), "compiled")).toEqual({ stdout: "string\n", exitCode: 0, signal: null });
+    }),
+  buildTimeout,
+);
+
+test(
+  "a missing runtime-interface member stays an error with Bun's full type declarations",
+  () =>
+    slot(async () => {
+      using dir = tempDirWithBunTypes("aot-bun-types-missing-runtime-member", {
+        "main.ts": `const runtime: { openclawMissingBuiltin: unknown } = Bun;\nconsole.log(runtime);\n`,
+        "tsconfig.json": JSON.stringify({ compilerOptions: { strict: true, types: ["bun"], skipLibCheck: true } }),
+      });
+      expect(await build(String(dir))).toEqual({ errors: ["TS2741"], warnings: [], exitCode: 1, signal: null });
     }),
   buildTimeout,
 );
