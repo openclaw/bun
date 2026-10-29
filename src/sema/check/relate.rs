@@ -6502,12 +6502,21 @@ impl<'p, 's> Checker<'p, 's> {
             && !self.is_tuple(source);
         let mut inherited = self.inherited_of(sm.shape());
         let source_lookup = (by_name, has_properties, sm);
+        // Missing Bun declarations leave public members unknown; declared members still have their types.
+        let unlisted_are_untyped = r.relation == Relation::Assignable
+            && self.has_incomplete_runtime_members(source)
+            && !tm.shape().props.iter().any(|prop| {
+                prop.flags
+                    .intersects(PropFlags::PRIVATE | PropFlags::PROTECTED)
+                    || self.atoms().is_private_name(prop.name)
+            });
         // `getUnmatchedProperty`
         for tp in &tm.shape().props {
             if !(require_optional_properties || !tp.flags.contains(PropFlags::OPTIONAL))
                 || (self.property_of_source(source_lookup, &mut inherited, tp.name)).is_some()
                 // `isStaticPrivateIdentifierProperty`
                 || self.is_static_private_name(tp)
+                || unlisted_are_untyped
             {
                 continue;
             }
