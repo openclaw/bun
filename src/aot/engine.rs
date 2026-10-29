@@ -316,6 +316,8 @@ struct FlowFindingsOfEngine {
     builtins_used_count: usize,
     library_functions_lacked: *const LackedFunctionRecord,
     library_functions_lacked_count: usize,
+    exports_that_spies_replace: *const crate::ir::generated::ReplacedExportRecord,
+    exports_that_spies_replace_count: usize,
 }
 
 /// SAFETY: `owner` is the `ProgramOwner` of a running `compile`, which nothing else touches until the engine returns, and the lists of
