@@ -237,7 +237,7 @@ ${names.map(asksFor).join("")}`;
       const notFound = names
         .flatMap(name => [
           `${name} require ResolveMessage | MODULE_NOT_FOUND | Cannot find module '${name}'\n`,
-          `${name} import ResolveMessage | ERR_MODULE_NOT_FOUND | Cannot find package '${name.split("/")[0]}'\n`,
+          `${name} import ResolveMessage | ERR_MODULE_NOT_FOUND | Cannot find package '${name === "internal/cluster/round_robin_handle" ? "internal:cluster" : name.split("/")[0]}'\n`,
         ])
         .join("");
       for (const env of [withoutTheFlag, { ...withoutTheFlag, BUN_FEATURE_FLAG_INTERNAL_FOR_TESTING: "1" }]) {
