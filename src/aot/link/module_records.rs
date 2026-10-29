@@ -486,6 +486,7 @@ impl RecordBuilder<'_, '_, '_> {
                 name: self.intern_atom(export.name),
                 variable,
                 is_known_member: export.is_known_member,
+                is_replaceable: false,
             });
         }
         records

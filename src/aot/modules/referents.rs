@@ -224,6 +224,8 @@ impl<'s> ReferentContext<'s> for LinkedProject<'_, 's> {
             return None;
         };
         match (self.graph.interop(module).require_result, module) {
+            // Its value depends on earlier imports, so it has no fixed referent.
+            (RequireResult::NamespaceIfImported, _) => None,
             // The value of a built-in module is an object. The table of built-ins lists its members as the exports of the module.
             (RequireResult::Namespace, _)
             | (RequireResult::DefaultExport, ModuleRef::Runtime(_)) => {

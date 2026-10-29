@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Match WebKit’s synthetic-export wire format while keeping existing exports fixed and conditional require values dynamic.
+
 - Match the current WebKit AOT require-prototype host role and preserve per-global CommonJS prototype identity.
 
 - Use current upstream IR expectations in place of obsolete fork-generated snapshots.
