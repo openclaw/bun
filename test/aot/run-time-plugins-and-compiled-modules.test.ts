@@ -1,7 +1,8 @@
 // `bun test --debug-aot` runs compiled code in place of the files. What an executable does with a plugin that is registered at run time: test/aot/parallel/library-modules.
 import { expect } from "bun:test";
-import { bunEnv, bunExe, tempDir } from "harness";
+import { bunEnv, bunExe, isWindows, tempDir } from "harness";
 import { join } from "node:path";
+import { built, slot, spawned } from "./harness/commands";
 import { run } from "./harness/run";
 import { describe, test } from "./supported";
 
@@ -30,12 +31,52 @@ const header = String.raw`
   }
 `;
 
+async function compileAndRun(folder: string, ...flags: string[]) {
+  // A path-valued flag must not rename the embedded entry point after an external module.
+  const executable = join(folder, "program" + (isWindows ? ".exe" : ""));
+  const build = await spawned(
+    [bunExe(), "build", "--compile", ...flags, "main.ts", "--outfile", executable],
+    folder,
+    bunEnv,
+  );
+  built(build);
+  return spawned([executable], folder, bunEnv);
+}
+
 async function runTests(folder: string) {
   const { stdout, stderr, exitCode } = await run([bunExe(), "test", "--debug-aot", "./main.test.ts"], folder, bunEnv);
   return { output: stdout + stderr, exitCode };
 }
 
 describe.concurrent("plugins registered at run time", () => {
+  test(
+    "extensionless SDK imports in external modules reach runtime resolution hooks",
+    () =>
+      slot(async () => {
+        using dir = tempDir("aot-external-plugin-alias", {
+          "tsconfig.json": tsconfig,
+          "sdk.cjs": `exports.value = 42;`,
+          "external.mjs": `import { value } from "uninstalled-package/sdk"; export { value };`,
+          "main.ts": String.raw`
+            import { createRequire } from "node:module";
+            import { join } from "node:path";
+            Bun.plugin({
+              name: "external-sdk-alias",
+              setup(build) {
+                build.onResolve({ filter: /^uninstalled-package\/sdk$/ }, () => ({
+                  path: join(process.cwd(), "sdk.cjs"), namespace: "file",
+                }));
+              },
+            });
+            console.log(createRequire(import.meta.url)("./external.mjs").value);
+          `,
+        });
+        const { stdout, stderr, exitCode } = await compileAndRun(String(dir), "--aot", "--external=./external.mjs");
+        expect({ stdout, stderr, exitCode }).toEqual({ stdout: "42\n", stderr: "", exitCode: 0 });
+      }),
+    timeout,
+  );
+
   const inPlace: Record<string, { register: string; message: RegExp }> = {
     "onLoad of a module": {
       register: String.raw`build => build.onLoad({ filter: /lib\.ts$/ }, () => ({ contents: "", loader: "ts" }))`,
