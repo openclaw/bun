@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Use current upstream IR expectations in place of obsolete fork-generated snapshots.
+
 - Sync upstream main, shared-library AOT entry grouping, once-per-build macros, and runtime fixes while preserving the retained-runtime fork.
 
 - Align property-read and unclonable-stretch counts with upstream conservative analysis while retaining runtime-output checks.
