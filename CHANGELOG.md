@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Align property-read and unclonable-stretch counts with upstream conservative analysis while retaining runtime-output checks.
+
 - Refresh generated IR expectations for the current upstream WebKit generator and type-prediction passes.
 
 - Sync upstream large-program loading, deterministic generated paths, and runtime corrections; keep regression coverage while using upstream path naming.

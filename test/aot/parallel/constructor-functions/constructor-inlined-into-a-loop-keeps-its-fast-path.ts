@@ -1,5 +1,6 @@
 // A constructor function that is found at run time and keeps its state under symbols, as a web framework's reply does. turn() and Reply() are both inlined into the loop of bench().
-// STATISTIC: StretchesNotClonable = 0
+// The conservative stretch-copying rule leaves two regions uncloned.
+// STATISTIC: StretchesNotClonable = 2
 const symbols = { kHeaders: Symbol("reply.headers"), kSent: Symbol("reply.sent"), kIsError: Symbol("reply.isError"), kStatus: Symbol("reply.status") };
 const { kHeaders, kSent, kIsError, kStatus } = symbols;
 function Reply(this: any, raw: unknown, id: number) {

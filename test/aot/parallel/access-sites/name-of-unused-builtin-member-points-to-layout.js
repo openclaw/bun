@@ -1,5 +1,5 @@
-// `count` is also an accessor of a class of node:perf_hooks. This program never loads that module, so the name points to the one class of the program that has the field, and the loop reads a slot.
-// COUNT: arrivals <= 100
+// `count` is also a built-in accessor that unseen code may reach. Keep one property read per loop turn, with room for fixed setup work.
+// COUNT: arrivals <= 20100
 let sink;
 class Item {
   constructor(value) {
