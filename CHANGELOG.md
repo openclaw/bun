@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Drop the obsolete built-in replacement flow-result adapter after upstream moved replacement discovery before analysis.
+
 - Refresh generated AOT IR snapshots for heap-frame generators and current upstream optimization output without changing embedded programs or handwritten checks.
 
 - Model and serialize the engine’s built-in replacement lists, keeping ordinary linked programs empty and full-program wire tests complete.
