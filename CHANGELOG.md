@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Expose current engine flow-result sections and preserve their name offsets and callback layout.
+
 - Match the engine object-spread flag and empty mutable-built-in program lists while preserving ordinary built-in locking.
 
 - Match WebKit’s thread-pool ABI and reclaim unused per-thread allocator memory without reading a missing callback.
