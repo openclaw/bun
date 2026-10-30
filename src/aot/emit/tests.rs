@@ -12,9 +12,9 @@ use crate::ir::generated::String as StringRecord;
 use crate::ir::generated::{
     Data, DataMember, DataNode, Entry, EvalBinding, EvalScope, ExpectedResult, Field, Function,
     FunctionFlags, FunctionVisibility, Header, HostRead, ImportPhase, Layout, LayoutKind, LimitId,
-    MAGIC, Module, ModuleExport, ModuleFailure, ModuleRequest, ModuleRequestKind, ProgramList,
-    RequiredName, RuntimeFunctionEntry, SCHEMA_HASH, StaticField, SyntheticExport, TypeSite,
-    TypeSiteKind, Variable, WebAssemblyModule,
+    MAGIC, Module, ModuleExport, ModuleFailure, ModuleRequest, ModuleRequestKind, OpenedName,
+    ProgramList, ReplaceableBuiltin, RequiredName, RuntimeFunctionEntry, SCHEMA_HASH, StaticField,
+    SyntheticExport, TypeSite, TypeSiteKind, Variable, WebAssemblyModule,
 };
 use crate::ir::testing::{build_function, function_with_parameters};
 use crate::ir::{
@@ -228,6 +228,13 @@ fn create_full_program() -> Program {
         function: FUNCTION,
         visibility: FunctionVisibility::Private,
     });
+    program.replaceable_builtins.push(ReplaceableBuiltin {
+        member: BuiltinId::GlobalThis,
+    });
+    program.opened_names.push(OpenedName {
+        holder: BuiltinId::GlobalThis,
+        name: names.name,
+    });
     program.web_assembly_modules.push(WebAssemblyModule {
         module: MODULE,
         bytes: vec![0, 0x61, 0x73, 0x6D, 1],
@@ -439,6 +446,11 @@ fn counts_match_program() {
         (ProgramList::Functions, program.functions.len()),
         (ProgramList::Data, program.data.len()),
         (ProgramList::Entries, program.entries.len()),
+        (
+            ProgramList::ReplaceableBuiltins,
+            program.replaceable_builtins.len(),
+        ),
+        (ProgramList::OpenedNames, program.opened_names.len()),
         (
             ProgramList::RuntimeFunctions,
             program.runtime_functions.len(),

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Model and serialize the engine’s built-in replacement lists, keeping ordinary linked programs empty and full-program wire tests complete.
+
 - Expose current engine flow-result sections and preserve their name offsets and callback layout.
 
 - Match the engine object-spread flag and empty mutable-built-in program lists while preserving ordinary built-in locking.
