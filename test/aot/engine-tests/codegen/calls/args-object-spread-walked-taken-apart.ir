@@ -4722,15 +4722,20 @@ runtimefunction id=IteratorConsumersFrom function=f135
 # CHECK-NEXT: Return v3
 # CHECK-NEXT: }
 # CHECK-LABEL: function f38 module=
-# CHECK: m0 position=4951 role=CoroutineRamp flags=[IsGenerator, HasThis, TakesCallee] thisType={type=Arguments} results=[{type=Generator<undefined|null|string, pristine[Storage, Names]>}] capabilities=[MayChangeSignature, MayBeInlined, HasOrdinaryFrame, IsNeverCalledByHost, IsHiddenInStackTraces] creator=Coroutine{ramp=f38 body=f144 promiseParameter=2} {
+# CHECK: m0 position=4951 role=CoroutineRamp flags=[IsGenerator, HasThis, TakesCallee] thisType={type=Arguments} results=[{type=Generator<undefined|null|string, pristine[Storage, Names]>}] capabilities=[MayChangeSignature, MayBeInlined, HasOrdinaryFrame, IsNeverCalledByHost, IsHiddenInStackTraces] creator=Coroutine{ramp=f38 body=f205} {
 # CHECK-NEXT: b0(v0: Arguments, v1: function):
 # CHECK-NEXT: v2: Generator = NewGenerator v1 function=f38
-# CHECK-NEXT: v3: anything = CallDirect v0, v1, v2 function=f144
+# CHECK-NEXT: v5: anything = NewHeapFrame v2 function=f205 numberOfWords=3
+# CHECK-NEXT: PutHeapFrameWord v5, v2
+# CHECK-NEXT: PutHeapFrameWord v5, v0 index=1
+# CHECK-NEXT: PutHeapFrameWord v5, v1 index=2
+# CHECK-NEXT: SuspendInHeapFrame v2, v5 [isFirstRun]
+# CHECK-NEXT: v3: undefined = Undefined
 # CHECK-NEXT: v4: Generator<undefined|null|string, pristine[Storage, Names]> = AssumeType v2 provenType=Generator<undefined|null|string, pristine[Storage, Names]>
 # CHECK-NEXT: Return v4
 # CHECK-NEXT: }
 # CHECK-LABEL: function f40 module=
-# CHECK: m0 position=3628 role=CoroutineRamp flags=[IsGenerator, HasThis, TakesCallee] thisType={type=anything} results=[{type=Generator<undefined|null|number|"own">}] capabilities=[MayChangeSignature, MayBeInlined, HasOrdinaryFrame, IsNeverCalledByHost, IsHiddenInStackTraces] creator=Coroutine{ramp=f40 body=f145 promiseParameter=2}
+# CHECK: m0 position=3628 role=CoroutineRamp flags=[IsGenerator, HasThis, TakesCallee] thisType={type=anything} results=[{type=Generator<undefined|null|number|"own">}] capabilities=[MayChangeSignature, MayBeInlined, HasOrdinaryFrame, IsNeverCalledByHost, IsHiddenInStackTraces] creator=Coroutine{ramp=f40 body=f206}
 # CHECK-LABEL: function {{*}}name="get"
 # CHECK: module=m0 position=4193 kind=Method flags=[HasArgumentCount, HasHiddenRest, HasExplicitName] captures=[{type=Array}] thisType={type=anything} results=[{type="got"}] functionTypes=[f50] capabilities=[MayChangeSignature, MayBeCloned, MayBeInlined, HasOrdinaryFrame, IsNeverCalledByHost, ClosuresAreReadWithoutCode] {
 # CHECK-NEXT: b0(v0: Array, v1: int[0, 4294967295], v2: Array):

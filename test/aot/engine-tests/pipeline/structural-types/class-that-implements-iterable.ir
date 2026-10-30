@@ -2245,10 +2245,15 @@ runtimefunction id=IteratorConsumersFrom function=f73
 # CHECK-NEXT: Return v6
 # CHECK-NEXT: }
 # CHECK-LABEL: function f15 name=
-# CHECK: "[Symbol.iterator]" module=m0 position=1752 kind=Method role=CoroutineRamp flags=[IsGenerator, HasThis, TakesCallee, IsChecked, IsNamedByComputedKey] thisType={type=L1 site=w19 flags=[IsExpected]} results=[{type=Generator<number, pristine[Storage, Names]> flags=[OmitsNull, OmitsUndefined]}] capabilities=[MayChangeSignature, MayBeInlined, HasOrdinaryFrame, IsNeverCalledByHost, IsHiddenInStackTraces] creator=Coroutine{ramp=f15 body=f109 promiseParameter=2} {
+# CHECK: "[Symbol.iterator]" module=m0 position=1752 kind=Method role=CoroutineRamp flags=[IsGenerator, HasThis, TakesCallee, IsChecked, IsNamedByComputedKey] thisType={type=L1 site=w19 flags=[IsExpected]} results=[{type=Generator<number, pristine[Storage, Names]> flags=[OmitsNull, OmitsUndefined]}] capabilities=[MayChangeSignature, MayBeInlined, HasOrdinaryFrame, IsNeverCalledByHost, IsHiddenInStackTraces] creator=Coroutine{ramp=f15 body=f150} {
 # CHECK-NEXT: b0(v0: anything ~ L1, v1: function):
 # CHECK-NEXT: v2: Generator = NewGenerator v1 function=f15
-# CHECK-NEXT: v3: anything = CallDirect v0, v1, v2 function=f109
+# CHECK-NEXT: v5: anything = NewHeapFrame v2 function=f150 numberOfWords=4
+# CHECK-NEXT: PutHeapFrameWord v5, v2
+# CHECK-NEXT: PutHeapFrameWord v5, v0 index=1
+# CHECK-NEXT: PutHeapFrameWord v5, v1 index=2
+# CHECK-NEXT: SuspendInHeapFrame v2, v5 [isFirstRun]
+# CHECK-NEXT: v3: undefined = Undefined
 # CHECK-NEXT: v4: Generator<number, pristine[Storage, Names]> = AssumeType v2 provenType=Generator<number, pristine[Storage, Names]>
 # CHECK-NEXT: Return v4
 # CHECK-NEXT: }

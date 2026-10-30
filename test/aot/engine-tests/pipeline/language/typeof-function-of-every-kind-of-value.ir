@@ -2623,7 +2623,7 @@ runtimefunction id=MapIteratorPrototypeNext function=f75 visibility=Private
 # CHECK-NEXT: Return v0
 # CHECK-NEXT: }
 # CHECK-LABEL: function {{*}}name="generator"
-# CHECK: module=m0 position=599 role=CoroutineRamp flags=[IsGenerator, HasThis, TakesCallee, HasExplicitName] thisType={type=undefined} results=[{type=Generator<never, pristine[Storage, Names]>}] capabilities=[MayChangeSignature, MayBeInlined, HasOrdinaryFrame, IsNeverCalledByHost, IsHiddenInStackTraces] creator=Coroutine{ramp=f4 body=f118 promiseParameter=2}
+# CHECK: module=m0 position=599 role=CoroutineRamp flags=[IsGenerator, HasThis, TakesCallee, HasExplicitName] thisType={type=undefined} results=[{type=Generator<never, pristine[Storage, Names]>}] capabilities=[MayChangeSignature, MayBeInlined, HasOrdinaryFrame, IsNeverCalledByHost, IsHiddenInStackTraces] creator=Coroutine{ramp=f4 body=f173}
 # CHECK-LABEL: function {{*}}name="Plain"
 # CHECK: module=m0 position=320 kind=BaseConstructor flags=[HasNewTarget, HasExplicitName] thisType={type=anything} results=[{type=object flags=[IsFromCompiler]}] functionTypes=[f50] capabilities=[MayChangeSignature, MayBeCloned, MayBeInlined, HasOrdinaryFrame, IsNeverCalledByHost] constructedClass=L0 {
 # CHECK-NEXT: b0(v0: anything):
@@ -2638,21 +2638,7 @@ runtimefunction id=MapIteratorPrototypeNext function=f75 visibility=Private
 # CHECK-NEXT: Return v0
 # CHECK-NEXT: }
 # CHECK-LABEL: function {{*}}name="generator"
-# CHECK: module=m0 position=599 role=CoroutineBody flags=[IsGenerator, HasThis, TakesCallee, HasExplicitName] thisType={type=undefined} parameters=[{type=Generator}] results=[{type=anything}] functionTypes=[f27] derivation={source=f4 parameterMap=[{original=0}, {original=1}, {}]} creator=Coroutine{ramp=f4 body=f118 promiseParameter=2} {
-# CHECK-NEXT: b0(v0: undefined, v1: function, v2: Generator):
-# CHECK-NEXT: v3: boolean = IsGeneratorRunning v2
-# CHECK-NEXT: Branch v3 -> taken b1(), notTaken b2()
-# CHECK-NEXT: b1():
-# CHECK-NEXT: v4: undefined = Undefined
-# CHECK-NEXT: Return v4
-# CHECK-NEXT: b2():
-# CHECK-NEXT: v5: undefined = Undefined
-# CHECK-NEXT: v6: anything = NewHeapFrame v2 function=f173 numberOfWords=2
-# CHECK-NEXT: PutHeapFrameWord v6, v2
-# CHECK-NEXT: PutHeapFrameWord v6, v1 index=1
-# CHECK-NEXT: SuspendInHeapFrame v2, v6 [isFirstRun]
-# CHECK-NEXT: Return v5
-# CHECK-NEXT: }
+# CHECK: module=m0 position=599 role=CoroutineBody flags=[IsGenerator, HasThis, TakesCallee, HasExplicitName] thisType={type=undefined} parameters=[{type=Generator}] results=[{type=anything}] functionTypes=[f27] derivation={source=f4 parameterMap=[{original=0}, {original=1}, {}]} creator=Coroutine{ramp=f4 body=f118 promiseParameter=2}
 # CHECK-LABEL: function {{*}}name="declared"
 # CHECK: module=m0 position=428 role=GenericEntrypoint flags=[HasThis] captures=[{type=f1}] thisType={type=anything} results=[{type=anything}] capabilities=[HasOrdinaryFrame, IsNeverCalledByHost, IsHiddenInStackTraces] derivation={source=f1} creator=Entrypoint{target=f1 arguments=Registers} inlineFrames=[{}, {callee=f1 callPosition=428 isTailCall=true module=m0}] {
 # CHECK-NEXT: b0(v0: f1, v1: anything):

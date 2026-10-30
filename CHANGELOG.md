@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Refresh generated AOT IR snapshots for heap-frame generators and current upstream optimization output without changing embedded programs or handwritten checks.
+
 - Model and serialize the engine’s built-in replacement lists, keeping ordinary linked programs empty and full-program wire tests complete.
 
 - Expose current engine flow-result sections and preserve their name offsets and callback layout.
