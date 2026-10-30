@@ -25,6 +25,7 @@ pub fn plan(input: &TrimInput<'_>, executable: &mut Image<'_>) -> Result<TrimPla
     }
     let table = read_trim_table(executable)?;
     let decision = decide(input, &edges_and_needs_of_builtins(&table));
+    let runs_disk_scripts = !decision.unused.contains(Feature::Tools);
     let is_kept = |feature: &Feature| !decision.unused.contains(*feature);
     if let Some(missing) = read_removed_features(executable)?.iter().find(is_kept) {
         return Err(TrimRequestError::MissingFromTemplate(missing).into());
@@ -39,8 +40,9 @@ pub fn plan(input: &TrimInput<'_>, executable: &mut Image<'_>) -> Result<TrimPla
     }
 
     // Unseen code can ask for any locale, and `--trim-without` alone does not look at the program.
-    let follows_used_locales =
-        input.request.removes_unused && !can_run_unseen_code(input.used, &decision.requirements);
+    let follows_used_locales = input.request.removes_unused
+        && !runs_disk_scripts
+        && !can_run_unseen_code(input.used, &decision.requirements);
     let unknown_locales = UsedLocales::Unknown(None);
     let used_locales = if follows_used_locales {
         &input.used.locales
@@ -53,6 +55,7 @@ pub fn plan(input: &TrimInput<'_>, executable: &mut Image<'_>) -> Result<TrimPla
         &table.icu_languages,
     )?;
     let runs_library_text = is_template
+        || runs_disk_scripts
         || can_run_library_text(input.used, &decision.requirements)
         || can_start_worker_without_image(input.used, &decision);
     let mut plan = plan_table(&table, decision, &wanted, runs_library_text);
@@ -1151,6 +1154,22 @@ mod tests {
             ..ExecutableSettings::default()
         };
         assert!(planned_offsets(&evaluating_text(&[]), &settings, &removing_unused()).is_empty());
+    }
+
+    #[test]
+    fn retained_command_line_keeps_builtin_module_texts() {
+        let request = TrimRequest {
+            allow: vec![TrimFeature::Run],
+            ..removing_unused()
+        };
+        assert!(
+            planned_offsets(
+                &UsedFeatures::from_features(&[]),
+                &ExecutableSettings::default(),
+                &request,
+            )
+            .is_empty()
+        );
     }
 
     #[test]

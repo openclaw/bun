@@ -374,7 +374,8 @@ extern "C" void JSCInitialize(const char* envp[], size_t envc, void (*onCrash)(c
         // useWasmFaultSignalHandler/FastMemory when ASAN_OPTIONS lacks
         // allow_user_segv_handler=1, so we don't force it off here.
 #if OS(DARWIN)
-        if (runsCompiledCode)
+        // An intentionally removed JIT does not imply a sandbox that forbids Mach exception handlers.
+        if (runsCompiledCode || JSC::isFeatureRemoved(JSC::RemovableFeature::JIT))
             JSC::Options::machExceptionHandlerSandboxPolicy = JSC::Options::SandboxPolicy::Allow;
 #endif
         JSC::MarkedBlockCage::setExhaustionHandler(Bun__outOfMemory);
@@ -800,8 +801,7 @@ extern "C" JSC::JSGlobalObject* Zig__GlobalObject__create(void* console_client, 
                 // Same exotic object as the main thread so writes inside the
                 // worker coerce to string, reject symbol keys, and validate
                 // defineProperty like Node's EnvSetter/EnvDefiner.
-                auto* envStructure = Bun::JSEnvironmentVariableMap::createStructure(vm, globalObject, globalObject->objectPrototype());
-                auto* env = Bun::JSEnvironmentVariableMap::create(vm, envStructure);
+                JSC::JSObject* env = Bun::createSharedEnvironmentVariablesMap(globalObject).getObject();
 #endif
                 size_t i = 0;
                 for (auto k : map) {
@@ -811,7 +811,7 @@ extern "C" JSC::JSGlobalObject* Zig__GlobalObject__create(void* console_client, 
 #if OS(WINDOWS)
                     env->putDirectMayBeIndex(globalObject, JSC::Identifier::fromString(vm, WTF::move(k.key)), strings.at(i++));
 #else
-                    env->putInitialValue(globalObject, JSC::Identifier::fromString(vm, WTF::move(k.key)), strings.at(i++));
+                    Bun::JSEnvironmentVariableMap::putInitialValue(env, globalObject, JSC::Identifier::fromString(vm, WTF::move(k.key)), strings.at(i++));
 #endif
                     if (scope.exception()) [[unlikely]]
                         break;

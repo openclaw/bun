@@ -8,11 +8,13 @@ use crate::model::{
 };
 use crate::settings::collect_requirements;
 
-const ALWAYS_ENTERED: [Feature; 4] = [
+const ALWAYS_ENTERED: [Feature; 5] = [
     Feature::Bunfig,
     Feature::CliOptions,
     Feature::CrashReport,
     Feature::Profilers,
+    // Realm bootstrap links metadata for builtins without a compiled implementation.
+    Feature::BuiltinSourceText,
 ];
 
 const ENGINE_FEATURES_OUTSIDE_LANGUAGE: [Feature; 3] =
@@ -180,9 +182,13 @@ fn retain_all_a_program_can_enter(retained: &mut RetainedFeatures) {
             retained.insert(feature, reason);
         }
     }
+    retained.insert_set(&features_of_program_runtime(), RetainReason::NotRequested);
+}
+
+fn features_of_program_runtime() -> FeatureSet {
     let mut features = FeatureSet::all();
     features.subtract(&Feature::all_outside_compiled_programs());
-    retained.insert_set(&features, RetainReason::NotRequested);
+    features
 }
 
 pub fn features_kept_only_when_named() -> FeatureSet {
@@ -242,6 +248,18 @@ fn language_features() -> FeatureSet {
 fn close(retained: &mut RetainedFeatures, edges: &FeatureEdges) {
     let mut worklist: VecDeque<Feature> = retained.set.iter().collect();
     while let Some(feature) = worklist.pop_front() {
+        // The command line can run any disk script, outside the compiled program's feature graph.
+        if feature == Feature::Tools {
+            let reason = RetainReason::NeededBy {
+                feature,
+                strength: EdgeStrength::Reference,
+            };
+            for required in features_of_program_runtime().iter() {
+                if retained.insert(required, reason) {
+                    worklist.push_back(required);
+                }
+            }
+        }
         for edge in edges.leaving(feature) {
             if !edge.is_followed {
                 continue;
@@ -373,7 +391,7 @@ mod tests {
 
     #[test]
     fn used_feature_retains_requirements_transitively() {
-        let [first, second, third] = [Feature::ALL[0], Feature::ALL[1], Feature::ALL[2]];
+        let [first, second, third] = [Feature::Jit, Feature::Interpreter, Feature::RegExp];
         let requirements = references(&[(first, second), (second, third)]);
         let decision = decide_with_edges(&using(&[first]), &removing_unused(), &requirements);
         for feature in [first, second, third] {
@@ -473,9 +491,12 @@ mod tests {
     fn evaluated_text_retains_language() {
         let used = UsedFeatures::with_cause(UnseenCodeCause::EvaluatesText);
         let decision = decide_request(&used, &removing_unused());
+        assert_eq!(
+            decision.reason_of(Feature::BuiltinSourceText),
+            Some(RetainReason::AlwaysEntered),
+        );
         for feature in [
             Feature::Interpreter,
-            Feature::BuiltinSourceText,
             Feature::RegExp,
             Feature::StringNormalize,
             Feature::DataView,
@@ -626,6 +647,18 @@ mod tests {
         let used = using(&[Feature::Sql]);
         let closed = decide_request(&used, &removing_unused());
         assert!(interpreter.is_subset_of(&closed.unused));
+        assert!(!closed.unused.contains(Feature::BuiltinSourceText));
+
+        let forced = decide_request(
+            &used,
+            &TrimRequest {
+                removes_unused: true,
+                remove: vec![TrimFeature::Interpreter],
+                ..Default::default()
+            },
+        );
+        assert!(interpreter.is_subset_of(&forced.unused));
+        assert!(!forced.unused.contains(Feature::BuiltinSourceText));
 
         let evaluating_text = UsedFeatures::with_cause(UnseenCodeCause::EvaluatesText);
         let open = decide_request(&evaluating_text, &removing_unused());
@@ -763,6 +796,24 @@ mod tests {
             decision.reason_of(Feature::Tools),
             Some(RetainReason::RequiredByOption(0))
         );
+        assert!(decision.unused.contains(Feature::Lint));
+    }
+
+    #[test]
+    fn retained_command_line_keeps_the_runtime_of_disk_scripts() {
+        let request = TrimRequest {
+            allow: vec![TrimFeature::Run],
+            ..removing_unused()
+        };
+        let decision = decide_request(&using(&[]), &request);
+        for feature in Feature::all_entered_from(EnteredFrom::Program).iter() {
+            assert!(!decision.unused.contains(feature), "{feature:?}");
+        }
+        assert!(!decision.unused.contains(Feature::Tools));
+        assert!(!decision.unused.contains(Feature::PackageFiles));
+        assert!(!decision.unused.contains(Feature::HotReload));
+        assert!(decision.unused.contains(Feature::Jit));
+        assert!(decision.unused.contains(Feature::Install));
         assert!(decision.unused.contains(Feature::Lint));
     }
 
