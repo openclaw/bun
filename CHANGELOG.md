@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Match the engine object-spread flag and empty mutable-built-in program lists while preserving ordinary built-in locking.
+
 - Match WebKit’s thread-pool ABI and reclaim unused per-thread allocator memory without reading a missing callback.
 
 - Align the circular CommonJS error regression with upstream AOT behavior matching the source loader.
