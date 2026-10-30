@@ -34,11 +34,12 @@ pub use self::shared::{
 pub use self::used_features::used_features;
 use crate::emit::{ExternalBodies, ExternalFunctionBodies, ProgramBytes};
 pub use crate::ir::generated::{
-    AccessCountRecord, AccessRecord, AllocationRemarkRecord, BuiltinUseRecord, DeclineRecord,
-    FeatureUseRecord, FunctionReportRecord, InternalErrorRecord, LackedFunctionRecord,
-    LocaleUseRecord, ObfuscatedSiteRecord, OperationCountRecord, OtherOriginsRecord,
-    PassTimeRecord, RemainingCheckRecord, ReplacedExportRecord, SourceLocation, TextRange,
-    TypeTestRecord, UnseenCodeRecord, UserDiagnosticRecord, WorkerEntryRecord, WorkerStartRecord,
+    AccessCountRecord, AccessRecord, AddedNameRecord, AllocationRemarkRecord, BuiltinUseRecord,
+    DeclineRecord, FeatureUseRecord, FunctionReportRecord, InternalErrorRecord,
+    LackedFunctionRecord, LocaleUseRecord, ObfuscatedSiteRecord, OperationCountRecord,
+    OtherOriginsRecord, PassTimeRecord, RemainingCheckRecord, ReplacedBuiltinRecord,
+    ReplacedExportRecord, SourceLocation, TextRange, TypeTestRecord, UnseenCodeRecord,
+    UserDiagnosticRecord, WorkerEntryRecord, WorkerStartRecord,
 };
 use crate::ir::generated::{
     AdmittedCode, CompileAction, CompileOptions, ExcludedCode, ImageForm, LimitId, MismatchPolicy,
@@ -346,6 +347,12 @@ struct FlowFindingsOfEngine {
     library_functions_lacked_count: usize,
     exports_that_spies_replace: *const ReplacedExportRecord,
     exports_that_spies_replace_count: usize,
+    builtins_that_tests_replace: *const ReplacedBuiltinRecord,
+    builtins_that_tests_replace_count: usize,
+    names_that_tests_add: *const AddedNameRecord,
+    names_that_tests_add_count: usize,
+    text_of_names: *const u8,
+    text_of_names_size: usize,
 }
 
 /// SAFETY: `owner` is the `ProgramOwner` of a running `compile`, which nothing else touches until the engine returns, and the lists of
@@ -591,6 +598,8 @@ result_records! {
     builtins_used: BuiltinUseRecord = BuiltinsUsed,
     library_functions_lacked: LackedFunctionRecord = LibraryFunctionsLacked,
     exports_that_spies_replace: ReplacedExportRecord = ExportsThatSpiesReplace,
+    builtins_that_tests_replace: ReplacedBuiltinRecord = BuiltinsThatTestsReplace,
+    names_that_tests_add: AddedNameRecord = NamesThatTestsAdd,
     features_used: FeatureUseRecord = FeaturesUsed,
     locales_used: LocaleUseRecord = LocalesUsed,
     worker_entries: WorkerEntryRecord = WorkerEntries,
