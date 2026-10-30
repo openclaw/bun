@@ -340,9 +340,8 @@ export interface Config {
   clangResourceDir: string | undefined;
   ar: string;
   /**
-   * ld.lld on linux, lld-link on windows, ld64.lld when cross-compiling for
-   * darwin from a non-darwin host. May be empty on native darwin (clang
-   * invokes the system linker).
+   * ld.lld on linux, lld-link on windows, ld64.lld for darwin cross or trimmable
+   * builds. Empty on other native darwin builds (clang invokes the system linker).
    */
   ld: string;
   strip: string;
@@ -571,9 +570,9 @@ export interface Toolchain extends JsToolchain {
   ar: string;
   ld: string;
   /**
-   * lld's Mach-O port (`ld64.lld`), resolved on non-darwin unix hosts.
-   * Swapped in as `cfg.ld` when the target is darwin and the host isn't —
-   * there's no Apple `ld` to drive, and ld.lld only emits ELF.
+   * lld's Mach-O port (`ld64.lld`), resolved on unix hosts. Used for darwin
+   * cross builds and native trimmable builds; Apple's linker cannot make
+   * the section graph the trimmable link needs.
    */
   ld64Lld: string | undefined;
   /** Parsed `LLVM version:` from `rustc -vV` (X.Y.Z). */
@@ -1471,6 +1470,17 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
     };
   }
 
+  const trimmable = (partial.trimmable ?? false) && release && !asan && !valgrind && host.os !== "windows";
+  if (darwin && !darwinCross && trimmable) {
+    if (toolchain.ld64Lld === undefined) {
+      throw new BuildError("Trimmable macOS builds require ld64.lld (lld's Mach-O port)", {
+        hint: "Install lld for the same LLVM version as clang and include it in BUN_TOOLCHAIN_LLVM.",
+      });
+    }
+    ld64StripSwap = { ld: toolchain.ld64Lld, strip: toolchain.strip };
+  }
+  const ld = ld64StripSwap?.ld ?? toolchain.ld;
+
   return {
     os,
     arch,
@@ -1498,13 +1508,7 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
     mode: "full",
     lto,
     jit,
-    trimmable:
-      (partial.trimmable ?? false) &&
-      release &&
-      !asan &&
-      !valgrind &&
-      linksWithLld({ darwin, crossTarget }) &&
-      host.os !== "windows",
+    trimmable,
     aot: partial.aot ?? true,
     relr: partial.relr ?? false,
     pgoGenerate,
@@ -1557,7 +1561,7 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
     clangVersion: toolchain.clangVersion,
     clangResourceDir: toolchain.clangResourceDir,
     ar: toolchain.ar,
-    ld: ld64StripSwap?.ld ?? toolchain.ld,
+    ld,
     // Cross strips: linux-gnu uses <triple>-strip (GNU, handles -R .eh_frame
     // fully; host strip rejects foreign-arch ELF); other cross targets use
     // llvm-strip. Hardened: llvm-strip, native or cross. Removing a mapped section makes GNU strip write
@@ -1876,12 +1880,11 @@ export function bunExeName(cfg: Config): string {
 }
 
 /**
- * An lld does the link: every one but a native macOS link, which goes through Apple's ld. That linker takes none of
- * lld's LTO-level or ICF options (it runs clang's libLTO at its default level and has no ICF), so flags.ts states
- * those only where this holds. Lives here (not flags.ts) because `trimmable` is resolved from it.
+ * Darwin uses Apple's linker when ld is empty, and ld64.lld when configured explicitly. Other platforms use lld.
+ * Apple's linker takes none of lld's LTO-level or ICF options and cannot produce the trimmable section graph.
  */
-export function linksWithLld(c: Pick<Config, "darwin" | "crossTarget">): boolean {
-  return !c.darwin || c.crossTarget !== undefined;
+export function linksWithLld(c: Pick<Config, "darwin" | "ld">): boolean {
+  return !c.darwin || c.ld !== "";
 }
 
 /**
