@@ -26,6 +26,11 @@ on:
         type: string
         default: ""
 
+      acceptance_ref:
+        description: "Full OpenClaw commit; task source policy supplies it when omitted and rejects mismatches"
+        type: string
+        default: ""
+
 permissions:
   contents: read
 
@@ -43,6 +48,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
+      acceptance-ref: ${{ steps.plan.outputs.acceptance-ref }}
+      build-release: ${{ steps.plan.outputs.build-release }}
       commit: ${{ steps.plan.outputs.commit }}
       tag: ${{ steps.plan.outputs.tag }}
       webkit: ${{ steps.plan.outputs.webkit }}
@@ -74,14 +81,18 @@ jobs:
           bun-version: "1.4.4"
       - name: Test pipeline
         working-directory: pipeline
-        run: bun test test/internal/source-lints/openclaw-release.test.ts
+        run: |
+          bun test test/internal/source-lints/openclaw-release.test.ts
+          bun test test/internal/source-lints/openclaw-release-acceptance.test.ts
       - name: Plan
         id: plan
         env:
           TARGETS: ${{ inputs.targets }}
           WINDOWS_SIGNED: ${{ vars.OPENCLAW_RELEASE_WINDOWS_SIGNED }}
+          ACCEPTANCE_INPUT: ${{ inputs.acceptance_ref }}
         run: |
           args=(--source source --main origin/main)
+          [ -n "$ACCEPTANCE_INPUT" ] && args+=(--acceptance-ref "$ACCEPTANCE_INPUT")
           [ -n "$RELEASE_TAG" ] && args+=(--tag "$RELEASE_TAG")
           [ "$PUBLISH" = true ] && args+=(--publish)
           [ "$WINDOWS_SIGNED" = true ] && args+=(--windows-signed)
@@ -91,6 +102,7 @@ jobs:
   build:
     name: Build ${{ matrix.target }}
     needs: plan
+    if: needs.plan.outputs.build-release == 'true'
     # Every target is cross-compiled on upstream's build image (debian 13 arm64); see OPENCLAW_RELEASE.md for runner choices.
     runs-on: ${{ vars.OPENCLAW_RELEASE_BUILD_RUNNER || 'ubuntu-24.04-arm' }}
     timeout-minutes: 340
@@ -355,7 +367,9 @@ jobs:
     needs: [plan, build, sign-macos, sign-windows, windows-test-only]
     if: ${{ !cancelled() && needs.build.result == 'success' && needs.sign-macos.result != 'failure' && (needs.plan.outputs.windows != 'true' || (needs.plan.outputs.publish == 'true' && needs.sign-windows.result == 'success') || (needs.plan.outputs.publish != 'true' && needs.windows-test-only.result == 'success')) }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+    timeout-minutes: ${{ needs.plan.outputs.acceptance-ref && 40 || 15 }}
+    env:
+      ACCEPTANCE_REF: ${{ needs.plan.outputs.acceptance-ref }}
     strategy:
       fail-fast: false
       matrix:
@@ -395,6 +409,52 @@ jobs:
             codesign --verify --strict --verbose=2 "$exe"
             codesign -dv "$exe" 2>&1 | grep -E '^(Authority|TeamIdentifier|CodeDirectory)' || true
           fi
+
+
+      - name: Checkout acceptance Bun source
+        if: env.ACCEPTANCE_REF != ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: source
+          ref: ${{ needs.plan.outputs.commit }}
+          persist-credentials: false
+      - name: Checkout fixed OpenClaw acceptance source
+        if: env.ACCEPTANCE_REF != ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: openclaw/openclaw
+          path: acceptance
+          ref: ${{ env.ACCEPTANCE_REF }}
+          persist-credentials: false
+      - name: Setup acceptance Node 24
+        if: env.ACCEPTANCE_REF != ''
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24.20.0"
+      - name: LAND175276 final-artifact acceptance
+        if: env.ACCEPTANCE_REF != ''
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          TRIPLET: ${{ matrix.triplet }}
+          COMMIT: ${{ needs.plan.outputs.commit }}
+          WEBKIT: ${{ needs.plan.outputs.webkit }}
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          exe="unpacked/$TRIPLET/bun"
+          [ -f "$exe.exe" ] && exe="$exe.exe"
+          node pipeline/scripts/openclaw-release/acceptance.mjs \
+            --source source --consumer acceptance --runtime "$exe" --archive "dist/$TRIPLET.zip" \
+            --target "$TARGET" --commit "$COMMIT" --consumer-commit "$ACCEPTANCE_REF" \
+            --webkit "$WEBKIT" --tag "$TAG" --out "$RUNNER_TEMP/land175276-$TARGET"
+      - name: Upload final-artifact acceptance evidence
+        if: always() && env.ACCEPTANCE_REF != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: acceptance-${{ matrix.target }}
+          path: ${{ runner.temp }}/land175276-${{ matrix.target }}/
+          if-no-files-found: error
+          retention-days: 14
 
   windows-compatibility:
     name: Compatibility ${{ matrix.target }}

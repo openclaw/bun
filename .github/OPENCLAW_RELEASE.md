@@ -47,6 +47,66 @@ Rebuilding a commit that already has a release (a toolchain or pipeline change,
 not a source change) gets a new tag with `--rebuild 2` (`…-r2`). Published
 assets are never replaced: packagers pin their checksums.
 
+## LAND175276 final-artifact acceptance
+
+The task source commits `scripts/openclaw-release/consumer-acceptance.json`,
+which fixes OpenClaw at `32f7724872fefb7994cd97dd7740ed42a6fa2c7b`.
+Planning reads that policy from the exact released Git commit, not a mutable
+checkout or dispatch default. A normal tag push automatically carries this SHA
+into every native smoke job, even though push events have no workflow inputs.
+An explicitly supplied `acceptance_ref` must match. Publication of a source
+with this policy requires all six targets and the existing Windows signing
+switch; an incomplete target set or missing signing switch fails planning.
+
+Use the normal **tag-push publication** path for this task, once reviewed and
+approved. A publishing workflow dispatch for a policy-bearing source fails
+before any build, including one naming the same tag and consumer SHA. This
+prevents a competing tag/dispatch build from publishing without acceptance;
+there is no second fleet or artifact replay. Policy-bearing pull requests run
+pipeline checks but defer this full release fleet; the existing native build/test
+workflow provides their implementation qualification. Non-publishing dispatches remain
+available for qualification. Unrelated source commits without this policy keep
+the ordinary tag and dispatch behavior. Remove or update the committed policy
+in a separately reviewed source change when retiring this task requirement;
+it is not a global tag-trigger disable or a new release owner.
+
+This lane reuses each native smoke job and its already-packaged executable
+after signing. Existing smoke, Windows compatibility, signing, manifest and
+publication dependencies remain mandatory. Re-run failed jobs on the same
+release run instead of starting a second publication build.
+
+The lane runs the three complete clone/Buffer/SAB suites from the released Bun
+source and the unchanged 24-test OpenClaw hook suite from the supplied source.
+Windows' fixed compatibility selection also retains these three regression files.
+The helper uses Node 24 for orchestration, explicitly selects the packaged Bun
+for hooks, and refuses different source, architecture, WebKit or archive bytes.
+It temporarily overlays the proposed revision and current target's hashes in the
+job's disposable consumer pin, then restores it; no admitted shared pin changes.
+Consumer dependencies use the checked-in package-manager version and frozen
+lockfile, without lifecycle scripts. The three Bun suites use built-in modules
+and the source's existing test harness; no broad test dependency install is needed.
+
+The private preload resolves the actual consumer handoff-store path in every
+runtime process before its payload, including Bun test children. It carries
+the private environment and preload through fresh child-process env objects,
+including Node child_process and Bun.spawn, and preserves them across Bun's
+test-harness sanitizer. A missing
+resolver dependency or escaped path fails rather than reaching a shared store.
+Dependency bootstrap runs no OpenClaw runtime or package lifecycle script.
+
+The `acceptance-<target>` artifact contains commands, logs, test counts, source
+and pipeline identities, input/archive/executable hashes and per-process private
+preflights. Skips are recorded as incomplete case coverage, not silent passes.
+After publication, compare these archive/executable hashes with the immutable
+public manifest and checksums. Dry-run unsigned artifacts are not release proof.
+The OpenClaw owner still supplies same-tag paired CI, Bun-only smoke, the adopted
+Node/Bun 26-file macOS test mapping, and both packaged macOS runtime checks.
+The v15 format is directionally incompatible with old readers for **all records**,
+including plain objects; new-reader support for legacy v13/v14 does not make
+rollback readable. Structured clone and workers retain shared SAB semantics,
+while storage serialization uses private copies and OpenClaw rejects SABs at
+its hook boundary.
+
 ## Tag scheme
 
 ```text
@@ -389,6 +449,7 @@ consumer's responsibility; a green build does not authorize a restart.
 
 ```sh
 bun test test/internal/source-lints/openclaw-release.test.ts
+bun test test/internal/source-lints/openclaw-release-acceptance.test.ts
 actionlint .github/workflows/openclaw-release.yml
 shellcheck scripts/openclaw-release/sign-macos.sh
 ```

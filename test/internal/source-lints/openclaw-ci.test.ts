@@ -52,11 +52,18 @@ test("PR and nightly smoke lists exist and nightly includes every PR smoke file"
 test("both Windows architectures use the complete Windows compatibility selection", () => {
   expect(selectTests([], tracked, false, "windows")).toEqual([...windowsSmoke].sort());
   expect(selectTests([], tracked, true, "windows")).toEqual([...windowsSmoke].sort());
-  expect(windowsSmoke).toHaveLength(39);
+  expect(windowsSmoke).toHaveLength(42);
   for (const file of tracked.filter(file => file.startsWith("test/js/node/worker_threads/") && isTest(file))) {
     expect(windowsSmoke).toContain(file);
   }
-  for (const file of [...smoke, ...broader]) expect(windowsSmoke).toContain(file);
+  for (const file of [
+    ...smoke,
+    ...broader,
+    "test/js/web/workers/structured-clone.test.ts",
+    "test/js/web/structured-clone-shared-array-buffer.test.ts",
+    "test/js/node/v8/v8-serdes-buffer.test.ts",
+  ])
+    expect(windowsSmoke).toContain(file);
   expect(windowsSmoke).toContain("test/js/bun/resolve/import-meta.test.js");
 });
 
