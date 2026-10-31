@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import runpy
+import shlex
 import struct
 import subprocess
 import sys
@@ -69,7 +70,15 @@ def build():
     assert original.count('-include-pch') == 1
     pch_index = original.index('-include-pch')
     assert (Path(chosen[0]['directory']) / original[pch_index + 1]).resolve() == pch_path
-    flags = original[:pch_index] + original[pch_index + 2:-4]
+    assert original[pch_index + 2:-4] == []
+    # The compilation database retains shell escapes in macro definitions.
+    # Admit the actual successful Ninja PCH argv, which has the same shared flags.
+    pch_argv = shlex.split(pch['command'])
+    flags = pch_argv[:pch_argv.index('-Winvalid-pch')]
+    assert len(flags) == pch_index
+    for recorded, actual in zip(original[:pch_index], flags):
+        decoded = shlex.split(recorded) if recorded.startswith('-D') else [recorded]
+        assert decoded == [actual], (recorded, actual)
     assert original.count('-isysroot') == 1
     sdk = Path(original[original.index('-isysroot') + 1])
     sdk_settings = sdk / 'SDKSettings.json'
@@ -95,7 +104,8 @@ def build():
                    '-fwhole-program-vtables': '-fno-whole-program-vtables'}
     adapted = [replacement.get(arg, arg) for arg in flags]
     adapted += ['-fstandalone-debug', '-fno-eliminate-unused-debug-types', '-c', str(witness), '-o', str(output)]
-    write('compile-command.json', dict(directory=chosen[0]['directory'], original=original, witness=adapted,
+    write('compile-command.json', dict(directory=chosen[0]['directory'], original=original,
+        successful_pch_command=pch['command'], canonical_flags=flags, witness=adapted,
         variance='full standalone type metadata, no LTO or whole-program vtables, original PCH wrapper included as text, synthetic include-only translation unit; never linked or executed'))
     run('compile-types', adapted, cwd=Path(chosen[0]['directory']), timeout=600)
     assert 0 < output.stat().st_size <= 64 * 1024**2
