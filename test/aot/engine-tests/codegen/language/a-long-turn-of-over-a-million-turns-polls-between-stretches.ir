@@ -208,4 +208,4 @@ function f1 name="mix" module=m0 flags=[IsChecked, HasExplicitName] length=2 thi
 # X64: loop #{{*}}, instructions: 36, patchpoints: 0, {{*}} steps by 1
 # X64: loop #{{*}}, instructions: 36, patchpoints: 0, rare instructions: 9, {{*}} steps by 1, entered rarely
 # ARM64: loop #{{*}}, instructions: 24, patchpoints: 0, {{*}} steps by 1
-# ARM64: loop #{{*}}, instructions: 24, patchpoints: 0, rare instructions: 14, {{*}} steps by 1, entered rarely
+# ARM64: loop #{{*}}, instructions: 24, patchpoints: 0, rare instructions: 10, {{*}} steps by 1, entered rarely

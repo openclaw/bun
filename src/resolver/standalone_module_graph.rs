@@ -59,58 +59,9 @@ pub trait StandaloneModuleGraph: Send + Sync {
     /// (`./w.ts` -> `/$bunfs/root/w.js`). Returns the graph's own name for the module, which is what the module
     /// loader keys on; `None` for anything else (bare specifiers, other absolute paths, misses).
     fn resolve(&self, source_dir: &[u8], specifier: &[u8]) -> Option<&'static [u8]> {
-        let is_relative = matches!(specifier, [b'.', s, ..] | [b'.', b'.', s, ..] if bun_paths::is_sep_native(*s));
-        let is_embedded_path =
-            bun_options_types::standalone_path::is_bun_standalone_file_path(specifier);
-        if (!is_relative && !is_embedded_path)
-            || specifier
-                .last()
-                .is_some_and(|&c| bun_paths::is_sep_native(c))
-        {
-            return None;
-        }
-        let mut buf = bun_paths::path_buffer_pool::get();
-        let path_len = if is_embedded_path {
-            if specifier.len() > buf.len() {
-                return None;
-            }
-            buf[..specifier.len()].copy_from_slice(specifier);
-            specifier.len()
-        } else {
-            bun_paths::resolve_path::join_abs_string_buf_checked::<bun_paths::platform::Loose>(
-                source_dir,
-                &mut buf[..],
-                &[specifier],
-            )?
-            .len()
-        };
-        if let Some(name) = self.find_assume_standalone_path(&buf[..path_len]) {
-            return Some(name);
-        }
-        // Entry points are embedded under a `.js` name whatever the (case-insensitive) source extension was.
-        let extension = bun_paths::extension(&buf[..path_len]);
-        let extension_len = extension.len();
-        let is_source_extension = extension.is_empty()
-            || [
-                b"ts".as_slice(),
-                b"tsx",
-                b"jsx",
-                b"mjs",
-                b"mts",
-                b"cjs",
-                b"cts",
-            ]
-            .iter()
-            .any(|source| extension[1..].eq_ignore_ascii_case(source));
-        if !is_source_extension {
-            return None;
-        }
-        let stem_len = path_len - extension_len;
-        if stem_len + 3 > buf.len() {
-            return None;
-        }
-        buf[stem_len..stem_len + 3].copy_from_slice(b".js");
-        self.find_assume_standalone_path(&buf[..stem_len + 3])
+        resolve_embedded_path(source_dir, specifier, |path| {
+            self.find_assume_standalone_path(path)
+        })
     }
     /// The name of the file that an executable compiled in place holds for `path`, an absolute path that the disk no longer has.
     fn file_at_source_path(&self, _path: &[u8]) -> Option<&'static [u8]> {
@@ -293,6 +244,67 @@ pub trait StandaloneModuleGraph: Send + Sync {
     fn compiled_entry_point(&self, _name: &[u8]) -> Option<&CompiledEntryPoint> {
         None
     }
+}
+
+/// Resolves an embedded entry point with the same path and extension rules at build time and run time.
+pub fn resolve_embedded_path<T>(
+    source_dir: &[u8],
+    specifier: &[u8],
+    lookup: impl Fn(&[u8]) -> Option<T>,
+) -> Option<T> {
+    let is_relative =
+        matches!(specifier, [b'.', s, ..] | [b'.', b'.', s, ..] if bun_paths::is_sep_native(*s));
+    let is_embedded_path =
+        bun_options_types::standalone_path::is_bun_standalone_file_path(specifier);
+    if (!is_relative && !is_embedded_path)
+        || specifier
+            .last()
+            .is_some_and(|&c| bun_paths::is_sep_native(c))
+    {
+        return None;
+    }
+    let mut buf = bun_paths::path_buffer_pool::get();
+    let path_len = if is_embedded_path {
+        if specifier.len() > buf.len() {
+            return None;
+        }
+        buf[..specifier.len()].copy_from_slice(specifier);
+        specifier.len()
+    } else {
+        bun_paths::resolve_path::join_abs_string_buf_checked::<bun_paths::platform::Loose>(
+            source_dir,
+            &mut buf[..],
+            &[specifier],
+        )?
+        .len()
+    };
+    if let Some(name) = lookup(&buf[..path_len]) {
+        return Some(name);
+    }
+    // Entry points are embedded under a `.js` name whatever the (case-insensitive) source extension was.
+    let extension = bun_paths::extension(&buf[..path_len]);
+    let extension_len = extension.len();
+    let is_source_extension = extension.is_empty()
+        || [
+            b"ts".as_slice(),
+            b"tsx",
+            b"jsx",
+            b"mjs",
+            b"mts",
+            b"cjs",
+            b"cts",
+        ]
+        .iter()
+        .any(|source| extension[1..].eq_ignore_ascii_case(source));
+    if !is_source_extension {
+        return None;
+    }
+    let stem_len = path_len - extension_len;
+    if stem_len + 3 > buf.len() {
+        return None;
+    }
+    buf[stem_len..stem_len + 3].copy_from_slice(b".js");
+    lookup(&buf[..stem_len + 3])
 }
 
 #[cfg(all(test, not(windows)))]

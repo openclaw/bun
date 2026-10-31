@@ -53,6 +53,7 @@ new!(pub BUN_BYTECODE_DIGEST_OUT: string, "BUN_BYTECODE_DIGEST_OUT", {});
 new!(pub BUN_BYTECODE_ORDER_NAMES_OUT: string, "BUN_BYTECODE_ORDER_NAMES_OUT", {});
 // A compiled executable writes the payload order file of this run here at exit; `%p` in the path becomes the pid.
 new!(pub BUN_BYTECODE_ORDER_OUT: string, "BUN_BYTECODE_ORDER_OUT", {});
+new!(pub BUN_WORKER_VM_TRACE: string, "BUN_WORKER_VM_TRACE", {});
 new!(pub BUN_COMPILE_TARGET_TARBALL_URL: string, "BUN_COMPILE_TARGET_TARBALL_URL", {});
 // JavaScriptCore's option of that name: the engine logs the phases of an AOT build. The front end logs its stages beside them.
 new!(pub BUN_JSC_logAOTPhaseTimes: boolean, "BUN_JSC_logAOTPhaseTimes", { default: false });

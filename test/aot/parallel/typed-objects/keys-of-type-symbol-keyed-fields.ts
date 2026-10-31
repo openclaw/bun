@@ -38,3 +38,27 @@ Object.freeze(a)
 console.log(show(a), Object.isFrozen(a))
 Object.defineProperty(b, kTag, { enumerable: false })
 console.log(show(b), JSON.stringify({ ...b }), Object.getOwnPropertySymbols({ ...b }).length)
+
+// A base that exposes this requires field-order metadata across a symbol initializer that runs code.
+const kInitialization = Symbol("initialization");
+let escapedBeforeFields: object | undefined;
+class EscapingBase {
+  constructor() {
+    escapedBeforeFields = this;
+  }
+}
+function initializeFlag(): boolean {
+  return false;
+}
+class StagedSymbolField extends EscapingBase {
+  [kInitialization] = initializeFlag();
+  after = 1;
+}
+const staged = new StagedSymbolField();
+console.log(
+  escapedBeforeFields === staged,
+  Object.hasOwn(staged, kInitialization),
+  staged[kInitialization],
+  Object.getOwnPropertySymbols(staged)[0] === kInitialization,
+  Object.keys(staged).join(),
+);

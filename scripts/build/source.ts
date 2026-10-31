@@ -292,7 +292,7 @@ export interface DirectBuild {
   cflags?: string[];
   /** Flags for `.asm` sources (nasm). Separate because nasm doesn't share clang's argv shape. */
   nasmflags?: string[];
-  /** Include dirs relative to srcDir (no -I prefix). "." for the root. */
+  /** Include dirs relative to srcDir, or absolute (no -I prefix). "." for the root. */
   includes?: string[];
   /**
    * Headers written to buildDir/deps/<name>/. Key is the output filename;
@@ -975,6 +975,7 @@ function emitFetch(
   patches: string[],
   compiledSources: string[],
 ): string {
+  const hostWin = cfg.host.os === "windows";
   const srcDir = depSourceDir(cfg, name);
   const refStamp = resolve(srcDir, ".ref");
   const patchPaths = patches.map(p => resolve(cfg.cwd, p));
@@ -1008,13 +1009,11 @@ function emitFetch(
     implicitInputs: [fetchCliPath, ...patchPaths],
     vars: {
       name,
-      repo: source.repo,
-      commit: source.commit,
-      dest: srcDir,
-      cache: resolve(cfg.cacheDir, "tarballs"),
-      // Pass patches space-separated. Shell-safe because patch paths are
-      // under our control (no spaces in repo paths per convention).
-      patches: patchPaths.join(" "),
+      repo: quote(source.repo, hostWin),
+      commit: quote(source.commit, hostWin),
+      dest: quote(srcDir, hostWin),
+      cache: quote(resolve(cfg.cacheDir, "tarballs"), hostWin),
+      patches: quoteArgs(patchPaths, hostWin),
     },
   });
 
@@ -1038,6 +1037,7 @@ function emitPrebuilt(
   source: Extract<Source, { kind: "prebuilt" }>,
   provides: Provides,
 ): ResolvedDep {
+  const hostWin = cfg.host.os === "windows";
   // Dest dir: default to vendor/<name>/, but deps like WebKit override to
   // a shared cache location (WebKit's ~200MB, you don't want it per-buildDir).
   const destDir = source.destDir ?? depSourceDir(cfg, name);
@@ -1065,12 +1065,10 @@ function emitPrebuilt(
     implicitInputs: [fetchCliPath],
     vars: {
       name,
-      url: source.url,
-      dest: destDir,
-      identity: source.identity,
-      // Space-separated relative paths. No quoting needed — paths are
-      // under our control (include/node/openssl etc.), no spaces.
-      rm_paths: (source.rmAfterExtract ?? []).join(" "),
+      url: quote(source.url, hostWin),
+      dest: quote(destDir, hostWin),
+      identity: quote(source.identity, hostWin),
+      rm_paths: quoteArgs(source.rmAfterExtract ?? [], hostWin),
     },
   });
   // Downstream should depend on: libs if there are any (compile-link deps),
@@ -1227,7 +1225,7 @@ function emitCargo(n: Ninja, cfg: Config, name: DepName, spec: CargoBuild, input
   };
   const vars = {
     name,
-    manifestdir: manifestDir,
+    manifestdir: quote(manifestDir, hostWin),
     args: quoteArgs(args, hostWin),
     // stream.ts's --env=K=V format. Values platform-quoted since ninja
     // passes the command line through the host's argv parser; stream.ts
@@ -1326,12 +1324,11 @@ function emitDirect(
   const isCxx = spec.lang === "cxx";
   const baseFlags = isCxx ? depFlags.cxxflags : depFlags.cflags;
 
-  const incFlags = (spec.includes ?? []).map(i => `-I${q(resolve(srcDir, i))}`);
+  const includeDirs = (spec.includes ?? []).map(i => resolve(srcDir, i));
   const defFlags = Object.entries(spec.defines ?? {}).map(([k, v]) => defineFlag(k, v));
   const libFlags = [
     ...baseFlags,
     ...picFlags(cfg, spec.pic),
-    ...incFlags,
     ...defFlags,
     ...(spec.cflags ?? []),
     ...safeStackFlags(cfg, name),
@@ -1410,7 +1407,7 @@ function emitDirect(
       inputs: [toolExe],
       vars: {
         name,
-        cwd: srcDir,
+        cwd: q(srcDir),
         tool: q(toolExe),
         args: quoteArgs(argv, hostWin),
       },
@@ -1423,7 +1420,7 @@ function emitDirect(
   // finds literal, subst, and codegen headers alike.
   if (generatedHeader !== undefined) generated.push(generatedHeader);
   const implicit = generated;
-  const genInc = needsBuildDirInc ? [`-I${q(buildDir)}`] : [];
+  const includes = [...includeDirs, ...(needsBuildDirInc ? [buildDir] : [])];
 
   const objects = spec.sources.map(s => {
     const path = typeof s === "string" ? s : s.path;
@@ -1439,7 +1436,8 @@ function emitDirect(
     const isC = path.endsWith(".c");
     const isAsm = path.endsWith(".S");
     const opts = {
-      flags: [...(isC && isCxx ? ["-x", "c++"] : []), ...libFlags, ...genInc, ...extra],
+      flags: [...(isC && isCxx ? ["-x", "c++"] : []), ...libFlags, ...extra],
+      includes,
       orderOnlyInputs: orderOnly,
       implicitInputs: implicit,
     };

@@ -93,6 +93,9 @@ pub(crate) struct Terminal {
     /// until no callback can fire, then weak (`maybe_downgrade_after_eof`).
     this_value: JsCell<JsRef>,
 
+    /// Keeps a paused reader alive while its OS poll is inactive.
+    paused_keep_alive: JsCell<bun_io::KeepAlive>,
+
     /// State flags
     flags: Cell<Flags>,
 
@@ -117,7 +120,7 @@ jsc::impl_abort_handle_owner!(Terminal, abort_handle, |this, _cause| {
 
 bitflags::bitflags! {
     #[derive(Clone, Copy, Default)]
-    pub struct Flags: u8 {
+    pub struct Flags: u16 {
         const CLOSED         = 1 << 0;
         const FINALIZED      = 1 << 1;
         const RAW_MODE       = 1 << 2;
@@ -131,6 +134,11 @@ bitflags::bitflags! {
         /// The `exit` callback has run (or was skipped). The wrapper stays
         /// strong until then; see `maybe_downgrade_after_eof`.
         const EXIT_DISPATCHED = 1 << 7;
+        const PAUSED = 1 << 8;
+        /// A deferred resume owns one native reference.
+        const RESUME_PENDING = 1 << 9;
+        /// The ref/unref choice while the reader poll is inactive.
+        const KEEP_ALIVE = 1 << 10;
     }
 }
 
@@ -341,7 +349,6 @@ impl Terminal {
     }
 
     /// Hold a ref on `self` for the guard's lifetime (across re-entrant JS).
-    #[cfg(unix)]
     fn ref_guard(&self) -> bun_ptr::RefPtr<Self> {
         // SAFETY: `self` is the live heap allocation.
         unsafe { bun_ptr::RefPtr::init_ref(self.as_ctx_ptr()) }
@@ -389,7 +396,8 @@ impl Terminal {
             writer: JsCell::new(IOWriter::default()),
             reader: JsCell::new(IOReader::init::<Terminal>()),
             this_value: JsCell::new(JsRef::empty()),
-            flags: Cell::new(Flags::empty()),
+            paused_keep_alive: JsCell::new(bun_io::KeepAlive::init()),
+            flags: Cell::new(Flags::KEEP_ALIVE),
             writer_has_buffered: Cell::new(false),
             #[cfg(unix)]
             tty_state: Cell::new(bun_core::tty::State::new()),
@@ -1599,6 +1607,78 @@ fn set_termios(fd: Fd, termios_p: &Termios) -> bool {
 }
 
 impl Terminal {
+    pub(crate) fn pause(&self) {
+        if self
+            .flags
+            .get()
+            .intersects(Flags::CLOSED | Flags::READER_DONE | Flags::PAUSED)
+        {
+            return;
+        }
+        self.update_flags(|f| f.insert(Flags::PAUSED));
+        self.reader.with_mut(|r| r.pause());
+        self.update_paused_keep_alive();
+    }
+
+    pub(crate) fn resume(&self) {
+        let flags = self.flags.get();
+        if flags.intersects(Flags::CLOSED | Flags::READER_DONE) || !flags.contains(Flags::PAUSED) {
+            return;
+        }
+        self.update_flags(|f| f.remove(Flags::PAUSED));
+        if !flags.contains(Flags::RESUME_PENDING) {
+            self.ref_();
+            self.update_flags(|f| f.insert(Flags::RESUME_PENDING));
+            self.global()
+                .bun_vm()
+                .event_loop_mut()
+                .deferred_tasks
+                .post_task(
+                    core::ptr::NonNull::new(self.as_ctx_ptr().cast()),
+                    Self::resume_reading,
+                );
+        }
+    }
+
+    unsafe extern "C" fn resume_reading(ctx: *mut c_void) -> bool {
+        // SAFETY: the queued task owns a native reference across re-entrant reads.
+        let this = unsafe { &*ctx.cast::<Self>() };
+        this.global()
+            .bun_vm()
+            .event_loop_mut()
+            .deferred_tasks
+            .unregister_task(core::ptr::NonNull::new(ctx));
+        this.update_flags(|f| f.remove(Flags::RESUME_PENDING));
+        if !this
+            .flags
+            .get()
+            .intersects(Flags::PAUSED | Flags::CLOSED | Flags::READER_DONE)
+        {
+            this.reader.with_mut(|r| r.unpause());
+            #[cfg(unix)]
+            this.reader.with_mut(|r| r.watch());
+        }
+        this.update_paused_keep_alive();
+        this.deref_();
+        // Already unregistered; a callback may have scheduled another resume.
+        true
+    }
+
+    fn update_paused_keep_alive(&self) {
+        let flags = self.flags.get();
+        let keep = flags.contains(Flags::KEEP_ALIVE)
+            && flags.intersects(Flags::PAUSED | Flags::RESUME_PENDING)
+            && !flags.intersects(Flags::CLOSED | Flags::READER_DONE);
+        let ctx = self.event_loop_handle.as_event_loop_ctx();
+        self.paused_keep_alive.with_mut(|p| {
+            if keep {
+                p.ref_(ctx);
+            } else {
+                p.unref(ctx);
+            }
+        });
+    }
+
     /// Reference the terminal to keep the event loop alive
     pub(crate) fn do_ref(&self) {
         self.update_ref(true);
@@ -1610,6 +1690,8 @@ impl Terminal {
     }
 
     fn update_ref(&self, add: bool) {
+        self.update_flags(|f| f.set(Flags::KEEP_ALIVE, add));
+        self.update_paused_keep_alive();
         // POSIX `update_ref` takes `&self`; Windows takes `&mut self` — route
         // both through `with_mut` so the body is target-agnostic.
         self.reader.with_mut(|r| r.update_ref(add));
@@ -1632,8 +1714,23 @@ impl Terminal {
         if self.flags.get().contains(Flags::CLOSED) {
             return;
         }
+        let _guard = self
+            .flags
+            .get()
+            .contains(Flags::RESUME_PENDING)
+            .then(|| self.ref_guard());
         self.update_flags(|f| f.insert(Flags::CLOSED));
         self.abort_handle.leave();
+        if self.flags.get().contains(Flags::RESUME_PENDING) {
+            self.global()
+                .bun_vm()
+                .event_loop_mut()
+                .deferred_tasks
+                .unregister_task(core::ptr::NonNull::new(self.as_ctx_ptr().cast()));
+            self.update_flags(|f| f.remove(Flags::RESUME_PENDING));
+            self.deref_();
+        }
+        self.update_paused_keep_alive();
 
         // Close writer (closes write_fd). R-2: `with_mut` borrow is held across
         // the synchronous `on_writer_close` parent callback, but that callback
@@ -1650,6 +1747,9 @@ impl Terminal {
             if let Some(hpcon) = self.hpcon.take() {
                 self.close_pseudoconsole_off_thread(hpcon);
             }
+            // A paused ConPTY must still drain so ClosePseudoConsole can finish.
+            self.update_flags(|f| f.remove(Flags::PAUSED));
+            self.reader.with_mut(|r| r.unpause());
             // Leave the reader open; onReaderDone closes it on EOF.
             let flags = self.flags.get();
             if flags.contains(Flags::READER_STARTED) && !flags.contains(Flags::READER_DONE) {
@@ -1762,6 +1862,7 @@ impl Terminal {
             return;
         }
         self.update_flags(|f| f.insert(Flags::READER_DONE));
+        self.update_paused_keep_alive();
         #[cfg(unix)]
         self.finish_io_after_eof();
         // Skip JS interactions if already finalized (happens when close() is called during finalize)
@@ -1901,7 +2002,10 @@ impl Terminal {
             &[this_jsvalue, data],
         );
 
-        true // Continue reading
+        !self
+            .flags
+            .get()
+            .intersects(Flags::PAUSED | Flags::RESUME_PENDING)
     }
 
     fn loop_(&self) -> *mut AsyncLoop {
