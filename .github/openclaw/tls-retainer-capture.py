@@ -155,23 +155,24 @@ def debugger_stage():
     root_collections = []
     root_collection = None
     scan_returns = {}
-    vm_roots_return = None
+    stack_roots_return = None
 
     def event(kind, **values):
         report['events'].append({'kind': kind, **values})
         write(stage + '.json', report)
 
-    def entry(name, signature=None):
+    def entry(name, signature=None, required=True):
         contexts = module.FindFunctions(name, lldb.eFunctionNameTypeAny)
         assert contexts.GetSize() <= 64, name
         addresses = {}
-        report['resolutions'][name] = []
+        resolution_key = signature or name
+        report['resolutions'][resolution_key] = []
         for i in range(contexts.GetSize()):
             context = contexts.GetContextAtIndex(i)
             function = context.GetFunction()
             resolved = function.GetName() if function.IsValid() else context.GetSymbol().GetName()
             address = function.GetStartAddress() if function.IsValid() else context.GetSymbol().GetStartAddress()
-            report['resolutions'][name].append({'function': resolved, 'file_address': address.GetFileAddress()})
+            report['resolutions'][resolution_key].append({'function': resolved, 'file_address': address.GetFileAddress()})
             # FindFunctions includes inline scopes whose GetFunction is the enclosing physical function.
             if not resolved or resolved.split('(', 1)[0].strip().removeprefix('::') != name:
                 continue
@@ -179,6 +180,9 @@ def debugger_stage():
                 continue
             if address.IsValid():
                 addresses[address.GetFileAddress()] = address
+        if not required and len(addresses) != 1:
+            event('observer-entry-unavailable', name=name, signature=signature, physical_entries=len(addresses))
+            return None, None
         assert len(addresses) == 1, 'missing/ambiguous function entry: ' + name
         address = next(iter(addresses.values()))
         bp = target.BreakpointCreateBySBAddress(address)
@@ -431,15 +435,15 @@ def debugger_stage():
             assert mark_bp.GetNumLocations() > 0, 'missing post-mark verifier boundary'
             mark_bp.SetEnabled(False)
             return_bp = None
-            stack_roots_bp, _ = entry('JSC::Heap::gatherStackRoots')
-            vm_roots_bp, _ = entry('JSC::Heap::gatherVMRoots')
+            stack_roots_bp, _ = entry('JSC::MachineThreads::gatherConservativeRoots', required=False)
             scan_bps = []
             for signature in [
                     'JSC::ConservativeRoots::add(void*, void*)',
                     'JSC::ConservativeRoots::add(void*, void*, JSC::JITStubRoutineSet&, JSC::CodeBlockSet&)']:
-                bp, _ = entry('JSC::ConservativeRoots::add', signature)
+                bp, _ = entry('JSC::ConservativeRoots::add', signature, required=False)
                 scan_bps.append(bp)
-            root_bps = [stack_roots_bp, vm_roots_bp, *scan_bps]
+            root_bps = [stack_roots_bp, *scan_bps]
+            assert all(bp is not None for bp in root_bps), 'required root-span observer entries unavailable'
             for bp in root_bps:
                 bp.SetEnabled(False)
         info = lldb.SBLaunchInfo(args)
@@ -477,16 +481,24 @@ def debugger_stage():
                     mark_watch.SetEnabled(False)
                     assert not mark_watch.IsEnabled()
                     mark_observation['frame_pointer_path'] = frame_pointer_snapshot(frame, thread)
-                    assert root_collection is not None and root_collection['phase'] == 'complete'
+                    assert root_collection is not None and root_collection['phase'] == 'after-machine-stack'
                     current_roots = roots_snapshot(root_collection['roots'])
-                    assert current_roots == root_collection['after_vm'], 'accepted roots changed before the owner mark'
+                    after_stack = root_collection['after_stack']
+                    assert current_roots['count'] >= after_stack['count']
                     assert current_roots['owner_indices'] and root_collection['accepted_spans']
+                    stack_indices = [i for i in current_roots['owner_indices'] if i < after_stack['count']]
+                    assert stack_indices == after_stack['owner_indices'], 'stack-root prefix changed'
+                    subsequent_indices = [i for i in current_roots['owner_indices'] if i >= after_stack['count']]
+                    root_collection.update(phase='complete', at_mark=current_roots,
+                                           machine_stack_indices=stack_indices,
+                                           subsequent_indices=subsequent_indices)
                     mark_observation['root_collection'] = root_collection['index']
                     event('accepted-root-list-at-owner-mark', **current_roots,
-                          collection=root_collection['index'])
+                          collection=root_collection['index'], machine_stack_indices=stack_indices,
+                          subsequent_indices=subsequent_indices)
                     for bp in root_bps:
                         bp.SetEnabled(False)
-                    assert not scan_returns and vm_roots_return is None
+                    assert not scan_returns and stack_roots_return is None
                     event('live-real-mark-writer', **mark_observation)
                 assert process.Continue().Success()
                 continue
@@ -516,39 +528,31 @@ def debugger_stage():
                     event('captured-actual-fixture-child')
             elif stack_roots_bp.GetID() in ids:
                 assert returned and gc_count == 31 and owner is not None
-                vm_heap = field(typed(owner['vm'], 'JSC::VM'), 'heap').GetLoadAddress()
-                assert reg(frame, 'x0') == vm_heap
-                assert root_collection is None or root_collection['phase'] == 'complete'
-                assert len(root_collections) < 8 and not scan_returns
+                heap = field(typed(owner['vm'], 'JSC::VM'), 'heap')
+                machines = pointer(field(heap, 'm_machineThreads'), 'JSC::MachineThreads')
+                assert machines == [reg(frame, 'x0')], 'machine-stack scanner belongs to another VM'
+                assert root_collection is None or root_collection['phase'] == 'after-machine-stack'
+                assert len(root_collections) < 8 and not scan_returns and stack_roots_return is None
                 roots = reg(frame, 'x1')
                 initial_roots = roots_snapshot(roots)
                 assert initial_roots['count'] == 0
-                root_collection = dict(index=len(root_collections), roots=roots, phase='stack',
+                root_collection = dict(index=len(root_collections), roots=roots, phase='machine-stack',
                                        accepted_spans=[], initial=initial_roots)
                 root_collections.append(root_collection)
-                event('stack-root-gather-entry', collection=root_collection['index'], **initial_roots)
-            elif vm_roots_bp.GetID() in ids:
-                assert root_collection is not None and root_collection['phase'] == 'stack'
-                assert not scan_returns and reg(frame, 'x1') == root_collection['roots']
-                vm_heap = field(typed(owner['vm'], 'JSC::VM'), 'heap').GetLoadAddress()
-                assert reg(frame, 'x0') == vm_heap and vm_roots_return is None
-                root_collection['after_stack'] = roots_snapshot(root_collection['roots'])
-                event('stack-root-gather-complete', collection=root_collection['index'],
-                      **root_collection['after_stack'])
-                root_collection['phase'] = 'vm'
-                vm_roots_return = target.BreakpointCreateByAddress(reg(frame, 'x30'))
-                assert vm_roots_return.GetNumLocations() == 1
-                vm_roots_return.SetThreadID(thread.GetThreadID())
-                vm_roots_return.SetOneShot(True)
-            elif vm_roots_return is not None and vm_roots_return.GetID() in ids:
-                assert root_collection is not None and root_collection['phase'] == 'vm' and not scan_returns
+                event('machine-stack-gather-entry', collection=root_collection['index'], **initial_roots)
+                stack_roots_return = target.BreakpointCreateByAddress(reg(frame, 'x30'))
+                assert stack_roots_return.GetNumLocations() == 1
+                stack_roots_return.SetThreadID(thread.GetThreadID())
+                stack_roots_return.SetOneShot(True)
+            elif stack_roots_return is not None and stack_roots_return.GetID() in ids:
+                assert root_collection is not None and root_collection['phase'] == 'machine-stack'
+                assert not scan_returns
                 after = roots_snapshot(root_collection['roots'])
-                assert after['count'] >= root_collection['after_stack']['count']
-                root_collection.update(phase='complete', after_vm=after)
-                event('vm-root-gather-complete', collection=root_collection['index'], **after)
-                vm_roots_return = None
+                root_collection.update(phase='after-machine-stack', after_stack=after)
+                event('machine-stack-gather-complete', collection=root_collection['index'], **after)
+                stack_roots_return = None
             elif any(bp.GetID() in ids for bp in scan_bps):
-                assert root_collection is not None and root_collection['phase'] in ('stack', 'vm')
+                assert root_collection is not None and root_collection['phase'] in ('machine-stack', 'after-machine-stack')
                 roots = reg(frame, 'x0')
                 assert roots == root_collection['roots'] and not scan_returns
                 before = roots_snapshot(roots)
@@ -675,7 +679,7 @@ def debugger_stage():
             report['outcome'] = facts
             assert root_collections and any(c['accepted_spans'] for c in root_collections)
             report['root_collections'] = root_collections
-            report['classification'] = 'accepted stack/VM scan spans and real-mark writer captured; exact originating scanner word and source frame remain unproven'
+            report['classification'] = 'accepted machine-stack/subsequent scan spans and real-mark writer captured; exact originating scanner word and source frame remain unproven'
         report['passed'] = True
     except BaseException as error:
         report['gap'] = str(error)
