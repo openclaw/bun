@@ -274,6 +274,26 @@ def debugger_stage():
         assert len(stacks) == 1 and stacks[0]
         stack = typed(stacks[0], 'WTF::StackTrace')
         count, initial = number(field(stack, 'm_size')), number(field(stack, 'm_initialFrame'))
+        layout = stack.GetType().GetCanonicalType()
+        event('passive-marker-layout', owner=cell, allocation=allocation, allocation_header_bytes=header,
+              marker=marker.GetLoadAddress(), referrer_bits=referrer, stack=stacks[0], count=count, initial=initial,
+              raw_header_words=[word(stacks[0]), word(stacks[0] + 8)], type_bytes=layout.GetByteSize(),
+              fields={layout.GetFieldAtIndex(i).GetName(): layout.GetFieldAtIndex(i).GetOffsetInBytes()
+                      for i in range(layout.GetNumberOfFields())})
+        contexts = {}
+        for name in ['WTF::StackTrace::captureStackTrace', 'JSC::VerifierSlotVisitor::testAndSetMarked']:
+            found = module.FindFunctions(name, lldb.eFunctionNameTypeAny)
+            assert found.GetSize() <= 64
+            contexts[name] = []
+            for i in range(found.GetSize()):
+                context = found.GetContextAtIndex(i)
+                function, block = context.GetFunction(), context.GetBlock()
+                start = function.GetStartAddress().GetLineEntry()
+                contexts[name].append({'function': function.GetName(),
+                    'compile_unit': str(context.GetCompileUnit().GetFileSpec()),
+                    'source': str(start.GetFileSpec()), 'line': start.GetLine(),
+                    'inline': block.IsInlined(), 'inline_name': block.GetInlinedName()})
+        event('marker-source-contexts', contexts=contexts)
         assert 0 < count <= 100 and initial == 2
         start = field(stack, 'm_stack').GetLoadAddress() + initial * 8
         frames = []
