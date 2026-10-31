@@ -1,0 +1,128 @@
+name: OpenClaw TLS retainer capture
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/openclaw-tls-retainer.yml
+      - .github/openclaw/tls-retainer-capture.py
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: openclaw-tls-retainer-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: pipeline
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          sparse-checkout: .github/openclaw
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: source
+          ref: 454a78a4d3b0202ecdbedf7dd051fc84ffc59e9e
+          persist-credentials: false
+      - name: Admit the immutable shipping-debug artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = aarch64
+          gh api repos/openclaw/bun/actions/runs/41212340227 > producer-run.json
+          gh api repos/openclaw/bun/actions/artifacts/13048432420 > producer-artifact.json
+          gh api repos/openclaw/bun/actions/artifacts/13048432420/zip > producer.zip
+          python3 pipeline/.github/openclaw/tls-retainer-capture.py admit-zip
+      - name: Restore matched bytes in a secretless debugger container
+        id: debugger
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir capture
+          id=$(docker run --detach --cap-add=SYS_PTRACE --security-opt=seccomp=unconfined \
+            -v "$GITHUB_WORKSPACE:/work" -w /work \
+            docker.io/library/debian:13@sha256:9cc080028c43b27d2074d63a5f9caf7166d731494965616c1a6d2827a004585c \
+            sleep infinity)
+          [[ "$id" =~ ^[0-9a-f]{64}$ ]]
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          docker exec "$id" sh -euc '
+            apt-get update
+            apt-get install --yes --no-install-recommends ca-certificates curl python3 binutils zstd git
+            curl -fsSL --retry 5 https://apt.llvm.org/llvm-snapshot.gpg.key > /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+            echo "deb https://apt.llvm.org/trixie/ llvm-toolchain-trixie-23 main" > /etc/apt/sources.list.d/llvm.list
+            apt-get update
+            apt-get install --yes --no-install-recommends llvm-23 lldb-23 python3-lldb-23
+          '
+          docker exec "$id" python3 pipeline/.github/openclaw/tls-retainer-capture.py restore
+          cp producer-run.json producer-artifact.json capture/
+          docker exec "$id" lldb-23 --version > capture/debugger-version.txt
+          docker exec "$id" ldd source/build/tls-arm64-shipping-debug/bun > capture/runtime-libraries.txt
+          ! grep -q 'not found' capture/runtime-libraries.txt
+      - name: Capture the actual fixture child and its post-mark owner path
+        env:
+          CONTAINER_ID: ${{ steps.debugger.outputs.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]]
+          docker exec "$CONTAINER_ID" python3 pipeline/.github/openclaw/tls-retainer-capture.py capture
+      - name: Freeze and package bounded capture evidence
+        if: always()
+        env:
+          CONTAINER_ID: ${{ steps.debugger.outputs.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test -n "$CONTAINER_ID"; then
+            [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]]
+            docker stop --time 15 "$CONTAINER_ID" > /dev/null
+            test "$(docker inspect --format '{{.State.Running}}' "$CONTAINER_ID")" = false
+          fi
+          mkdir -p capture
+          cp pipeline/.github/openclaw/tls-retainer-capture.py capture/probe.py
+          python3 - <<'PY'
+          import hashlib, json, stat, tarfile
+          from pathlib import Path
+          files = sorted(Path('capture').iterdir())
+          assert files and len(files) <= 24
+          assert all(stat.S_ISREG(p.lstat().st_mode) for p in files)
+          assert sum(p.stat().st_size for p in files) <= 32 * 1024**2
+          def sha(p):
+              with p.open('rb') as stream:
+                  return hashlib.file_digest(stream, 'sha256').hexdigest()
+          manifest = Path('capture/archive-manifest.json')
+          manifest.write_text(json.dumps({p.name: {'bytes': p.stat().st_size, 'sha256': sha(p)} for p in files}, indent=2) + '\n')
+          files.append(manifest)
+          with tarfile.open('tls-retainer-proof.tar.gz', 'x:gz') as archive:
+              for p in files:
+                  archive.add(p, arcname=p.name, recursive=False)
+          Path('tls-retainer-SHA256SUMS').write_text(sha(Path('tls-retainer-proof.tar.gz')) + '  tls-retainer-proof.tar.gz\n')
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: tls-linux-arm64-retainer
+          path: |
+            tls-retainer-proof.tar.gz
+            tls-retainer-SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7
+      - name: Remove this job's debugger container
+        if: always()
+        env:
+          CONTAINER_ID: ${{ steps.debugger.outputs.id }}
+        shell: bash
+        run: |
+          if test -n "$CONTAINER_ID"; then
+            [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]]
+            docker rm --force "$CONTAINER_ID" > /dev/null
+          fi
