@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve `node:sqlite` query diagnostics through upstream module loading and AOT hook classification, and keep databases open when a subscriber disposes them, matching Node.
+
 - Accept hardened GNU builds whose fortified memory copies inline, while retaining stack-protector and checked-formatting import checks.
 
 - Withhold macOS signing and notarization credentials from release dry runs while retaining both Darwin archives for qualification.

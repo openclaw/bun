@@ -10,6 +10,21 @@ import { DatabaseSync, Session, StatementSync, backup, constants } from "node:sq
 import { pathToFileURL } from "node:url";
 
 describe("sqlite.db.query", () => {
+  test("database disposal inside a subscriber leaves the connection open", () => {
+    using db = new DatabaseSync(":memory:");
+    const queries = channel("sqlite.db.query");
+    const results: unknown[] = [];
+    const handler = () => results.push(db[Symbol.dispose](), db.isOpen);
+    queries.subscribe(handler);
+    try {
+      expect(db.prepare("SELECT 42 AS answer").get()).toEqual({ answer: 42 });
+      expect(results).toEqual([undefined, true]);
+    } finally {
+      queries.unsubscribe(handler);
+    }
+    expect(db.prepare("SELECT 1 AS alive").get()).toEqual({ alive: 1 });
+  });
+
   test("rejects closing parked write statements inside an authorizer callback", () => {
     for (const method of ["close", Symbol.dispose] as const) {
       using db = new DatabaseSync(":memory:");

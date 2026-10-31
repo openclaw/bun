@@ -89,13 +89,13 @@ function maybeMarkInactive(channel: AnyChannel) {
   }
 }
 
-function updateSqliteQueryPublisher(channel, active) {
+function updateSqliteQueryPublisher(channel: AnyChannel, active: boolean) {
   if (channel.name !== "sqlite.db.query") return;
   // Lazy tick-function construction cannot report an error at the recursion limit.
   if (active) void process.nextTick;
   const state = require("internal/sqlite");
   const publish = channel.publish;
-  state.publisher = active ? message => publish.$call(channel, message) : undefined;
+  state.publisher = active ? (message: unknown) => publish.$call(channel, message) : undefined;
   $newCppFunction("sqlite/NodeSqlite.cpp", "jsSetSqliteQueryPublisher", 1)(state.publisher);
 }
 

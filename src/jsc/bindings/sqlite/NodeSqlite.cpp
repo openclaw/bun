@@ -888,7 +888,7 @@ bool JSDatabaseSync::open(JSGlobalObject* globalObject, ThrowScope& scope)
     }
 
     auto* global = defaultGlobalObject(globalObject);
-    JSValue queryState = global->internalModuleRegistry()->requireId(globalObject, vm, InternalModuleRegistry::InternalSqlite);
+    JSValue queryState = BUN_REQUIRE_INTERNAL_MODULE(global, InternalSqlite, "node:sqlite", "publisher"_s);
     RETURN_IF_EXCEPTION(scope, false);
     setQueryPublisher(queryState.getObject()->getDirect(vm, Identifier::fromString(vm, "publisher"_s)).getObject());
     return true;
@@ -969,7 +969,7 @@ JSC_DEFINE_HOST_FUNCTION(jsDatabaseSyncDispose, (JSGlobalObject * globalObject, 
     JSDatabaseSync* self = dynamicDowncast<JSDatabaseSync>(callFrame->thisValue());
     if (self && self->isOpen()) {
         if (self->isInQueryCallback())
-            return throwNodeState(globalObject, scope, "database cannot be closed while in a callback"_s);
+            return JSValue::encode(jsUndefined());
         self->closeInternal();
         CHECK_UDF_EXCEPTION(scope);
     }
