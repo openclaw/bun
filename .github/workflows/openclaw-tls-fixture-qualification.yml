@@ -1,0 +1,98 @@
+name: OpenClaw TLS native fixture qualification
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/openclaw-tls-fixture-qualification.yml
+      - .github/openclaw/tls-fixture-qualification.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: openclaw-tls-fixture-qualification-${{ github.head_ref || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - { target: linux-x64, runner: ubuntu-24.04 }
+          - { target: linux-arm64, runner: ubuntu-24.04-arm }
+          - { target: darwin-x64, runner: macos-15-intel }
+          - { target: darwin-arm64, runner: macos-15 }
+          - { target: windows-x64, runner: windows-2025 }
+          - { target: windows-arm64, runner: windows-11-arm }
+    steps:
+      - name: Preserve canonical source bytes on every host
+        shell: bash
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: controls
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          sparse-checkout: |
+            .github/openclaw
+            .github/workflows
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: source
+          ref: 8918ddaed89d97ae1605dbd1e1149121f2433d04
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "26.12.1"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.14.8"
+      - name: Plan the exact retained product artifact
+        id: plan
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: python controls/.github/openclaw/tls-fixture-qualification.py plan "$TARGET" >> "$GITHUB_OUTPUT"
+      - name: Download retained artifact metadata and bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT: ${{ steps.plan.outputs.artifact }}
+          SIZE: ${{ steps.plan.outputs.size }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          input="$RUNNER_TEMP/tls-fixture-input"
+          mkdir "$input"
+          gh api repos/openclaw/bun/actions/runs/41238111110 > "$input/run.json"
+          gh api "repos/openclaw/bun/actions/artifacts/$ARTIFACT" > "$input/metadata.json"
+          curl --location --fail --silent --show-error --proto '=https' --proto-redir '=https' \
+            --max-time 300 --max-filesize "$SIZE" \
+            -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/openclaw/bun/actions/artifacts/$ARTIFACT/zip" \
+            --output "$input/artifact.zip"
+      - name: Qualify all six native TLS suites
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          mkdir tls-fixture-qualification
+          cp controls/.github/workflows/openclaw-tls-fixture-qualification.yml tls-fixture-qualification/workflow.yml
+          cp controls/.github/openclaw/tls-fixture-qualification.py tls-fixture-qualification/controller.py
+          cp controls/.github/openclaw/tls-cycle-checkpoint.py tls-fixture-qualification/checkpoint.py
+          cp controls/.github/openclaw/tls-darwin-capability.py tls-fixture-qualification/archive.py
+          python controls/.github/openclaw/tls-fixture-qualification.py qualify "$TARGET"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: tls-fixture-qualification-${{ matrix.target }}
+          path: tls-fixture-qualification/
+          if-no-files-found: error
+          retention-days: 7
