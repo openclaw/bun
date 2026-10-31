@@ -508,6 +508,26 @@ def debugger_stage():
                        instruction=instruction, destination=address, bytes=size,
                        registers={name: frame.FindRegister(name).GetValue() for name in [first, second] if name},
                        slot_value=word(slot), sp=reg(frame, 'sp'), fp=reg(frame, 'x29'))
+        if receipt['source']['file_address'] == 38748200:
+            symbol = target.ResolveLoadAddress(pc - 4).GetSymbol()
+            assert symbol.GetMangledName() == '_RNvMsd_NtNtCsgTvE0GkrhKz_11bun_runtime6socket11socket_bodyNtB5_20DuplexUpgradeContext6deinit'
+            assert symbol.GetStartAddress().GetFileAddress() == 38747968
+            loads = target.ReadInstructions(module.ResolveFileAddress(38748192), 3)
+            assert loads.GetSize() == 3
+            assert [(loads.GetInstructionAtIndex(i).GetMnemonic(target),
+                     loads.GetInstructionAtIndex(i).GetOperands(target)) for i in range(3)] == [
+                         ('ldr', 'q0, [x19]'), ('ldr', 'q1, [x19, #0x10]'), ('str', 'q0, [sp]')]
+            assert address == slot == reg(frame, 'sp') and size == 16
+            source = reg(frame, 'x19')
+            assert source and source % 8 == 0
+            # The frozen clear copies 192 bytes before testing the saved Option tag at +191.
+            old_tag, current_tag = word(address + 191, 1), word(source + 191, 1)
+            assert old_tag == current_tag == reg(frame, 'w8') == 2, 'old config was not the absent variant'
+            assert word(source) == receipt['slot_value'] and word(source + 8) == word(address + 8)
+            receipt['absent_config_copy'] = dict(source_context=source, source_address=source,
+                destination=address, copied_payload_bytes=192, selected_bytes=16,
+                source_word=word(source), second_word=word(source + 8), old_tag=old_tag,
+                current_tag=current_tag, tag_offset=191, physical_symbol=symbol.GetMangledName())
         writer_state['writes'].append(receipt)
         event('stack-word-write', **receipt)
 
@@ -1083,7 +1103,9 @@ def debugger_stage():
             complete = last_write['destination'] <= slot and slot + 8 <= last_write['destination'] + last_write['bytes']
             report['classification'] = ('exact accepted scanner word tied to an admitted physical stack write covering all eight bytes'
                                         if complete else 'exact accepted scanner word tied to an admitted partial stack write; remaining-byte origin is unproven')
-            report['classification'] += '; source variable and earlier register origin remain unproven'
+            config_copy = last_write.get('absent_config_copy')
+            assert config_copy is not None and config_copy['source_word'] == owner['owner'], 'absent config source copy not observed'
+            report['classification'] += '; copied from the old absent SSLConfig storage while clearing the context; earlier heap-payload writer remains unproven'
         report['passed'] = True
     except BaseException as error:
         report['gap'] = str(error)
