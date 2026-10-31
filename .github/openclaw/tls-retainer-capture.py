@@ -150,7 +150,8 @@ def debugger_stage():
     owner = None
     returned = False
     gc_count = 0
-    live_marker = None
+    mark_watch = None
+    mark_observation = None
 
     def event(kind, **values):
         report['events'].append({'kind': kind, **values})
@@ -235,12 +236,16 @@ def debugger_stage():
                 result += pointer(child, pointee, depth + 1)
         return result
 
-    def precise_marker(visitor, cell):
-        # Use frozen HashTable metadata and DWARF field offsets, without inferior find/get calls.
+    def precise_allocation(cell):
         assert target.GetAddressByteSize() == 8 and target.GetByteOrder() == lldb.eByteOrderLittle
         assert cell & 8, 'owner is not the observed precise-allocation kind'
         header = concrete_type('JSC::PreciseAllocation').GetByteSize()
         allocation = cell - ((header + 15) & ~15)
+        return header, allocation
+
+    def precise_marker(visitor, cell):
+        # Use frozen HashTable metadata and DWARF field offsets, without inferior find/get calls.
+        header, allocation = precise_allocation(cell)
         table_value = field(field(field(visitor, 'm_preciseAllocationMap'), 'm_impl'), 'm_table')
         table = number(table_value)
         if not table:
@@ -287,7 +292,8 @@ def debugger_stage():
         region = lldb.SBMemoryRegionInfo()
         assert process.GetMemoryRegionInfo(sp, region).Success() and region.IsReadable()
         ceiling = min(region.GetRegionEnd(), sp + 16 * 1024**2)
-        frames = [symbolize(pc), symbolize(lr, True)]
+        # A watchpoint may stop after the store; x30 can be a nested call's return, not this frame's caller.
+        frames = [symbolize(pc)]
         links = []
         current = fp
         for _ in range(128):
@@ -374,9 +380,6 @@ def debugger_stage():
             weak_return_bp = None
             completion_bp, completion_address = entry('Bun__UpgradedDuplex__onWriteComplete')
             gc_bp, _ = entry('JSC__VM__runGC')
-            live_mark_bp, _ = entry('JSC::VerifierSlotVisitor::testAndSetMarked',
-                'JSC::VerifierSlotVisitor::testAndSetMarked(JSC::PreciseAllocation&)')
-            live_mark_bp.SetEnabled(False)
             mark_bp = target.BreakpointCreateByLocation('Collector.cpp', 1068)
             assert mark_bp.GetNumLocations() > 0, 'missing post-mark verifier boundary'
             mark_bp.SetEnabled(False)
@@ -391,14 +394,34 @@ def debugger_stage():
         error = lldb.SBError()
         process = target.Launch(info, error)
         assert error.Success(), str(error)
-        for _ in range(16384 if stage == 'trace' else 256):
+        for _ in range(256):
             if process.GetState() == lldb.eStateExited:
                 break
             assert process.GetState() == lldb.eStateStopped, str(process.GetState())
-            threads = [t for t in process if t.GetStopReason() == lldb.eStopReasonBreakpoint]
-            assert len(threads) == 1, 'unexpected stop or concurrent breakpoint'
+            threads = [t for t in process if t.GetStopReason() in
+                       (lldb.eStopReasonBreakpoint, lldb.eStopReasonWatchpoint)]
+            assert len(threads) == 1, 'unexpected stop or concurrent debugger event'
             thread = threads[0]
             frame = thread.GetFrameAtIndex(0)
+            if thread.GetStopReason() == lldb.eStopReasonWatchpoint:
+                assert stage == 'trace' and mark_watch is not None and mark_watch.IsEnabled()
+                assert thread.GetStopReasonDataCount() == 1
+                assert thread.GetStopReasonDataAtIndex(0) == mark_watch.GetID()
+                value = word(mark_observation['address'], 1)
+                event('real-mark-write', watchpoint=mark_watch.GetID(), value=value,
+                      stopped_pc=frame.GetPC(), thread=thread.GetThreadID())
+                assert value in (0, 1) and value != mark_observation['last_value']
+                mark_observation['last_value'] = value
+                if value == 0:
+                    mark_observation['observed_zero'] = True
+                else:
+                    assert mark_observation['observed_zero'] and 'frame_pointer_path' not in mark_observation
+                    mark_watch.SetEnabled(False)
+                    assert not mark_watch.IsEnabled()
+                    mark_observation['frame_pointer_path'] = frame_pointer_snapshot(frame, thread)
+                    event('live-real-mark-writer', **mark_observation)
+                assert process.Continue().Success()
+                continue
             ids = {thread.GetStopReasonDataAtIndex(i) for i in range(0, thread.GetStopReasonDataCount(), 2)}
             report['last_stop'] = {'pc': frame.GetPC(), 'function': frame.GetFunctionName(),
                                    'breakpoints': sorted(ids), 'expected_entry_pcs': {
@@ -474,21 +497,23 @@ def debugger_stage():
                     assert gc_count <= 31
                     # The fixture collects once for queuedRoot, then thirty times before its final deref.
                     if gc_count == 31:
-                        live_mark_bp.SetEnabled(True)
+                        _, allocation = precise_allocation(owner['owner'])
+                        marked = field(field(typed(allocation, 'JSC::PreciseAllocation'), 'm_isMarked'), 'value')
+                        assert marked.GetByteSize() == 1 and mark_watch is None
+                        address = marked.GetLoadAddress()
+                        initial = word(address, 1)
+                        assert initial in (0, 1)
+                        error = lldb.SBError()
+                        mark_watch = target.WatchAddress(address, 1, False, True, error)
+                        event('real-mark-watchpoint-admission', address=address, initial=initial, error=str(error),
+                              valid=mark_watch.IsValid())
+                        assert error.Success() and mark_watch.IsValid() and mark_watch.IsEnabled()
+                        assert mark_watch.GetWatchAddress() == address and mark_watch.GetWatchSize() == 1
+                        assert mark_watch.GetID() > 0
+                        mark_observation = dict(allocation=allocation, address=address, initial_value=initial,
+                                                last_value=initial, observed_zero=initial == 0,
+                                                watchpoint=mark_watch.GetID())
                         mark_bp.SetEnabled(True)
-            elif live_mark_bp.GetID() in ids:
-                assert returned and gc_count == 31
-                allocation = owner['owner'] - ((concrete_type('JSC::PreciseAllocation').GetByteSize() + 15) & ~15)
-                if reg(frame, 'x1') == allocation:
-                    visitor_address = reg(frame, 'x0')
-                    visitor = typed(visitor_address, 'JSC::VerifierSlotVisitor')
-                    _, actual_allocation, existing = precise_marker(visitor, owner['owner'])
-                    assert actual_allocation == allocation and existing is None, 'first precise mark entry was missed'
-                    assert live_marker is None and number(field(visitor, 'm_doneMarking')) == 0
-                    live_marker = dict(visitor=visitor_address, allocation=allocation,
-                                       frame_pointer_path=frame_pointer_snapshot(frame, thread))
-                    event('live-first-precise-mark', **live_marker)
-                    live_mark_bp.SetEnabled(False)
             elif mark_bp.GetID() in ids:
                 assert returned and gc_count == 31 and 'Collector::verifyGC' in (frame.GetFunctionName() or '')
                 collector = frame.FindVariable('this', lldb.eNoDynamicValues)
@@ -496,7 +521,10 @@ def debugger_stage():
                 assert number(collector) == number(field(field(vm, 'heap'), 'm_collector'))
                 visitor_ptrs = pointer(field(collector.Dereference(), 'm_verifierSlotVisitor'), 'JSC::VerifierSlotVisitor')
                 assert len(set(visitor_ptrs)) == 1 and visitor_ptrs[0]
-                assert live_marker is not None and live_marker['visitor'] == visitor_ptrs[0]
+                assert mark_observation is not None and 'frame_pointer_path' in mark_observation
+                assert mark_observation['last_value'] == 1 and not mark_watch.IsEnabled()
+                _, allocation = precise_allocation(owner['owner'])
+                assert allocation == mark_observation['allocation'] and word(mark_observation['address'], 1) == 1
                 visitor = typed(visitor_ptrs[0], 'JSC::VerifierSlotVisitor')
                 assert number(field(visitor, 'm_doneMarking')) == 1
                 w = typed(owner['weak'], 'JSC::JSWeakObjectRef')
@@ -523,9 +551,9 @@ def debugger_stage():
             assert facts['callbackRoot'] is True and facts['collected'] is False and facts['settled'] == ['ECANCELED']
             snapshots = [e for e in report['events'] if e['kind'] == 'passive-marker-snapshot']
             assert len(snapshots) == 1 and snapshots[0]['owner'] == owner['owner']
-            assert len([e for e in report['events'] if e['kind'] == 'live-first-precise-mark']) == 1
+            assert len([e for e in report['events'] if e['kind'] == 'live-real-mark-writer']) == 1
             report['outcome'] = facts
-            report['classification'] = 'first-mark frame-pointer path captured; originating conservative word remains unproven'
+            report['classification'] = 'real-mark writer path captured; verifier first-root path and originating word remain unproven'
         report['passed'] = True
     except BaseException as error:
         report['gap'] = str(error)
