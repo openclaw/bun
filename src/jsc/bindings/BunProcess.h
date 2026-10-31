@@ -143,6 +143,8 @@ JSC_DECLARE_HOST_FUNCTION(Process_functionDlopen);
 JSC_DECLARE_HOST_FUNCTION(jsFunctionReportUncaughtException);
 JSC_DECLARE_HOST_FUNCTION(jsFunctionShutdownStdio);
 
+JSC_DECLARE_HOST_FUNCTION(jsFunctionIsStandardOutputStream);
+
 // process.cwd() as a JSString, cached on the process object until it changes.
 JSC::JSValue getCachedCwd(JSC::JSGlobalObject*);
 

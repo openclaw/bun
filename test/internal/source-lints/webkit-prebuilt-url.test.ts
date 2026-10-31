@@ -26,7 +26,6 @@ function mockToolchain(): Toolchain {
     clangVersion: "23.1.1",
     clangResourceDir: "/fake/llvm/lib/clang/23",
     ar: "/fake/llvm/bin/llvm-ar",
-    ranlib: "/fake/llvm/bin/llvm-ranlib",
     ld: "/fake/llvm/bin/ld.lld",
     ld64Lld: "/fake/llvm/bin/ld64.lld",
     rustLlvmVersion: "23.1.1",
@@ -49,7 +48,6 @@ function mockToolchain(): Toolchain {
     rustupHome: undefined,
     msvcLinker: undefined,
     rc: undefined,
-    mt: undefined,
     nasm: undefined,
   };
 }
@@ -64,6 +62,7 @@ function resolveLinuxRelease(partial: PartialConfig = {}): Config {
       abi: "gnu",
       buildType: "Release",
       lto: false,
+      aot: false,
       baseline: false,
       linuxSysroot: "/fake/linux-sysroot",
       winsysroot: "/fake/windows-sysroot",
@@ -88,7 +87,7 @@ function fixture(name: string, digest = "a".repeat(64)): WebKitArtifactManifest 
 describe("WebKit artifact manifest", () => {
   test("missing variants permit graph construction but fail the dependency edge", () => {
     using dir = tempDir("webkit-unavailable", {});
-    const cfg = resolveLinuxRelease({ buildType: "Debug", asan: true, buildDir: String(dir) });
+    const cfg = resolveLinuxRelease({ buildType: "Debug", asan: true, aot: true, buildDir: String(dir) });
     const source = webkit.source(cfg);
     if (source.kind !== "unavailable") throw new Error("expected an unavailable debug artifact");
     expect(source.destDir).toStartWith(String(dir));
@@ -102,7 +101,7 @@ describe("WebKit artifact manifest", () => {
       [fileURLToPath(new URL("../../../scripts/build/fetch-cli.ts", import.meta.url)), "unavailable", encoded],
       { env: bunEnv, encoding: "utf8" },
     );
-    expect(child.stderr).toContain("Missing SHA-256 for WebKit target bun-webkit-linux-amd64-debug-asan.tar.gz");
+    expect(child.stderr).toContain("Missing SHA-256 for WebKit target bun-webkit-linux-amd64-debug-asan-aot.tar.gz");
     expect(child.status).toBe(1);
     expect(existsSync(source.destDir)).toBe(false);
   });
@@ -129,10 +128,12 @@ describe("WebKit artifact manifest", () => {
 
   test.each([
     [{}, "linux-amd64"],
+    [{ aot: true }, "linux-amd64-aot"],
+    [{ aot: true, lto: true }, "linux-amd64-lto-aot"],
     [{ lto: true }, "linux-amd64-lto"],
-    [{ buildType: "Debug", asan: false }, "linux-amd64-debug"],
-    [{ buildType: "Debug", asan: true }, "linux-amd64-debug-asan"],
-    [{ asan: true }, "linux-amd64-asan"],
+    [{ buildType: "Debug", asan: false, aot: true }, "linux-amd64-debug-aot"],
+    [{ buildType: "Debug", asan: true, aot: true }, "linux-amd64-debug-asan-aot"],
+    [{ asan: true, aot: true }, "linux-amd64-asan-aot"],
     [{ abi: "musl" }, "linux-amd64-musl"],
     [{ arch: "aarch64" }, "linux-arm64"],
     [{ os: "darwin", arch: "aarch64" }, "macos-arm64"],

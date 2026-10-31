@@ -76,6 +76,9 @@ export const windowsSmoke = [
   "test/js/bun/plugin/plugins.test.ts",
   "test/js/bun/resolve/import-meta-resolve.test.mjs",
   "test/js/bun/resolve/import-meta.test.js",
+  "test/js/node/worker_threads/terminate-in-a-message-listener-of-a-worker-that-ends-by-itself.test.ts",
+  "test/js/node/worker_threads/what-a-worker-wrote-before-it-exits-is-read.test.ts",
+  "test/js/node/worker_threads/worker-stdout-own-functions.test.ts",
 ];
 
 const webkitSensitive = [

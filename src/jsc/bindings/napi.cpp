@@ -2892,9 +2892,6 @@ extern "C" napi_status napi_typeof(napi_env env, napi_value val,
 }
 
 static_assert(std::is_same_v<JSBigInt::Digit, uint64_t>, "All NAPI bigint functions assume that bigint words are 64 bits");
-#if USE(BIGINT32)
-#error All NAPI bigint functions assume that BIGINT32 is disabled
-#endif
 
 extern "C" napi_status napi_get_value_bigint_int64(napi_env env, napi_value value, int64_t* result, bool* lossless)
 {
@@ -3033,7 +3030,7 @@ extern "C" napi_status napi_run_script(napi_env env, napi_value script,
     JSValue value = JSC::evaluate(globalObject, sourceCode, globalObject->globalThis(), returnedException);
 
     if (returnedException) {
-        env->scheduleException(returnedException.get());
+        env->scheduleException(returnedException->value());
         return napi_set_last_error(env, napi_generic_failure);
     }
 

@@ -86,12 +86,18 @@ export function overridableRequire(this: JSCommonJSModule, originalId: string, o
       ? 4
       : 0,
   );
-  if (queryIndex === -1 ? id.endsWith(".node") : id.endsWith(".node", queryIndex)) {
+  if ((queryIndex === -1 ? id.endsWith(".node") : id.endsWith(".node", queryIndex)) && !$isHiddenFromRequireCache(id)) {
     return $internalRequire(id, this, requireMap);
   }
 
   if (id === "bun:test") {
-    return Bun.jest(parentFilename);
+    // Not `Bun.jest`: every executable with a computed `require()` holds this function, and naming it would keep the test runner in all of them.
+    const requireTestModule: (filename: string) => object = $newCppFunction(
+      "JSCommonJSModule.cpp",
+      "jsFunctionRequireTestModule",
+      1,
+    );
+    return requireTestModule(parentFilename);
   }
 
   // To handle import/export cycles, we need to create a module object and put
@@ -156,6 +162,14 @@ export function overridableRequire(this: JSCommonJSModule, originalId: string, o
   return mod.exports;
 }
 
+// Called by native code with a `module.children` value that script has read or assigned.
+$visibility = "Private";
+export function pushObservableChild(children: JSCommonJSModule[] | undefined, child: JSCommonJSModule) {
+  if (children && children.indexOf(child) === -1) {
+    children.push(child);
+  }
+}
+
 $visibility = "Private";
 export function requireResolve(this: JSCommonJSModule, id: string, options: { paths?: string[] } = {}) {
   // Only `options.paths` extraction happens here; builtin bypass and paths
@@ -191,13 +205,16 @@ export function internalRequire(id: string, parent: JSCommonJSModule, requireMap
   $assert(filename.endsWith(".node"));
 
   const module = $createCommonJSModule(id, {}, true, requireMap === $requireMap ? parent : undefined);
-  // Windows needs the namespaced disk path for addon activation contexts.
-  // Embedded keys must reach dlopen unchanged so it can extract the addon.
-  const nativePath =
-    process.platform === "win32" && !filename.startsWith("B:/~BUN/")
-      ? require("node:path").toNamespacedPath(filename)
-      : filename;
-  process.dlopen(module, nativePath);
+  // Resolving the name has thrown in an executable that refuses native addons.
+  if (CAN_LOAD_CODE_AT_RUN_TIME) {
+    // Windows needs the namespaced disk path for addon activation contexts.
+    // Embedded keys must reach dlopen unchanged so it can extract the addon.
+    const nativePath =
+      process.platform === "win32" && !filename.startsWith("B:/~BUN/")
+        ? require("node:path").toNamespacedPath(filename)
+        : filename;
+    process.dlopen(module, nativePath);
+  }
   $requireMap.$set(id, module);
   if (requireMap !== $requireMap) requireMap.$set(id, module);
   return module.exports;
@@ -217,7 +234,7 @@ export function loadEsmIntoCjs(resolvedSpecifier: string, requirer?: JSCommonJSM
 // `requirer`: the module whose require() this is. The ES module is loaded by the loader of the
 // Bun.ModuleGraph that module belongs to, or the global object's.
 $visibility = "Private";
-export function requireESM(this, resolved: string, requirer?: JSCommonJSModule) {
+export function requireESM(this: void, resolved: string, requirer?: JSCommonJSModule) {
   // `$esmLoadSync` answers from the registry for a record that is already
   // Evaluated, or still Evaluating because this require() sits inside its own
   // evaluation (a require cycle), before it loads anything.
@@ -259,9 +276,14 @@ export function createRequireCache(requireMap: RequireMap, owner?: JSCommonJSMod
   // $requireMap.
   const isBuiltinKey = (key: string | symbol) =>
     typeof key === "string" && (key.startsWith("node:") || key.startsWith("bun:"));
-  const hasKey = (key: string) => requireMap.$has(key) || (!isBuiltinKey(key) && $esmRegistryHasEvaluated(key, owner));
+  // An executable that `bun build --compile --aot` made never lists its own files, which run once: the cache holds the files that were loaded from outside of the executable, as in a bundled executable.
+  const hidesFiles = $isHiddenFromRequireCache();
+  const isHidden = (key: string | symbol) => hidesFiles && $isHiddenFromRequireCache(key);
+  const hasKey = (key: string) =>
+    !isHidden(key) && (requireMap.$has(key) || (!isBuiltinKey(key) && $esmRegistryHasEvaluated(key, owner)));
   var proxy = new Proxy(inner, {
     get(_target, key: string) {
+      if (isHidden(key)) return undefined;
       const entry = requireMap.$get(key);
       if (entry) return entry;
 
@@ -277,6 +299,7 @@ export function createRequireCache(requireMap: RequireMap, owner?: JSCommonJSMod
       return inner[key];
     },
     set(_target, key: string, value) {
+      $requireCacheWillSet(key, value, owner);
       requireMap.$set(key, value);
       return true;
     },
@@ -286,6 +309,7 @@ export function createRequireCache(requireMap: RequireMap, owner?: JSCommonJSMod
     },
 
     deleteProperty(_target, key: string) {
+      if (isHidden(key)) return true;
       requireMap.$delete(key);
       $esmRegistryDelete(key, owner);
       $evictIsolationSourceProviderCache(key);
@@ -299,7 +323,12 @@ export function createRequireCache(requireMap: RequireMap, owner?: JSCommonJSMod
           $arrayPush(array, key);
         }
       }
-      return array;
+      if (!hidesFiles) return array;
+      var shown: string[] = [];
+      for (var index = 0; index < array.length; index++) {
+        if (!isHidden(array[index])) $arrayPush(shown, array[index]);
+      }
+      return shown;
     },
 
     // In Node, require.cache has a null prototype
