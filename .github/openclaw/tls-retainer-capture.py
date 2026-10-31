@@ -654,6 +654,13 @@ def debugger_stage():
             assert timer_call.GetSize() == 1
             instruction = timer_call.GetInstructionAtIndex(0)
             assert instruction.GetMnemonic(target) == 'bl'
+            assert int(instruction.GetOperands(target), 16) == 91664704
+            profiled = module.ResolveFileAddress(91664704).GetFunction()
+            assert profiled.IsValid() and profiled.GetName().startswith('JSC::profiledCall(')
+            tail_call = target.ReadInstructions(module.ResolveFileAddress(91664844), 1)
+            assert tail_call.GetSize() == 1
+            instruction = tail_call.GetInstructionAtIndex(0)
+            assert instruction.GetMnemonic(target) == 'b'
             assert int(instruction.GetOperands(target), 16) == 88383168
             vm_layout = concrete_type('JSC::VM')
             interpreter_fields = [vm_layout.GetFieldAtIndex(i) for i in range(vm_layout.GetNumberOfFields())
@@ -662,7 +669,8 @@ def debugger_stage():
             interpreter_offset = interpreter_fields[0].GetOffsetInBytes()
             assert interpreter_offset == 0x2d468
             event('early-stack-writer-layout', interpreter_offset=interpreter_offset,
-                  timer_call=27509444, timer_return=27509448)
+                  timer_call=27509444, profiled_call=91664704, interpreter_tail_call=91664844,
+                  timer_return=27509448)
             mark_bp = target.BreakpointCreateByLocation('Collector.cpp', 1068)
             assert mark_bp.GetNumLocations() > 0, 'missing post-mark verifier boundary'
             mark_bp.SetEnabled(False)
