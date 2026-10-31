@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Read the current engine's per-module object-export table, including defaults that are not own properties.
+
 - Sync the AOT integration with layered compiled-test builds, retaining runtime, loader, trim, and build-owner fixes.
 
 - Drop the obsolete built-in replacement flow-result adapter after upstream moved replacement discovery before analysis.

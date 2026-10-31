@@ -107,6 +107,24 @@ fn default_export_is_the_module_object() {
 }
 
 #[test]
+fn module_object_exports_do_not_require_an_own_property() {
+    let module = RuntimeModule::BunFfi;
+    let object = namespace_of(module);
+    assert_eq!(own_member(object, name("default")), None);
+    assert_eq!(default_export_of(module), module_object_of(module));
+    for module in RuntimeModule::ALL {
+        for &export in module_data(module).exports_holding_module_object {
+            assert_eq!(
+                find_export(namespace_of(module), export),
+                module_object_of(module),
+                "{}",
+                module.name()
+            );
+        }
+    }
+}
+
+#[test]
 fn default_export_is_the_own_default_of_the_module_object() {
     let own_default = ExportLookup::Found(BuiltinId::BunSqliteDefault);
     assert_eq!(default_export_of(RuntimeModule::BunSqlite), own_default);
