@@ -265,6 +265,39 @@ def debugger_stage():
             event('inline-root-inventory', function=function.GetName(), file_address=start,
                   scopes=scopes, instructions=rows, blocks_visited=visited)
 
+    def inventory_conductor_call():
+        # This saved return address bounds the witnessed word, but does not name a local.
+        # Inspect the physical frame before designing a watch of its writer.
+        call_pc = 88384104
+        function = module.ResolveFileAddress(call_pc).GetFunction()
+        assert function.IsValid() and function.GetName().startswith('JSC::Interpreter::executeCall(')
+        instructions = function.GetInstructions(target)
+        assert 0 < instructions.GetSize() <= 8192, 'conductor call disassembly budget'
+        rows = []
+        for i in range(instructions.GetSize()):
+            instruction = instructions.GetInstructionAtIndex(i)
+            address = instruction.GetAddress()
+            pc = address.GetFileAddress()
+            if i >= 80 and not call_pc - 64 <= pc <= call_pc + 32:
+                continue
+            line = address.GetLineEntry()
+            rows.append(dict(file_address=pc, mnemonic=instruction.GetMnemonic(target),
+                             operands=instruction.GetOperands(target),
+                             file=line.GetFileSpec().GetFilename(), line=line.GetLine()))
+        call = [row for row in rows if row['file_address'] == call_pc]
+        assert len(call) == 1 and call[0]['mnemonic'] == 'bl', 'conductor entry-call admission'
+        layout = concrete_type('JSC::ProtoCallFrame')
+        assert 0 < layout.GetByteSize() <= 1024 and layout.GetNumberOfFields() <= 32
+        fields = []
+        for i in range(layout.GetNumberOfFields()):
+            member = layout.GetFieldAtIndex(i)
+            fields.append(dict(name=member.GetName(), offset=member.GetOffsetInBytes(),
+                               bytes=member.GetType().GetByteSize(), type=member.GetType().GetName()))
+        event('conductor-call-inventory', function=function.GetName(),
+              file_address=function.GetStartAddress().GetFileAddress(), call_pc=call_pc,
+              instructions=rows, proto_call_frame=dict(bytes=layout.GetByteSize(), fields=fields),
+              interpretation='immutable frame inventory; no slot-to-local or writer attribution')
+
     def reg(frame, name):
         value = frame.FindRegister(name)
         assert value.IsValid() and value.GetError().Success(), name
@@ -612,6 +645,7 @@ def debugger_stage():
                     member = layout.GetFieldAtIndex(i)
                     assert member.GetName() == expected and member.GetOffsetInBytes() == i * 8
                     assert member.GetType().GetByteSize() == 8
+            inventory_conductor_call()
             root_bps = [stack_roots_bp, *scan_bps]
             if any(bp is None for bp in root_bps):
                 inventory_inline_roots()
