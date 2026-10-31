@@ -1162,7 +1162,7 @@ TLSSocket.prototype.getX509Certificate = function getX509Certificate(this: $Node
   return this._handle?.getX509Certificate?.();
 };
 
-TLSSocket.prototype[buntls] = function (this: $Node.TLSSocket, port: unknown, host: string | null | undefined) {
+TLSSocket.prototype[buntls] = function (this: $Node.TLSSocket, _port: unknown, _host: string | null | undefined) {
   const ctx = this[ksecureContext];
   // An empty native serverName suppresses its connection-host fallback; tls.connect does not infer SNI.
   const servername = this[kservername] ?? (this.servername || "");

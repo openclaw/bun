@@ -4729,13 +4729,6 @@ Object.defineProperty(ServerResponse.prototype, "headers", {
   },
 });
 
-function waitsItsTurn(res: $Node.ServerResponse): boolean {
-  const exchange = res.$exchange;
-  return exchange !== undefined && exchange.response === res
-    ? (exchange.flags & EXCHANGE_WAITS_ITS_TURN) !== 0
-    : res[kPipelinedQueuedState] !== undefined;
-}
-
 Object.defineProperty(ServerResponse.prototype, "socket", {
   get(this: $Node.ServerResponse) {
     return this[fakeSocketSymbol] ?? null;
@@ -5954,8 +5947,8 @@ function responseWrite(
   }
 
   if (result < 0 && hasBody) {
-    if (!fromSocket) this[kResponseQueueNeedDrain] = true;
     ("unlikely");
+    if (!fromSocket) this[kResponseQueueNeedDrain] = true;
     if (callback) addPendingCallback(this, callback);
     return false;
   }

@@ -4,17 +4,6 @@ const { hideFromStack, throwNotImplemented, kEmptyObject } = require("internal/s
 const { validateString, validateOneOf, validateFunction, validateObject } = require("internal/validators");
 const { isDataView, isAnyArrayBuffer } = require("node:util/types");
 const jsc: typeof import("bun:jsc") = require("bun:jsc");
-interface GCEvent {
-  isFullCollection: boolean;
-  cost: number;
-  usedBefore: number;
-  capacityBefore: number;
-  externalBefore: number;
-  usedAfter: number;
-  capacityAfter: number;
-  externalAfter: number;
-}
-
 const {
   isStringOneByteRepresentation,
   startGCProfiler,
@@ -66,8 +55,6 @@ const TypedArrayPrototypeGetByteLength: ViewGetter<number> = ObjectGetOwnPropert
   TypedArrayProto,
   "byteLength",
 )!.get!;
-const TypedArrayPrototypeSet: (this: Uint8Array, array: ArrayLike<number>, offset?: number) => void =
-  TypedArrayProto.set;
 const DataViewPrototypeGetBuffer: ViewGetter<ArrayBufferLike> = ObjectGetOwnPropertyDescriptor(
   DataView.prototype,
   "buffer",

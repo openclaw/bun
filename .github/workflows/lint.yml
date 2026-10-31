@@ -34,16 +34,20 @@ jobs:
         run: |
           bun x tsc --noEmit -p scripts/build/tsconfig.json
           bun x tsc --noEmit -p scripts/tsconfig.json
-      - name: Fetch the engine's code generators
-        # The code generators and their types import TypeScript of the engine. A release of WebKit has it as an asset of its
-        # own; an older one only inside its tarballs.
+      - name: Read the fork engine pin
+        id: webkit
         run: |
-          version=$(sed -n 's/^export const WEBKIT_VERSION = "\(.*\)";$/\1/p' scripts/build/deps/webkit.ts)
-          release="https://github.com/oven-sh/WebKit/releases/download/autobuild-${version#autobuild-}"
-          mkdir -p vendor/WebKit
-          curl -fsSL --retry 3 -o "$RUNNER_TEMP/engine.tar.gz" "$release/bun-webkit-aot-sources.tar.gz" ||
-            curl -fsSL --retry 3 -o "$RUNNER_TEMP/engine.tar.gz" "$release/bun-webkit-linux-amd64-lto.tar.gz"
-          tar -xzf "$RUNNER_TEMP/engine.tar.gz" -C vendor/WebKit --strip-components=1 --exclude=bun-webkit/Source/JavaScriptCore/aot/tests bun-webkit/Source/JavaScriptCore/aot
+          bun -e 'import manifest from "./scripts/build/deps/webkit-artifacts.json"; console.log(`revision=${manifest.version}`)' >> "$GITHUB_OUTPUT"
+      - name: Fetch the pinned fork engine sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: openclaw/WebKit
+          ref: ${{ steps.webkit.outputs.revision }}
+          path: vendor/WebKit
+          sparse-checkout: |
+            Source/JavaScriptCore
+            Tools/Scripts/aot
+          persist-credentials: false
       - name: Check that the engine's generator writes what the build declares
         env:
           AOT_SCHEMA: ${{ github.workspace }}/vendor/WebKit/Source/JavaScriptCore/aot/ir/AOTSchema.def
@@ -64,13 +68,7 @@ jobs:
         # The uses are in the engine's C++ and in Bun's Rust. The build looks for them only where it compiles the engine,
         # and CI links a prebuilt one.
         run: |
-          version=$(sed -n 's/^export const WEBKIT_VERSION = "\(.*\)";$/\1/p' scripts/build/deps/webkit.ts)
-          git init --quiet "$RUNNER_TEMP/WebKit"
-          git -C "$RUNNER_TEMP/WebKit" remote add origin https://github.com/oven-sh/WebKit.git
-          git -C "$RUNNER_TEMP/WebKit" sparse-checkout set Source/JavaScriptCore Tools/Scripts/aot
-          git -C "$RUNNER_TEMP/WebKit" fetch --quiet --depth=1 --filter=blob:none origin "refs/tags/autobuild-${version#autobuild-}"
-          git -C "$RUNNER_TEMP/WebKit" checkout --quiet FETCH_HEAD
-          BUN_WEBKIT_PATH="$RUNNER_TEMP/WebKit" bun test test/internal/build-aot-codegen-declared-outputs.test.ts -t "finds a use for every name of the schema"
+          BUN_WEBKIT_PATH="$GITHUB_WORKSPACE/vendor/WebKit" bun test test/internal/build-aot-codegen-declared-outputs.test.ts -t "finds a use for every name of the schema"
       - name: Run the tests that read the engine's sources
         # The machines that run test/aot have no sources of the engine, so these files skip themselves there.
         # The step ends where grep finds no file: `bun test` without a file runs every test.
@@ -78,4 +76,4 @@ jobs:
           AOT_REQUIRE_ENGINE_SOURCES: "1"
         run: |
           files=$(grep -l "harness/engine-text" test/aot/*.test.ts)
-          BUN_WEBKIT_PATH="$RUNNER_TEMP/WebKit" bun test $files
+          BUN_WEBKIT_PATH="$GITHUB_WORKSPACE/vendor/WebKit" bun test $files

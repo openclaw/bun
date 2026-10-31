@@ -11,7 +11,6 @@ const fs = require("internal/fs/binding");
 // RegExp -> exec, function -> called with the filename. Arrays compose.
 type Glob = import("bun").Glob;
 type Matcher = (filename: string) => boolean;
-type WatchListener = (eventType: string, filename: unknown) => void;
 
 function makeGlobMatcher(glob: Glob): Matcher {
   return function matchGlob(filename) {

@@ -26,7 +26,6 @@ const { getDefaultHighWaterMark } = require("internal/streams/state");
 const EventEmitter = require("node:events");
 // Socket lifecycle callbacks must run even when user code replaces timer APIs.
 const setImmediate = $newCppFunction("node/NodeTimers.cpp", "functionSetImmediate", 1);
-let dns: typeof import("./dns").default;
 
 const normalizedArgsSymbol = Symbol("normalizedArgs");
 const {
