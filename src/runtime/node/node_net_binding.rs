@@ -12,7 +12,7 @@ use bun_uws as uws;
 use crate::generated_bindgen::socket_body::SocketHandle;
 #[cfg(unix)]
 use crate::socket::TCPSocket;
-use crate::socket::{Listener, NativeCallbacks, NewSocket, SocketFlags};
+use crate::socket::{Listener, NewSocket, SocketFlags};
 
 static AUTO_SELECT_FAMILY_DEFAULT: AtomicBool = AtomicBool::new(true);
 
@@ -97,7 +97,8 @@ pub(crate) fn new_detached_socket(cx: &mut JsScope<'_>, is_ssl: bool) -> JSValue
             server_name: JsCell::new(None),
             buffered_data_for_node_net: Default::default(),
             bytes_written: Cell::new(0),
-            native_callback: JsCell::new(NativeCallbacks::None),
+            native_callbacks: JsCell::new(Vec::new()),
+            native_write_owner: Cell::new(None),
             twin: JsCell::new(None),
             verify_error: JsCell::new(None),
             latest_session: core::cell::Cell::new(None),

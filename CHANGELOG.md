@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add opt-in native TLS qualification to release dry runs, checking the exact artifact and source with a genuine Node.js reference and per-file JUnit results.
+
+- Preserve native socket ownership when nesting TLS, including pending writes, read backpressure, shutdown completion and buried HTTP/2 listeners. Keep generic Duplex write completions and queued TLS callbacks alive through reentrant teardown and garbage collection.
+
 - Withhold macOS signing and notarization credentials from release dry runs while retaining both Darwin archives for qualification.
 
 - Keep CI build and test diagnostics from dumping environment values or machine identity details.

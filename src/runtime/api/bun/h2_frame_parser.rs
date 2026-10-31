@@ -46,7 +46,7 @@ const MAX_PAYLOAD_SIZE_WITHOUT_FRAME: usize = 16384 - FrameHeader::BYTE_SIZE - 1
 /// `Copy` view of [`NativeSocket`] for call sites to snapshot across
 /// re-entrant writes. BACKREF — the socket strictly outlives the attachment:
 /// `Tls`/`Tcp` are kept alive by the `RefPtr<H2FrameParser>` stored in the
-/// socket's `native_callback` slot, `*Writeonly` by the ref [`NativeSocket`]
+/// socket's native listener entry, `*Writeonly` by the ref [`NativeSocket`]
 /// holds on them.
 #[derive(Default, Clone, Copy)]
 enum BunSocket {
@@ -59,12 +59,13 @@ enum BunSocket {
 }
 
 /// The parser's attachment to a native socket, and its owner: attaching either
-/// installs the parser as the socket's native callback (`Tls`/`Tcp`) or, when
-/// that slot is taken, takes a ref on the socket (`*Writeonly`); `detach` /
+/// installs the parser as a native listener (`Tls`/`Tcp`) or, when the socket
+/// cannot accept a listener, takes a ref on it (`*Writeonly`); `detach` /
 /// `Drop` undo whichever one it was. Readers take a [`BunSocket`] snapshot.
 #[derive(Default)]
 struct NativeSocket {
     socket: Cell<BunSocket>,
+    owner: Cell<*mut H2FrameParser>,
     /// The attached socket closed. Sticky until `attach`; `onWrite` tells the session.
     closed: Cell<bool>,
 }
@@ -76,7 +77,7 @@ impl NativeSocket {
     }
 
     /// `attach_native_callback` stores `h2` (a ref on the parser) in the
-    /// socket, dropped in `NewSocket::detach_native_callback` (or inside
+    /// socket, dropped by identity removal or terminal close (or inside
     /// `attach_native_callback` when rejected); when rejected we fall back to
     /// write-only mode and hold a ref on the socket instead.
     fn attach<const SSL: bool>(
@@ -89,6 +90,7 @@ impl NativeSocket {
         // BACKREF: the caller's JS socket holds a ref on it.
         let socket_nn = NonNull::new(socket).expect("non-null socket");
         let socket = bun_ptr::BackRef::from(socket_nn);
+        self.owner.set(h2.as_ptr());
         self.socket
             .set(if socket.attach_native_callback(NativeCallbacks::H2(h2)) {
                 if SSL {
@@ -108,9 +110,12 @@ impl NativeSocket {
     }
 
     fn detach(&self) {
+        let owner = crate::socket::socket_body::NativeCallbackId::H2(
+            self.owner.replace(core::ptr::null_mut()),
+        );
         match self.socket.replace(BunSocket::None) {
-            BunSocket::Tcp(socket) => socket.detach_native_callback(),
-            BunSocket::Tls(socket) => socket.detach_native_callback(),
+            BunSocket::Tcp(socket) => socket.remove_native_callback(owner),
+            BunSocket::Tls(socket) => socket.remove_native_callback(owner),
             // The ref `attach` took.
             BunSocket::TcpWriteonly(socket) => TCPSocket::deref(socket.get()),
             BunSocket::TlsWriteonly(socket) => TLSSocket::deref(socket.get()),
@@ -118,7 +123,7 @@ impl NativeSocket {
         }
     }
 
-    /// The socket released the parser. `detach` gets here too, but with nothing attached.
+    /// The socket's terminal close released the parser.
     fn note_socket_closed(&self) {
         if !matches!(self.socket.get(), BunSocket::None) {
             self.closed.set(true);
@@ -2859,6 +2864,10 @@ impl H2FrameParser {
                 return r;
             }
         }
+    }
+
+    pub(crate) fn native_write_pending(&self) -> bool {
+        self.has_backpressure()
     }
 
     fn has_backpressure(&self) -> bool {

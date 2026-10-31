@@ -58,6 +58,7 @@ async function child(name) {
       complete,
       failure: failure ?? mainFailure,
       failedChecks: Object.keys(checks).filter(key => !checks[key]),
+      ...(pass ? {} : { trace: trace.slice(-64), omittedTraceEvents: Math.max(0, trace.length - 64) }),
     });
     process.exitCode = pass ? 0 : 1;
   });

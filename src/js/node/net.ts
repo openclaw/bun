@@ -87,6 +87,12 @@ interface SocketInternals {
 }
 type SocketInstance = Omit<NetSocket, keyof SocketInternals> & SocketInternals;
 
+// $toClass installs Socket's Duplex prototype at runtime, which the constructor's
+// TypeScript instance type does not reflect.
+function isNodeSocket(value: unknown): value is SocketInstance {
+  return value instanceof Socket;
+}
+
 interface TLSSocketInternals {
   servername: string | false | undefined;
   alpnProtocol: string | false | null;
@@ -282,7 +288,11 @@ const checkServerIdentityInHandshake = $bindgen("socket_body.bind.ts", "checkSer
 // destroy() in the handshake callback: drops the handshake flight that the native layer holds.
 const releaseHeldFlight = $bindgen("socket_body.bind.ts", "releaseHeldFlight");
 const isNamedPipeSocket = $bindgen("socket_body.bind.ts", "isNamedPipeSocket");
+const hasNativeSocketListeners = $bindgen("socket_body.bind.ts", "hasNativeSocketListeners");
 const getBufferedAmount = $bindgen("socket_body.bind.ts", "getBufferedAmount");
+const attachNativeTLSTransport = $bindgen("socket_body.bind.ts", "attachNativeTLSTransport");
+const nativeTLSPreviousWritesDone = $bindgen("socket_body.bind.ts", "nativeTLSPreviousWritesDone");
+const shutdownNativeTLSTransport = $bindgen("socket_body.bind.ts", "shutdownNativeTLSTransport");
 
 const bunTlsSymbol = Symbol.for("::buntls::");
 const bunSocketServerOptions = Symbol.for("::bunnetserveroptions::");
@@ -314,6 +324,7 @@ const kupgraded = Symbol("kupgraded");
 // On the raw handle of an adopted fd: the TLS socket that adopted it.
 const kAdoptedTLSRaw = Symbol("kAdoptedTLSRaw");
 const kAdoptedTLSTransport = Symbol("kAdoptedTLSTransport");
+const kNativeTLSTransport = Symbol("kNativeTLSTransport");
 // On that TLS socket: the fd closed, and the socket it wraps waits to be closed with it.
 const kOwesRawClose = Symbol("kOwesRawClose");
 // Emitted on a socket under the stream-level TLS engine in place of reporting a read error itself.
@@ -447,6 +458,7 @@ function writeErrnoException(negErrno) {
 function endNT(self, socket, callback) {
   const current = self._handle;
   const handle = !socket || current?.[kAdoptedTLSRaw] ? current : socket;
+  if (shutdownNativeTLSTransport(handle, callback)) return;
   const transport = unadoptedTransport(self);
   if (transport) {
     const eos = require("internal/streams/end-of-stream");
@@ -470,6 +482,14 @@ function takeInFlightWrite(self) {
   self[kwriteCallback] = null;
   return callback;
 }
+// A transport error event may precede its deferred write completion. Settle once even after _hadError.
+function settlePendingWrite(self, error) {
+  const callback = self[kwriteCallback];
+  if (!callback) return false;
+  self[kwriteCallback] = self._pendingData = null;
+  callback(error);
+  return true;
+}
 // uv_close() fails a queued write with UV_ECANCELED: https://github.com/nodejs/node/blob/v26.3.0/deps/uv/src/unix/stream.c#L464
 function cancelWriteNT(callback) {
   callback(new ErrnoException(uv().UV_ECANCELED, "write"));
@@ -485,8 +505,8 @@ function finishDestroy(callback, err, canceledWrite) {
 // Shared-fd TLS pair teardown: mirrors node's close ordering, where the
 // close-callbacks phase runs after the check phase (lib/net.js close path in
 // node v26.3.0), so destroy()-time setImmediates still see the pair alive.
-function closeAdoptedTLSRawNT(self, handle, isException) {
-  setImmediate(closeSocketHandle, self, handle, isException);
+function closeAdoptedTLSRawNT(self, handle, isException, token) {
+  setImmediate(closeSocketHandle, self, handle, isException, token);
 }
 function detachSocket(self) {
   if (!self) self = this;
@@ -496,21 +516,34 @@ function destroyNT(self, err) {
   self.destroy(err);
 }
 // Node's wrap 'close' -> destroy(): https://github.com/nodejs/node/blob/v26.3.0/lib/internal/tls/wrap.js#L739-L741
-function onUpgradedClose(self, connection) {
-  if (self[kupgraded] !== connection || self.destroyed) return;
+function onUpgradedClose(self, connection, token) {
+  if (self[kNativeTLSTransport] !== token || self[kupgraded] !== connection || self.destroyed) return;
   // The stream-level engine reads its transport with no backpressure, so the
   // transport can close after the peer's EOF with plaintext still unread.
-  if ((self[kended] || self[kOnreadPendingEnd]) && !self.readableEnded) self.once("end", self[kOnUpgradedClose]);
-  else self.destroy();
+  if ((self[kended] || self[kOnreadPendingEnd]) && !self.readableEnded) {
+    self.once("end", scheduleUpgradedClose.bind(null, self, connection, token));
+  } else self.destroy();
 }
 function closeDuplexTLSOwner(self) {
   const connection = self[kupgraded];
-  if (connection && !self[kAdoptedTLSTransport]) onUpgradedClose(self, connection);
+  if (connection && !self[kAdoptedTLSTransport]) onUpgradedClose(self, connection, self[kNativeTLSTransport]);
+}
+function scheduleUpgradedClose(self, connection, token) {
+  // JSStreamSocket closes in the check phase, after earlier write completions.
+  if (self[kAdoptedTLSTransport]) onUpgradedClose(self, connection, token);
+  else setImmediate(onUpgradedClose, self, connection, token);
+}
+function onUpgradedTransportClose(self, connection, token) {
+  token.closeEmitted = true;
+  const complete = token.closeComplete;
+  token.closeComplete = undefined;
+  scheduleUpgradedClose(self, connection, token);
+  if (self[kNativeTLSTransport] === token) complete?.();
 }
 // Armed ahead of the stream-level engine's own 'close' thunk: that thunk aborts
 // a pending handshake, which a socket destroyed first does not report.
-function destroyWhenUpgradedCloses(self, connection) {
-  connection.once("close", (self[kOnUpgradedClose] = onUpgradedClose.bind(null, self, connection)));
+function destroyWhenUpgradedCloses(self, connection, token) {
+  connection.once("close", (self[kOnUpgradedClose] = onUpgradedTransportClose.bind(null, self, connection, token)));
 }
 // Node's wrap 'error' -> _emitTLSError.
 // https://github.com/nodejs/node/blob/v26.3.0/lib/internal/js_stream_socket.js#L65
@@ -532,7 +565,18 @@ function linkUpgraded(self, connection: SocketInstance) {
   const isSocket = connection instanceof Socket;
   self[kupgraded] = connection;
   self._parent = isSocket ? connection : null;
-  destroyWhenUpgradedCloses(self, connection);
+  // Retain attachment facts after native close has detached the upper handle.
+  const token = (self[kNativeTLSTransport] = {
+    connection,
+    upperHandle: undefined,
+    lowerHandle: undefined,
+    native: false,
+    nativeReadEnded: false,
+    nativeShutdownCompleted: false,
+    closeEmitted: false,
+    closeComplete: undefined,
+  });
+  destroyWhenUpgradedCloses(self, connection, token);
   connection.on("error", onUpgradedError.bind(null, self));
   self.connecting = isSocket && (connection.connecting || !connection._handle);
 }
@@ -547,16 +591,56 @@ function onUpgradedEnd(connection, eof) {
   if (!connection.destroyed) eof();
 }
 function attachTLSEngine(self, connection, options) {
+  const token = self[kNativeTLSTransport];
+  if (token?.connection !== connection || self[kupgraded] !== connection) return;
   self[kAdoptedTLSTransport] = false;
   const [handle, events] = upgradeDuplexToTLS(connection, { ...options, isNodeSocket: connection instanceof Socket });
-  connection.on("data", events[0]);
-  connection.on("end", onUpgradedEnd.bind(null, connection, events[1]));
-  connection.on("drain", events[2]);
-  connection.on("close", events[3]);
-  connection.once(kReadError, onUpgradedReadError.bind(null, self));
-  // https://github.com/nodejs/node/blob/v26.3.0/lib/internal/js_stream_socket.js#L117-L120
-  connection.resume();
+  // Registration and resume can re-enter or throw; destroy must already own this handle.
   self._handle = handle;
+  token.upperHandle = handle;
+  try {
+    // Native attachment also needs the JS owner's original transport read error.
+    connection.once(kReadError, onUpgradedReadError.bind(null, self));
+    let initialData;
+    if (isNodeSocket(connection)) {
+      const readableLength = connection.readableLength;
+      if (readableLength) initialData = connection.read(readableLength) || undefined;
+      if (
+        self.destroyed ||
+        self[kNativeTLSTransport] !== token ||
+        self[kupgraded] !== connection ||
+        self._handle !== handle
+      ) {
+        return;
+      }
+      // A buffered read can re-enter and replace the handle or queue another write.
+      const pending = hasUnflushedWrites(connection);
+      token.lowerHandle = connection._handle;
+      if (attachNativeTLSTransport(handle, token.lowerHandle, pending, initialData, token)) {
+        // Only already-issued JS writes use the old Writable queue. New TLS records own the handle.
+        if (pending) {
+          connection.write("", error => {
+            if (error) self.destroy(error);
+            else if (self._handle === handle) nativeTLSPreviousWritesDone(handle);
+          });
+        }
+        return;
+      }
+    }
+    connection.on("data", events[0]);
+    connection.on("end", onUpgradedEnd.bind(null, connection, events[1]));
+    connection.on("drain", events[2]);
+    connection.on("close", events[3]);
+    if (initialData) events[0](initialData);
+    // https://github.com/nodejs/node/blob/v26.3.0/lib/internal/js_stream_socket.js#L117-L120
+    if (!self.destroyed) connection.resume();
+  } catch (error) {
+    try {
+      self.destroy(error);
+    } finally {
+      throw error;
+    }
+  }
 }
 function adoptTLSPair(self, connection, pair) {
   self[kAdoptedTLSTransport] = true;
@@ -571,7 +655,12 @@ function attachClientTLS(self, connection, tls, upgradeDuplex) {
   if (self.destroyed || (!upgradeDuplex && !handle)) return;
   const options = { data: { self, req: {} }, tls, socket: self[khandlers], isServer: false };
   try {
-    if (upgradeDuplex || isNamedPipeSocket(handle) || hasUnflushedWrites(connection)) {
+    if (
+      upgradeDuplex ||
+      isNamedPipeSocket(handle) ||
+      hasNativeSocketListeners(handle) ||
+      hasUnflushedWrites(connection)
+    ) {
       attachTLSEngine(self, connection, options);
     } else {
       adoptTLSPair(self, connection, upgradeTLSDeferred(handle, options));
@@ -589,7 +678,7 @@ function adoptServerTLS(self, connection, options) {
   }
   try {
     // A user 'connection' listener that ran after the wrap may have queued plain writes, which must flush first.
-    if (hasUnflushedWrites(connection)) {
+    if (hasNativeSocketListeners(handle) || hasUnflushedWrites(connection)) {
       attachTLSEngine(self, connection, options);
     } else {
       // What was read off the fd before the wrap sits in the connection's readable buffer.
@@ -922,14 +1011,9 @@ const SocketHandlers = {
   error(socket, error) {
     const self = socket.data;
     if (!self) return;
+    settlePendingWrite(self, error);
     if (self._hadError) return;
     self._hadError = true;
-
-    const callback = self[kwriteCallback];
-    if (callback) {
-      self[kwriteCallback] = null;
-      callback(error);
-    }
 
     self.emit("error", error);
   },
@@ -1460,18 +1544,14 @@ const ServerHandlers = {
     const data = this.data;
     if (!data) return;
 
+    const bunTLS = data[bunTlsSymbol];
+    const tlsError = typeof bunTLS === "function" ? establishedTLSError(data, error) : undefined;
+    if (tlsError) error = tlsError;
+    const callback = settlePendingWrite(data, error);
     if (data._hadError) return;
     data._hadError = true;
-    const bunTLS = data[bunTlsSymbol];
 
     if (typeof bunTLS === "function") {
-      const tlsError = establishedTLSError(data, error);
-      if (tlsError) error = tlsError;
-      const callback = data[kwriteCallback];
-      if (callback) {
-        data[kwriteCallback] = null;
-        callback(error);
-      }
       // Mirrors node's onerror:
       // https://github.com/nodejs/node/blob/v26.3.0/lib/internal/tls/wrap.js#L467-L498
       if (!data._secureEstablished) {
@@ -1507,11 +1587,6 @@ const ServerHandlers = {
     // callback, then destroy with the error. destroy() owns the single
     // 'error' emission via the stream's errorEmitted guard; callback(error)
     // may have already destroyed, in which case this is a no-op.
-    const callback = data[kwriteCallback];
-    if (callback) {
-      data[kwriteCallback] = null;
-      callback(error);
-    }
     if (!data.destroyed) {
       data.destroy(error);
     }
@@ -1833,16 +1908,13 @@ const SocketHandlers2 = {
     $debug("Bun.Socket error");
     if (socket.data === undefined) return;
     const { self } = socket.data;
-    if (self._hadError) return;
-    self._hadError = true;
     const tlsError = establishedTLSError(self, error);
     if (tlsError) error = tlsError;
+    const callback = settlePendingWrite(self, error);
+    if (self._hadError) return;
+    self._hadError = true;
 
-    const callback = self[kwriteCallback];
-    if (callback) {
-      self[kwriteCallback] = null;
-      callback(error);
-    } else if (tlsError) {
+    if (!callback && tlsError) {
       // https://github.com/nodejs/node/blob/v26.3.0/lib/internal/tls/wrap.js#L467-L498
       (self as TLSSocketInstance)._emitTLSError(error);
       return;
@@ -2033,6 +2105,7 @@ function Socket(options?): void {
   this._parentWrap = null;
   this[kupgraded] = null;
   this[kAdoptedTLSTransport] = false;
+  this[kNativeTLSTransport] = undefined;
   this[kStandaloneWrap] = false;
   this[kOnUpgradedClose] = undefined;
   this[kOwesRawClose] = false;
@@ -2525,6 +2598,7 @@ Socket.prototype._destroy = function _destroy(err, callback) {
   if (canceledWrite && !err) process.nextTick(cancelWriteNT, canceledWrite);
 
   const upgraded = this[kupgraded];
+  const token = this[kNativeTLSTransport];
 
   // Close an fd adopted for synchronous writes (node closes the wrapping
   // libuv handle here). Leave stdio fds 0-2 open: process.stdout/stderr and
@@ -2589,14 +2663,14 @@ Socket.prototype._destroy = function _destroy(err, callback) {
       // Enqueue closing the socket as a microtask, so that the socket can be
       // accessible when an `error` event is handled in the `next tick queue`.
       // The native close that follows a failure reported under a JS call detaches _handle before this runs.
-      queueMicrotask(() => closeSocketHandle(this, currentHandle, isException, true));
+      queueMicrotask(() => closeSocketHandle(this, currentHandle, isException, token, true));
     } else if (currentHandle[kAdoptedTLSRaw]) {
       // Shared-fd TLS pair: defer the close two check-phase turns
       // (test-tls-socket-close); see closeAdoptedTLSRawNT.
       currentHandle.pause?.();
-      setImmediate(closeAdoptedTLSRawNT, this, currentHandle, isException);
+      setImmediate(closeAdoptedTLSRawNT, this, currentHandle, isException, token);
     } else {
-      closeSocketHandle(this, currentHandle, isException);
+      closeSocketHandle(this, currentHandle, isException, token);
     }
 
     if (!this._closeAfterHandlingError) {
@@ -2612,10 +2686,11 @@ Socket.prototype._destroy = function _destroy(err, callback) {
     finishDestroy(callback, err, canceledWrite);
     closeOwedRaw(this, upgraded);
     if (this[kwriteCallback]) process.nextTick(cancelPendingWriteNT, this);
-    const transport = transportToDestroy(this);
-    if (transport !== undefined) abortTransport(transport);
-    if (transport instanceof Socket) transport.once("close", emitCloseNT.bind(null, this, err ? true : false));
-    else process.nextTick(emitCloseNT, this, err ? true : false);
+    const isException = err ? true : false;
+    const onClose = () => {
+      if (this[kNativeTLSTransport] === token) emitCloseNT(this, isException);
+    };
+    if (!closeTransportAndJoin(this, null, isException, token, onClose)) process.nextTick(onClose);
   }
 
   const server = this._server;
@@ -2743,7 +2818,13 @@ Socket.prototype[Symbol.for("::bunUpgradeServerTLS::")] = function (connection, 
   linkUpgraded(this, connection);
   const options = { data: this, tls, socket: serverHandlersFor(this), isServer: true };
   const socket = connection._handle;
-  if (!socket || connection.encrypted || isNamedPipeSocket(socket) || hasUnflushedWrites(connection)) {
+  if (
+    !socket ||
+    connection.encrypted ||
+    isNamedPipeSocket(socket) ||
+    hasNativeSocketListeners(socket) ||
+    hasUnflushedWrites(connection)
+  ) {
     // No adoptable fd (generic Duplex, named pipe, never dialed), TLS over TLS (the fd belongs to the
     // outer SSL layer), or pending plain writes that must flush first.
     attachTLSEngine(this, connection, options);
@@ -3139,8 +3220,16 @@ Socket.prototype._write = function _write(chunk, encoding, callback) {
     callback(er);
     return false;
   }
+  // A JS transport can destroy the TLS socket from inside write(). Own its
+  // callback before entering native code so teardown can cancel it once.
+  const duplexWrite = this[kupgraded] && !this[kAdoptedTLSTransport];
+  if (duplexWrite) this[kwriteCallback] = callback;
   const res = socket.$write(chunk, encoding);
   this[kBytesWritten] = socket.bytesWritten;
+  if (duplexWrite) {
+    if (this[kwriteCallback] !== callback) return false;
+    if (res) this[kwriteCallback] = null;
+  }
   if (res < 0) {
     // The kernel rejected the send outright (peer reset): $write returned the
     // negative errno; deliver it like the EBADF/EPIPE branch above.
@@ -3163,7 +3252,7 @@ Socket.prototype._write = function _write(chunk, encoding, callback) {
       // https://github.com/nodejs/node/blob/843dc5f0d5ad/lib/net.js#L1036
       callback();
     }
-  } else if (this[kwriteCallback]) {
+  } else if (!duplexWrite && this[kwriteCallback]) {
     callback(new Error("overlapping _write()"));
   } else {
     this[kwriteCallback] = callback;
@@ -4599,26 +4688,63 @@ function initSocketHandle(self) {
 // intercepts close on `socket._handle` and invokes it, so always pass one.
 function onSocketHandleClosed() {}
 
-function closeSocketHandle(self, handle, isException, isCleanupPending = false) {
+// Native shutdown bypasses the lower JS Writable: only its recorded EOF and
+// completed drain let a finished upper close that exact transport and join its close.
+function closeTransportAndJoin(self, handle, isException, token, onClose) {
+  if (self[kNativeTLSTransport] !== token) return false;
+  const finishedNative =
+    token?.native &&
+    token.nativeReadEnded &&
+    token.nativeShutdownCompleted &&
+    self[kupgraded] === token.connection &&
+    (!self._handle || self._handle === token.upperHandle) &&
+    (!handle || handle === token.upperHandle) &&
+    (token.connection._handle === token.lowerHandle || (token.connection.destroyed && !token.connection._handle)) &&
+    self[kSessionAccepted] === true &&
+    self.readableEnded &&
+    self.writableFinished &&
+    !isException &&
+    !self._hadError &&
+    !self._closeAfterHandlingError &&
+    !self.resetAndClosing;
+  const transport = finishedNative ? token.connection : transportToDestroy(self);
+  const join = isNodeSocket(transport) && (finishedNative ? !token.closeEmitted : !handle);
+  // The existing observer also completes a join requested by an earlier close listener.
+  // A new once('close') here would miss that in-progress emission.
+  if (join) {
+    if (finishedNative) {
+      if (token.closeComplete === undefined) token.closeComplete = onClose;
+    } else transport.once("close", onClose);
+  }
+  if (transport !== undefined && !transport.destroyed) {
+    if (finishedNative) transport.destroy();
+    else abortTransport(transport);
+  }
+  return join;
+}
+
+function closeSocketHandle(self, handle, isException, token, isCleanupPending = false) {
   $debug("closeSocketHandle", isException, isCleanupPending);
-  // Ahead of the setImmediate below: the transport's 'close' precedes this socket's.
-  const transport = transportToDestroy(self);
-  if (transport !== undefined) abortTransport(transport);
+  // Bind only the cleanup branch's handle, so ordinary close does not retain it.
+  const onClose = isCleanupPending
+    ? setImmediate.bind(null, emitCloseAndDetachHandle, self, isException, handle, token)
+    : setImmediate.bind(null, emitClose, self, isException, token);
+  const joined = closeTransportAndJoin(self, handle, isException, token, onClose);
   // The owner of a wrapped socket destroyed it: the TLS socket goes first, so the close of their fd is nothing to report.
   handle[kAdoptedTLSRaw]?.destroy();
   handle.close(onSocketHandleClosed);
-  // Arguments instead of a closure, so no scope keeps the closed handle alive.
-  if (isCleanupPending) setImmediate(emitCloseAndDetachHandle, self, isException, handle);
-  else setImmediate(emitClose, self, isException);
+  if (!joined) onClose();
 }
 
-function emitClose(self, isException) {
+function emitClose(self, isException, token) {
+  if (self[kNativeTLSTransport] !== token) return;
   $debug("emit close");
   self.emit("close", isException);
 }
 
-function emitCloseAndDetachHandle(self, isException, handle) {
-  emitClose(self, isException);
+function emitCloseAndDetachHandle(self, isException, handle, token) {
+  if (self[kNativeTLSTransport] !== token) return;
+  emitClose(self, isException, token);
   // self._handle may have been detached or replaced since.
   handle.onread = noop;
   if (self._handle === handle) {

@@ -337,7 +337,9 @@ pub(crate) struct NewSocket<const SSL: bool> {
     pub(crate) buffered_data_for_node_net: JsCell<Vec<u8>>,
     pub(crate) bytes_written: Cell<u64>,
 
-    pub(crate) native_callback: JsCell<NativeCallbacks>,
+    // Ordered StreamListener ownership: a displaced H2/TLS listener remains removable.
+    pub(crate) native_callbacks: JsCell<Vec<Option<NativeCallbacks>>>,
+    pub(crate) native_write_owner: Cell<Option<NativeCallbackId>>,
     /// `upgradeTLS` produces two `TLSSocket` wrappers over one
     /// `us_socket_t` (the encrypted view + the raw-bytes view node:net
     /// expects at index 0). The encrypted half holds a ref on the raw half
@@ -580,17 +582,255 @@ impl<const SSL: bool> NewSocket<SSL> {
 
     /// On `false` the rejected `callback` (and the ref it holds) is dropped.
     pub(crate) fn attach_native_callback(&self, callback: NativeCallbacks) -> bool {
-        if !matches!(self.native_callback.get(), NativeCallbacks::None) {
+        if self.socket.get().is_detached() {
             return false;
         }
-        self.native_callback.set(callback);
+        self.native_callbacks
+            .with_mut(|entries| entries.push(Some(callback)));
         true
     }
 
-    pub(crate) fn detach_native_callback(&self) {
-        if let NativeCallbacks::H2(h2) = self.native_callback.replace(NativeCallbacks::None) {
-            h2.on_native_close();
+    fn attach_native_duplex(
+        &self,
+        global: &JSGlobalObject,
+        context: &DuplexUpgradeContext,
+    ) -> JsResult<()> {
+        let wrapper = self.get_this_value(global);
+        let roots = match self.native_attachment_roots() {
+            Some(roots) => roots,
+            None => JSValue::create_empty_array(global, 0)?,
+        };
+        roots.ensure_still_alive();
+        let index = self.native_callbacks.get().len();
+        // Allocate/root before publishing the BackRef. Removal leaves a hole, never shifts identities.
+        self.native_callbacks.with_mut(|entries| entries.reserve(1));
+        roots.put_index(global, index as u32, context.upgrade.js_wrapper)?;
+        if SSL {
+            js_TLSSocket::native_attachments_set_cached(wrapper, global, roots);
+        } else {
+            js_TCPSocket::native_attachments_set_cached(wrapper, global, roots);
         }
+        if self.native_write_owner.get().is_none() {
+            if let Some(previous) = self.native_callback() {
+                if previous.write_pending() {
+                    self.native_write_owner.set(Some(previous.id()));
+                }
+            }
+        }
+        self.native_callbacks.with_mut(|entries| {
+            entries.push(Some(NativeCallbacks::Duplex(bun_ptr::BackRef::new(
+                context,
+            ))))
+        });
+        Ok(())
+    }
+
+    fn native_transport_error(&self) -> i32 {
+        let socket = self.socket.get();
+        if socket.is_detached() || socket.is_closed() {
+            return sys::SystemErrno::ECANCELED as i32;
+        }
+        if SSL {
+            if let Some(raw) = socket.socket.get() {
+                // SAFETY: the open Connected socket owns this live C socket. This read-only
+                // observer cannot invoke JS or reenter and close it.
+                let fatal = unsafe { us_internal_ssl_fatal_write_error(raw) };
+                if fatal != 0 {
+                    return native_write_errno(fatal);
+                }
+                // SAFETY: the same open C socket remains live; neither observer reenters JS.
+                if unsafe { us_socket_ssl_spill_dropped(raw) } != 0 {
+                    return sys::SystemErrno::EPIPE as i32;
+                }
+            }
+        }
+        0
+    }
+
+    fn native_transport_drained(&self) -> bool {
+        if self.native_transport_error() != 0 {
+            return false;
+        }
+        let spill = if SSL {
+            self.socket.get().socket.get().map_or(0, |socket| {
+                // SAFETY: native_transport_error established an open Connected socket, and
+                // nothing can reenter before this read-only spill observation.
+                unsafe { us_socket_ssl_spill_pending(socket) }
+            })
+        } else {
+            0
+        };
+        spill == 0 && self.buffered_data_for_node_net.get().is_empty() && self.transport_idle()
+    }
+
+    fn native_transport_write(&self, owner: NativeCallbackId, data: &[u8]) -> i32 {
+        self.native_write_owner.set(Some(owner));
+        self.write_maybe_corked(data)
+    }
+
+    fn native_callback(&self) -> Option<NativeDispatch> {
+        self.native_callbacks
+            .get()
+            .iter()
+            .rev()
+            .flatten()
+            .next()
+            .map(NativeCallbacks::pin)
+    }
+
+    fn native_callback_by_id(&self, id: NativeCallbackId) -> Option<NativeDispatch> {
+        self.native_callbacks
+            .get()
+            .iter()
+            .flatten()
+            .find(|entry| entry.id() == id)
+            .map(NativeCallbacks::pin)
+    }
+
+    fn native_attachment_roots(&self) -> Option<JSValue> {
+        let wrapper = self.this_value.get().try_get()?;
+        if SSL {
+            js_TLSSocket::native_attachments_get_cached(wrapper)
+        } else {
+            js_TCPSocket::native_attachments_get_cached(wrapper)
+        }
+    }
+
+    fn clear_native_attachment_root(&self, index: usize) {
+        // Finalizers must not inspect an array whose cells may already have been swept.
+        if self.flags.get().contains(Flags::FINALIZING) || !self.has_handlers() {
+            return;
+        }
+        if let Some(roots) = self.native_attachment_roots() {
+            let global = self.get_handlers().global_object;
+            crate::dispatch::fold(roots.put_index(&global, index as u32, JSValue::UNDEFINED));
+        }
+    }
+
+    fn unlink_native_duplex(&self, id: NativeCallbackId, finalizing: bool) {
+        if finalizing {
+            // No JS cell access from a collected upper wrapper's finalizer.
+            self.native_callbacks.with_mut(|entries| {
+                if let Some(entry) = entries
+                    .iter_mut()
+                    .find(|entry| entry.as_ref().is_some_and(|entry| entry.id() == id))
+                {
+                    *entry = None;
+                }
+                while entries.last().is_some_and(Option::is_none) {
+                    entries.pop();
+                }
+            });
+            if self.native_write_owner.get() == Some(id) {
+                self.native_write_owner.set(None);
+            }
+        } else {
+            self.remove_native_callback(id);
+        }
+    }
+
+    pub(crate) fn remove_native_callback(&self, id: NativeCallbackId) {
+        let active = self.native_callback().filter(|owner| owner.id() == id);
+        let wrapper = active.as_ref().and_then(NativeDispatch::js_owner);
+        let resume_if_empty = active.as_ref().is_some_and(NativeDispatch::read_paused);
+        let removed = self.native_callbacks.with_mut(|entries| {
+            let index = entries
+                .iter()
+                .position(|entry| entry.as_ref().is_some_and(|entry| entry.id() == id))?;
+            let entry = entries[index].take();
+            while entries.last().is_some_and(Option::is_none) {
+                entries.pop();
+            }
+            Some((index, entry))
+        });
+        if let Some((index, entry)) = removed {
+            if self.native_write_owner.get() == Some(id) {
+                self.native_write_owner.set(None);
+            }
+            self.clear_native_attachment_root(index);
+            // Drop the native owner only after unlinking; it can re-enter this list.
+            drop(entry);
+            if active.is_some() {
+                self.reconcile_native_reads(resume_if_empty);
+            }
+        }
+        if let Some(wrapper) = wrapper {
+            wrapper.ensure_still_alive();
+        }
+    }
+
+    fn reconcile_native_reads(&self, mut resume_if_empty: bool) -> bool {
+        let _pin = self.ref_guard();
+        loop {
+            if self.socket.get().is_detached() || self.flags.get().contains(Flags::FINALIZING) {
+                return false;
+            }
+            let owner = self.native_callback();
+            let target = owner
+                .as_ref()
+                .map(|owner| (owner.id(), owner.read_paused()));
+            let wrapper = owner.as_ref().and_then(NativeDispatch::js_owner);
+            let applied = match target {
+                Some((_, true)) => {
+                    resume_if_empty = true;
+                    self.pause_reads()
+                }
+                Some((_, false)) => self.resume_reads(),
+                None if resume_if_empty => self.resume_reads(),
+                None => return false,
+            };
+            if let Some(wrapper) = wrapper {
+                wrapper.ensure_still_alive();
+            }
+            // A generic lower stream can change the listener or its intent inside pause/resume.
+            // Correct the outer IS_PAUSED write only when that authoritative target changed.
+            let current = self
+                .native_callback()
+                .map(|owner| (owner.id(), owner.read_paused()));
+            if current == target {
+                return applied;
+            }
+        }
+    }
+
+    fn reconcile_native_reader(&self, id: NativeCallbackId) -> bool {
+        if self.native_callback().is_some_and(|owner| owner.id() == id) {
+            self.reconcile_native_reads(false)
+        } else {
+            // Buried owners retain their intent without changing the active reader.
+            self.native_callback_by_id(id).is_some()
+        }
+    }
+
+    fn close_native_callbacks(&self) {
+        // Pop before entering the owner. Reentrant close may remove a buried entry.
+        while let Some((index, callback)) = self.native_callbacks.with_mut(|entries| {
+            let index = entries.iter().rposition(Option::is_some)?;
+            let entry = entries[index].take().unwrap();
+            while entries.last().is_some_and(Option::is_none) {
+                entries.pop();
+            }
+            Some((index, entry))
+        }) {
+            let dispatch = callback.pin();
+            let finalizing = self.flags.get().contains(Flags::FINALIZING);
+            let wrapper = if finalizing {
+                None
+            } else {
+                dispatch.js_owner()
+            };
+            self.clear_native_attachment_root(index);
+            drop(callback);
+            dispatch.on_close(finalizing);
+            if let Some(wrapper) = wrapper {
+                wrapper.ensure_still_alive();
+            }
+        }
+        self.native_write_owner.set(None);
+    }
+
+    pub(crate) fn detach_native_callback(&self) {
+        self.close_native_callbacks();
     }
 
     /// Connect to `self.connection` (must be `Some`). Reads the field directly
@@ -718,20 +958,25 @@ impl<const SSL: bool> NewSocket<SSL> {
     }
 
     pub(crate) fn resume(&self, _: &mut JsScope<'_>) {
-        if self.socket.get().is_detached() {
-            return;
-        }
         log!("resume");
+        self.resume_reads();
+    }
+
+    fn resume_reads(&self) -> bool {
+        if self.socket.get().is_detached() {
+            return false;
+        }
         // The raw half of an upgradeTLS pair is an observation tap; flow
         // control belongs to the TLS half. Pausing the shared fd here would
         // wedge the TLS read path (#15438).
         if self.flags.get().contains(Flags::BYPASS_TLS) {
-            return;
+            return false;
         }
         if self.flags.get().contains(Flags::IS_PAUSED) {
             let resumed = self.socket.get().resume_stream();
             self.update_flags(|f| f.set(Flags::IS_PAUSED, !resumed));
         }
+        !self.flags.get().contains(Flags::IS_PAUSED)
     }
 
     pub(crate) fn pause(&self, _: &mut JsScope<'_>) {
@@ -745,11 +990,15 @@ impl<const SSL: bool> NewSocket<SSL> {
         self.pause_reads();
     }
 
-    fn pause_reads(&self) {
+    fn pause_reads(&self) -> bool {
+        if self.socket.get().is_detached() || self.flags.get().contains(Flags::BYPASS_TLS) {
+            return false;
+        }
         if !self.flags.get().contains(Flags::IS_PAUSED) {
             let paused = self.socket.get().pause_stream();
             self.update_flags(|f| f.set(Flags::IS_PAUSED, paused));
         }
+        self.flags.get().contains(Flags::IS_PAUSED)
     }
 
     /// Consumes `PAUSE_ON_CONNECT`: a TLS client dispatches another handshake after a renegotiation.
@@ -870,6 +1119,41 @@ impl<const SSL: bool> NewSocket<SSL> {
         called
     }
 
+    fn dispatch_native_writable(&self) -> bool {
+        let mut delivered = None;
+        if let Some(id) = self.native_write_owner.get() {
+            if let Some(previous) = self.native_callback_by_id(id) {
+                previous.on_writable();
+                delivered = Some(id);
+                if self.native_write_owner.get() == Some(id) {
+                    if previous.write_pending() {
+                        return true;
+                    }
+                    self.native_write_owner.set(None);
+                }
+                if self.socket.get().is_detached() {
+                    return true;
+                }
+            } else {
+                self.native_write_owner.set(None);
+            }
+        }
+        let Some(owner) = self.native_callback() else {
+            return delivered.is_some();
+        };
+        if delivered == Some(owner.id()) {
+            return true;
+        }
+        if let NativeDispatch::Duplex(context) = &owner {
+            // The old net.Socket write must still reach its own JS drain and empty-write barrier.
+            if context.native_previous_js_write.get() {
+                return false;
+            }
+        }
+        owner.on_writable();
+        true
+    }
+
     /// Takes `ThisPtr<Self>`, not `&mut self`: `callback.call(...)` re-enters
     /// JS which can call `socket.write()`/`end()`/`reload()` on this same
     /// wrapper via the JS object's `m_ptr`, re-deriving a borrow and mutating
@@ -892,18 +1176,24 @@ impl<const SSL: bool> NewSocket<SSL> {
         if this.socket.get().is_detached() {
             return Ok(());
         }
-        if this.native_callback.get().on_writable() {
+        // Native HTTP2 and transport flush callbacks can re-enter and detach the socket.
+        let _guard = RefPtr::from_this(this);
+        let native_handled = this.dispatch_native_writable();
+        if !this.has_handlers() || this.socket.get().is_detached() {
+            return Ok(());
+        }
+        // H2 flushes its own queue, but a JS transport can still own net's write callback.
+        if native_handled
+            && (matches!(this.native_callback(), Some(NativeDispatch::Duplex(_)))
+                || !matches!(
+                    this.socket.get().socket,
+                    uws::InternalSocket::UpgradedDuplex(_)
+                ))
+        {
             return Ok(());
         }
         let handlers = this.get_handlers();
         let callback = handlers.on_writable();
-        if callback.is_empty() {
-            return Ok(());
-        }
-
-        // Hold the socket alive for the rest of the dispatch: `internal_flush`
-        // and the drain callback can both re-enter JS and close it.
-        let _guard = RefPtr::from_this(this);
         // NOTE (Windows): the drain dispatch deliberately does not depend on
         // whether the flush hit a fatal send error. Skipping it on fatal
         // (tried in f0325bddf2) made Windows servers reset FIN-terminated
@@ -948,7 +1238,11 @@ impl<const SSL: bool> NewSocket<SSL> {
             this.buffered_data_for_node_net.get().len()
         );
         // is not writable if we have buffered data or if we are already detached
-        if this.buffered_data_for_node_net.get().len() > 0 || this.socket.get().is_detached() {
+        if this.buffered_data_for_node_net.get().len() > 0
+            || this.socket.get().is_detached()
+            || !this.transport_idle()
+            || callback.is_empty()
+        {
             return Ok(());
         }
 
@@ -1686,6 +1980,9 @@ impl<const SSL: bool> NewSocket<SSL> {
         if this.socket.get().is_detached() {
             return Ok(());
         }
+        if this.native_callback().is_some_and(|owner| owner.on_end()) {
+            return Ok(());
+        }
         let handlers = this.get_handlers();
         log!(
             "onEnd {}",
@@ -2144,8 +2441,8 @@ impl<const SSL: bool> NewSocket<SSL> {
         // dispatches either. mark_inactive is not needed: handlers being
         // null means the previous teardown already ran it.
         if !this.has_handlers() {
-            this.detach_native_callback();
             this.socket.set(SocketHandler::<SSL>::DETACHED);
+            this.detach_native_callback();
             this.get().deref();
             return Ok(());
         }
@@ -2160,15 +2457,15 @@ impl<const SSL: bool> NewSocket<SSL> {
         );
         // Like Node, an http2 session reports a failed read, not a send that the kernel rejected.
         let err = if SSL
-            && matches!(this.native_callback.get(), NativeCallbacks::H2(_))
+            && matches!(this.native_callback(), Some(NativeDispatch::H2(_)))
             && socket.ssl_send_rejected()
         {
             0
         } else {
             err
         };
-        this.detach_native_callback();
         this.socket.set(SocketHandler::<SSL>::DETACHED);
+        this.close_native_callbacks();
         // Declared first so it drops last: ticks drain ahead of the teardown.
         let _cleanup = CloseTeardown {
             socket: this,
@@ -2260,7 +2557,8 @@ impl<const SSL: bool> NewSocket<SSL> {
         if this.socket.get().is_detached() {
             return Ok(());
         }
-        if this.native_callback.get().on_data(data)? {
+        if let Some(owner) = this.native_callback() {
+            owner.on_data(data)?;
             return Ok(());
         }
         let handlers = this.get_handlers();
@@ -2634,7 +2932,9 @@ impl<const SSL: bool> NewSocket<SSL> {
                         // node:net fails the write like Node's onWriteComplete;
                         // -1 stays the legacy closed/shutdown sentinel.
                         JSValue::js_number(f64::from(wrote))
-                    } else if usize::try_from(wrote.max(0)).expect("int cast") == total {
+                    } else if usize::try_from(wrote.max(0)).expect("int cast") == total
+                        && self.transport_idle()
+                    {
                         JSValue::TRUE
                     } else {
                         JSValue::FALSE
@@ -2667,7 +2967,10 @@ impl<const SSL: bool> NewSocket<SSL> {
                         let _ = self.internal_flush();
                     }
 
-                    JSValue::from(usize::try_from(wrote.max(0)).expect("int cast") == total)
+                    JSValue::from(
+                        usize::try_from(wrote.max(0)).expect("int cast") == total
+                            && self.transport_idle(),
+                    )
                 }
             };
         Ok(result)
@@ -3048,12 +3351,24 @@ impl<const SSL: bool> NewSocket<SSL> {
         false
     }
 
+    fn transport_idle(&self) -> bool {
+        match self.socket.get().socket {
+            uws::InternalSocket::UpgradedDuplex(pointer) => {
+                // SAFETY: duplex_socket installs the aligned, stable context.upgrade member.
+                // The attached tag keeps it live for this shared borrow until detach.
+                unsafe { &*pointer.cast::<UpgradedDuplex>() }.transport_idle()
+            }
+            _ => true,
+        }
+    }
+
     fn can_end_after_flush(&self) -> bool {
         let flags = self.flags.get();
         flags.contains(Flags::IS_ACTIVE)
             && flags.contains(Flags::END_AFTER_FLUSH)
             && !flags.contains(Flags::EMPTY_PACKET_PENDING)
             && self.buffered_data_for_node_net.get().len() == 0
+            && self.transport_idle()
     }
 
     /// Flushes the node:net buffered tail. Returns 0, or the positive errno of
@@ -3500,7 +3815,8 @@ impl<const SSL: bool> NewSocket<SSL> {
             ref_pollref_on_connect: Cell::new(true),
             buffered_data_for_node_net: JsCell::new(Vec::new()),
             bytes_written: Cell::new(0),
-            native_callback: JsCell::new(NativeCallbacks::None),
+            native_callbacks: JsCell::new(Vec::new()),
+            native_write_owner: Cell::new(None),
             twin: JsCell::new(None),
             verify_error: JsCell::new(None),
             latest_session: Cell::new(None),
@@ -3625,7 +3941,8 @@ impl<const SSL: bool> NewSocket<SSL> {
             ref_pollref_on_connect: Cell::new(true),
             buffered_data_for_node_net: JsCell::new(Vec::new()),
             bytes_written: Cell::new(0),
-            native_callback: JsCell::new(NativeCallbacks::None),
+            native_callbacks: JsCell::new(Vec::new()),
+            native_write_owner: Cell::new(None),
             twin: JsCell::new(None),
             verify_error: JsCell::new(None),
             latest_session: Cell::new(None),
@@ -3774,39 +4091,234 @@ impl TCPSocket {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// NativeCallbacks — direct callbacks on HTTP2 when available
+// NativeCallbacks — ordered TLS and HTTP/2 stream listeners
 // ──────────────────────────────────────────────────────────────────────────
+
+unsafe extern "C" {
+    fn us_socket_ssl_spill_pending(socket: *mut uws::us_socket_t) -> c_uint;
+    fn us_socket_ssl_spill_dropped(socket: *mut uws::us_socket_t) -> c_int;
+    fn us_internal_ssl_fatal_write_error(socket: *mut uws::us_socket_t) -> c_int;
+}
+
+fn native_write_errno(code: c_int) -> i32 {
+    if code == -1 {
+        return sys::SystemErrno::EPIPE as i32;
+    }
+    #[cfg(windows)]
+    {
+        // C writes report WSA or UV codes; Error stores SystemErrno discriminants.
+        sys::SystemErrno::init(code).unwrap_or(sys::SystemErrno::EIO) as i32
+    }
+    #[cfg(not(windows))]
+    {
+        code.abs()
+    }
+}
+
+#[derive(Clone)]
+enum NativeTransport {
+    Tcp(RefPtr<TCPSocket>),
+    Tls(RefPtr<TLSSocket>),
+}
+
+impl NativeTransport {
+    fn attach(&self, global: &JSGlobalObject, context: &DuplexUpgradeContext) -> JsResult<()> {
+        match self {
+            Self::Tcp(socket) => socket.attach_native_duplex(global, context),
+            Self::Tls(socket) => socket.attach_native_duplex(global, context),
+        }
+    }
+    fn remove(&self, owner: NativeCallbackId, finalizing: bool) {
+        match self {
+            Self::Tcp(socket) => socket.unlink_native_duplex(owner, finalizing),
+            Self::Tls(socket) => socket.unlink_native_duplex(owner, finalizing),
+        }
+    }
+    fn previous_write_pending(&self, owner: NativeCallbackId) -> bool {
+        let pending = match self {
+            Self::Tcp(socket) => socket.native_write_owner.get(),
+            Self::Tls(socket) => socket.native_write_owner.get(),
+        };
+        pending.is_some_and(|pending| pending != owner)
+    }
+    fn write(&self, owner: NativeCallbackId, data: &[u8]) -> i32 {
+        match self {
+            Self::Tcp(socket) => socket.native_transport_write(owner, data),
+            Self::Tls(socket) => socket.native_transport_write(owner, data),
+        }
+    }
+    fn error(&self) -> i32 {
+        match self {
+            Self::Tcp(socket) => socket.native_transport_error(),
+            Self::Tls(socket) => socket.native_transport_error(),
+        }
+    }
+    fn drained(&self) -> bool {
+        match self {
+            Self::Tcp(socket) => socket.native_transport_drained(),
+            Self::Tls(socket) => socket.native_transport_drained(),
+        }
+    }
+    fn clear_writer(&self, owner: NativeCallbackId) {
+        match self {
+            Self::Tcp(socket) => {
+                if socket.native_write_owner.get() == Some(owner) {
+                    socket.native_write_owner.set(None);
+                }
+            }
+            Self::Tls(socket) => {
+                if socket.native_write_owner.get() == Some(owner) {
+                    socket.native_write_owner.set(None);
+                }
+            }
+        }
+    }
+    fn flush(&self) {
+        match self {
+            Self::Tcp(socket) => socket.socket.get().flush(),
+            Self::Tls(socket) => socket.socket.get().flush(),
+        }
+    }
+    fn shutdown(&self) {
+        match self {
+            Self::Tcp(socket) => socket.socket.get().shutdown(),
+            Self::Tls(socket) => socket.socket.get().shutdown(),
+        }
+    }
+    fn reconcile_reads(&self, owner: NativeCallbackId) -> bool {
+        match self {
+            Self::Tcp(socket) => socket.reconcile_native_reader(owner),
+            Self::Tls(socket) => socket.reconcile_native_reader(owner),
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum NativeCallbackId {
+    H2(*mut H2FrameParser),
+    Duplex(*mut DuplexUpgradeContext),
+}
 
 pub(crate) enum NativeCallbacks {
     H2(RefPtr<H2FrameParser>),
-    None,
+    // The context unlinks before releasing its connection ref. Never a native cycle.
+    Duplex(bun_ptr::BackRef<DuplexUpgradeContext>),
 }
 
 impl NativeCallbacks {
-    /// `&self` borrows the socket's `JsCell<NativeCallbacks>`; the dispatch
-    /// re-enters JS, which can `detach_native_callback` and overwrite that cell.
-    /// Copy the parser pointer out first; the callee's `keepalive()` holds it.
-    /// `Ok(false)`: nothing attached, dispatch to the JS handlers.
-    pub(crate) fn on_data(&self, data: &[u8]) -> JsResult<bool> {
-        let h2 = match self {
-            NativeCallbacks::H2(h2) => h2.as_ptr(),
-            NativeCallbacks::None => return Ok(false),
-        };
-        // SAFETY: `on_native_read` takes a keepalive; `h2` stays live across re-entry.
-        unsafe { (*h2).on_native_read(data) }?;
-        Ok(true)
+    fn id(&self) -> NativeCallbackId {
+        match self {
+            Self::H2(h2) => NativeCallbackId::H2(h2.as_ptr()),
+            Self::Duplex(context) => {
+                NativeCallbackId::Duplex(ptr::from_ref(context.get()).cast_mut())
+            }
+        }
     }
-    pub(crate) fn on_writable(&self) -> bool {
-        let h2 = match self {
-            NativeCallbacks::H2(h2) => h2.as_ptr(),
-            NativeCallbacks::None => return false,
-        };
-        // SAFETY: `on_native_writable` takes a keepalive; `h2` stays live across re-entry.
-        unsafe { (*h2).on_native_writable() };
-        true
+
+    fn pin(&self) -> NativeDispatch {
+        match self {
+            Self::H2(h2) => NativeDispatch::H2(h2.clone()),
+            Self::Duplex(context) => NativeDispatch::Duplex(context.upgrade.keep_alive()),
+        }
     }
 }
 
+// A dispatch snapshot owns its allocation after the list borrow ends, including JS reentry.
+enum NativeDispatch {
+    H2(RefPtr<H2FrameParser>),
+    Duplex(RefPtr<DuplexUpgradeContext>),
+}
+
+impl NativeDispatch {
+    fn id(&self) -> NativeCallbackId {
+        match self {
+            Self::H2(h2) => NativeCallbackId::H2(h2.as_ptr()),
+            Self::Duplex(context) => NativeCallbackId::Duplex(context.as_ptr()),
+        }
+    }
+
+    fn js_owner(&self) -> Option<JSValue> {
+        match self {
+            // H2's RefPtr already owns strong_this.
+            Self::H2(_) => None,
+            Self::Duplex(context) => context
+                .tls
+                .get()
+                .as_ref()
+                .and_then(|tls| tls.this_value.get().try_get()),
+        }
+    }
+
+    fn read_paused(&self) -> bool {
+        match self {
+            // H2 receive-window flow control does not pause its native parser's transport.
+            Self::H2(_) => false,
+            Self::Duplex(context) => context.upgrade.native_read_paused(),
+        }
+    }
+
+    fn write_pending(&self) -> bool {
+        match self {
+            Self::H2(h2) => h2.native_write_pending(),
+            Self::Duplex(context) => !context.native_idle(),
+        }
+    }
+
+    fn on_data(&self, data: &[u8]) -> JsResult<()> {
+        let wrapper = self.js_owner();
+        let result = match self {
+            Self::H2(h2) => h2.on_native_read(data),
+            Self::Duplex(context) => {
+                context.upgrade.receive_native_data(data);
+                Ok(())
+            }
+        };
+        if let Some(wrapper) = wrapper {
+            wrapper.ensure_still_alive();
+        }
+        result
+    }
+
+    fn on_writable(&self) {
+        let wrapper = self.js_owner();
+        match self {
+            Self::H2(h2) => h2.on_native_writable(),
+            Self::Duplex(context) => context.on_native_writable(),
+        }
+        if let Some(wrapper) = wrapper {
+            wrapper.ensure_still_alive();
+        }
+    }
+
+    fn on_end(&self) -> bool {
+        let wrapper = self.js_owner();
+        let result = match self {
+            // Preserve H2's existing JS EOF owner.
+            Self::H2(_) => false,
+            Self::Duplex(context) => {
+                let token = context.publish_native_transport_fact("nativeReadEnded");
+                context.upgrade.receive_native_end();
+                if let Some(token) = token {
+                    token.ensure_still_alive();
+                }
+                true
+            }
+        };
+        if let Some(wrapper) = wrapper {
+            wrapper.ensure_still_alive();
+        }
+        result
+    }
+
+    fn on_close(&self, finalizing: bool) {
+        match self {
+            Self::H2(h2) => h2.on_native_close(),
+            Self::Duplex(context) => context.on_native_close(finalizing),
+        }
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────
 // ──────────────────────────────────────────────────────────────────────────
 // WriteResult
 // ──────────────────────────────────────────────────────────────────────────
@@ -3986,6 +4498,14 @@ pub(crate) struct DuplexUpgradeContext {
     /// The connection's ref is still held. Cleared by [`Self::take_connection_ref`].
     connection_ref: Cell<bool>,
     pub upgrade: UpgradedDuplex,
+    native_transport: JsCell<Option<NativeTransport>>,
+    native_output: JsCell<Vec<u8>>,
+    native_flushing: Cell<bool>,
+    native_previous_js_write: Cell<bool>,
+    native_shutdown_requested: Cell<bool>,
+    native_shutdown_started: Cell<bool>,
+    native_shutdown_callback: Cell<bool>,
+    native_failed: Cell<bool>,
     // We only us a tls and not a raw socket when upgrading a Duplex, Duplex dont support socketpairs
     pub tls: JsCell<Option<RefPtr<TLSSocket>>>,
     /// JSC_BORROW: process-lifetime per-thread VM (immortal). Stored as
@@ -4030,6 +4550,266 @@ pub(super) enum EventState {
 }
 
 impl DuplexUpgradeContext {
+    fn native_id(&self) -> NativeCallbackId {
+        NativeCallbackId::Duplex(ptr::from_ref(self).cast_mut())
+    }
+
+    pub(super) fn uses_native_transport(&self) -> bool {
+        // Detachment must not reroute a terminal native stream through origin.write/end.
+        self.native_transport.get().is_some() || self.native_failed.get()
+    }
+
+    pub(super) fn reconcile_native_reads(&self) -> bool {
+        if self.native_failed.get() {
+            return false;
+        }
+        self.native_transport
+            .get()
+            .clone()
+            .is_some_and(|transport| {
+                transport.reconcile_reads(self.native_id())
+                    && !self.native_failed.get()
+                    && self.native_transport.get().is_some()
+            })
+    }
+
+    pub(super) fn native_idle(&self) -> bool {
+        if self.native_failed.get()
+            || self.native_flushing.get()
+            || self.native_previous_js_write.get()
+            || !self.native_output.get().is_empty()
+        {
+            return false;
+        }
+        self.native_transport
+            .get()
+            .clone()
+            .is_some_and(|transport| {
+                !transport.previous_write_pending(self.native_id()) && transport.drained()
+            })
+    }
+
+    pub(super) fn write_native(&self, data: &[u8]) {
+        let _pin = self.upgrade.keep_alive();
+        if self.native_failed.get() {
+            return;
+        }
+        self.native_output
+            .with_mut(|pending| pending.extend_from_slice(data));
+        self.flush_native();
+    }
+
+    fn fail_native_write(&self, errno: i32) {
+        self.native_failed.set(true);
+        let error =
+            sys::Error::from_code_int(errno, sys::Tag::write).to_js(&self.upgrade.global.unwrap());
+        (self.upgrade.handlers.on_error)(self.upgrade.handlers.ctx, error);
+        self.finish_native_shutdown(error, false);
+    }
+
+    fn flush_native(&self) {
+        let _pin = self.upgrade.keep_alive();
+        if self.native_flushing.replace(true) {
+            return;
+        }
+        (|| {
+            let Some(transport) = self.native_transport.get().clone() else {
+                return;
+            };
+            loop {
+                if self.native_failed.get()
+                    || self.native_previous_js_write.get()
+                    || transport.previous_write_pending(self.native_id())
+                {
+                    return;
+                }
+                transport.flush();
+                if self.native_transport.get().is_none() || self.native_failed.get() {
+                    return;
+                }
+                let error = transport.error();
+                if error != 0 {
+                    self.fail_native_write(error);
+                    return;
+                }
+                let output = self.native_output.replace(Vec::new());
+                let mut blocked = false;
+                if !output.is_empty() {
+                    let written = transport.write(self.native_id(), &output);
+                    if self.native_transport.get().is_none() || self.native_failed.get() {
+                        return;
+                    }
+                    if written < 0 {
+                        self.fail_native_write(native_write_errno(written));
+                        return;
+                    }
+                    let consumed = (written as usize).min(output.len());
+                    blocked = consumed < output.len();
+                    if blocked {
+                        self.native_output.with_mut(|pending| {
+                            let newer = core::mem::take(pending);
+                            pending.extend_from_slice(&output[consumed..]);
+                            pending.extend_from_slice(&newer);
+                        });
+                    }
+                }
+                // Reentrant writes append behind this batch. This flusher owns them until backpressure.
+                transport.flush();
+                if self.native_transport.get().is_none() || self.native_failed.get() {
+                    return;
+                }
+                let error = transport.error();
+                if error != 0 {
+                    self.fail_native_write(error);
+                    return;
+                }
+                if blocked || !transport.drained() {
+                    return;
+                }
+                if !self.native_output.get().is_empty() {
+                    continue;
+                }
+                if self.native_shutdown_requested.get()
+                    && !self.native_shutdown_started.replace(true)
+                {
+                    // Flush close_notify first; the lower shutdown may enqueue its own ciphertext.
+                    transport.shutdown();
+                    if self.native_transport.get().is_none() || self.native_failed.get() {
+                        return;
+                    }
+                    let error = transport.error();
+                    if error != 0 {
+                        self.fail_native_write(error);
+                        return;
+                    }
+                    if !transport.drained() {
+                        return;
+                    }
+                    if !self.native_output.get().is_empty() {
+                        continue;
+                    }
+                }
+                transport.clear_writer(self.native_id());
+                if self.native_shutdown_started.get() {
+                    let owner = self.upgrade.js_wrapper;
+                    let token = self.publish_native_transport_fact("nativeShutdownCompleted");
+                    self.finish_native_shutdown(JSValue::UNDEFINED, false);
+                    if let Some(token) = token {
+                        token.ensure_still_alive();
+                    }
+                    owner.ensure_still_alive();
+                }
+                return;
+            }
+        })();
+        self.native_flushing.set(false);
+    }
+
+    fn on_native_writable(&self) {
+        let _pin = self.upgrade.keep_alive();
+        if self.native_failed.get() || self.native_flushing.get() {
+            return;
+        }
+        if self.upgrade.wrapper.get().is_none() && !self.native_previous_js_write.get() {
+            if self
+                .native_transport
+                .get()
+                .clone()
+                .is_some_and(|transport| !transport.previous_write_pending(self.native_id()))
+            {
+                Self::start_tls(_pin.this_ptr());
+            }
+            return;
+        }
+        self.flush_native();
+        if self.native_idle() {
+            Self::on_writable(_pin.this_ptr());
+        }
+    }
+
+    pub(super) fn shutdown_native(&self) {
+        let _pin = self.upgrade.keep_alive();
+        self.native_shutdown_requested.set(true);
+        self.flush_native();
+    }
+
+    fn canceled_native_shutdown(&self) -> JSValue {
+        let mut error: SystemError = sys::Error::new(sys::SystemErrno::ECANCELED, sys::Tag::write)
+            .to_system_error()
+            .into();
+        error.syscall = BunString::static_("shutdown");
+        error.to_error_instance(&self.upgrade.global.unwrap())
+    }
+
+    // Only live producer paths call this; finalizers never inspect the cached JS token.
+    fn publish_native_transport_fact(&self, name: &str) -> Option<JSValue> {
+        let owner = self.upgrade.js_wrapper;
+        let token = js_TLSSocket::native_transport_token_get_cached(owner)?;
+        token.put(&self.upgrade.global.unwrap(), name, JSValue::from(true));
+        owner.ensure_still_alive();
+        Some(token)
+    }
+
+    fn finish_native_shutdown(&self, error: JSValue, finalizing: bool) {
+        if !self.native_shutdown_callback.replace(false) || finalizing {
+            return;
+        }
+        let owner = self.upgrade.js_wrapper;
+        let global = self.upgrade.global.unwrap();
+        if let Some(callback) = js_TLSSocket::native_shutdown_get_cached(owner) {
+            // Release the visited callback before entering arbitrary JS.
+            js_TLSSocket::native_shutdown_set_cached(owner, &global, JSValue::UNDEFINED);
+            crate::dispatch::fold(
+                callback
+                    .call(&global, JSValue::UNDEFINED, &[error])
+                    .map(|_| ()),
+            );
+        }
+    }
+
+    fn on_native_close(&self, finalizing: bool) {
+        let _pin = self.upgrade.keep_alive();
+        self.native_failed.set(true);
+        // The lower owner already unlinked this entry. Its JS error/close path owns upper teardown.
+        self.upgrade.take_native_pause();
+        self.native_transport.set(None);
+        self.native_output.set(Vec::new());
+        self.native_previous_js_write.set(false);
+        if finalizing {
+            if let Some(tls) = self.tls_this_ptr() {
+                tls.update_flags(|flags| flags.insert(Flags::FINALIZING));
+            }
+            self.upgrade.abandon_js_side();
+            self.upgrade.finish_close();
+        }
+    }
+
+    pub(super) fn teardown_native(&self, finalizing: bool) {
+        // Release the connection only after consuming these obligations; Drop must not pin at zero.
+        if self.native_transport.get().is_some() || self.native_shutdown_callback.get() {
+            let _pin = self.upgrade.keep_alive();
+            self.unlink_native(finalizing);
+        }
+    }
+
+    pub(super) fn unlink_native(&self, finalizing: bool) {
+        if self.native_transport.get().is_some() {
+            // Removal and shutdown cancellation can re-enter; terminal routing must already be sticky.
+            self.native_failed.set(true);
+        }
+        if let Some(transport) = self.native_transport.replace(None) {
+            transport.remove(self.native_id(), finalizing);
+            self.upgrade.take_native_pause();
+        }
+        self.native_output.set(Vec::new());
+        if finalizing {
+            self.finish_native_shutdown(JSValue::UNDEFINED, true);
+        } else if self.native_shutdown_callback.get() {
+            let error = self.canceled_native_shutdown();
+            self.finish_native_shutdown(error, false);
+        }
+    }
+
     #[inline(always)]
     // The `on_*` callbacks take `ThisPtr<Self>`, not `&mut self`: they are
     // dispatched from `UpgradedDuplex`'s engine (`start_tls` fires `on_open`
@@ -4080,6 +4860,12 @@ impl DuplexUpgradeContext {
 
     /// The transport closed, or `StartTLS` could not start it.
     fn release_connection(this: bun_ptr::ThisPtr<Self>) {
+        if !this.connection_ref.get() {
+            return;
+        }
+        // Native backrefs and the shutdown callback must go before the last connection ref.
+        // The final zero-ref Close/Drop path cannot acquire an entry pin or enter JS.
+        this.unlink_native(this.upgrade.origin.get().is_empty());
         if this.take_connection_ref() {
             // SAFETY: `this` is live and the ref released is the connection's.
             unsafe { Self::deref(this.as_ptr()) };
@@ -4169,6 +4955,9 @@ impl DuplexUpgradeContext {
 
     fn on_writable(this: bun_ptr::ThisPtr<Self>) {
         this.debug_assert_kept_alive();
+        if this.native_failed.get() {
+            return;
+        }
         let socket = this.duplex_socket();
         if let Some(tls) = this.tls_this_ptr() {
             crate::dispatch::fold(TLSSocket::on_writable(tls, socket));
@@ -4271,6 +5060,21 @@ impl DuplexUpgradeContext {
                     this.upgrade.finish_close();
                     return;
                 }
+                if this.native_failed.get() {
+                    // The lower JS close path will close the upper; never reopen its native transport.
+                    return;
+                }
+                if this.native_previous_js_write.get()
+                    || this
+                        .native_transport
+                        .get()
+                        .clone()
+                        .is_some_and(|transport| transport.previous_write_pending(this.native_id()))
+                {
+                    // The previous listener owns its completion; its drain requeues this start.
+                    return;
+                }
+
                 log!(
                     "DuplexUpgradeContext.startTLS mode={}",
                     <&'static str>::from(this.mode)
@@ -4324,6 +5128,13 @@ impl DuplexUpgradeContext {
                 // e.g. both ends of a `duplexPair()` wrapped in-process, where
                 // the peer's ClientHello lands before this side starts.
                 this.upgrade.drain_pending();
+                // JS origin listeners and queued completions now trace the wrapper. The startup
+                // pin must not keep an otherwise unreachable Duplex cycle alive forever.
+                if let Some(tls) = this.tls_this_ptr() {
+                    if !matches!(tls.this_value.get(), JsRef::Finalized) {
+                        tls.this_value.with_mut(|value| value.downgrade());
+                    }
+                }
             }
             // Previously this only called `upgrade.close()` and never `deinit`,
             // leaking the SSLWrapper, the strong refs, and this struct itself
@@ -4348,7 +5159,14 @@ impl DuplexUpgradeContext {
             .enqueue_task(jsc::Task::init(this.as_ptr()));
     }
 
+    pub(super) fn has_queued_start(&self) -> bool {
+        self.queued.get() && self.task_event.get() == EventState::StartTLS
+    }
+
     fn start_tls(this: bun_ptr::ThisPtr<Self>) {
+        if this.native_failed.get() {
+            return;
+        }
         this.task_event.set(EventState::StartTLS);
         Self::enqueue_self_task(this);
     }
@@ -4362,11 +5180,13 @@ impl DuplexUpgradeContext {
     /// reclaimed below).
     unsafe fn deinit(this: *mut Self) {
         {
-            // SAFETY: `this` is live; this borrow ends with the block, before the `heap::take` free below.
+            // SAFETY: the caller owns a live context reference.
             let ctx = unsafe { &*this };
             debug_assert_eq!(ctx.ref_count.get(), 0);
             DUPLEX_UPGRADE_CONTEXT_LIVE_COUNT.fetch_sub(1, core::sync::atomic::Ordering::Relaxed);
             ctx.abort_handle.leave();
+            debug_assert!(ctx.native_transport.get().is_none());
+            debug_assert!(!ctx.native_shutdown_callback.get());
             ctx.tls.set(None);
             // Close raced ahead of StartTLS — drop the unconsumed config / ctx.
             ctx.ssl_config.set(None);
@@ -4400,6 +5220,82 @@ pub(crate) fn upgrade_tls_deferred<'a>(
             NewSocket::<true>::upgrade_tls_impl(this, cx.global(), options.to_js(), true)
         }
     }
+}
+
+pub(crate) fn attach_native_tls_transport(
+    cx: &mut JsScope<'_>,
+    socket: &TLSSocket,
+    transport: SocketHandle<'_>,
+    previous_writes: bool,
+    initial_data: JsLocal<'_>,
+    token: JsLocal<'_>,
+) -> JsResult<bool> {
+    let uws::InternalSocket::UpgradedDuplex(pointer) = socket.socket.get().socket else {
+        return Ok(false);
+    };
+    // SAFETY: the attached tag holds the aligned context.upgrade member; close detaches
+    // it before releasing the context. Take a keep-alive before any reentrant work.
+    let upgrade = unsafe { &*pointer.cast::<UpgradedDuplex>() };
+    let context = upgrade.keep_alive();
+    let transport = match transport {
+        SocketHandle::Tcp(lower) if !lower.socket.get().is_detached() => {
+            NativeTransport::Tcp(lower.ref_guard())
+        }
+        SocketHandle::Tls(lower) if !lower.socket.get().is_detached() => {
+            NativeTransport::Tls(lower.ref_guard())
+        }
+        _ => return Ok(false),
+    };
+    transport.attach(cx.global(), &context)?;
+    context.native_previous_js_write.set(previous_writes);
+    context.native_transport.set(Some(transport.clone()));
+    let token = token.to_js();
+    js_TLSSocket::native_transport_token_set_cached(upgrade.js_wrapper, cx.global(), token);
+    token.put(cx.global(), "native", JSValue::from(true));
+    let initial = initial_data.to_js();
+    if let Some(buffer) = initial.as_array_buffer(cx.global()) {
+        upgrade.receive_native_data(buffer.slice());
+    }
+    transport.reconcile_reads(context.native_id());
+    token.ensure_still_alive();
+    upgrade.js_wrapper.ensure_still_alive();
+    Ok(true)
+}
+
+pub(crate) fn native_tls_previous_writes_done(_: &mut JsScope<'_>, socket: &TLSSocket) {
+    if let uws::InternalSocket::UpgradedDuplex(pointer) = socket.socket.get().socket {
+        // SAFETY: the attached tag holds the aligned context.upgrade member; close detaches
+        // it before releasing the context. Take a keep-alive before any reentrant work.
+        let upgrade = unsafe { &*pointer.cast::<UpgradedDuplex>() };
+        let context = upgrade.keep_alive();
+        if context.native_previous_js_write.replace(false) {
+            context.on_native_writable();
+        }
+    }
+}
+
+pub(crate) fn shutdown_native_tls_transport(
+    cx: &mut JsScope<'_>,
+    socket: SocketHandle<'_>,
+    callback: JsLocal<'_>,
+) -> bool {
+    let SocketHandle::Tls(socket) = socket else {
+        return false;
+    };
+    let uws::InternalSocket::UpgradedDuplex(pointer) = socket.socket.get().socket else {
+        return false;
+    };
+    // SAFETY: the attached tag holds the aligned context.upgrade member; close detaches
+    // it before releasing the context. Take a keep-alive before any reentrant work.
+    let upgrade = unsafe { &*pointer.cast::<UpgradedDuplex>() };
+    let context = upgrade.keep_alive();
+    if !context.uses_native_transport() {
+        return false;
+    }
+    js_TLSSocket::native_shutdown_set_cached(upgrade.js_wrapper, cx.global(), callback.to_js());
+    context.native_shutdown_callback.set(true);
+    upgrade.shutdown();
+    true
 }
 
 /// node:net's `destroy()`: drops the handshake flight held for the handshake callback.
@@ -4559,7 +5455,8 @@ pub(crate) fn upgrade_duplex_to_tls<'a>(
         ref_pollref_on_connect: Cell::new(true),
         buffered_data_for_node_net: JsCell::new(Vec::new()),
         bytes_written: Cell::new(0),
-        native_callback: JsCell::new(NativeCallbacks::None),
+        native_callbacks: JsCell::new(Vec::new()),
+        native_write_owner: Cell::new(None),
         twin: JsCell::new(None),
         verify_error: JsCell::new(None),
         latest_session: Cell::new(None),
@@ -4588,6 +5485,14 @@ pub(crate) fn upgrade_duplex_to_tls<'a>(
         // The connection's ref.
         ptr::addr_of_mut!((*duplex_context).ref_count).write(Cell::new(1));
         ptr::addr_of_mut!((*duplex_context).connection_ref).write(Cell::new(true));
+        ptr::addr_of_mut!((*duplex_context).native_transport).write(JsCell::new(None));
+        ptr::addr_of_mut!((*duplex_context).native_output).write(JsCell::new(Vec::new()));
+        ptr::addr_of_mut!((*duplex_context).native_flushing).write(Cell::new(false));
+        ptr::addr_of_mut!((*duplex_context).native_previous_js_write).write(Cell::new(false));
+        ptr::addr_of_mut!((*duplex_context).native_shutdown_requested).write(Cell::new(false));
+        ptr::addr_of_mut!((*duplex_context).native_shutdown_started).write(Cell::new(false));
+        ptr::addr_of_mut!((*duplex_context).native_shutdown_callback).write(Cell::new(false));
+        ptr::addr_of_mut!((*duplex_context).native_failed).write(Cell::new(false));
         ptr::addr_of_mut!((*duplex_context).tls)
             .write(JsCell::new(Some(RefPtr::from_raw(tls.as_ptr()))));
         ptr::addr_of_mut!((*duplex_context).vm).write(VirtualMachine::get());
@@ -4618,6 +5523,7 @@ pub(crate) fn upgrade_duplex_to_tls<'a>(
             tls_js_value,
             duplex,
             is_node_socket,
+            context.id(),
             UpgradedDuplexHandlers {
                 // SAFETY: `c` is `ctx` below — the live `DuplexUpgradeContext` heap allocation.
                 on_open: |c: *mut ()| {
@@ -4684,19 +5590,49 @@ pub(crate) fn upgrade_duplex_to_tls<'a>(
     // dangling still exits. If the underlying stream is a real socket, that
     // socket's own handle keeps the loop alive.
 
-    // SAFETY: non-null, fully initialised, heap-pinned; leaves its context in `deinit`.
+    // Prepare every fallible JS value before publishing a queued StartTLS owner.
+    let result = (|| {
+        let array = JSValue::create_empty_array(global, 2)?;
+        array.ensure_still_alive();
+        array.put_index(global, 0, tls_js_value)?;
+        array.put_index(
+            global,
+            1,
+            duplex_context_ref.upgrade.get_js_handlers(global)?,
+        )?;
+        Ok(array)
+    })();
+    let array = match result {
+        Ok(array) => array,
+        Err(error) => {
+            duplex_context_ref.upgrade.teardown();
+            if let Some(tls) = duplex_context_ref.tls.replace(None) {
+                // The pending exception suppresses JS close dispatch; on_close balances the native pin.
+                let _ = TLSSocket::on_close(
+                    tls.into_this_ptr(),
+                    duplex_context_ref.duplex_socket(),
+                    0,
+                    None,
+                );
+            }
+            // No task has been queued. Consume the connection without queueing its free,
+            // as release_unrun does; any reentrant entry pin still delays destruction.
+            if duplex_context_ref.take_connection_ref() {
+                duplex_context_ref
+                    .ref_count
+                    .set(duplex_context_ref.ref_count.get() - 1);
+            }
+            if duplex_context_ref.ref_count.get() == 0 {
+                // SAFETY: No task was queued and all entry/connection pins are gone;
+                // this is the original allocation pointer.
+                unsafe { DuplexUpgradeContext::deinit(duplex_context) };
+            }
+            return Err(error);
+        }
+    };
+    // SAFETY: fully initialised and heap-pinned; leaves its context in `deinit`.
     unsafe { bun_jsc::AbortHandle::arm_owner(duplex_context, context) };
     DuplexUpgradeContext::start_tls(duplex_context_ref);
-
-    let array = JSValue::create_empty_array(global, 2)?;
-    array.put_index(global, 0, tls_js_value)?;
-    // data, end, drain and close events must be reported
-    array.put_index(
-        global,
-        1,
-        duplex_context_ref.upgrade.get_js_handlers(global)?,
-    )?;
-
     Ok(array)
 }
 
@@ -4704,6 +5640,14 @@ pub(crate) fn is_named_pipe_socket(socket: SocketHandle<'_>) -> bool {
     match socket {
         SocketHandle::Tcp(this) => this.socket.get().is_named_pipe(),
         SocketHandle::Tls(this) => this.socket.get().is_named_pipe(),
+        SocketHandle::Ignored(_) => false,
+    }
+}
+
+pub(crate) fn has_native_socket_listeners(socket: SocketHandle<'_>) -> bool {
+    match socket {
+        SocketHandle::Tcp(this) => this.native_callbacks.get().iter().any(Option::is_some),
+        SocketHandle::Tls(this) => this.native_callbacks.get().iter().any(Option::is_some),
         SocketHandle::Ignored(_) => false,
     }
 }
