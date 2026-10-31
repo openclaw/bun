@@ -152,6 +152,10 @@ def debugger_stage():
     gc_count = 0
     mark_watch = None
     mark_observation = None
+    root_collections = []
+    root_collection = None
+    scan_returns = {}
+    vm_roots_return = None
 
     def event(kind, **values):
         report['events'].append({'kind': kind, **values})
@@ -317,6 +321,49 @@ def debugger_stage():
         return {'thread': thread.GetThreadID(), 'pc': pc, 'lr': lr, 'sp': sp, 'fp': fp,
                 'links': links, 'frames': frames, 'termination': termination}
 
+    def roots_snapshot(address):
+        roots = typed(address, 'JSC::ConservativeRoots')
+        count = number(field(roots, 'm_size'))
+        capacity = number(field(roots, 'm_capacity'))
+        data = number(field(roots, 'm_roots'))
+        assert 0 <= count <= capacity <= 1024**2 and data
+        error = lldb.SBError()
+        raw = process.ReadMemory(data, count * 8, error) if count else b''
+        assert not count or (error.Success() and len(raw) == count * 8)
+        indices = [i for i in range(count) if int.from_bytes(raw[i * 8:i * 8 + 8], 'little') == owner['owner']]
+        assert len(indices) <= 64, 'accepted-root duplicate bound exceeded'
+        return dict(roots=address, data=data, count=count, capacity=capacity,
+                    owner_indices=indices, sha256=hashlib.sha256(raw).hexdigest())
+
+    def accepted_span(scan, after):
+        assert after['roots'] == scan['roots'] and after['count'] >= scan['before_count']
+        accepted = [i for i in after['owner_indices'] if i >= scan['before_count']]
+        if not accepted:
+            return
+        begin, end = sorted((scan['begin'], scan['end']))
+        assert begin % 8 == end % 8 == 0 and 0 <= end - begin <= 16 * 1024**2
+        error = lldb.SBError()
+        raw = process.ReadMemory(begin, end - begin, error) if begin != end else b''
+        assert begin == end or (error.Success() and len(raw) == end - begin)
+        _, allocation = precise_allocation(owner['owner'])
+        cell_size = number(field(typed(allocation, 'JSC::PreciseAllocation'), 'm_cellSize'))
+        assert 0 < cell_size <= 16 * 1024**2
+        candidates = []
+        for offset in range(0, len(raw), 8):
+            value = int.from_bytes(raw[offset:offset + 8], 'little')
+            if owner['owner'] <= value <= owner['owner'] + cell_size:
+                candidates.append(dict(address=begin + offset, value=value,
+                                       offset_into_cell=value - owner['owner']))
+                assert len(candidates) <= 64, 'candidate-word bound exceeded'
+        receipt = dict(collection=scan['collection'], phase=scan['phase'], roots=scan['roots'],
+                       thread=scan['thread'], begin=begin, end=end, before_count=scan['before_count'],
+                       after_count=after['count'], accepted_owner_indices=accepted,
+                       cell_size=cell_size, candidate_words=candidates,
+                       candidate_interpretation='unmodified exact/interior/one-past pointer candidates; accepted scanner iteration not yet identified',
+                       span_sha256=hashlib.sha256(raw).hexdigest())
+        root_collections[scan['collection']]['accepted_spans'].append(receipt)
+        event('accepted-owner-span', **receipt)
+
     def marker_snapshot(visitor, cell):
         header, allocation, marker = precise_marker(visitor, cell)
         assert marker is not None, 'actual precise allocation missing in completed verifier map'
@@ -384,6 +431,17 @@ def debugger_stage():
             assert mark_bp.GetNumLocations() > 0, 'missing post-mark verifier boundary'
             mark_bp.SetEnabled(False)
             return_bp = None
+            stack_roots_bp, _ = entry('JSC::Heap::gatherStackRoots')
+            vm_roots_bp, _ = entry('JSC::Heap::gatherVMRoots')
+            scan_bps = []
+            for signature in [
+                    'JSC::ConservativeRoots::add(void*, void*)',
+                    'JSC::ConservativeRoots::add(void*, void*, JSC::JITStubRoutineSet&, JSC::CodeBlockSet&)']:
+                bp, _ = entry('JSC::ConservativeRoots::add', signature)
+                scan_bps.append(bp)
+            root_bps = [stack_roots_bp, vm_roots_bp, *scan_bps]
+            for bp in root_bps:
+                bp.SetEnabled(False)
         info = lldb.SBLaunchInfo(args)
         info.SetWorkingDirectory(str(SOURCE))
         info.SetEnvironmentEntries([key + '=' + value for key, value in environment.items()], False)
@@ -419,6 +477,16 @@ def debugger_stage():
                     mark_watch.SetEnabled(False)
                     assert not mark_watch.IsEnabled()
                     mark_observation['frame_pointer_path'] = frame_pointer_snapshot(frame, thread)
+                    assert root_collection is not None and root_collection['phase'] == 'complete'
+                    current_roots = roots_snapshot(root_collection['roots'])
+                    assert current_roots == root_collection['after_vm'], 'accepted roots changed before the owner mark'
+                    assert current_roots['owner_indices'] and root_collection['accepted_spans']
+                    mark_observation['root_collection'] = root_collection['index']
+                    event('accepted-root-list-at-owner-mark', **current_roots,
+                          collection=root_collection['index'])
+                    for bp in root_bps:
+                        bp.SetEnabled(False)
+                    assert not scan_returns and vm_roots_return is None
                     event('live-real-mark-writer', **mark_observation)
                 assert process.Continue().Success()
                 continue
@@ -446,6 +514,56 @@ def debugger_stage():
                     assert not (OUT / 'child.json').exists(), 'multiple selected children'
                     write('child.json', {'argv': values, 'script_sha256': hashlib.sha256(values[2].encode()).hexdigest()})
                     event('captured-actual-fixture-child')
+            elif stack_roots_bp.GetID() in ids:
+                assert returned and gc_count == 31 and owner is not None
+                vm_heap = field(typed(owner['vm'], 'JSC::VM'), 'heap').GetLoadAddress()
+                assert reg(frame, 'x0') == vm_heap
+                assert root_collection is None or root_collection['phase'] == 'complete'
+                assert len(root_collections) < 8 and not scan_returns
+                roots = reg(frame, 'x1')
+                initial_roots = roots_snapshot(roots)
+                assert initial_roots['count'] == 0
+                root_collection = dict(index=len(root_collections), roots=roots, phase='stack',
+                                       accepted_spans=[], initial=initial_roots)
+                root_collections.append(root_collection)
+                event('stack-root-gather-entry', collection=root_collection['index'], **initial_roots)
+            elif vm_roots_bp.GetID() in ids:
+                assert root_collection is not None and root_collection['phase'] == 'stack'
+                assert not scan_returns and reg(frame, 'x1') == root_collection['roots']
+                vm_heap = field(typed(owner['vm'], 'JSC::VM'), 'heap').GetLoadAddress()
+                assert reg(frame, 'x0') == vm_heap and vm_roots_return is None
+                root_collection['after_stack'] = roots_snapshot(root_collection['roots'])
+                event('stack-root-gather-complete', collection=root_collection['index'],
+                      **root_collection['after_stack'])
+                root_collection['phase'] = 'vm'
+                vm_roots_return = target.BreakpointCreateByAddress(reg(frame, 'x30'))
+                assert vm_roots_return.GetNumLocations() == 1
+                vm_roots_return.SetThreadID(thread.GetThreadID())
+                vm_roots_return.SetOneShot(True)
+            elif vm_roots_return is not None and vm_roots_return.GetID() in ids:
+                assert root_collection is not None and root_collection['phase'] == 'vm' and not scan_returns
+                after = roots_snapshot(root_collection['roots'])
+                assert after['count'] >= root_collection['after_stack']['count']
+                root_collection.update(phase='complete', after_vm=after)
+                event('vm-root-gather-complete', collection=root_collection['index'], **after)
+                vm_roots_return = None
+            elif any(bp.GetID() in ids for bp in scan_bps):
+                assert root_collection is not None and root_collection['phase'] in ('stack', 'vm')
+                roots = reg(frame, 'x0')
+                assert roots == root_collection['roots'] and not scan_returns
+                before = roots_snapshot(roots)
+                bp = target.BreakpointCreateByAddress(reg(frame, 'x30'))
+                assert bp.GetNumLocations() == 1
+                bp.SetThreadID(thread.GetThreadID())
+                bp.SetOneShot(True)
+                scan_returns[bp.GetID()] = dict(collection=root_collection['index'],
+                    phase=root_collection['phase'], roots=roots, before_count=before['count'],
+                    begin=reg(frame, 'x1'), end=reg(frame, 'x2'), thread=thread.GetThreadID())
+            elif ids.intersection(scan_returns):
+                assert len(ids.intersection(scan_returns)) == 1
+                scan = scan_returns.pop(next(iter(ids.intersection(scan_returns))))
+                assert scan['thread'] == thread.GetThreadID()
+                accepted_span(scan, roots_snapshot(scan['roots']))
             elif weak_bp.GetID() in ids:
                 assert weak_creation is None
                 global_object, call = reg(frame, 'x0'), reg(frame, 'x1')
@@ -514,6 +632,8 @@ def debugger_stage():
                                                 last_value=initial, observed_zero=initial == 0,
                                                 watchpoint=mark_watch.GetID())
                         mark_bp.SetEnabled(True)
+                        for bp in root_bps:
+                            bp.SetEnabled(True)
             elif mark_bp.GetID() in ids:
                 assert returned and gc_count == 31 and 'Collector::verifyGC' in (frame.GetFunctionName() or '')
                 collector = frame.FindVariable('this', lldb.eNoDynamicValues)
@@ -553,7 +673,9 @@ def debugger_stage():
             assert len(snapshots) == 1 and snapshots[0]['owner'] == owner['owner']
             assert len([e for e in report['events'] if e['kind'] == 'live-real-mark-writer']) == 1
             report['outcome'] = facts
-            report['classification'] = 'real-mark writer path captured; verifier first-root path and originating word remain unproven'
+            assert root_collections and any(c['accepted_spans'] for c in root_collections)
+            report['root_collections'] = root_collections
+            report['classification'] = 'accepted stack/VM scan spans and real-mark writer captured; exact originating scanner word and source frame remain unproven'
         report['passed'] = True
     except BaseException as error:
         report['gap'] = str(error)
@@ -561,7 +683,8 @@ def debugger_stage():
     finally:
         if stage == 'trace':
             report['observation'] = {'weak_targets': weak, 'owner': owner, 'returned': returned,
-                                      'gc_count': gc_count, 'pending_weak_constructor': weak_creation}
+                                      'gc_count': gc_count, 'pending_weak_constructor': weak_creation,
+                                      'root_collections': root_collections, 'pending_scan_returns': scan_returns}
         if process is not None and process.IsValid() and process.GetState() != lldb.eStateExited:
             process.Kill()
         write(stage + '.json', report)
