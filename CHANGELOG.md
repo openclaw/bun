@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Refresh the arm64 loop-poll layout check after upstream allocator changes.
+
 - Keep module-object export coverage aligned with upstream’s explicit default aliases.
 
 - Sync current AOT frontend and loader fixes; use upstream per-module export metadata while retaining its regression. Retained-run tests use the runner timeout. Thanks @vincentkoc.
