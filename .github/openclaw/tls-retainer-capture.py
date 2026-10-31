@@ -486,12 +486,15 @@ def debugger_stage():
         # LLDB ARM exposes a write watch after stepping the store. Admit its effective
         # destination; an Always watch may otherwise report an adjacent access.
         instruction = rows[1]
-        assert instruction['pc'] == pc - 4 and instruction['mnemonic'] in ('str', 'stur', 'stp'), 'unsupported stack-writer instruction'
+        assert instruction['pc'] == pc - 4 and instruction['mnemonic'] in ('str', 'stur', 'stp', 'strb'), 'unsupported stack-writer instruction'
         match = re.fullmatch(r'([xwqds]\d+|[xw]zr)(?:, ([xwqds]\d+|[xw]zr))?, \[(sp|x29)(?:, #(-?0x[0-9a-f]+))?\](!)?(?:, #(-?0x[0-9a-f]+))?', instruction['operands'])
         assert match is not None, 'unsupported stack-writer addressing mode'
         first, second, base, offset, pre, post = match.groups()
         assert (second is not None) == (instruction['mnemonic'] == 'stp')
         width = {'x': 8, 'w': 4, 'q': 16, 'd': 8, 's': 4}[first[0]]
+        if instruction['mnemonic'] == 'strb':
+            assert first[0] == 'w' and second is None
+            width = 1
         assert second is None or second[0] == first[0]
         base_value = reg(frame, base)
         address = base_value if pre else base_value + int(offset or '0', 16)
