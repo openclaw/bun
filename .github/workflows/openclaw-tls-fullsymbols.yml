@@ -1,0 +1,188 @@
+name: OpenClaw TLS full-symbol reproduction
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/openclaw-tls-fullsymbols.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: openclaw-tls-fullsymbols-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 454a78a4d3b0202ecdbedf7dd051fc84ffc59e9e
+          path: source
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: openclaw/WebKit
+          ref: b82bc917e99110b61c3a21202d6def7457aa194c
+          path: webkit
+          persist-credentials: false
+      - name: Prepare native diagnostic build
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = aarch64
+          test "$(git -C source rev-parse HEAD)" = 454a78a4d3b0202ecdbedf7dd051fc84ffc59e9e
+          test "$(git -C webkit rev-parse HEAD)" = b82bc917e99110b61c3a21202d6def7457aa194c
+          echo 'd4c04a72b89bc7d33c292a16a57c38f5da540815dc2e141adfd58c1bd9973af2  source/test/js/bun/net/socket-retention.test.ts' | sha256sum --check
+          mkdir diagnostics
+          printf '%s\n' 'Bun=454a78a4d3b0202ecdbedf7dd051fc84ffc59e9e' \
+            'WebKit=b82bc917e99110b61c3a21202d6def7457aa194c' \
+            'Diagnostic variance: non-LTO C++/JSC; Debian 13 system ICU; Rust-only release LTO may remain enabled.' > diagnostics/inputs.txt
+          cat > diagnostics/probe.py <<'PY'
+          import gdb, json
+          gdb.execute("set breakpoint pending off")
+          types = {}
+          for name in ("JSC::JSCell", "JSC::Heap", "JSC::SlotVisitor", "JSC::ConservativeRoots"):
+              value = gdb.lookup_type(name).strip_typedefs()
+              fields = value.fields()
+              assert value.sizeof > 0 and fields, "incomplete type: " + name
+              types[name] = {"bytes": value.sizeof, "fields": len(fields)}
+          functions = {}
+          for name in ("JSC::Collector::runEndPhase", "JSC::MachineThreads::gatherConservativeRoots"):
+              point = gdb.Breakpoint(name)
+              addresses = [location.address for location in point.locations]
+              assert addresses and all(addresses), "unresolved function: " + name
+              functions[name] = addresses
+          print(json.dumps({"types": types, "functions": functions}, indent=2))
+          PY
+          # Only this disposable hosted runner is affected; leave Docker images alone.
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/share/boost /usr/share/swift
+          df -h /
+      - uses: ./source/.github/actions/setup-bun
+        with:
+          bun-version: "1.4.4"
+      - name: Generate common toolchain provisioning
+        id: provision
+        shell: bash
+        run: |
+          set -euo pipefail
+          # No target sysroot: local WebKit uses system ICU in this container.
+          script=$(bun -e 'import { resolve } from "node:path"; import { provision } from "./source/scripts/openclaw-release/release.ts"; console.log(provision(resolve("source"), []));' | tail -1)
+          echo "script=${script#"$GITHUB_WORKSPACE"/}" >> "$GITHUB_OUTPUT"
+      - name: Provision native ARM64 container
+        shell: bash
+        env:
+          SCRIPT: ${{ steps.provision.outputs.script }}
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4; do
+            docker rm --force tls-symbols > /dev/null 2>&1 || true
+            docker run --detach --name tls-symbols -e CI=true -v "$GITHUB_WORKSPACE:/work" -w /work \
+              docker.io/library/debian:13@sha256:9cc080028c43b27d2074d63a5f9caf7166d731494965616c1a6d2827a004585c \
+              sleep infinity > /dev/null
+            if docker exec -e SCRIPT tls-symbols sh -euc \
+              'sh "$SCRIPT" 454a78a4d3b0202ecdbedf7dd051fc84ffc59e9e openclaw-tls-diagnostic && apt-get update && apt-get install --yes --no-install-recommends libicu-dev libjson-pp-perl gdb binutils zstd'; then
+              exit 0
+            fi
+            echo "::warning::Provisioning attempt $attempt failed"
+            [ "$attempt" = 4 ] && exit 1
+            sleep $((attempt * 120))
+          done
+      - name: Build release with full C++ and JSC symbols
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker exec tls-symbols bash -euo pipefail -c '
+            . /etc/profile.d/bun-ci.sh
+            git config --global --add safe.directory /work/source
+            git config --global --add safe.directory /work/webkit
+            { bun --version; node --version; clang --version; cmake --version; rustc --version; gdb --version; dpkg-query -W libicu-dev; } > /work/diagnostics/tools.txt
+            cd /work/source
+            export BUN_WEBKIT_PATH=/work/webkit CMAKE_BUILD_PARALLEL_LEVEL=2
+            bun run build:release --ci=on --webkit=local --lto=off --os=linux --arch=aarch64 --abi=gnu --build-dir=build/tls-arm64-fullsymbols -j2
+          '
+      - name: Verify matched symbols and capture capability
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker exec tls-symbols bash -euo pipefail -c '
+            cd /work/source
+            build=build/tls-arm64-fullsymbols
+            readelf -n "$build/bun" > /work/diagnostics/bun-build-id.txt
+            readelf -n "$build/bun-profile" > /work/diagnostics/profile-build-id.txt
+            python3 - <<'"'"'PY'"'"'
+          import re
+          from pathlib import Path
+          report = Path("/work/diagnostics")
+          ids = [re.findall(r"Build ID: (\w+)", (report / name).read_text()) for name in ("bun-build-id.txt", "profile-build-id.txt")]
+          assert len(ids[0]) == 1 and ids[0] == ids[1], ids
+          PY
+            gdb --batch --nx --init-eval-command="set auto-load off" -ex "file $build/bun-profile" -ex "python exec(compile(open(\"/work/diagnostics/probe.py\").read(), \"probe.py\", \"exec\"))" > /work/diagnostics/symbol-probe.txt 2>&1
+          '
+      - name: Run the unchanged destroyed-completion case
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker exec tls-symbols bash -euo pipefail -c '
+            cd /work/source
+            python3 - <<'"'"'PY'"'"'
+          import hashlib, json, subprocess, sys
+          from pathlib import Path
+          from xml.etree import ElementTree
+          report = Path("/work/diagnostics")
+          fixture = Path("test/js/bun/net/socket-retention.test.ts")
+          assert hashlib.sha256(fixture.read_bytes()).hexdigest() == "d4c04a72b89bc7d33c292a16a57c38f5da540815dc2e141adfd58c1bd9973af2"
+          exe = Path("build/tls-arm64-fullsymbols/bun").resolve()
+          identity = subprocess.run([str(exe), "-e", "console.log(JSON.stringify({commit:Bun.revision,webkit:process.versions.webkit,platform:process.platform,arch:process.arch}))"], text=True, capture_output=True, check=True)
+          facts = json.loads(identity.stdout)
+          (report / "identity.json").write_text(json.dumps(facts, indent=2) + "\n")
+          assert facts == {"commit": "454a78a4d3b0202ecdbedf7dd051fc84ffc59e9e", "webkit": "b82bc917e99110b61c3a21202d6def7457aa194c", "platform": "linux", "arch": "arm64"}, facts
+          name = "a TLS Duplex completion retains its owner and is inert after destroy"
+          with (report / "stdout.txt").open("w") as stdout, (report / "stderr.txt").open("w") as stderr:
+              result = subprocess.run([str(exe), "test", str(fixture), "--test-name-pattern", "^" + name + "$", "--reporter=junit", "--reporter-outfile=" + str(report / "result.xml")], stdout=stdout, stderr=stderr)
+          cases = [case for case in ElementTree.parse(report / "result.xml").iter("testcase") if case.get("name") == name]
+          assert len(cases) == 1 and cases[0].find("skipped") is None, "selected case did not execute"
+          outcome = {"exitCode": result.returncode, "name": name, "failure": cases[0].find("failure") is not None, "error": cases[0].find("error") is not None}
+          (report / "outcome.json").write_text(json.dumps(outcome, indent=2) + "\n")
+          print(json.dumps(outcome))
+          if result.returncode == 0:
+              assert not outcome["failure"] and not outcome["error"], outcome
+          sys.exit(result.returncode)
+          PY
+          '
+      - name: Retain matched binary and split DWARF inputs
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo chown -R "$(id -u):$(id -g)" diagnostics
+          if [ -f source/build/tls-arm64-fullsymbols/bun-profile ]; then
+            python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          root = Path("source/build/tls-arm64-fullsymbols")
+          files = [root / "bun", root / "bun-profile", *root.rglob("*.dwo")]
+          files = [p for p in files if p.is_file()]
+          assert len(files) <= 20000 and sum(p.stat().st_size for p in files) <= 8 * 1024**3, "artifact-budget-exceeded"
+          with Path("diagnostics/symbol-inputs.txt").open("w") as out:
+              out.write("\n".join(str(p) for p in files) + "\n")
+          subprocess.run(["tar", "--zstd", "-cf", "diagnostics/matched-symbols.tar.zst", "-T", "diagnostics/symbol-inputs.txt"], check=True)
+          PY
+            find source/build/tls-arm64-fullsymbols -name CMakeCache.txt -exec sh -c 'for cache; do printf "\n%s\n" "$cache"; cat "$cache"; done' sh {} + > diagnostics/cmake-caches.txt
+            sha256sum source/build/tls-arm64-fullsymbols/bun source/build/tls-arm64-fullsymbols/bun-profile diagnostics/matched-symbols.tar.zst > diagnostics/SHA256SUMS
+          fi
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: tls-linux-arm64-fullsymbols
+          path: diagnostics
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+      - name: Stop diagnostic container
+        if: always()
+        run: docker rm --force tls-symbols > /dev/null
