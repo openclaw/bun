@@ -142,9 +142,11 @@ def debugger_stage():
     module = target.FindModule(target.GetExecutable())
     assert re.sub('[^0-9a-fA-F]', '', module.GetUUIDString() or '').lower() == UUID
     stage = os.environ['TLS_CAPTURE_STAGE']
-    report = {'stage': stage, 'passed': False, 'events': [], 'entries': [], 'breakpoint_hits': {}}
+    report = {'stage': stage, 'passed': False, 'events': [], 'entries': [], 'resolutions': {}, 'breakpoint_hits': {}}
     process = None
+    entry_addresses = {}
     weak = []
+    weak_creation = None
     owner = None
     returned = False
     gc_count = 0
@@ -155,17 +157,25 @@ def debugger_stage():
 
     def entry(name):
         contexts = module.FindFunctions(name, lldb.eFunctionNameTypeAny)
+        assert contexts.GetSize() <= 64, name
         addresses = {}
+        report['resolutions'][name] = []
         for i in range(contexts.GetSize()):
             context = contexts.GetContextAtIndex(i)
             function = context.GetFunction()
+            resolved = function.GetName() if function.IsValid() else context.GetSymbol().GetName()
             address = function.GetStartAddress() if function.IsValid() else context.GetSymbol().GetStartAddress()
+            report['resolutions'][name].append({'function': resolved, 'file_address': address.GetFileAddress()})
+            # FindFunctions includes inline scopes whose GetFunction is the enclosing physical function.
+            if not resolved or resolved.split('(', 1)[0].strip().removeprefix('::') != name:
+                continue
             if address.IsValid():
                 addresses[address.GetFileAddress()] = address
         assert len(addresses) == 1, 'missing/ambiguous function entry: ' + name
         address = next(iter(addresses.values()))
         bp = target.BreakpointCreateBySBAddress(address)
         assert bp.GetNumLocations() == 1, name
+        entry_addresses[bp.GetID()] = address
         report['entries'].append({'name': name, 'breakpoint': bp.GetID(),
                                   'file_address': address.GetFileAddress()})
         return bp, address
@@ -236,7 +246,8 @@ def debugger_stage():
                                BUN_DISABLE_SLOW_FILESYSTEM_WARNING='1', BUN_CONFIG_HTTP_RETRY_BACKOFF='1',
                                BUN_INTERNAL_INTERACTIVE_ASSUME_TTY='1', BUN_FEATURE_FLAG_EXPERIMENTAL_BAKE='1',
                                WANTS_LOUD='0', AGENT='false', BUN_JSC_verboseVerifyGC='1')
-            weak_bp, _ = entry('JSC::JSWeakObjectRef::finishCreation')
+            weak_bp, _ = entry('JSC::constructWeakRef')
+            weak_return_bp = None
             completion_bp, completion_address = entry('Bun__UpgradedDuplex__onWriteComplete')
             gc_bp, _ = entry('JSC__VM__runGC')
             mark_bp = target.BreakpointCreateByLocation('Collector.cpp', 1068)
@@ -264,11 +275,14 @@ def debugger_stage():
             thread = threads[0]
             frame = thread.GetFrameAtIndex(0)
             ids = {thread.GetStopReasonDataAtIndex(i) for i in range(0, thread.GetStopReasonDataCount(), 2)}
+            report['last_stop'] = {'pc': frame.GetPC(), 'function': frame.GetFunctionName(),
+                                   'breakpoints': sorted(ids), 'expected_entry_pcs': {
+                                       str(i): entry_addresses[i].GetLoadAddress(target) for i in ids if i in entry_addresses}}
             for bp_id in ids:
                 key = str(bp_id)
                 report['breakpoint_hits'][key] = report['breakpoint_hits'].get(key, 0) + 1
-            report['last_stop'] = {'pc': frame.GetPC(), 'function': frame.GetFunctionName(),
-                                   'breakpoints': sorted(ids)}
+                if bp_id in entry_addresses:
+                    assert frame.GetPC() == entry_addresses[bp_id].GetLoadAddress(target), 'stop is not at function entry'
             if stage == 'capture':
                 assert ids == {spawn.GetID()}
                 argv = reg(frame, 'x3')
@@ -285,9 +299,25 @@ def debugger_stage():
                     write('child.json', {'argv': values, 'script_sha256': hashlib.sha256(values[2].encode()).hexdigest()})
                     event('captured-actual-fixture-child')
             elif weak_bp.GetID() in ids:
-                weak.append({'weak': reg(frame, 'x0'), 'vm': reg(frame, 'x1'), 'owner': reg(frame, 'x2')})
+                assert weak_creation is None
+                global_object, call = reg(frame, 'x0'), reg(frame, 'x1')
+                assert word(call + 32, 4) == 2, 'fixture WeakRef constructor arguments changed'
+                weak_creation = {'global': global_object,
+                                 'vm': number(field(typed(global_object, 'JSC::JSGlobalObject'), 'm_vm')),
+                                 'owner': word(call + 48)}
+                weak_return_bp = target.BreakpointCreateByAddress(reg(frame, 'x30'))
+                weak_return_bp.SetThreadID(thread.GetThreadID())
+                weak_return_bp.SetOneShot(True)
+                event('weak-ref-constructor-entry', **weak_creation)
+            elif weak_return_bp is not None and weak_return_bp.GetID() in ids:
+                assert weak_creation is not None
+                created = reg(frame, 'x0')
+                actual_target = pointer(field(typed(created, 'JSC::JSWeakObjectRef'), 'm_value'), 'JSC::JSCell')
+                assert actual_target == [weak_creation['owner']], 'constructed weak target does not match'
+                weak.append(dict(weak_creation, weak=created))
                 assert len(weak) <= 16
-                event('weak-ref-entry', **weak[-1])
+                weak_creation = None
+                event('weak-ref-created', **weak[-1])
             elif completion_bp.GetID() in ids:
                 call = reg(frame, 'x1')
                 # Frozen CallFrame.h: callee, argumentCountIncludingThis, then this, in 8-byte registers.
@@ -372,7 +402,7 @@ def debugger_stage():
     finally:
         if stage == 'trace':
             report['observation'] = {'weak_targets': weak, 'owner': owner, 'returned': returned,
-                                      'gc_count': gc_count}
+                                      'gc_count': gc_count, 'pending_weak_constructor': weak_creation}
         if process is not None and process.IsValid() and process.GetState() != lldb.eStateExited:
             process.Kill()
         write(stage + '.json', report)
