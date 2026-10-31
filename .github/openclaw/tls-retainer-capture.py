@@ -650,7 +650,19 @@ def debugger_stage():
                 instruction = prologue.GetInstructionAtIndex(i)
                 assert instruction.GetAddress().GetFileAddress() == 88383168 + i * 4
                 assert (instruction.GetMnemonic(target), instruction.GetOperands(target)) == expected_instruction
-            writer_entry_bp.SetEnabled(False)
+            timer_call = target.ReadInstructions(module.ResolveFileAddress(27509444), 1)
+            assert timer_call.GetSize() == 1
+            instruction = timer_call.GetInstructionAtIndex(0)
+            assert instruction.GetMnemonic(target) == 'bl'
+            assert int(instruction.GetOperands(target), 16) == 88383168
+            vm_layout = concrete_type('JSC::VM')
+            interpreter_fields = [vm_layout.GetFieldAtIndex(i) for i in range(vm_layout.GetNumberOfFields())
+                                  if vm_layout.GetFieldAtIndex(i).GetName() == 'interpreter']
+            assert len(interpreter_fields) == 1
+            interpreter_offset = interpreter_fields[0].GetOffsetInBytes()
+            assert interpreter_offset == 0x2d468
+            event('early-stack-writer-layout', interpreter_offset=interpreter_offset,
+                  timer_call=27509444, timer_return=27509448)
             mark_bp = target.BreakpointCreateByLocation('Collector.cpp', 1068)
             assert mark_bp.GetNumLocations() > 0, 'missing post-mark verifier boundary'
             mark_bp.SetEnabled(False)
@@ -816,10 +828,8 @@ def debugger_stage():
                     write('child.json', {'argv': values, 'script_sha256': hashlib.sha256(values[2].encode()).hexdigest()})
                     event('captured-actual-fixture-child')
             elif writer_entry_bp is not None and writer_entry_bp.GetID() in ids:
-                assert returned and gc_count == 30 and owner is not None
-                interpreter = field(typed(owner['vm'], 'JSC::VM'), 'interpreter')
                 timer_return = module.ResolveFileAddress(27509448).GetLoadAddress(target)
-                if reg(frame, 'x0') == interpreter.GetLoadAddress() and reg(frame, 'x30') == timer_return:
+                if reg(frame, 'x30') == timer_return:
                     assert writer_state is None and writer_watch is None
                     # Admitted prologue: FP=entrySP-0x180+0x120. The previous proof
                     # placed the accepted word at FP-0x40; this run must rediscover it.
@@ -836,6 +846,7 @@ def debugger_stage():
                     assert error.Success() and writer_watch.IsValid() and writer_watch.IsEnabled()
                     assert writer_watch.GetWatchAddress() == address and writer_watch.GetWatchSize() == 8
                     writer_state = dict(address=address, thread=thread.GetThreadID(), entry_sp=entry_sp,
+                                        provisional_vm=reg(frame, 'x0') - interpreter_offset,
                                         prospective_fp=prospective_fp, initial_value=word(address), writes=[],
                                         incoming={name: reg(frame, name) for name in ['x' + str(i) for i in range(6)]})
                     writer_entry_bp.SetEnabled(False)
@@ -888,7 +899,8 @@ def debugger_stage():
                         candidate = candidates[0]
                         assert writer_state is not None and writer_watch.IsEnabled(), 'selected timer frame was not watched'
                         assert writer_state['thread'] == thread.GetThreadID() and candidate['address'] == writer_state['address'], 'accepted word differs from watched frame slot'
-                        assert writer_state['writes'] and writer_state['writes'][-1]['slot_value'] == candidate['value'], 'no admitted write of the accepted owner in this frame'
+                        assert writer_state['provisional_vm'] == owner['vm'], 'first timer belongs to another VM'
+                        assert writer_state['writes'] and writer_state['writes'][-1]['slot_value'] == candidate['value'], 'no admitted write of the accepted owner in watched stack storage'
                         writer_watch.SetEnabled(False)
                         assert not writer_watch.IsEnabled()
                         error = lldb.SBError()
@@ -965,6 +977,7 @@ def debugger_stage():
                     if number(field(function, 'dataPtr')) == 0:
                         assert owner is None and len(candidates) == 1
                         owner = dict(candidates[0], callee=callee, argument_count_including_this=count)
+                        assert writer_state is not None and writer_state['provisional_vm'] == owner['vm'], 'late callback VM differs from first timer'
                         assert count == 1, 'fixture late callback unexpectedly has arguments'
                         return_bp = target.BreakpointCreateByAddress(reg(frame, 'x30'))
                         return_bp.SetThreadID(thread.GetThreadID())
@@ -981,8 +994,6 @@ def debugger_stage():
                     gc_count += 1
                     assert gc_count <= 31
                     # The fixture collects once for queuedRoot, then thirty times before its final deref.
-                    if gc_count == 30:
-                        writer_entry_bp.SetEnabled(True)
                     if gc_count == 31:
                         _, allocation = precise_allocation(owner['owner'])
                         marked = field(field(typed(allocation, 'JSC::PreciseAllocation'), 'm_isMarked'), 'value')
@@ -1056,7 +1067,12 @@ def debugger_stage():
             assert upper['fp'] == writer_state['prospective_fp']
             assert upper['saved_lr'] == module.ResolveFileAddress(27509448).GetLoadAddress(target)
             report['stack_word_writer'] = writer_state
-            report['classification'] = 'exact accepted scanner word tied to an admitted physical stack write; source variable and earlier register origin remain unproven'
+            last_write = writer_state['writes'][-1]
+            slot = writer_state['address']
+            complete = last_write['destination'] <= slot and slot + 8 <= last_write['destination'] + last_write['bytes']
+            report['classification'] = ('exact accepted scanner word tied to an admitted physical stack write covering all eight bytes'
+                                        if complete else 'exact accepted scanner word tied to an admitted partial stack write; remaining-byte origin is unproven')
+            report['classification'] += '; source variable and earlier register origin remain unproven'
         report['passed'] = True
     except BaseException as error:
         report['gap'] = str(error)
