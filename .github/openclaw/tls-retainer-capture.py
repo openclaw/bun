@@ -156,6 +156,11 @@ def debugger_stage():
     root_collection = None
     scan_returns = {}
     stack_roots_return = None
+    word_watch = None
+    word_pending = None
+    word_witness = None
+    pointer_call_bp = None
+    pointer_return_bp = None
 
     def event(kind, **values):
         report['events'].append({'kind': kind, **values})
@@ -393,7 +398,7 @@ def debugger_stage():
         return {'thread': thread.GetThreadID(), 'pc': pc, 'lr': lr, 'sp': sp, 'fp': fp,
                 'links': links, 'frames': frames, 'termination': termination}
 
-    def roots_snapshot(address):
+    def roots_snapshot(address, prefix_count=None):
         roots = typed(address, 'JSC::ConservativeRoots')
         count = number(field(roots, 'm_size'))
         capacity = number(field(roots, 'm_capacity'))
@@ -404,15 +409,15 @@ def debugger_stage():
         assert not count or (error.Success() and len(raw) == count * 8)
         indices = [i for i in range(count) if int.from_bytes(raw[i * 8:i * 8 + 8], 'little') == owner['owner']]
         assert len(indices) <= 64, 'accepted-root duplicate bound exceeded'
-        return dict(roots=address, data=data, count=count, capacity=capacity,
-                    owner_indices=indices, sha256=hashlib.sha256(raw).hexdigest())
+        result = dict(roots=address, data=data, count=count, capacity=capacity,
+                      owner_indices=indices, sha256=hashlib.sha256(raw).hexdigest())
+        if prefix_count is not None:
+            assert 0 <= prefix_count <= count
+            result['prefix_sha256'] = hashlib.sha256(raw[:prefix_count * 8]).hexdigest()
+        return result
 
-    def accepted_span(scan, after):
-        assert after['roots'] == scan['roots'] and after['count'] >= scan['before_count']
-        accepted = [i for i in after['owner_indices'] if i >= scan['before_count']]
-        if not accepted:
-            return
-        begin, end = sorted((scan['begin'], scan['end']))
+    def span_candidates(begin, end):
+        begin, end = sorted((begin, end))
         assert begin % 8 == end % 8 == 0 and 0 <= end - begin <= 16 * 1024**2
         error = lldb.SBError()
         raw = process.ReadMemory(begin, end - begin, error) if begin != end else b''
@@ -427,13 +432,24 @@ def debugger_stage():
                 candidates.append(dict(address=begin + offset, value=value,
                                        offset_into_cell=value - owner['owner']))
                 assert len(candidates) <= 64, 'candidate-word bound exceeded'
+        return begin, end, cell_size, candidates, hashlib.sha256(raw).hexdigest()
+
+    def accepted_span(scan, after):
+        assert after['roots'] == scan['roots'] and after['count'] >= scan['before_count']
+        accepted = [i for i in after['owner_indices'] if i >= scan['before_count']]
+        if not accepted:
+            return
+        begin, end, cell_size, candidates, span_sha = span_candidates(scan['begin'], scan['end'])
         receipt = dict(collection=scan['collection'], phase=scan['phase'], roots=scan['roots'],
                        thread=scan['thread'], begin=begin, end=end, before_count=scan['before_count'],
                        after_count=after['count'], accepted_owner_indices=accepted,
                        cell_size=cell_size, candidate_words=candidates,
                        candidate_interpretation='unmodified exact/interior/one-past pointer candidates; accepted scanner iteration not yet identified',
-                       span_sha256=hashlib.sha256(raw).hexdigest())
+                       span_sha256=span_sha, call_site=scan['call_site'], scanner_sp=scan['scanner_sp'])
         root_collections[scan['collection']]['accepted_spans'].append(receipt)
+        if word_witness is not None and word_witness['span_return'] == scan['return_breakpoint']:
+            assert set(word_witness['accepted_owner_indices']) <= set(accepted)
+            receipt['scanner_word'] = word_witness
         event('accepted-owner-span', **receipt)
 
     def marker_snapshot(visitor, cell):
@@ -505,11 +521,37 @@ def debugger_stage():
             return_bp = None
             stack_roots_bp, _ = entry('JSC::MachineThreads::gatherConservativeRoots', required=False)
             scan_bps = []
+            scanner_loops = []
             for signature in [
                     'void JSC::ConservativeRoots::genericAddSpan<JSC::DummyMarkHook>(void*, void*, JSC::DummyMarkHook&)',
                     'void JSC::ConservativeRoots::genericAddSpan<JSC::CompositeMarkHook>(void*, void*, JSC::CompositeMarkHook&)']:
-                bp, _ = entry('JSC::ConservativeRoots::genericAddSpan', signature, required=False)
+                bp, address = entry('JSC::ConservativeRoots::genericAddSpan', signature, required=False)
                 scan_bps.append(bp)
+                if address is not None:
+                    # Locked shipping Build ID: admit the actual scanner load, argument moves and call.
+                    sites = {87227072: [(87227200, 87241536), (87227264, 87243712)],
+                             87227392: [(87227520, 87246848), (87227584, 87248576)]}
+                    assert address.GetFileAddress() in sites
+                    instructions = address.GetFunction().GetInstructions(target)
+                    assert 0 < instructions.GetSize() <= 4096
+                    rows = {instructions.GetInstructionAtIndex(i).GetAddress().GetFileAddress():
+                            instructions.GetInstructionAtIndex(i) for i in range(instructions.GetSize())}
+                    for load_pc, callee_pc in sites[address.GetFileAddress()]:
+                        expected = [('ldr', 'x1, [x26], #0x8'), ('mov', 'x0, x20'),
+                                    ('mov', 'w2, w22'), ('mov', 'w3, w23'), ('mov', 'x4, x21'),
+                                    ('mov', 'x5, x24' if load_pc in (87227200, 87227520) else 'x5, xzr'),
+                                    ('mov', 'x6, x19')]
+                        for i, (mnemonic, operands) in enumerate(expected):
+                            instruction = rows[load_pc + i * 4]
+                            assert (instruction.GetMnemonic(target), instruction.GetOperands(target)) == (mnemonic, operands)
+                        instruction = rows[load_pc + 28]
+                        assert instruction.GetMnemonic(target) == 'bl'
+                        assert int(instruction.GetOperands(target), 16) == callee_pc
+                        callee = module.ResolveFileAddress(callee_pc).GetFunction().GetName()
+                        assert callee and 'ConservativeRoots::genericAddPointer<' in callee
+                        scanner_loops.append(dict(span_breakpoint=bp.GetID(), read_stop=load_pc + 4,
+                                                  call=load_pc + 28, returned=load_pc + 32, callee=callee))
+            report['scanner_loops'] = scanner_loops
             root_bps = [stack_roots_bp, *scan_bps]
             if any(bp is None for bp in root_bps):
                 inventory_inline_roots()
@@ -536,7 +578,29 @@ def debugger_stage():
             thread = threads[0]
             frame = thread.GetFrameAtIndex(0)
             if thread.GetStopReason() == lldb.eStopReasonWatchpoint:
-                assert stage == 'trace' and mark_watch is not None and mark_watch.IsEnabled()
+                assert stage == 'trace' and thread.GetStopReasonDataCount() == 1
+                watch_id = thread.GetStopReasonDataAtIndex(0)
+                if word_watch is not None and watch_id == word_watch.GetID():
+                    assert word_watch.IsEnabled() and word_pending is not None
+                    word_watch.SetEnabled(False)
+                    assert not word_watch.IsEnabled()
+                    assert word_pending['phase'] == 'armed' and word_pending['thread'] == thread.GetThreadID()
+                    loops = [row for row in scanner_loops if row['span_breakpoint'] == word_pending['span_breakpoint']
+                             and module.ResolveFileAddress(row['read_stop']).GetLoadAddress(target) == frame.GetPC()]
+                    # LLDB23 exposes ARM read watches after its transparent single-step of the load.
+                    assert len(loops) == 1, 'candidate was not read by the admitted scanner load'
+                    assert reg(frame, 'x26') == word_pending['address'] + 8
+                    assert reg(frame, 'x1') == word_pending['value'] == word(word_pending['address'])
+                    assert reg(frame, 'x20') == word_pending['roots']
+                    word_pending.update(phase='read', loop=loops[0], read_pc=frame.GetPC())
+                    pointer_call_bp = target.BreakpointCreateBySBAddress(module.ResolveFileAddress(loops[0]['call']))
+                    assert pointer_call_bp.GetNumLocations() == 1
+                    pointer_call_bp.SetThreadID(thread.GetThreadID())
+                    pointer_call_bp.SetOneShot(True)
+                    event('scanner-word-read', **word_pending)
+                    assert process.Continue().Success()
+                    continue
+                assert mark_watch is not None and mark_watch.IsEnabled()
                 assert thread.GetStopReasonDataCount() == 1
                 assert thread.GetStopReasonDataAtIndex(0) == mark_watch.GetID()
                 value = word(mark_observation['address'], 1)
@@ -556,6 +620,9 @@ def debugger_stage():
                     after_stack = root_collection['after_stack']
                     assert current_roots['count'] >= after_stack['count']
                     assert current_roots['owner_indices'] and root_collection['accepted_spans']
+                    assert word_witness is not None and word_pending is None
+                    assert set(word_witness['accepted_owner_indices']) <= set(current_roots['owner_indices'])
+                    assert any(span.get('scanner_word') == word_witness for span in root_collection['accepted_spans'])
                     stack_indices = [i for i in current_roots['owner_indices'] if i < after_stack['count']]
                     assert stack_indices == after_stack['owner_indices'], 'stack-root prefix changed'
                     subsequent_indices = [i for i in current_roots['owner_indices'] if i >= after_stack['count']]
@@ -630,14 +697,57 @@ def debugger_stage():
                 assert bp.GetNumLocations() == 1
                 bp.SetThreadID(thread.GetThreadID())
                 bp.SetOneShot(True)
-                scan_returns[bp.GetID()] = dict(collection=root_collection['index'],
+                scan = dict(collection=root_collection['index'],
                     phase=root_collection['phase'], roots=roots, before_count=before['count'],
-                    begin=reg(frame, 'x1'), end=reg(frame, 'x2'), thread=thread.GetThreadID())
+                    begin=reg(frame, 'x1'), end=reg(frame, 'x2'), thread=thread.GetThreadID(),
+                    return_breakpoint=bp.GetID(), call_site=symbolize(reg(frame, 'x30'), True),
+                    scanner_sp=reg(frame, 'sp'))
+                scan_returns[bp.GetID()] = scan
+                if word_witness is None:
+                    _, _, _, candidates, _ = span_candidates(scan['begin'], scan['end'])
+                    if candidates:
+                        assert len(candidates) == 1 and word_pending is None, 'ambiguous scanner-word candidates'
+                        candidate = candidates[0]
+                        error = lldb.SBError()
+                        word_watch = target.WatchAddress(candidate['address'], 8, True, False, error)
+                        assert error.Success() and word_watch.IsValid() and word_watch.IsEnabled()
+                        assert word_watch.GetWatchAddress() == candidate['address'] and word_watch.GetWatchSize() == 8
+                        assert word_watch.GetID() > 0 and word_watch.GetID() != mark_watch.GetID()
+                        word_pending = dict(candidate, phase='armed', roots=roots, thread=thread.GetThreadID(),
+                                            span_return=bp.GetID(), span_breakpoint=next(i for i in ids if i in {b.GetID() for b in scan_bps}))
+                        event('scanner-word-watchpoint-admission', watchpoint=word_watch.GetID(), **word_pending)
             elif ids.intersection(scan_returns):
                 assert len(ids.intersection(scan_returns)) == 1
                 scan = scan_returns.pop(next(iter(ids.intersection(scan_returns))))
                 assert scan['thread'] == thread.GetThreadID()
+                assert word_pending is None, 'scanner span returned before the word witness completed'
                 accepted_span(scan, roots_snapshot(scan['roots']))
+            elif pointer_call_bp is not None and pointer_call_bp.GetID() in ids:
+                assert word_pending is not None and word_pending['phase'] == 'read'
+                assert thread.GetThreadID() == word_pending['thread']
+                loop = word_pending['loop']
+                assert frame.GetPC() == module.ResolveFileAddress(loop['call']).GetLoadAddress(target)
+                assert reg(frame, 'x0') == word_pending['roots'] and reg(frame, 'x1') == word_pending['value']
+                assert reg(frame, 'x26') == word_pending['address'] + 8
+                word_pending.update(phase='called', before=roots_snapshot(word_pending['roots']))
+                pointer_call_bp = None
+                pointer_return_bp = target.BreakpointCreateBySBAddress(module.ResolveFileAddress(loop['returned']))
+                assert pointer_return_bp.GetNumLocations() == 1
+                pointer_return_bp.SetThreadID(thread.GetThreadID())
+                pointer_return_bp.SetOneShot(True)
+            elif pointer_return_bp is not None and pointer_return_bp.GetID() in ids:
+                assert word_pending is not None and word_pending['phase'] == 'called'
+                assert thread.GetThreadID() == word_pending['thread']
+                assert frame.GetPC() == module.ResolveFileAddress(word_pending['loop']['returned']).GetLoadAddress(target)
+                before = word_pending['before']
+                after = roots_snapshot(word_pending['roots'], before['count'])
+                assert after['prefix_sha256'] == before['sha256'], 'root prefix changed across the scanner call'
+                accepted = [i for i in after['owner_indices'] if i >= before['count']]
+                assert accepted and word_witness is None, 'observed scanner word did not append the owner'
+                word_witness = dict(word_pending, phase='accepted', after=after, accepted_owner_indices=accepted)
+                word_pending = None
+                pointer_return_bp = None
+                event('accepted-scanner-word', **word_witness)
             elif weak_bp.GetID() in ids:
                 assert weak_creation is None
                 global_object, call = reg(frame, 'x0'), reg(frame, 'x1')
@@ -749,7 +859,9 @@ def debugger_stage():
             report['outcome'] = facts
             assert root_collections and any(c['accepted_spans'] for c in root_collections)
             report['root_collections'] = root_collections
-            report['classification'] = 'accepted machine-stack/subsequent scan spans and real-mark writer captured; exact originating scanner word and source frame remain unproven'
+            assert word_witness is not None and word_pending is None
+            report['scanner_word'] = word_witness
+            report['classification'] = 'exact scanner word appended the owner to accepted roots and real-mark writer captured; originating source frame remains unproven'
         report['passed'] = True
     except BaseException as error:
         report['gap'] = str(error)
@@ -758,7 +870,8 @@ def debugger_stage():
         if stage == 'trace':
             report['observation'] = {'weak_targets': weak, 'owner': owner, 'returned': returned,
                                       'gc_count': gc_count, 'pending_weak_constructor': weak_creation,
-                                      'root_collections': root_collections, 'pending_scan_returns': scan_returns}
+                                      'root_collections': root_collections, 'pending_scan_returns': scan_returns,
+                                      'scanner_word': word_witness, 'pending_word': word_pending}
         if process is not None and process.IsValid() and process.GetState() != lldb.eStateExited:
             process.Kill()
         write(stage + '.json', report)
