@@ -134,13 +134,49 @@ argv = ['cmake', '-S', str(ENGINE), '-B', str(engine_build), '-G', 'Ninja',
         '-DUSE_MIMALLOC=ON', '-DUSE_EXTERNAL_MIMALLOC=ON']
 write('engine-build-command.json', {'argv': argv, 'compiler': 'clang/clang++ 23.1.1',
                                    'linker_flags': '-fuse-ld=lld'})
+def header_comparison_bytes(name, path, shipping):
+    # The pinned packager adds a version after compilation; offlineasm embeds its Ruby-source hash.
+    if path.stat().st_size > 16 * 1024**2:
+        return None
+    data = path.read_bytes()
+    if name == 'include/cmakeconfig.h':
+        if shipping:
+            stamp = ('\n#define BUN_WEBKIT_VERSION "' + WEBKIT + '"\n').encode()
+            return data[:-len(stamp)] if data.endswith(stamp) else None
+        return data
+    provenance = {
+        'include/JavaScriptCore/LLIntDesiredSettings.h': (0, b'// SettingsExtractor input hash: '),
+        'include/JavaScriptCore/LLIntDesiredOffsets.h': (0, b'// OffsetExtractor input hash: '),
+        'include/JavaScriptCore/LLIntAssembly.h': (-1, b'// offlineasm input hash: '),
+    }
+    if name not in provenance:
+        return None
+    index, prefix = provenance[name]
+    lines = data.splitlines(keepends=True)
+    observed = (b'23ac489dfebf7c9e22c7bc44e6826b164320e3d9' if shipping
+                else b'0c288d42d6b2ddc755f5b6e880f0cc180650c33f')
+    token = b' ' + observed + b' '
+    if not lines or not lines[index].startswith(prefix) or lines[index].count(token) != 1:
+        return None
+    lines[index] = lines[index].replace(token, b' <offlineasm-self-hash> ', 1)
+    return b''.join(lines)
+
+
 def check_headers(headers, phase):
     missing = [str(name) for name in headers if str(name) not in before]
     mismatched = {str(name): {'shipping': before[str(name)], 'rebuilt': sha(path)}
                   for name, path in headers.items() if str(name) in before and sha(path) != before[str(name)]}
+    raw_mismatched = dict(mismatched)
+    provenance_only = {}
+    for name in raw_mismatched:
+        original = header_comparison_bytes(name, bundle / name, True)
+        rebuilt = header_comparison_bytes(name, headers[Path(name)], False)
+        if original is not None and rebuilt is not None and original == rebuilt:
+            provenance_only[name] = {**mismatched.pop(name),
+                                     'comparison_sha256': hashlib.sha256(original).hexdigest()}
     evidence = {}
     evidence_bytes = 0
-    for name in sorted(mismatched)[:4]:
+    for name in sorted(raw_mismatched)[:4]:
         paths = {'shipping': bundle / name, 'rebuilt': headers[Path(name)]}
         size = sum(path.stat().st_size for path in paths.values())
         if evidence_bytes + size > 128 * 1024**2:
@@ -180,7 +216,8 @@ def check_headers(headers, phase):
         else:
             evidence_bytes += difference_bytes
     write(phase + '-header-parity.json', {'files': len(headers), 'missing': missing,
-                                         'mismatched': mismatched, 'evidence': evidence})
+                                         'mismatched': mismatched, 'provenance_only': provenance_only,
+                                         'raw_mismatched': raw_mismatched, 'evidence': evidence})
     assert not missing and not mismatched, 'rebuilt core headers differ from the shipping consumer headers'
 
 
