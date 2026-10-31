@@ -161,6 +161,9 @@ def debugger_stage():
     word_witness = None
     pointer_call_bp = None
     pointer_return_bp = None
+    writer_entry_bp = None
+    writer_watch = None
+    writer_state = None
 
     def event(kind, **values):
         report['events'].append({'kind': kind, **values})
@@ -467,6 +470,44 @@ def debugger_stage():
                 assert len(candidates) <= 64, 'candidate-word bound exceeded'
         return begin, end, cell_size, candidates, hashlib.sha256(raw).hexdigest()
 
+    def stack_word_write(frame, thread):
+        assert writer_state is not None and thread.GetThreadID() == writer_state['thread']
+        assert len(writer_state['writes']) < 32, 'stack-writer stop budget exhausted'
+        pc = frame.GetPC()
+        instructions = target.ReadInstructions(target.ResolveLoadAddress(pc - 8), 3)
+        assert instructions.GetSize() == 3, 'stack-writer instruction window unavailable'
+        rows = []
+        for i in range(3):
+            instruction = instructions.GetInstructionAtIndex(i)
+            rows.append(dict(pc=instruction.GetAddress().GetLoadAddress(target),
+                             mnemonic=instruction.GetMnemonic(target), operands=instruction.GetOperands(target)))
+        event('candidate-stack-writer-stop', pc=pc, slot_value=word(writer_state['address']),
+              sp=reg(frame, 'sp'), fp=reg(frame, 'x29'), instructions=rows)
+        # LLDB ARM exposes a write watch after stepping the store. Admit its effective
+        # destination; an Always watch may otherwise report an adjacent access.
+        instruction = rows[1]
+        assert instruction['pc'] == pc - 4 and instruction['mnemonic'] in ('str', 'stur', 'stp'), 'unsupported stack-writer instruction'
+        match = re.fullmatch(r'([xwqds]\d+|[xw]zr)(?:, ([xwqds]\d+|[xw]zr))?, \[(sp|x29)(?:, #(-?0x[0-9a-f]+))?\](!)?(?:, #(-?0x[0-9a-f]+))?', instruction['operands'])
+        assert match is not None, 'unsupported stack-writer addressing mode'
+        first, second, base, offset, pre, post = match.groups()
+        assert (second is not None) == (instruction['mnemonic'] == 'stp')
+        width = {'x': 8, 'w': 4, 'q': 16, 'd': 8, 's': 4}[first[0]]
+        assert second is None or second[0] == first[0]
+        base_value = reg(frame, base)
+        address = base_value if pre else base_value + int(offset or '0', 16)
+        if post:
+            assert offset is None and pre is None
+            address = base_value - int(post, 16)
+        size = width * (2 if second else 1)
+        slot = writer_state['address']
+        assert max(address, slot) < min(address + size, slot + 8), 'watchpoint was an adjacent write'
+        receipt = dict(pc=pc, store_pc=pc - 4, source=symbolize(pc - 4),
+                       instruction=instruction, destination=address, bytes=size,
+                       registers={name: frame.FindRegister(name).GetValue() for name in [first, second] if name},
+                       slot_value=word(slot), sp=reg(frame, 'sp'), fp=reg(frame, 'x29'))
+        writer_state['writes'].append(receipt)
+        event('stack-word-write', **receipt)
+
     def conducting_state(frame, thread, heap):
         collector = typed(number(field(heap, 'm_collector')), 'JSC::Collector')
         state_address, conductor = reg(frame, 'x4'), reg(frame, 'x5')
@@ -598,6 +639,18 @@ def debugger_stage():
             weak_return_bp = None
             completion_bp, completion_address = entry('Bun__UpgradedDuplex__onWriteComplete')
             gc_bp, _ = entry('JSC__VM__runGC')
+            writer_entry_bp, writer_entry_address = entry('JSC::Interpreter::executeCall')
+            assert writer_entry_address.GetFileAddress() == 88383168
+            prologue = writer_entry_address.GetFunction().GetInstructions(target)
+            expected = [('sub', 'sp, sp, #0x180'), ('stp', 'x29, x30, [sp, #0x120]'),
+                        ('stp', 'x28, x27, [sp, #0x130]'), ('stp', 'x26, x25, [sp, #0x140]'),
+                        ('stp', 'x24, x23, [sp, #0x150]'), ('stp', 'x22, x21, [sp, #0x160]'),
+                        ('stp', 'x20, x19, [sp, #0x170]'), ('add', 'x29, sp, #0x120')]
+            for i, expected_instruction in enumerate(expected):
+                instruction = prologue.GetInstructionAtIndex(i)
+                assert instruction.GetAddress().GetFileAddress() == 88383168 + i * 4
+                assert (instruction.GetMnemonic(target), instruction.GetOperands(target)) == expected_instruction
+            writer_entry_bp.SetEnabled(False)
             mark_bp = target.BreakpointCreateByLocation('Collector.cpp', 1068)
             assert mark_bp.GetNumLocations() > 0, 'missing post-mark verifier boundary'
             mark_bp.SetEnabled(False)
@@ -674,6 +727,11 @@ def debugger_stage():
             if thread.GetStopReason() == lldb.eStopReasonWatchpoint:
                 assert stage == 'trace' and thread.GetStopReasonDataCount() == 1
                 watch_id = thread.GetStopReasonDataAtIndex(0)
+                if writer_watch is not None and watch_id == writer_watch.GetID():
+                    assert writer_watch.IsEnabled()
+                    stack_word_write(frame, thread)
+                    assert process.Continue().Success()
+                    continue
                 if word_watch is not None and watch_id == word_watch.GetID():
                     assert word_watch.IsEnabled() and word_pending is not None
                     word_watch.SetEnabled(False)
@@ -757,6 +815,31 @@ def debugger_stage():
                     assert not (OUT / 'child.json').exists(), 'multiple selected children'
                     write('child.json', {'argv': values, 'script_sha256': hashlib.sha256(values[2].encode()).hexdigest()})
                     event('captured-actual-fixture-child')
+            elif writer_entry_bp is not None and writer_entry_bp.GetID() in ids:
+                assert returned and gc_count == 30 and owner is not None
+                interpreter = field(typed(owner['vm'], 'JSC::VM'), 'interpreter')
+                timer_return = module.ResolveFileAddress(27509448).GetLoadAddress(target)
+                if reg(frame, 'x0') == interpreter.GetLoadAddress() and reg(frame, 'x30') == timer_return:
+                    assert writer_state is None and writer_watch is None
+                    # Admitted prologue: FP=entrySP-0x180+0x120. The previous proof
+                    # placed the accepted word at FP-0x40; this run must rediscover it.
+                    entry_sp = reg(frame, 'sp')
+                    prospective_fp = entry_sp - 0x60
+                    address = prospective_fp - 0x40
+                    assert address % 8 == 0
+                    options = lldb.SBWatchpointOptions()
+                    options.SetWatchpointTypeRead(False)
+                    options.SetWatchpointTypeWrite(lldb.eWatchpointWriteTypeAlways)
+                    assert options.GetWatchpointTypeWrite() == lldb.eWatchpointWriteTypeAlways
+                    error = lldb.SBError()
+                    writer_watch = target.WatchpointCreateByAddress(address, 8, options, error)
+                    assert error.Success() and writer_watch.IsValid() and writer_watch.IsEnabled()
+                    assert writer_watch.GetWatchAddress() == address and writer_watch.GetWatchSize() == 8
+                    writer_state = dict(address=address, thread=thread.GetThreadID(), entry_sp=entry_sp,
+                                        prospective_fp=prospective_fp, initial_value=word(address), writes=[],
+                                        incoming={name: reg(frame, name) for name in ['x' + str(i) for i in range(6)]})
+                    writer_entry_bp.SetEnabled(False)
+                    event('stack-writer-watchpoint-admission', watchpoint=writer_watch.GetID(), **writer_state)
             elif stack_roots_bp.GetID() in ids:
                 assert returned and gc_count == 31 and owner is not None
                 heap = field(typed(owner['vm'], 'JSC::VM'), 'heap')
@@ -803,6 +886,11 @@ def debugger_stage():
                     if candidates:
                         assert len(candidates) == 1 and word_pending is None, 'ambiguous scanner-word candidates'
                         candidate = candidates[0]
+                        assert writer_state is not None and writer_watch.IsEnabled(), 'selected timer frame was not watched'
+                        assert writer_state['thread'] == thread.GetThreadID() and candidate['address'] == writer_state['address'], 'accepted word differs from watched frame slot'
+                        assert writer_state['writes'] and writer_state['writes'][-1]['slot_value'] == candidate['value'], 'no admitted write of the accepted owner in this frame'
+                        writer_watch.SetEnabled(False)
+                        assert not writer_watch.IsEnabled()
                         error = lldb.SBError()
                         word_watch = target.WatchAddress(candidate['address'], 8, True, False, error)
                         assert error.Success() and word_watch.IsValid() and word_watch.IsEnabled()
@@ -893,6 +981,8 @@ def debugger_stage():
                     gc_count += 1
                     assert gc_count <= 31
                     # The fixture collects once for queuedRoot, then thirty times before its final deref.
+                    if gc_count == 30:
+                        writer_entry_bp.SetEnabled(True)
                     if gc_count == 31:
                         _, allocation = precise_allocation(owner['owner'])
                         marked = field(field(typed(allocation, 'JSC::PreciseAllocation'), 'm_isMarked'), 'value')
@@ -960,7 +1050,13 @@ def debugger_stage():
                           for span in collection['accepted_spans'] if 'word_provenance' in span]
             assert len(provenance) == 1
             report['word_provenance'] = provenance[0]
-            report['classification'] = 'exact accepted scanner word and original conductor provenance captured; source variable and originating writer remain unproven'
+            assert writer_state is not None and provenance[0]['kind'] == 'original-conductor-stack'
+            assert provenance[0]['storage_address'] == writer_state['address']
+            upper = provenance[0]['interval']['upper']
+            assert upper['fp'] == writer_state['prospective_fp']
+            assert upper['saved_lr'] == module.ResolveFileAddress(27509448).GetLoadAddress(target)
+            report['stack_word_writer'] = writer_state
+            report['classification'] = 'exact accepted scanner word tied to an admitted physical stack write; source variable and earlier register origin remain unproven'
         report['passed'] = True
     except BaseException as error:
         report['gap'] = str(error)
@@ -970,7 +1066,8 @@ def debugger_stage():
             report['observation'] = {'weak_targets': weak, 'owner': owner, 'returned': returned,
                                       'gc_count': gc_count, 'pending_weak_constructor': weak_creation,
                                       'root_collections': root_collections, 'pending_scan_returns': scan_returns,
-                                      'scanner_word': word_witness, 'pending_word': word_pending}
+                                      'scanner_word': word_witness, 'pending_word': word_pending,
+                                      'stack_word_writer': writer_state}
         if process is not None and process.IsValid() and process.GetState() != lldb.eStateExited:
             process.Kill()
         write(stage + '.json', report)
