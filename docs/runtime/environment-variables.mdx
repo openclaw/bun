@@ -230,6 +230,34 @@ Bun reads these environment variables to configure aspects of its behavior.
 | `BUN_OPTIONS`                            | Prepends command-line arguments to any Bun execution. For example, `BUN_OPTIONS="--hot"` makes `bun run dev` behave like `bun --hot run dev`.                                                                                                                                                                                                                                 |
 | `DATABASE_URL`                           | Connection URL of the default [`Bun.sql`](/runtime/sql) client. `Bun.sql` also reads `POSTGRES_URL`, `MYSQL_URL`, `PGHOST` and others: see [Database Environment Variables](/runtime/sql#database-environment-variables).                                                                                                                                                     |
 
+## Worker VM tracing
+
+Set `BUN_WORKER_VM_TRACE` to an absolute file path to record native Worker VM lifetimes as JSONL. Bun replaces every `%p` in the path with the process ID. The parent directory must exist, and the destination must be a new file. Bun exits with an error if it cannot create or write the trace.
+
+```sh
+BUN_WORKER_VM_TRACE=/tmp/worker-vm-%p.jsonl bun run app.ts
+```
+
+Bun reads this setting once at process startup, before user code. Child processes that inherit the setting create their own files when the path contains `%p`. The trace records no source code, messages, worker names, or environment values.
+
+Every record contains `version: 1`, `event`, `pid`, and `nativeTid`. `nativeTid` is the operating system's thread ID, distinct from a Worker context ID.
+
+The `trace-ready` record also contains `parentPid`, the process's parent ID at startup. It is `0` if the operating system reports no parent or the ID is unavailable.
+
+| Event            | Meaning                                                                                    |
+| ---------------- | ------------------------------------------------------------------------------------------ |
+| `trace-ready`    | The trace file is open, including for commands that create no Workers.                     |
+| `thread-spawned` | The parent created a native Worker thread. `nativeTid` identifies the parent thread.       |
+| `thread-start`   | A native Worker thread entered its main function.                                          |
+| `vm-published`   | The Worker VM and its handle are published.                                                |
+| `vm-destroyed`   | The Worker VM has finished destruction and its allocation has been freed.                  |
+| `thread-end`     | The Worker main function returned, before the native thread releases its final references. |
+| `trace-end`      | The process exit callback ended capture.                                                   |
+
+Worker events also contain numeric `contextId` and `parentContextId` fields. Match events by context ID: `thread-spawned` can follow `thread-start` because the new thread runs concurrently with its parent. A Worker terminated before VM publication has no VM events. A constructor rejected before native thread creation has no Worker events.
+
+The `trace-end` record contains numeric `spawned`, `started`, `published`, `destroyed`, and `ended` totals. `spawned` includes native Workers that have not yet entered their main function. `complete` is `1` when the thread and VM totals balance, or `0` when process exit skipped Worker teardown. A missing `trace-ready`, missing `trace-end`, or `complete: 0` means the capture is incomplete. An incomplete capture does not prove that no Workers existed. These totals cover Worker VMs, not the main VM or other native threads.
+
 ## Runtime transpiler caching
 
 For files larger than 4 KB, Bun caches transpiled output into `$BUN_RUNTIME_TRANSPILER_CACHE_PATH` or the platform-specific cache directory. This makes CLIs using Bun load faster.

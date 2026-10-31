@@ -28,6 +28,31 @@ async function buildAndHash(folder: string, ...command: string[]) {
 }
 
 const buildLimit = 300_000;
+
+test(
+  "evaluated text has reproducible names in independent build roots",
+  () =>
+    slot(async () => {
+      const files = {
+        "app.ts": `const answer = new Function("value", "return value + 1;"); console.log(answer(41));\n`,
+      };
+      using first = tempDir("compile-evaluated-first", files);
+      using second = tempDir("compile-evaluated-second", files);
+      const left = await buildAndHash(String(first), "build", "--compile", "--aot", "app.ts");
+      const right = await buildAndHash(String(second), "build", "--compile", "--aot", "app.ts");
+      expect(right.sha256).toBe(left.sha256);
+      for (const folder of [String(first), String(second)]) {
+        const ran = await spawned([executable(folder, "app")], folder, interpreterForbidden);
+        expect({ stdout: ran.stdout, exitCode: ran.exitCode, signal: ran.signal }).toEqual({
+          stdout: "42\n",
+          exitCode: 0,
+          signal: null,
+        });
+      }
+    }),
+  buildLimit,
+);
+
 const program = {
   "app.ts": `import { twice } from "./lib";\nconst list: number[] = [1, 2, 3];\nconsole.log(list.map(twice).join(), process.argv.slice(2).join(" "));\n`,
   "lib.ts": `export function twice(n: number): number {\n  return n * 2;\n}\n`,
@@ -335,6 +360,60 @@ for (const request of requests) {
     });
     expect(existsSync(executable(folder, "out"))).toBe(false);
   });
+
+  test.each(["aotCountBranches", "aotCountArrivals"])(
+    "Bun.build validates compile.%s before reading inputs",
+    async key => {
+      using dir = tempDir("compile-counter-options", {
+        "reject.ts": `
+        const key = process.argv[2];
+        const requests = [
+          { compile: { [key]: true } },
+          { compile: { aot: true, [key]: "yes" } },
+        ];
+        for (const request of requests) {
+          try {
+            await Bun.build({ entrypoints: ["./missing.ts"], ...request });
+            console.log("built");
+          } catch (error) {
+            console.log(error.code ?? "error", error.message);
+          }
+        }
+      `,
+      });
+      const ran = await bun(String(dir), "reject.ts", key);
+      expect({ stdout: ran.stdout, stderr: ran.stderr, exitCode: ran.exitCode }).toEqual({
+        stdout:
+          `ERR_INVALID_ARG_TYPE compile.${key} requires compile.aot: true\n` +
+          `ERR_INVALID_ARG_TYPE The "${key}" property must be of type boolean, got string\n`,
+        stderr: "",
+        exitCode: 0,
+      });
+    },
+  );
+
+  test(
+    "false API counter options leave a non-AOT build unchanged",
+    () =>
+      slot(async () => {
+        using dir = tempDir("compile-counter-options-false", {
+          ...program,
+          "build.ts": `
+        const result = await Bun.build({ entrypoints: ["./app.ts"], compile: {
+          outfile: "./app", aotCountBranches: false, aotCountArrivals: false,
+        } });
+        console.log(result.success);
+      `,
+        });
+        const folder = String(dir);
+        const ran = await bun(folder, "build.ts");
+        expect({ stdout: ran.stdout, exitCode: ran.exitCode }).toEqual({ stdout: "true\n", exitCode: 0 });
+        const app = executable(folder, "app");
+        expect(hasCompiledProgram(app)).toBe(false);
+        expect(await spawned([app], folder, env)).toMatchObject({ stdout: "2,4,6 \n", exitCode: 0, signal: null });
+      }),
+    buildLimit,
+  );
 
   test.each(Object.keys(publicFlags))("bun %s --help", async (command: string) => {
     using dir = tempDir("compile-help", program);
