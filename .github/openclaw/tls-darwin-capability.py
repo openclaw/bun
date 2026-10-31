@@ -98,6 +98,7 @@ def type_layouts(target):
     for name in ('JSC::VM', 'JSC::Heap', 'JSC::Collector', 'JSC::PreciseAllocation',
                  'JSC::VerifierSlotVisitor', 'JSC::VerifierSlotVisitor::PreciseAllocationData',
                  'JSC::ConservativeRoots', 'JSC::CurrentThreadState', 'JSC::RegisterState',
+                 'JSC::JSLexicalEnvironment', 'JSC::JSGenerator',
                  'JSC::JSGlobalObject', 'JSC::JSWeakObjectRef', 'JSC::ProtoCallFrame',
                  'WTF::StackTrace', 'Zig::JSFFIFunction',
                  'bun_runtime::socket::socket_body::DuplexUpgradeContext',
@@ -133,7 +134,10 @@ def inspect(debugger):
     assert module.GetUUIDString().lower() == inputs['uuid']
     layouts = type_layouts(target)
     functions = {}
-    for name in ('JSC::constructWeakRef', 'JSC__VM__runGC', 'posix_spawn_bun',
+    for name in ('JSC::constructWeakRef', 'JSC::JSWeakObjectRef::finishCreation',
+                 'JSC::JSWeakObjectRef::deref', 'JSC__VM__runGC', 'posix_spawn_bun',
+                 'JSC::SlotVisitor::appendConservativeRoots', 'JSC::SlotVisitor::appendJSCellOrAuxiliary',
+                 'JSC::Heap::testAndSetMarked', 'JSC::sanitizeStackForVM',
                  'JSC::MachineThreads::gatherConservativeRoots', 'JSC::ConservativeRoots::genericAddSpan',
                  'JSC::ConservativeRoots::genericAddPointer', 'JSC::Interpreter::executeCall',
                  'Bun__UpgradedDuplex__onWriteComplete',
