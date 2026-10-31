@@ -393,6 +393,12 @@ The `Terminal` object returned by `proc.terminal` has the following methods:
 // Write data to the terminal
 proc.terminal.write("echo hello\n");
 
+// Pause output reads to apply backpressure to the child
+proc.terminal.pause();
+
+// Resume output delivery on a later event-loop turn
+proc.terminal.resume();
+
 // Resize the terminal
 proc.terminal.resize(120, 40);
 
@@ -406,6 +412,10 @@ proc.terminal.unref();
 // Close the terminal
 proc.terminal.close();
 ```
+
+`pause()` stops reading output from the PTY, including when called inside `data`. Once the OS buffer fills, the child's writes block. `resume()` restarts delivery on a later event-loop turn. Both methods are idempotent and do nothing after close or EOF. They leave input writes, `drain`, resizing, raw mode, and termios settings unchanged.
+
+The PTY `exit` callback fires after output resumes and drains. Whether `proc.exited` resolves before resume depends on the operating system. Pausing preserves the terminal's `ref()`/`unref()` choice while its child runs. Closing or disposing a paused terminal still tears it down.
 
 ### Reusable Terminal
 

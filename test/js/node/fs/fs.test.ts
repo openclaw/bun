@@ -3411,6 +3411,65 @@ it.if(isMacOS)("realpath resolves what macOS only resolves for open()", async ()
   }
 });
 
+// macOS closes all of a process's POSIX locks on an inode when any fd for it closes.
+it.skipIf(process.platform !== "darwin")("realpathSync preserves POSIX byte-range locks", async () => {
+  using dir = tempDir("fs-realpath-lock", {
+    locked: "x",
+    "probe.mjs": `
+      import { dlopen, read } from 'bun:ffi';
+      import { openSync, closeSync, realpathSync } from 'node:fs';
+      import { spawnSync } from 'node:child_process';
+      import { constants } from 'node:os';
+      import assert from 'node:assert/strict';
+      const libc = dlopen('/usr/lib/libSystem.B.dylib', {
+        lockf: { args: ['int', 'int', 'i64'], returns: 'int' },
+        __error: { args: [], returns: 'ptr' },
+      });
+      const fd = openSync('locked', 'r+');
+      const F_ULOCK = 0, F_TLOCK = 2;
+      try {
+        if (process.argv[2] === 'probe') {
+          const result = libc.symbols.lockf(fd, F_TLOCK, 1);
+          const errno = result === -1 ? read.i32(libc.symbols.__error()) : 0;
+          if (result === 0) assert.equal(libc.symbols.lockf(fd, F_ULOCK, 1), 0);
+          console.log(JSON.stringify({ result, errno }));
+        } else {
+          assert.equal(libc.symbols.lockf(fd, F_TLOCK, 1), 0);
+          const probe = () => {
+            const child = spawnSync(process.execPath, [import.meta.path, 'probe'], { encoding: 'utf8' });
+            assert.equal(child.status, 0, child.stderr);
+            return JSON.parse(child.stdout);
+          };
+          const before = probe();
+          assert.equal(before.result, -1, 'lock must exclude a second process before realpath');
+          assert.ok([constants.errno.EAGAIN, constants.errno.EACCES].includes(before.errno));
+          for (const resolve of [realpathSync, realpathSync.native]) {
+            resolve('locked');
+            const after = probe();
+            assert.equal(after.result, -1, "realpath must preserve another open descriptor's lock");
+            assert.ok([constants.errno.EAGAIN, constants.errno.EACCES].includes(after.errno));
+          }
+          console.log('lock preserved');
+        }
+      } finally {
+        libc.symbols.lockf(fd, F_ULOCK, 1);
+        closeSync(fd);
+        libc.close();
+      }
+    `,
+  });
+  await using proc = Bun.spawn({
+    cmd: [bunExe(), "probe.mjs", "parent"],
+    cwd: String(dir),
+    env: bunEnv,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect({ stdout, stderr }).toEqual({ stdout: "lock preserved\n", stderr: "" });
+  expect(exitCode).toBe(0);
+});
+
 // Regression guard for realpathSync on POSIX hosts. On Linux, getFdPath has
 // a /dev/fd fallback for environments where /proc is broken (FreeBSD
 // Linuxulator) or absent (minimal containers).
