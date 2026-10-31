@@ -1,0 +1,342 @@
+name: P6 native Linux x64 AOT compilers
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: P6 compiler, application, same-host comparison, or Teams follow-on
+        type: choice
+        default: compiler
+        options:
+          - compiler
+          - app
+          - benchmark
+          - teams
+      app_variants:
+        description: Application variants (Teams requires explicit js-c2 or ts)
+        type: choice
+        default: all
+        options:
+          - all
+          - js-c2
+          - ts
+      app_run_id:
+        description: Completed originating app run ID (benchmark or Teams)
+        type: string
+      app_run_attempt:
+        description: Exact originating app run attempt
+        type: string
+      app_workflow_head:
+        description: Exact originating app workflow commit
+        type: string
+      app_workflow_id:
+        description: Exact originating app workflow ID
+        type: string
+      app_repository_id:
+        description: Exact originating repository ID
+        type: string
+      app_artifact_id:
+        description: Exact originating app artifact ID
+        type: string
+      app_artifact_name:
+        description: Exact originating app artifact name
+        type: string
+      app_zip_sha256:
+        description: Exact originating artifact ZIP SHA256
+        type: string
+      app_zip_bytes:
+        description: Exact originating artifact ZIP byte count
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p6-native-linux-x64-compilers
+  cancel-in-progress: false
+
+jobs:
+  linux-x64:
+    if: github.repository == 'openclaw/bun' && github.ref == 'refs/heads/openclaw/aot-rd-P6' && (inputs.mode == 'compiler' || inputs.mode == '')
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    timeout-minutes: 240
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Establish work deadline
+        run: |
+          {
+            echo "P6_DEADLINE_EPOCH=$(( $(date +%s) + 12600 ))"
+            echo "P6_WORK=$RUNNER_TEMP/p6-aot-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            echo "P6_CONTAINER=p6-aot-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          } >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/openclaw-p6
+      - name: Stage exact source and bootstrap native Docker toolchain
+        run: |
+          mkdir -p "$P6_WORK"
+          bash scripts/openclaw-p6/host.sh bootstrap
+      - name: Build and preserve standard compiler
+        id: build_standard
+        run: bash scripts/openclaw-p6/host.sh cb-standard
+      - name: Export standard compiler
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: p6-linux-x64-standard-${{ github.sha }}-attempt${{ github.run_attempt }}
+          path: ${{ env.P6_WORK }}/data/rd150c-x64-highmem-deadline-v1/preserved-cb-standard/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+      - name: Build and preserve physical ShadowRealm-off compiler
+        id: build_shadowrealm_off
+        run: bash scripts/openclaw-p6/host.sh cb-compat
+      - name: Export ShadowRealm-off compiler
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: p6-linux-x64-shadowrealm-off-${{ github.sha }}-attempt${{ github.run_attempt }}
+          path: ${{ env.P6_WORK }}/data/rd150c-x64-highmem-deadline-v1/preserved-cb-compat/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+      - name: Stop and remove owned container
+        if: always()
+        run: bash scripts/openclaw-p6/host.sh cleanup
+      - name: Export UNQUALIFIED FAILED standard compiler diagnostics
+        if: failure() && steps.build_standard.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: p6-linux-x64-UNQUALIFIED-FAILED-standard-${{ github.sha }}-attempt${{ github.run_attempt }}
+          path: |
+            ${{ env.P6_WORK }}/data/rd150c-x64-highmem-deadline-v1/build-standard/bun
+            ${{ env.P6_WORK }}/data/rd150c-x64-highmem-deadline-v1/build-standard/configure.json
+          if-no-files-found: warn
+          compression-level: 0
+          retention-days: 7
+      - name: Export UNQUALIFIED FAILED ShadowRealm-off compiler diagnostics
+        if: failure() && steps.build_shadowrealm_off.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: p6-linux-x64-UNQUALIFIED-FAILED-shadowrealm-off-${{ github.sha }}-attempt${{ github.run_attempt }}
+          path: |
+            ${{ env.P6_WORK }}/data/rd150c-x64-highmem-deadline-v1/build-c2/bun
+            ${{ env.P6_WORK }}/data/rd150c-x64-highmem-deadline-v1/build-c2/configure.json
+          if-no-files-found: warn
+          compression-level: 0
+          retention-days: 7
+      - name: Export compiler receipts, including failures
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: p6-linux-x64-receipts-${{ github.sha }}-attempt${{ github.run_attempt }}
+          path: |
+            ${{ env.P6_WORK }}/data/proof/
+            ${{ env.P6_WORK }}/data/rd150c-x64-highmem-deadline-v1/receipts/
+            ${{ env.P6_WORK }}/data/rd150c-x64-highmem-deadline-v1/source-ready.json
+            ${{ env.P6_WORK }}/data/rd150c-x64-highmem-deadline-v1/raw-cb-*/
+            ${{ env.P6_WORK }}/container-final.json
+            ${{ env.P6_WORK }}/containers-after-cleanup.txt
+          if-no-files-found: warn
+          compression-level: 0
+          retention-days: 7
+  linux-x64-app:
+    if: github.repository == 'openclaw/bun' && github.ref == 'refs/heads/openclaw/aot-rd-P6' && inputs.mode == 'app'
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    timeout-minutes: 240
+    permissions:
+      contents: read
+      actions: read
+    env:
+      P6_APP_VARIANTS: ${{ inputs.app_variants }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Establish bounded application work deadline
+        run: |
+          {
+            echo "P6_DEADLINE_EPOCH=$(( $(date +%s) + 13800 ))"
+            echo "P6_WORK=$RUNNER_TEMP/p6-app-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            echo "P6_CONTAINER=p6-app-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          } >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/openclaw-p6
+      - name: Initialize isolated native x64 application container
+        run: bash scripts/openclaw-p6/app/host.sh bootstrap
+      - name: Import the exact verified compiler pair
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -B scripts/openclaw-p6/app/download.py
+      - name: Prepare fresh frozen source, dependencies, dist and plugins
+        id: prepare
+        run: bash scripts/openclaw-p6/app/host.sh prepare
+      - name: Activate execution-bound encrypted task paging
+        id: paging
+        run: bash scripts/openclaw-p6/app/host.sh paging
+      - name: Build and qualify JS AOT
+        if: steps.prepare.outcome == 'success' && steps.paging.outcome == 'success' && !cancelled() && inputs.app_variants != 'ts'
+        id: js
+        continue-on-error: true
+        run: bash scripts/openclaw-p6/app/host.sh variant js
+      - name: Build and qualify physical ShadowRealm-off C2 AOT
+        if: steps.prepare.outcome == 'success' && steps.paging.outcome == 'success' && !cancelled() && inputs.app_variants != 'ts'
+        id: c2
+        continue-on-error: true
+        run: bash scripts/openclaw-p6/app/host.sh variant c2-off
+      - name: Build and qualify TypeScript source AOT
+        if: steps.prepare.outcome == 'success' && steps.paging.outcome == 'success' && !cancelled() && inputs.app_variants != 'js-c2'
+        id: ts
+        continue-on-error: true
+        run: bash scripts/openclaw-p6/app/host.sh variant ts
+      - name: Attempt actual application guest MDWE on the available native KVM device
+        if: steps.prepare.outcome == 'success' && steps.paging.outcome == 'success' && !cancelled() && inputs.app_variants != 'ts'
+        continue-on-error: true
+        run: bash scripts/openclaw-p6/app/host.sh guest
+      - name: Stop owned workloads and remove encrypted task paging
+        if: always()
+        run: bash scripts/openclaw-p6/app/host.sh cleanup
+      - name: Select explicit application artifacts and synthetic receipts
+        if: always()
+        run: sudo -n env -i PATH=/usr/bin:/bin P6_WORK="$P6_WORK" python3 -B scripts/openclaw-p6/app/export.py
+      - name: Export bounded application attempt
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: p6-linux-x64-app-${{ github.sha }}-attempt${{ github.run_attempt }}
+          path: ${{ env.P6_WORK }}/export/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+      - name: Require completed requested variants
+        if: always()
+        run: python3 -B scripts/openclaw-p6/app/export.py --require-complete
+  linux-x64-benchmark:
+    if: github.repository == 'openclaw/bun' && github.ref == 'refs/heads/openclaw/aot-rd-P6' && inputs.mode == 'benchmark'
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    timeout-minutes: 240
+    permissions:
+      contents: read
+      actions: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      P6_EXECUTION_MODE: benchmark
+    steps:
+      - name: Establish bounded benchmark work deadline
+        run: |
+          {
+            echo "P6_DEADLINE_EPOCH=$(( $(date +%s) + 13800 ))"
+            echo "P6_WORK=$RUNNER_TEMP/p6-benchmark-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            echo "P6_CONTAINER=p6-benchmark-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          } >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/openclaw-p6
+      - name: Bind exact completed app attempt and artifact
+        env:
+          P6_APP_RUN_ID: ${{ inputs.app_run_id }}
+          P6_APP_RUN_ATTEMPT: ${{ inputs.app_run_attempt }}
+          P6_APP_WORKFLOW_HEAD: ${{ inputs.app_workflow_head }}
+          P6_APP_WORKFLOW_ID: ${{ inputs.app_workflow_id }}
+          P6_APP_REPOSITORY_ID: ${{ inputs.app_repository_id }}
+          P6_APP_ARTIFACT_ID: ${{ inputs.app_artifact_id }}
+          P6_APP_ARTIFACT_NAME: ${{ inputs.app_artifact_name }}
+          P6_APP_ZIP_SHA256: ${{ inputs.app_zip_sha256 }}
+          P6_APP_ZIP_BYTES: ${{ inputs.app_zip_bytes }}
+        run: python3 -B scripts/openclaw-p6/app/benchmark/initialize.py inputs
+      - name: Download exact compiler pair and completed app artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -B scripts/openclaw-p6/app/benchmark/host.py download
+      - name: Initialize fresh native x64 benchmark container without paging
+        run: python3 -B scripts/openclaw-p6/app/benchmark/host.py bootstrap
+      - name: Restore admitted apps and run complete selected-cell comparison
+        run: python3 -B scripts/openclaw-p6/app/benchmark/host.py run
+      - name: Stop owned benchmark workloads
+        if: always()
+        run: bash scripts/openclaw-p6/app/host.sh cleanup
+      - name: Select benchmark and untimed qualification evidence
+        if: always()
+        run: sudo -n env -i PATH=/usr/bin:/bin P6_WORK="$P6_WORK" python3 -B scripts/openclaw-p6/app/benchmark/export.py
+      - name: Export benchmark attempt including failures
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: p6-linux-x64-benchmark-${{ github.sha }}-attempt${{ github.run_attempt }}
+          path: ${{ env.P6_WORK }}/benchmark-export/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+      - name: Require complete comparison, backup proof and cleanup
+        if: always()
+        run: python3 -B scripts/openclaw-p6/app/benchmark/export.py --require-complete
+
+  linux-x64-teams:
+    if: github.repository == 'openclaw/bun' && github.ref == 'refs/heads/openclaw/aot-rd-P6' && inputs.mode == 'teams'
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    timeout-minutes: 100
+    permissions:
+      contents: read
+      actions: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      P6_EXECUTION_MODE: teams
+      P6_APP_VARIANTS: ${{ inputs.app_variants }}
+    steps:
+      - name: Establish bounded Teams work deadline
+        run: |
+          {
+            echo "P6_DEADLINE_EPOCH=$(( $(date +%s) + 5700 ))"
+            echo "P6_WORK=$RUNNER_TEMP/p6-teams-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            echo "P6_CONTAINER=p6-teams-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          } >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/openclaw-p6
+      - name: Bind current Teams identity and exact completed app inputs
+        env:
+          P6_APP_RUN_ID: ${{ inputs.app_run_id }}
+          P6_APP_RUN_ATTEMPT: ${{ inputs.app_run_attempt }}
+          P6_APP_WORKFLOW_HEAD: ${{ inputs.app_workflow_head }}
+          P6_APP_WORKFLOW_ID: ${{ inputs.app_workflow_id }}
+          P6_APP_REPOSITORY_ID: ${{ inputs.app_repository_id }}
+          P6_APP_ARTIFACT_ID: ${{ inputs.app_artifact_id }}
+          P6_APP_ARTIFACT_NAME: ${{ inputs.app_artifact_name }}
+          P6_APP_ZIP_SHA256: ${{ inputs.app_zip_sha256 }}
+          P6_APP_ZIP_BYTES: ${{ inputs.app_zip_bytes }}
+        run: python3 -B scripts/openclaw-p6/app/teams-mode/initialize.py inputs
+      - name: Download and verify only the originating app artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -B scripts/openclaw-p6/app/teams-mode/host.py download
+      - name: Initialize isolated Teams container without paging
+        run: python3 -B scripts/openclaw-p6/app/teams-mode/host.py bootstrap
+      - name: Restore selected artifacts and run untimed Teams proof
+        run: python3 -B scripts/openclaw-p6/app/teams-mode/host.py run
+      - name: Stop and remove owned Teams workloads
+        if: always()
+        run: bash scripts/openclaw-p6/app/host.sh cleanup
+      - name: Select Teams evidence and failures
+        if: always()
+        run: sudo -n env -i PATH=/usr/bin:/bin P6_WORK="$P6_WORK" python3 -B scripts/openclaw-p6/app/teams-mode/export.py
+      - name: Export selected Teams follow-on evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: p6-linux-x64-teams-${{ github.sha }}-attempt${{ github.run_attempt }}
+          path: ${{ env.P6_WORK }}/teams-export/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+      - name: Require selected Teams proof and cleanup
+        if: always()
+        run: python3 -B scripts/openclaw-p6/app/teams-mode/export.py --require-complete

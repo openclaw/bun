@@ -1,0 +1,22 @@
+{
+  "status": "prepared-only-not-x64-proof",
+  "sourceCommit": "4fa442e332745f1f58ccedd27106abdafcf4e019",
+  "nativeRoot": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1",
+  "nativeSource": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/source",
+  "controllerNode": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/opt/node/bin/node",
+  "fixtureSha256": "958adbfa641e24736306fd23a5cb3a5e2bfda2c4502889ca593c33da368be4a2",
+  "helpersSha256": {
+    "scripts/e2e/cron-cli-docker.sh": "6abf5cf3e174992d313c1f69f863565ebad078a17dae89723fb817ec6ae33245",
+    "scripts/lib/docker-e2e-image.sh": "b1227189675dff51e3a0218edc2715fad01b771668f1a402a9effba28aec49b1",
+    "scripts/lib/docker-e2e-package.sh": "88a00beb30de0aee79e679d33d504c4058335b433166eb35a5c9d9bc14bab575",
+    "scripts/lib/docker-e2e-container.sh": "7ae9be2f95729d17913413189790973aa97e8bd6ba24ff0fbddf2ad450a40fe0",
+    "scripts/lib/openclaw-e2e-instance.sh": "bd6cf54ea310f96a891f12ec55ed282d29de8370b3505482ec1ab7626e6eb08e",
+    "scripts/lib/openclaw-test-state.mts": "610f6982125dc456f04ac241ad71ba7f01ac107c10f177ed6c947f2b0e25cc99",
+    "scripts/e2e/mock-openai-server.mjs": "e68f6ce4b4024aa0c04d0504dbe403f2e310be1fd2e2a51c907244e31dbf1820",
+    "scripts/e2e/lib/fixtures/mock-openai-config.mjs": "26986b7a44259220a98ba616e20297888502a6ec9f0cb89f9306159b544ebfb1"
+  },
+  "runtimeExecuted": false,
+  "imageReceipt": "required approved qualification-prep-v3 docker-image.py result.json; PASS source/manifest/binary identity, actual immutable image ID",
+  "imageReceiptProducerSha256": "5cc18ed7bf5d02fc0eed0d2688dba355e470e62fe7910b4a679eab0751c9a87a",
+  "controllerNodeReceipt": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/prep-receipts/toolchain/result.json"
+}

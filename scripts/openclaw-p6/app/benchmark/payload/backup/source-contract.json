@@ -1,0 +1,17 @@
+{
+  "sourceCommit": "4fa442e332745f1f58ccedd27106abdafcf4e019",
+  "files": {
+    "src/infra/sqlite-header-probe.ts": "5700b9b27ee350b3fa59220c18d3767cc2ce23b581f9deeb7cd3e845369f73c8",
+    "src/infra/sqlite-header-probe.worker.ts": "d7a12e2f53cca9d4f93c48107aad534d98151120094ccc76f1b43c3fdaca70c4",
+    "src/infra/runtime-worker-url.ts": "64161dcd50ce8741a93a94e1a6fb621288ae841e1afca7d16def9b403b54ab8f",
+    "src/infra/backup-sqlite-snapshot.ts": "1a07c4ff81f8ed433cec6659bed8d69983395d8520bc44f3ba6b8c948a08e4dd",
+    "src/infra/sqlite-snapshot.ts": "a0f17374919f8cdb4530f305df748815cc6ca510e4e4b93133e7b0e79abf5657",
+    "src/infra/backup-create.ts": "82dcf232c0e69127785b2bca7b19e943d93d2e2fa362ac75d937ed44f5739d80",
+    "src/commands/backup-verify.ts": "664aead4336bd958d8398ea88577f55c0cc04c564ca2067c742d8ae9807e8ffb",
+    "src/cli/program/register.backup.ts": "c4bbe67378fc84124f1aa9cf0707af78d440905eab55ba616594b9f5ceeb550c",
+    "src/commands/backup-record.ts": "6b7b088fc997cd31fa0178c2bb1b67622ea9e5e9169190a65637b93ae5265810",
+    "src/infra/backup-database-discovery.ts": "6b67b3061b04dd57926951fd512d1b9c1441996518e76606c7cd700fe110a1c3",
+    "src/state/schema-migration-backup-tables.ts": "2bd35dd2993ccdc15c3b5a40f9120f075bc68f98358c5c3052485636cf58d0fc",
+    "docs/plugins/manifest/surfaces.md": "f3a2abfb058aeb8437d67b3ce8dfbb551055e3babb7ec62f9940e1edba0d93e2"
+  }
+}

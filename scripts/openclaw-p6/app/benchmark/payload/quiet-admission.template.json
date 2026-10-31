@@ -1,0 +1,15 @@
+{
+  "decision": "pending-host-reconciliation",
+  "sourceCommit": "4fa442e332745f1f58ccedd27106abdafcf4e019",
+  "nativeRoot": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1",
+  "hostBootId": null,
+  "observedAtEpoch": null,
+  "heavyBuildsReconciled": false,
+  "nativeHooksReconciled": false,
+  "dockerAndGuestWorkReconciled": false,
+  "otherBenchmarksStopped": false,
+  "sameNativeMachineAllCells": false,
+  "exclusiveBenchmarkInterval": false,
+  "reservationSeconds": null,
+  "hostReconciliation": { "path": null, "sha256": null }
+}

@@ -135,9 +135,13 @@ fn retain_all_a_program_can_enter(retained: &mut RetainedFeatures) {
             retained.insert(feature, reason);
         }
     }
+    retained.insert_set(&features_of_program_runtime(), RetainReason::NotRequested);
+}
+
+fn features_of_program_runtime() -> FeatureSet {
     let mut features = FeatureSet::all();
     features.subtract(&Feature::all_outside_compiled_programs());
-    retained.insert_set(&features, RetainReason::NotRequested);
+    features
 }
 
 pub fn features_kept_only_when_named() -> FeatureSet {
@@ -196,6 +200,18 @@ fn language_features() -> FeatureSet {
 fn close(retained: &mut RetainedFeatures, edges: &FeatureEdges) {
     let mut worklist: VecDeque<Feature> = retained.set.iter().collect();
     while let Some(feature) = worklist.pop_front() {
+        // The command line can run any disk script, outside the compiled program's feature graph.
+        if feature == Feature::Tools {
+            let reason = RetainReason::NeededBy {
+                feature,
+                strength: EdgeStrength::Reference,
+            };
+            for required in features_of_program_runtime().iter() {
+                if retained.insert(required, reason) {
+                    worklist.push_back(required);
+                }
+            }
+        }
         for edge in edges.leaving(feature) {
             if !edge.is_followed {
                 continue;
@@ -699,6 +715,24 @@ mod tests {
             decision.reason_of(Feature::Tools),
             Some(RetainReason::RequiredByOption(0))
         );
+        assert!(decision.unused.contains(Feature::Lint));
+    }
+
+    #[test]
+    fn retained_command_line_keeps_the_runtime_of_disk_scripts() {
+        let request = TrimRequest {
+            allow: vec![TrimFeature::Run],
+            ..removing_unused()
+        };
+        let decision = decide_request(&using(&[]), &request);
+        for feature in Feature::all_entered_from(EnteredFrom::Program).iter() {
+            assert!(!decision.unused.contains(feature), "{feature:?}");
+        }
+        assert!(!decision.unused.contains(Feature::Tools));
+        assert!(!decision.unused.contains(Feature::PackageFiles));
+        assert!(!decision.unused.contains(Feature::HotReload));
+        assert!(decision.unused.contains(Feature::Jit));
+        assert!(decision.unused.contains(Feature::Install));
         assert!(decision.unused.contains(Feature::Lint));
     }
 

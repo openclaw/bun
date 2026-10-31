@@ -1,0 +1,24 @@
+{
+  "status": "scoped-clean-R4-source-bound-runtime-unbound",
+  "sourceCommit": "4fa442e332745f1f58ccedd27106abdafcf4e019",
+  "sourceTree": "5409457bc1b8a901b00193469a3c2b7a74dc2f30",
+  "publishedHelperHead": "e90eb378550136c5207bfd67fcec5acdb26af344",
+  "executionAuthorized": false,
+  "runtimeExecuted": false,
+  "artifacts": null,
+  "runtimeResults": null,
+  "rootRuntimeGrant": null,
+  "acceptedArmManifestSha256": "245a99b44189822443da485006ffa65f599c9edcc93c73f4f2120319b628455f",
+  "acceptedArmAcceptanceSha256": "8c3d796d709e7da0b74900e2117ec912240cc2b4f9709d581b2fb5ed1b897f11",
+  "rootSourceProofSha256": "69a1a26a7c138ccb26fc03671949edf27b89c126036ce53f0fabc69bb16cfee5",
+  "independentReviewSha256": "37117cc174b95f11a5811cd21776ef181895632dc966651eeae73207e2ad176b",
+  "independentSourceReviewSha256": "082631001863eb77364e793e381aa3784dfe2aed380eb4a70909448eb86b3a57",
+  "pinProjection": {
+    "originalSha256": "f7225212c61579fe184ec455d733474ceee0734d17cf4e2c4516225c49fb182f",
+    "projectedSha256": "4c9c165d8367dc62df059d84cceef38d40c933c8207793a5d5d41791166eeb59",
+    "omittedFields": [
+      "historicalP0Lock.path"
+    ],
+    "reason": "Public artifact omits the historical operator path; package/version/tarball/integrity/dependency fields are unchanged."
+  }
+}

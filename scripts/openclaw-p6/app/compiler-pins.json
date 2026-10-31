@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "repository": "openclaw/bun",
+  "runId": 40214829538,
+  "runAttempt": 1,
+  "headSha": "f9fa08790bf45b3e995280f6eb249e14fd9191c1",
+  "artifacts": {
+    "cb-standard": {
+      "id": 12608037481,
+      "name": "p6-linux-x64-standard-f9fa08790bf45b3e995280f6eb249e14fd9191c1-attempt1",
+      "zipSha256": "659eb35a30ec4b5446e2ef6ea6f182249f2949398d429c72ce2bb2d7f8bf492e",
+      "compilerSha256": "bc32f99d8c9ebda0de7d3cf0a216052d84afa70b85f011485ed49bae3d3f6d90",
+      "transportSha256": "2fba572c329a9c7dfdee1d7d0fd4f53492e1dbc508e9e405e4fb767fdfdb6149",
+      "archiveSha256": "36660357e450c1c6f8762492332828bbbe53ae2048999ff75b8681cda0140dae",
+      "zipBytes": 131892490
+    },
+    "cb-compat": {
+      "id": 12609305181,
+      "name": "p6-linux-x64-shadowrealm-off-f9fa08790bf45b3e995280f6eb249e14fd9191c1-attempt1",
+      "zipSha256": "8dca5ea6ba7e73d8b6833be1196e17e6e54ff7b5e3c16686440225579d10f64b",
+      "compilerSha256": "12abf71cff8b57f633dfc348c1071772b8fa5fb842fd692b69e57d01844889ce",
+      "transportSha256": "ebc2e022129ea1b2b4629d6829a33d6b1fb0144dca5c3eab25a9d69ead96d0b1",
+      "archiveSha256": "2a2407b9d1885743f451ba8cf7a8d59f2885a6b3936d98769a12307ab4c91919",
+      "zipBytes": 131851510
+    }
+  }
+}

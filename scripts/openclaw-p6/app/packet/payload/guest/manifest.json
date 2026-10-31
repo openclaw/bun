@@ -1,0 +1,26 @@
+{
+  "files": {
+    "application/guest-cli.py": "c7b11453c8bb0e80cbd20830a19028f8cac44bc15ab2f9a973bfb47af772bd71",
+    "application/memory-policy.py": "4ff6f0e9b1d84928115e4af7755359f74f501ef92b30999a6f3d2faada6ba1dc",
+    "application/run-application-guest.py": "faeb6a65aa52c8ac5943768c2148bf5d5115b93a090c1a4ec03cff9f63cf5a37",
+    "application/security/file-exec.c": "8d0707b88f72203b69e7b03e52887992eca12df2bd104dd27fca3ef3281aa2d5",
+    "application/security/fixture/index.js": "ea5c5fbceda9a536c64ef2c8a4509277b6aca2bf882307f865fa557beb6b171b",
+    "application/security/fixture/openclaw.plugin.json": "2d6cf08b7d9cd6c594ad2c8c1e8309748ca5ec5a864e5e2c667f40b87a18947f",
+    "application/security/fixture/package.json": "a00af8e500465b4ba10a1ccffd28f81b1ed049c4d9ce1a9030b011e0569ac5fb",
+    "application/security/mdwe.c": "02a21f72749fa26429ccbec58eb23bae65952d9db2dfedf389cab73c06b3de1b",
+    "application/trace-policy.py": "8372963b67a4343cccd416ce86afaa4efc9a7d34f383eae64c02034bd4badc8d",
+    "collect-evidence.py": "59a49d27f372b4f2bce4c7ad95b00bcc01708ea59fb17acf857d4c15c233a652",
+    "guest-prerequisites.py": "463a6cc56a7de19a49bc873cd630a7da28082337ab7f340809c43f4b2604050c",
+    "prepare-guest.py": "1737d66cda6ef635973bd5ddcffdd43c19357f5c4687d9d6bf90a4ffe248babf",
+    "shared/guest_result_transport.py": "1e0d155a7827e3fa44e3c377d935001a3db6f6546cdc397fa909c86be4dcdd7b",
+    "shared/kvm-preflight.py": "6ba9f17413342ddca66437bdb3c9b18d7c7357c1028470ebdebc689981e41ca5",
+    "shared/run-kvm-guest.py": "bca0eac25f6bd828f67c895c675fea6c8202583b1e6027f6a83f22212860ab42"
+  },
+  "originalOwnersUnchanged": false,
+  "unchangedOwnerCount": 2,
+  "versionedApplicationAdapters": true,
+  "changedApplicationOwners": [
+    "application/guest-cli.py",
+    "application/trace-policy.py"
+  ]
+}

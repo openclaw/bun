@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "lane": "P0",
+  "referenceRole": "historical-provenance-only",
+  "artifacts": [
+    {
+      "variant": "desktop-c2",
+      "mainSha": "d465bda8766e9031f14bd266458e4bb09ac37ff2",
+      "sourceCommit": "58c12b7787c3852c32667329f506750a8ed63994",
+      "sourceStatus": "main-plus-open-pr",
+      "pr": "https://github.com/openclaw/openclaw/pull/183771",
+      "platform": "darwin",
+      "arch": "arm64",
+      "sha256": "877d86b206343b485d615e488e7b88802181a3c7f56bc1bd4dcdc91cb210638b",
+      "signed": true,
+      "qualified": true,
+      "compilerPins": {
+        "bun": "b838e73072227c2652a41c689299284f1965cdc6",
+        "webkit": "aaa690bfbf34c9d50775716ac2fc3c7d0573e0b8",
+        "shadowRealm": "retained",
+        "historicalC2Equivalent": false
+      }
+    }
+  ],
+  "projection": "P6-derived public projection of the selected CB11 record; not a byte-identical P0 index clone"
+}

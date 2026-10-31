@@ -1,0 +1,9 @@
+{
+  "name": "@openclaw/p6-mdwe-fixture",
+  "version": "0.0.1",
+  "openclaw": {
+    "extensions": [
+      "./index.js"
+    ]
+  }
+}

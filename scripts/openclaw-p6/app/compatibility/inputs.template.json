@@ -1,0 +1,70 @@
+{
+  "status": "prepared-unbound-do-not-execute",
+  "sourceCommit": null,
+  "sourceTree": null,
+  "source": null,
+  "sourceClean": null,
+  "preparationReceipt": null,
+  "preparationReceiptSha256": null,
+  "distBuildInfo": null,
+  "distBuildInfoSha256": null,
+  "selection": null,
+  "selectionSha256": null,
+  "typescript": null,
+  "typescriptVersion": null,
+  "output": null,
+  "helperRoot": null,
+  "sourceOwners": {
+    "scripts/build-bun-standalone.mjs": null,
+    "scripts/lib/bun-standalone-plugins.mjs": null,
+    "scripts/lib/bun-standalone-workers.mjs": null,
+    "scripts/lib/bun-standalone-source-entries.mjs": null,
+    "scripts/lib/bun-standalone-source-parser.mjs": null,
+    "scripts/lib/bundled-plugin-build-entries.mjs": null,
+    "scripts/lib/static-extension-assets.mts": null,
+    "scripts/lib/bun-standalone-sidecar.mjs": null,
+    "src/infra/runtime-process-manifest.ts": null,
+    "src/gateway/worker-environments/node-bootstrap-runtime-chunks.ts": null
+  },
+  "architectures": {
+    "arm64": {
+      "platform": "linux",
+      "arch": "arm64",
+      "node": null,
+      "nodeSha256": null,
+      "compilers": {
+        "standard": {
+          "path": null,
+          "sha256": null
+        },
+        "shadowrealm-off": {
+          "path": null,
+          "sha256": null
+        }
+      }
+    },
+    "x64": {
+      "platform": "linux",
+      "arch": "x64",
+      "node": null,
+      "nodeSha256": null,
+      "compilers": {
+        "standard": {
+          "path": null,
+          "sha256": null
+        },
+        "shadowrealm-off": {
+          "path": null,
+          "sha256": null
+        }
+      }
+    }
+  },
+  "expectedCompilerSources": {
+    "bun": "150c9620c53710060186b8b0cd50985e035408b0",
+    "webkit": "aaa690bfbf34c9d50775716ac2fc3c7d0573e0b8"
+  },
+  "applicationArtifacts": null,
+  "nativeCompile": false,
+  "executionAuthorized": false
+}

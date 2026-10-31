@@ -2,7 +2,16 @@
 
 ## Unreleased
 
+- Stop AOT qualification after a measurement timeout or signal exit while retaining ordinary failure reporting.
+
+- Resolve extensionless package names through runtime plugin hooks, including Plugin SDK imports from external AOT code.
+
+- Accept hardened GNU builds whose fortified memory copies inline, while retaining stack-protector and checked-formatting import checks.
+
 - Cover source-less generated helper entry counters in AOT image-map regression tests.
+
+- Recognize macOS SIGBUS when entering removed AOT code, and retain the external-script runtime when `compile.trim.allow` includes `"run"`.
+- Preserve SharedArrayBuffer when a JIT-free AOT executable runs external scripts as Bun on macOS.
 
 - Resolve literal embedded module paths against prepared AOT entry points, including TypeScript and custom output names.
 

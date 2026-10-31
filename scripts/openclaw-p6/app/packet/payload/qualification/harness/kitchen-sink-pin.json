@@ -1,0 +1,33 @@
+{
+  "at": "2026-10-25T05:14:47.016583+00:00",
+  "name": "@openclaw/kitchen-sink",
+  "version": "0.4.1",
+  "spec": "npm:@openclaw/kitchen-sink@0.4.1",
+  "dist": {
+    "shasum": "2badae1947cda0b1646dce10b9660fa40682d47d",
+    "tarball": "https://registry.npmjs.org/@openclaw/kitchen-sink/-/kitchen-sink-0.4.1.tgz",
+    "fileCount": 24,
+    "integrity": "sha512-LXtrG17RVVuUVifVuLFAKsWsvdqGgB6P1xzK3Mm8BkUOKIPpSzFUJlM71bHxvUQdsHnTixicZnoMT4iJATSxSQ==",
+    "signatures": [
+      {
+        "sig": "MEYCIQCM+5iROdSd6Qr6lyb9nQjifZMPCiWdSqw9pBnp9OjYhgIhAM/ki3xqvZddWzYUfZrjl0yxuTrl+bb3+HgEaE59N4J7",
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+      },
+      {
+        "sig": "MEYCIQDRfJVxlybosUpM6cNhsv6VkoUCpILGnfs8q1fzJWbLPwIhAPI7pdEuwdaasco9STUYOdWxleKxHMjgcRiEkcZHNz8I",
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+      }
+    ],
+    "attestations": {
+      "url": "https://registry.npmjs.org/-/npm/v1/attestations/@openclaw%2fkitchen-sink@0.4.1",
+      "provenance": {
+        "predicateType": "https://slsa.dev/provenance/v1"
+      }
+    },
+    "unpackedSize": 1120210
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.10.5"
+  },
+  "scope": "public fixture resolution only; not installed or qualified"
+}

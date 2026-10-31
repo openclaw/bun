@@ -1,0 +1,28 @@
+{
+  "plugins": {
+    "allow": [
+      "msteams"
+    ]
+  },
+  "discovery": {
+    "mdns": {
+      "mode": "off"
+    }
+  },
+  "models": {
+    "catalogRefresh": {
+      "enabled": false
+    }
+  },
+  "agents": {
+    "defaults": {
+      "workspace": "${STATE}/workspace"
+    }
+  },
+  "meta": {
+    "migrations": {
+      "modelPolicyAllowlist": true,
+      "utilityModelSeparation": true
+    }
+  }
+}

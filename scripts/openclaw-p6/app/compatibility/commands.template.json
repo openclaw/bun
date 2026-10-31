@@ -1,0 +1,113 @@
+{
+  "status": "prepared-placeholder-argv-not-executable-admission",
+  "workingDirectory": "${SOURCE}",
+  "environment": {
+    "PATH": "${NODE_DIRECTORY}:/usr/bin:/bin",
+    "HOME": "${OUTPUT}/home",
+    "TMPDIR": "${OUTPUT}/tmp",
+    "XDG_CACHE_HOME": "${OUTPUT}/cache",
+    "LANG": "C.UTF-8",
+    "TZ": "UTC",
+    "GIT_CONFIG_GLOBAL": "/dev/null",
+    "GIT_CONFIG_SYSTEM": "/dev/null"
+  },
+  "existingOwnerBoundary": "Run only after completed fresh native preparation/selection, before paging/heavy app compile, through existing bounded phase/deadline owner.",
+  "steps": [
+    {
+      "id": "node-identity",
+      "argv": [
+        "${NODE}",
+        "-p",
+        "JSON.stringify({platform:process.platform,arch:process.arch,version:process.version})"
+      ],
+      "assert": "Exact Linux native arch and expected pinned Node, hash verified externally."
+    },
+    {
+      "id": "compiler-identity-per-profile",
+      "profiles": [
+        "standard",
+        "shadowrealm-off"
+      ],
+      "argv": [
+        "${BUN}",
+        "--no-env-file",
+        "--no-install",
+        "-p",
+        "JSON.stringify({platform:process.platform,arch:process.arch,bun:Bun.revision,webkit:process.versions.webkit})"
+      ],
+      "assert": "Exact Linux native arch, Bun150c/WebKitaaa and admitted compiler file hash per profile."
+    },
+    {
+      "id": "full-dist-ast-census",
+      "argv": [
+        "/usr/bin/nice",
+        "-n",
+        "10",
+        "${NODE}",
+        "${HELPERS}/helpers/scan.cjs"
+      ],
+      "extraEnvironment": {
+        "PROBE_TYPESCRIPT": "${TYPESCRIPT}",
+        "PROBE_MODULES": "${SOURCE}/dist",
+        "PROBE_OUTPUT": "${OUTPUT}/full-dist-inventory.json"
+      },
+      "timeoutSeconds": 180,
+      "effect": "Read source dist and write census; no source edit/build.",
+      "gate": "Scanner completion and input provenance only; its full-dist missing findings are not selected-build admission."
+    },
+    {
+      "id": "actual-builtin-namespace-per-profile",
+      "profiles": [
+        "standard",
+        "shadowrealm-off"
+      ],
+      "argv": [
+        "/usr/bin/nice",
+        "-n",
+        "10",
+        "${BUN}",
+        "--no-env-file",
+        "--no-install",
+        "${HELPERS}/helpers/runtime.ts",
+        "${OUTPUT}/full-dist-inventory.json",
+        "${OUTPUT}/builtin-query-${PROFILE}.json"
+      ],
+      "timeoutSeconds": 60,
+      "gate": "Query completed and recorded exact admitted Bun revision. Full missing list remains diagnostic until projection."
+    },
+    {
+      "id": "selected-dist-and-worker-gate-per-profile",
+      "profiles": [
+        "standard",
+        "shadowrealm-off"
+      ],
+      "argv": [
+        "/usr/bin/nice",
+        "-n",
+        "10",
+        "${BUN}",
+        "--no-env-file",
+        "--no-install",
+        "${HELPERS}/project-selected-builtins.mjs",
+        "${SOURCE}",
+        "${SELECTION}",
+        "${OUTPUT}/full-dist-inventory.json",
+        "${OUTPUT}/builtin-query-${PROFILE}.json",
+        "${OUTPUT}/selected-${PROFILE}.json"
+      ],
+      "timeoutSeconds": 180,
+      "gate": "Exit0 and status=passed; selectedMissing=[], unmappedWorkers=[], undeclaredPluginWorkers=[]. Missing outside selected owner inputs is diagnosticOnlyMissing, never silently ignored."
+    }
+  ],
+  "totalPhaseBudgetSeconds": 600,
+  "nativeCompile": false,
+  "runBothArchitectures": true,
+  "artifactsToRetain": [
+    "bound-inputs.json",
+    "identity receipts",
+    "full-dist-inventory.json",
+    "builtin-query-{standard,shadowrealm-off}.json",
+    "selected-{standard,shadowrealm-off}.json",
+    "phase stdout/stderr/deadline receipt"
+  ]
+}

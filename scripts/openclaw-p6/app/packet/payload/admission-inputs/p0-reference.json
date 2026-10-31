@@ -1,0 +1,9 @@
+{
+  "referenceRole": "historical-provenance-only",
+  "sourceManifestSha256": "7b909d75df066586f83ebbc9bfe78d9fcd17905b54688db1b1ed76dfa5cfc740",
+  "projectedManifestSha256": "f60309fc44e418cfaf02df998ada40cfab89c10f773df0c09eb512775d0d8e83",
+  "executableSha256": "877d86b206343b485d615e488e7b88802181a3c7f56bc1bd4dcdc91cb210638b",
+  "sourceCommit": "58c12b7787c3852c32667329f506750a8ed63994",
+  "originalModified": false,
+  "executed": false
+}

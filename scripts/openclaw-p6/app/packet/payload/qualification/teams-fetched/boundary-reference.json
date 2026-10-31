@@ -1,0 +1,18 @@
+{
+  "status": "historical-public-package-bytes-only-not-current-runtime-proof",
+  "packageJsonSha256": "0a2f40a334298afe8fa87208a13d38412dfaddff1a87dd23cf8f139d80b5ff73",
+  "name": "@openclaw/msteams",
+  "version": "2026.10.7",
+  "packageType": "module",
+  "runtimeFormat": "cjs",
+  "runtimeExtensions": [
+    "./dist/index.cjs"
+  ],
+  "entry": {
+    "relative": "dist/index.cjs",
+    "sha256": "7b5ba63fb0abc15c606c95b165e50e09bb31c37036489781cfcca685ae1d79dd",
+    "bytes": 625,
+    "sdkRequireEvidence": "var msteams_default = (0, require(\"openclaw/plugin-sdk/channel-entry-contract\").defineBundledChannelEntry)({"
+  },
+  "requiredCurrentEvidence": "Actual current installed source must resolve to this package runtime entry under the fresh state npm project, with identical bytes and loaded/imported status; historical bytes are not an x64 pass."
+}

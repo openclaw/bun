@@ -1,0 +1,9 @@
+{
+  "installSeconds": 900,
+  "inspectSeconds": 300,
+  "assertSeconds": 30,
+  "commandCleanupSeconds": 15,
+  "phaseSeconds": 1350,
+  "phaseCleanupSeconds": 45,
+  "deadlineCleanupSeconds": 60
+}

@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 1,
+  "decision": "pending-native-facts",
+  "sourceCommit": "4fa442e332745f1f58ccedd27106abdafcf4e019",
+  "nativeRoot": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1",
+  "nativeSource": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/source",
+  "receipts": {
+    "toolchain": {
+      "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/prep-receipts/toolchain/result.json",
+      "sha256": null
+    },
+    "plugins": {
+      "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/prep-receipts/plugins/result.json",
+      "sha256": null
+    },
+    "compilerRecords": {
+      "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/admission-inputs/compiler-records.json",
+      "sha256": null
+    }
+  },
+  "tarball": {
+    "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/benchmark-prep/package/openclaw.tgz",
+    "sha256": null,
+    "bytes": null,
+    "packagingSourceCommit": "4fa442e332745f1f58ccedd27106abdafcf4e019",
+    "producerReceipt": {
+      "path": null,
+      "sha256": null
+    }
+  },
+  "requestedVariants": [
+    "js",
+    "c2-off",
+    "ts"
+  ],
+  "variants": {
+    "js": {
+      "enabled": false,
+      "admission": {
+        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/admissions/js.json",
+        "sha256": null
+      },
+      "build": {
+        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/build-receipts/js/result.json",
+        "sha256": null
+      },
+      "core": {
+        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/qualification-results/js-core/run/result.json",
+        "sha256": null
+      },
+      "coreController": {
+        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/runtime-results/js-core/result.json",
+        "sha256": null
+      },
+      "preservation": {
+        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/preserved/js/transport.json",
+        "sha256": null
+      }
+    },
+    "c2-off": {
+      "enabled": false,
+      "admission": {
+        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/admissions/c2-off.json",
+        "sha256": null
+      },
+      "build": {
+        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/build-receipts/c2-off/result.json",
+        "sha256": null
+      },
+      "core": {
+        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/qualification-results/c2-off-core/run/result.json",
+        "sha256": null
+      },
+      "coreController": {
+        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/runtime-results/c2-off-core/result.json",
+        "sha256": null
+      },
+      "preservation": {
+        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/preserved/c2-off/transport.json",
+        "sha256": null
+      }
+    },
+    "ts": {
+      "enabled": false,
+      "admission": {
+        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/admissions/ts.json",
+        "sha256": null
+      },
+      "build": {
+        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/build-receipts/ts/result.json",
+        "sha256": null
+      },
+      "core": {
+        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/qualification-results/ts-core/run/result.json",
+        "sha256": null
+      },
+      "coreController": {
+        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/runtime-results/ts-core/result.json",
+        "sha256": null
+      },
+      "preservation": {
+        "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/preserved/ts/transport.json",
+        "sha256": null
+      }
+    }
+  },
+  "sweeps": 6,
+  "node": {
+    "path": null,
+    "sha256": null
+  },
+  "ownerFiles": {
+    "benchmark/cohort-stats.mjs": "18c9c6ac68e7898a0a3bcff4c441626602b96e93c86e733b56c8c2801fd413f0",
+    "benchmark/core-runner.proposed.mjs": "ed861466e0283ccd630d7a21fae9828254023b1852024cedb7989552ce9f4482",
+    "benchmark/launch-target.mjs": "549517def60351d5e1fc3e0d175b112dc452a43f93f0fc0f0e64c698302fe7cd",
+    "benchmark/process-tree.mjs": "f4e43b17f6693753d06099633c056ae022a1fa4c8c139b0dfdcb76a58d828d79",
+    "benchmark/run-cohort.mjs": "9f162d5815f9263d619b632e8e83cced143db87838bbf892f317d9a5d6599c9f",
+    "harness/analyze-zero-js.py": "cd5ac0436fa1ffeebcbaa4b760c93f2cdc94e31dfa4c26d9ca6529ac0d43a621",
+    "harness/config-roundtrip.mjs": "511d9140896da1cff71e116a428a985b7d1f695bd07b0423afebac6f1601d6b0",
+    "harness/fixture-config.mjs": "1d028bfe83d0906f9fe1a651e5066a09442e850c08470eff584bf6487f4fbcc7",
+    "harness/gateway-readiness.mjs": "a007aa71fd55a888d0b159ee4ab51cc63a35492586c87769086d95a50e3d0759",
+    "harness/measurement-owner.py": "c610495003a00a6da6e4b870c752e14c9db55b06d38bda78f376a05c3722c724",
+    "stream-cohort.py": "534faa35fcaf5f48766323463cf42fc8d3fbf3d75ca442b26fc548483c16abb3",
+    "package-inventory.mjs": "c406013d6d33cdff0776833c0ab7e027683c361700af4633dc3cfd84ef1a7978",
+    "measure-install.py": "5b8aaf5d7b0c8d839ad3089b9e83e48e7c4a8d4ed7cca5e1e6ab330c9a381cef",
+    "harness/knowledge-provider.py": "f144aaa440e3bac9aeb9edeb5f44402a5df0bbe32c4c7a1adb391970499a089f",
+    "harness/knowledge-agent.mjs": "16abb14fd436e60c6ab59816184d78b2e765dcc964f8104b09f0f1235d77dd6b"
+  },
+  "npm": {
+    "path": "/home/runner/.cache/oc-ty-ext/P6/app-x64-final-r4-v1/opt/node/lib/node_modules/npm/bin/npm-cli.js",
+    "sha256": null,
+    "manifestSha256": null,
+    "version": "11.20.0"
+  }
+}
