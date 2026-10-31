@@ -1,0 +1,128 @@
+name: OpenClaw TLS empty-config repair proof
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/openclaw-tls-config-repair.yml
+      - .github/openclaw/tls-config-repair.py
+      - .github/openclaw/tls-config-repair.patch
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: openclaw-tls-config-repair-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: controls
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          sparse-checkout: .github/openclaw
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: source
+          ref: 454a78a4d3b0202ecdbedf7dd051fc84ffc59e9e
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: pipeline
+          ref: 454a78a4d3b0202ecdbedf7dd051fc84ffc59e9e
+          persist-credentials: false
+      - uses: ./pipeline/.github/actions/setup-bun
+        with:
+          bun-version: '1.4.4'
+      - name: Generate the frozen native provisioner
+        id: provision
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = aarch64
+          echo "script=$(bun pipeline/scripts/openclaw-release/release.ts provision --source source --target linux-arm64 | tail -1)" >> "$GITHUB_OUTPUT"
+      - name: Provision a secretless native container
+        id: container
+        env:
+          SCRIPT: ${{ steps.provision.outputs.script }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir repair-proof
+          id=$(docker run --detach -e CI=true -v "$GITHUB_WORKSPACE:/work" -w /work \
+            docker.io/library/debian:13@sha256:9cc080028c43b27d2074d63a5f9caf7166d731494965616c1a6d2827a004585c sleep infinity)
+          [[ "$id" =~ ^[0-9a-f]{64}$ ]]
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          script="${SCRIPT#"$GITHUB_WORKSPACE"/}"
+          docker exec -e SCRIPT="$script" "$id" sh -euc \
+            'sh "$SCRIPT" 454a78a4d3b0202ecdbedf7dd051fc84ffc59e9e openclaw-tls-repair'
+          docker exec "$id" bash -e -lc '. /etc/profile.d/bun-ci.sh; rustup component add rustfmt --toolchain nightly-2026-09-15'
+      - name: Build and exercise the unchanged TLS suites
+        env:
+          CONTAINER_ID: ${{ steps.container.outputs.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]]
+          tail -n +1 -F repair-proof/build.log &
+          tail_pid=$!
+          trap 'kill "$tail_pid" 2>/dev/null || true' EXIT
+          docker exec "$CONTAINER_ID" bash -e -lc '
+            . /etc/profile.d/bun-ci.sh
+            for repo in source pipeline controls; do git config --global --add safe.directory "/work/$repo"; done
+            python3 controls/.github/openclaw/tls-config-repair.py
+          '
+      - name: Freeze bounded evidence
+        if: always()
+        env:
+          CONTAINER_ID: ${{ steps.container.outputs.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test -n "$CONTAINER_ID"; then
+            [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]]
+            docker stop --time 30 "$CONTAINER_ID" > /dev/null
+            test "$(docker inspect --format '{{.State.Running}}' "$CONTAINER_ID")" = false
+          fi
+          python3 - <<'PY'
+          import hashlib, json, stat, tarfile
+          from pathlib import Path
+          out = Path('repair-proof')
+          out.mkdir(exist_ok=True)
+          files = sorted(out.iterdir()) + [Path('controls/.github/openclaw') / name for name in ['tls-config-repair.py', 'tls-config-repair.patch']]
+          assert len(files) <= 32 and all(stat.S_ISREG(p.lstat().st_mode) for p in files)
+          assert sum(p.stat().st_size for p in files) <= 64 * 1024**2
+          def sha(path):
+              with path.open('rb') as stream: return hashlib.file_digest(stream, 'sha256').hexdigest()
+          manifest = out / 'archive-manifest.json'
+          manifest.write_text(json.dumps({str(p): dict(bytes=p.stat().st_size, sha256=sha(p)) for p in files}, indent=2) + '\n')
+          files.append(manifest)
+          with tarfile.open('tls-config-repair-proof.tar.gz', 'x:gz') as archive:
+              for path in files: archive.add(path, arcname=str(path), recursive=False)
+          assert Path('tls-config-repair-proof.tar.gz').stat().st_size <= 16 * 1024**2
+          Path('tls-config-repair-SHA256SUMS').write_text(sha(Path('tls-config-repair-proof.tar.gz')) + '  tls-config-repair-proof.tar.gz\n')
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: tls-empty-config-linux-arm64-proof
+          path: |
+            tls-config-repair-proof.tar.gz
+            tls-config-repair-SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7
+      - name: Remove this job's container
+        if: always()
+        env:
+          CONTAINER_ID: ${{ steps.container.outputs.id }}
+        shell: bash
+        run: |
+          if test -n "$CONTAINER_ID"; then
+            [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]]
+            docker rm --force "$CONTAINER_ID" > /dev/null
+          fi

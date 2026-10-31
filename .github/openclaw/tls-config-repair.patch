@@ -1,0 +1,27 @@
+diff --git a/src/runtime/socket/socket_body.rs b/src/runtime/socket/socket_body.rs
+index 2752cbc894159817f1557df3e7d0f518895a3a18..5fa5d59042a200a50106415325b8f6d1b4255f83 100644
+--- a/src/runtime/socket/socket_body.rs
++++ b/src/runtime/socket/socket_body.rs
+@@ -5118,7 +5118,9 @@ impl DuplexUpgradeContext {
+                     Self::release_connection(this);
+                     return;
+                 }
+-                this.ssl_config.set(None); // Drop frees.
++                if this.ssl_config.get().is_some() {
++                    this.ssl_config.set(None); // Drop frees.
++                }
+                 // Bytes the peer sent while this task was still queued were
+                 // staged by `UpgradedDuplex::on_internal_receive_data` (the
+                 // engine did not exist yet to receive them). Feed them now
+@@ -5189,7 +5191,10 @@ impl DuplexUpgradeContext {
+             debug_assert!(!ctx.native_shutdown_callback.get());
+             ctx.tls.set(None);
+             // Close raced ahead of StartTLS — drop the unconsumed config / ctx.
+-            ctx.ssl_config.set(None);
++            // An absent config has an inactive payload that must not spill onto the JS stack.
++            if ctx.ssl_config.get().is_some() {
++                ctx.ssl_config.set(None);
++            }
+             ctx.owned_ctx.set(None);
+         }
+         // `UpgradedDuplex` cleanup
