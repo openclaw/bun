@@ -1,0 +1,121 @@
+name: TLS retention diagnosis
+
+on:
+  push:
+    branches: [claude/diagnose-tls-retention-20261031]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  diagnose:
+    name: Diagnose ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+            machine: aarch64
+            artifact: 12908842070
+            triplet: bun-linux-aarch64
+          - target: darwin-x64
+            runner: macos-15-intel
+            machine: x86_64
+            artifact: 12909338882
+            triplet: bun-darwin-x64
+    steps:
+      - name: Checkout diagnostic scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: pipeline
+          persist-credentials: false
+      - name: Checkout original qualification source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 454a78a4d3b0202ecdbedf7dd051fc84ffc59e9e
+          path: source
+          persist-credentials: false
+      - name: Setup diagnostic script runtime
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "26.12.1"
+      - name: Download original qualification executable
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ matrix.artifact }}
+          run-id: 40897692970
+          github-token: ${{ github.token }}
+          path: artifact
+          merge-multiple: true
+      - name: Verify native platform and executable revision
+        shell: bash
+        env:
+          TRIPLET: ${{ matrix.triplet }}
+          MACHINE: ${{ matrix.machine }}
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = "$MACHINE"
+          test "$(git -C source rev-parse HEAD)" = 454a78a4d3b0202ecdbedf7dd051fc84ffc59e9e
+          unzip -q "artifact/$TRIPLET.zip" -d unpacked
+          exe="$GITHUB_WORKSPACE/unpacked/$TRIPLET/bun"
+          mkdir -p "$RUNNER_TEMP/retention-home"
+          test "$(env -i PATH="$PATH" HOME="$RUNNER_TEMP/retention-home" "$exe" -p 'Bun.revision')" = 454a78a4d3b0202ecdbedf7dd051fc84ffc59e9e
+          echo "BUN_DIAG_EXE=$exe" >> "$GITHUB_ENV"
+      - name: Reproduce original assertions
+        id: baseline
+        continue-on-error: true
+        working-directory: source
+        shell: bash
+        run: |
+          env -i PATH="$PATH" HOME="$RUNNER_TEMP/retention-home" CI=1 \
+            "$BUN_DIAG_EXE" test test/js/bun/net/socket-retention.test.ts \
+            -t 'TLS Duplex cycles|a TLS Duplex completion' \
+            --reporter=junit --reporter-outfile=../baseline.xml
+      - name: Prepare bounded retainer diagnostics
+        run: node pipeline/.github/scripts/diagnose-tls-retention.mjs source
+      - name: Capture paths after unchanged failure observations
+        id: diagnostic
+        continue-on-error: true
+        working-directory: source
+        shell: bash
+        run: |
+          env -i PATH="$PATH" HOME="$RUNNER_TEMP/retention-home" CI=1 \
+            "$BUN_DIAG_EXE" test test/js/bun/net/socket-retention.diagnostic.test.ts \
+            -t 'TLS Duplex cycles|a TLS Duplex completion' \
+            --reporter=junit --reporter-outfile=../diagnostic.xml
+      - name: Sanitize reports for upload
+        id: sanitize
+        if: always()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import re
+          for path in (Path("baseline.xml"), Path("diagnostic.xml")):
+              if path.exists():
+                  text = re.sub(r'\s+hostname="[^"]*"', '', path.read_text())
+                  for key, replacement in [("GITHUB_WORKSPACE", "[workspace]"), ("RUNNER_TEMP", "[temporary]")]:
+                      text = text.replace(os.environ[key], replacement)
+                  path.write_text(text)
+          PY
+      - name: Upload diagnosis
+        if: ${{ always() && steps.sanitize.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: tls-retention-diagnosis-${{ matrix.target }}
+          path: |
+            baseline.xml
+            diagnostic.xml
+          if-no-files-found: error
+          retention-days: 7
+      - name: Preserve failing qualification outcome
+        if: always()
+        env:
+          BASELINE: ${{ steps.baseline.outcome }}
+          DIAGNOSTIC: ${{ steps.diagnostic.outcome }}
+        run: test "$BASELINE" = success && test "$DIAGNOSTIC" = success
