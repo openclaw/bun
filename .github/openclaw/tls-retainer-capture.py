@@ -150,12 +150,13 @@ def debugger_stage():
     owner = None
     returned = False
     gc_count = 0
+    live_marker = None
 
     def event(kind, **values):
         report['events'].append({'kind': kind, **values})
         write(stage + '.json', report)
 
-    def entry(name):
+    def entry(name, signature=None):
         contexts = module.FindFunctions(name, lldb.eFunctionNameTypeAny)
         assert contexts.GetSize() <= 64, name
         addresses = {}
@@ -168,6 +169,8 @@ def debugger_stage():
             report['resolutions'][name].append({'function': resolved, 'file_address': address.GetFileAddress()})
             # FindFunctions includes inline scopes whose GetFunction is the enclosing physical function.
             if not resolved or resolved.split('(', 1)[0].strip().removeprefix('::') != name:
+                continue
+            if signature is not None and resolved.removeprefix('::') != signature:
                 continue
             if address.IsValid():
                 addresses[address.GetFileAddress()] = address
@@ -232,18 +235,16 @@ def debugger_stage():
                 result += pointer(child, pointee, depth + 1)
         return result
 
-    def marker_snapshot(visitor, cell):
-        # This fixture's owner is precise-allocated. Use frozen HashTable metadata and DWARF field offsets;
-        # target-side marker printers symbolize through native libraries and faulted on these saved bytes.
+    def precise_marker(visitor, cell):
+        # Use frozen HashTable metadata and DWARF field offsets, without inferior find/get calls.
         assert target.GetAddressByteSize() == 8 and target.GetByteOrder() == lldb.eByteOrderLittle
         assert cell & 8, 'owner is not the observed precise-allocation kind'
         header = concrete_type('JSC::PreciseAllocation').GetByteSize()
         allocation = cell - ((header + 15) & ~15)
-        marked = field(field(typed(allocation, 'JSC::PreciseAllocation'), 'm_isMarked'), 'value')
-        assert marked.GetByteSize() == 1 and word(marked.GetLoadAddress(), 1) == 1, 'owner was not marked by the real GC'
         table_value = field(field(field(visitor, 'm_preciseAllocationMap'), 'm_impl'), 'm_table')
         table = number(table_value)
-        assert table
+        if not table:
+            return header, allocation, None
         capacity = word(table - 4, 4)
         bucket_type = table_value.GetType().GetCanonicalType().GetPointeeType().GetCanonicalType()
         stride = bucket_type.GetByteSize()
@@ -260,14 +261,61 @@ def debugger_stage():
         assert error.Success() and len(buckets) == capacity * stride
         matches = [i for i in range(capacity)
                    if int.from_bytes(buckets[i * stride + offset:i * stride + offset + 8], 'little') == allocation]
-        assert len(matches) == 1, 'actual precise allocation missing/duplicated in verifier map'
+        assert len(matches) <= 1, 'actual precise allocation duplicated in verifier map'
+        if not matches:
+            return header, allocation, None
         bucket = target.CreateValueFromAddress('owner-marker-bucket',
                     target.ResolveLoadAddress(table + matches[0] * stride), bucket_type).GetNonSyntheticValue()
         data = pointer(field(bucket, 'value'), 'JSC::VerifierSlotVisitor::PreciseAllocationData')
         assert len(data) == 1 and data[0]
         record = typed(data[0], 'JSC::VerifierSlotVisitor::PreciseAllocationData')
         assert number(field(record, 'm_allocation')) == allocation
-        marker = field(record, 'm_marker')
+        return header, allocation, field(record, 'm_marker')
+
+    def symbolize(pc, is_return=False):
+        address = target.ResolveLoadAddress(pc - 1 if is_return else pc)
+        function, symbol = address.GetFunction(), address.GetSymbol()
+        name = function.GetName() if function.IsValid() else symbol.GetName() if symbol.IsValid() else None
+        line = address.GetLineEntry()
+        return {'pc': pc, 'function': name, 'file_address': address.GetFileAddress(),
+                'source_file': line.GetFileSpec().GetFilename() if line.IsValid() else None,
+                'line': line.GetLine() if line.IsValid() else None}
+
+    def frame_pointer_snapshot(frame, thread):
+        # Shipping keeps frame pointers but removes CFI tables; libc backtrace stored an empty marker stack.
+        pc, lr, sp, fp = frame.GetPC(), reg(frame, 'x30'), reg(frame, 'sp'), reg(frame, 'x29')
+        region = lldb.SBMemoryRegionInfo()
+        assert process.GetMemoryRegionInfo(sp, region).Success() and region.IsReadable()
+        ceiling = min(region.GetRegionEnd(), sp + 16 * 1024**2)
+        frames = [symbolize(pc), symbolize(lr, True)]
+        links = []
+        current = fp
+        for _ in range(128):
+            if not current:
+                termination = 'null-frame-pointer'
+                break
+            if current % 16 or not sp <= current or current + 16 > ceiling:
+                termination = 'outside-readable-stack'
+                break
+            previous, saved_lr = word(current), word(current + 8)
+            links.append({'fp': current, 'previous_fp': previous, 'saved_lr': saved_lr})
+            if saved_lr:
+                frames.append(symbolize(saved_lr, True))
+            if previous and previous <= current:
+                termination = 'non-increasing-frame-pointer'
+                break
+            current = previous
+        else:
+            termination = 'frame-limit'
+        assert len(links) >= 2 and sum(bool(f['function']) for f in frames) >= 3, 'live frame-pointer path unavailable'
+        return {'thread': thread.GetThreadID(), 'pc': pc, 'lr': lr, 'sp': sp, 'fp': fp,
+                'links': links, 'frames': frames, 'termination': termination}
+
+    def marker_snapshot(visitor, cell):
+        header, allocation, marker = precise_marker(visitor, cell)
+        assert marker is not None, 'actual precise allocation missing in completed verifier map'
+        marked = field(field(typed(allocation, 'JSC::PreciseAllocation'), 'm_isMarked'), 'value')
+        assert marked.GetByteSize() == 1 and word(marked.GetLoadAddress(), 1) == 1, 'owner was not marked by the real GC'
         referrer = number(field(field(marker, 'm_referrer'), 'm_bits'))
         assert referrer == 6, 'marker is not the observed direct ConservativeScan root'
         stacks = pointer(field(marker, 'm_stack'), 'WTF::StackTrace')
@@ -294,19 +342,13 @@ def debugger_stage():
                     'source': str(start.GetFileSpec()), 'line': start.GetLine(),
                     'inline': block.IsInlined(), 'inline_name': block.GetInlinedName()})
         event('marker-source-contexts', contexts=contexts)
-        assert 0 < count <= 100 and initial == 2
+        assert (count == 0 and initial == 0) or (0 < count <= 100 and initial == 2)
         start = field(stack, 'm_stack').GetLoadAddress() + initial * 8
         frames = []
         for i in range(count):
             pc = word(start + i * 8)
             assert pc
-            address = target.ResolveLoadAddress(pc)
-            function, symbol = address.GetFunction(), address.GetSymbol()
-            name = function.GetName() if function.IsValid() else symbol.GetName() if symbol.IsValid() else None
-            line = address.GetLineEntry()
-            frames.append({'pc': pc, 'function': name, 'file_address': address.GetFileAddress(),
-                           'line': line.GetLine() if line.IsValid() else None})
-        assert any(frame['function'] for frame in frames), 'no marker frame resolved'
+            frames.append(symbolize(pc, True))
         event('passive-marker-snapshot', owner=cell, allocation=allocation, real_gc_marked=True, referrer_bits=referrer,
               root_reason='ConservativeScan', stack=stacks[0], frames=frames,
               unresolved_frames=sum(frame['function'] is None for frame in frames))
@@ -332,6 +374,9 @@ def debugger_stage():
             weak_return_bp = None
             completion_bp, completion_address = entry('Bun__UpgradedDuplex__onWriteComplete')
             gc_bp, _ = entry('JSC__VM__runGC')
+            live_mark_bp, _ = entry('JSC::VerifierSlotVisitor::testAndSetMarked',
+                'JSC::VerifierSlotVisitor::testAndSetMarked(JSC::PreciseAllocation&)')
+            live_mark_bp.SetEnabled(False)
             mark_bp = target.BreakpointCreateByLocation('Collector.cpp', 1068)
             assert mark_bp.GetNumLocations() > 0, 'missing post-mark verifier boundary'
             mark_bp.SetEnabled(False)
@@ -346,7 +391,7 @@ def debugger_stage():
         error = lldb.SBError()
         process = target.Launch(info, error)
         assert error.Success(), str(error)
-        for _ in range(256):
+        for _ in range(16384 if stage == 'trace' else 256):
             if process.GetState() == lldb.eStateExited:
                 break
             assert process.GetState() == lldb.eStateStopped, str(process.GetState())
@@ -429,7 +474,21 @@ def debugger_stage():
                     assert gc_count <= 31
                     # The fixture collects once for queuedRoot, then thirty times before its final deref.
                     if gc_count == 31:
+                        live_mark_bp.SetEnabled(True)
                         mark_bp.SetEnabled(True)
+            elif live_mark_bp.GetID() in ids:
+                assert returned and gc_count == 31
+                allocation = owner['owner'] - ((concrete_type('JSC::PreciseAllocation').GetByteSize() + 15) & ~15)
+                if reg(frame, 'x1') == allocation:
+                    visitor_address = reg(frame, 'x0')
+                    visitor = typed(visitor_address, 'JSC::VerifierSlotVisitor')
+                    _, actual_allocation, existing = precise_marker(visitor, owner['owner'])
+                    assert actual_allocation == allocation and existing is None, 'first precise mark entry was missed'
+                    assert live_marker is None and number(field(visitor, 'm_doneMarking')) == 0
+                    live_marker = dict(visitor=visitor_address, allocation=allocation,
+                                       frame_pointer_path=frame_pointer_snapshot(frame, thread))
+                    event('live-first-precise-mark', **live_marker)
+                    live_mark_bp.SetEnabled(False)
             elif mark_bp.GetID() in ids:
                 assert returned and gc_count == 31 and 'Collector::verifyGC' in (frame.GetFunctionName() or '')
                 collector = frame.FindVariable('this', lldb.eNoDynamicValues)
@@ -437,6 +496,7 @@ def debugger_stage():
                 assert number(collector) == number(field(field(vm, 'heap'), 'm_collector'))
                 visitor_ptrs = pointer(field(collector.Dereference(), 'm_verifierSlotVisitor'), 'JSC::VerifierSlotVisitor')
                 assert len(set(visitor_ptrs)) == 1 and visitor_ptrs[0]
+                assert live_marker is not None and live_marker['visitor'] == visitor_ptrs[0]
                 visitor = typed(visitor_ptrs[0], 'JSC::VerifierSlotVisitor')
                 assert number(field(visitor, 'm_doneMarking')) == 1
                 w = typed(owner['weak'], 'JSC::JSWeakObjectRef')
@@ -463,8 +523,9 @@ def debugger_stage():
             assert facts['callbackRoot'] is True and facts['collected'] is False and facts['settled'] == ['ECANCELED']
             snapshots = [e for e in report['events'] if e['kind'] == 'passive-marker-snapshot']
             assert len(snapshots) == 1 and snapshots[0]['owner'] == owner['owner']
+            assert len([e for e in report['events'] if e['kind'] == 'live-first-precise-mark']) == 1
             report['outcome'] = facts
-            report['classification'] = 'stored ConservativeScan marker stack captured; originating word remains unproven'
+            report['classification'] = 'first-mark frame-pointer path captured; originating conservative word remains unproven'
         report['passed'] = True
     except BaseException as error:
         report['gap'] = str(error)
