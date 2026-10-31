@@ -1,0 +1,89 @@
+name: OpenClaw TLS optimized config inspection
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/openclaw-tls-config-disassembly.yml
+      - .github/openclaw/tls-config-disassembly.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: openclaw-tls-config-disassembly-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: controls
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          sparse-checkout: |
+            .github/openclaw
+            .github/workflows
+      - name: Install static LLVM tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc > /dev/null
+          echo "deb https://apt.llvm.org/noble/ llvm-toolchain-noble-23 main" | sudo tee /etc/apt/sources.list.d/llvm.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends --no-install-suggests llvm-23
+      - name: Admit the exact completed Linux ARM64 build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          input="$RUNNER_TEMP/tls-disassembly-input"
+          mkdir "$input"
+          gh api repos/openclaw/bun/actions/runs/41238111110 > "$input/run.json"
+          gh api repos/openclaw/bun/actions/runs/41238111110/jobs > "$input/jobs.json"
+          gh api repos/openclaw/bun/actions/artifacts/13056617461 > "$input/metadata.json"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']) / 'tls-disassembly-input'
+          run = json.loads((root / 'run.json').read_text())
+          assert run['id'] == 41238111110
+          assert run['head_sha'] == '510fef558b464c58de1209298f638fa476d03eef'
+          assert run['event'] == 'workflow_dispatch'
+          assert run['path'] == '.github/workflows/openclaw-release.yml'
+          assert run['head_branch'] == 'claude/fix-tls-native-transport-20261019'
+          jobs = json.loads((root / 'jobs.json').read_text())['jobs']
+          build = [job for job in jobs if job['id'] == 124646206308 and job['name'] == 'Build linux-arm64']
+          assert len(build) == 1 and build[0]['conclusion'] == 'success'
+          artifact = json.loads((root / 'metadata.json').read_text())
+          assert artifact['id'] == 13056617461 and artifact['name'] == 'build-linux-arm64'
+          assert artifact['size_in_bytes'] == 222623871 and not artifact['expired']
+          assert artifact['digest'] == 'sha256:c54dbe7ea29a336c76db1dd5ba491bbb117a6c211d938892c62f2f5e74251fcd'
+          assert artifact['workflow_run']['id'] == run['id']
+          assert artifact['workflow_run']['head_sha'] == run['head_sha']
+          PY
+          curl --location --fail --silent --show-error --proto '=https' --proto-redir '=https' \
+            --max-time 300 --max-filesize 222623871 \
+            -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/openclaw/bun/actions/artifacts/13056617461/zip \
+            --output "$input/artifact.zip"
+      - name: Capture physical instructions without running Bun
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir tls-disassembly-proof
+          cp controls/.github/workflows/openclaw-tls-config-disassembly.yml tls-disassembly-proof/workflow.yml
+          cp controls/.github/openclaw/tls-config-disassembly.py tls-disassembly-proof/controller.py
+          python3 controls/.github/openclaw/tls-config-disassembly.py
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: tls-config-disassembly
+          path: tls-disassembly-proof/
+          if-no-files-found: error
+          retention-days: 7
