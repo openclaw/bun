@@ -1,0 +1,161 @@
+name: OpenClaw TLS Darwin type witness
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/openclaw-tls-darwin-types.yml
+      - .github/openclaw/tls-darwin-types.py
+      - .github/openclaw/tls-darwin-capability.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: openclaw-tls-darwin-types-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: controls
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          sparse-checkout: |
+            .github/openclaw
+            .github/workflows
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: source
+          ref: 510fef558b464c58de1209298f638fa476d03eef
+          persist-credentials: false
+      - uses: ./source/.github/actions/setup-bun
+        with:
+          bun-version: "1.4.4"
+      - name: Provision the frozen shipping compiler and SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir tls-darwin-types
+          script=$(bun source/scripts/openclaw-release/release.ts provision --source source --target darwin-x64 | tail -1)
+          script=${script#"$GITHUB_WORKSPACE"/}
+          test -f "$script"
+          id=$(docker run --detach -e CI=true -v "$GITHUB_WORKSPACE:/work" -w /work \
+            docker.io/library/debian:13@sha256:9cc080028c43b27d2074d63a5f9caf7166d731494965616c1a6d2827a004585c \
+            sleep infinity)
+          [[ "$id" =~ ^[0-9a-f]{64}$ ]]
+          echo "$id" > "$RUNNER_TEMP/tls-types-container"
+          docker exec "$id" sh "$script" 510fef558b464c58de1209298f638fa476d03eef openclaw-release
+      - name: Emit a separate type object using the native compile owner
+        shell: bash
+        run: |
+          set -euo pipefail
+          id=$(cat "$RUNNER_TEMP/tls-types-container")
+          [[ "$id" =~ ^[0-9a-f]{64}$ ]]
+          docker exec "$id" bash -euo pipefail -c '
+            . /etc/profile.d/bun-ci.sh
+            git config --global --add safe.directory /work/source
+            python3 controls/.github/openclaw/tls-darwin-types.py build
+          '
+      - name: Seal bounded type metadata and build evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test -f "$RUNNER_TEMP/tls-types-container"; then
+            id=$(cat "$RUNNER_TEMP/tls-types-container")
+            [[ "$id" =~ ^[0-9a-f]{64}$ ]]
+            docker stop --time 15 "$id" > /dev/null
+            test "$(docker inspect --format '{{.State.Running}}' "$id")" = false
+          fi
+          sudo chown -R "$(id -u):$(id -g)" tls-darwin-types
+          cp controls/.github/openclaw/tls-darwin-types.py tls-darwin-types/controller.py
+          cp controls/.github/openclaw/tls-darwin-capability.py tls-darwin-types/inventory.py
+          cp controls/.github/workflows/openclaw-tls-darwin-types.yml tls-darwin-types/workflow.yml
+          python3 - <<'PY'
+          import hashlib, json, stat
+          from pathlib import Path
+          root = Path('tls-darwin-types')
+          files = sorted(root.iterdir())
+          assert len(files) <= 24 and all(stat.S_ISREG(p.lstat().st_mode) for p in files)
+          assert sum(p.stat().st_size for p in files) <= 96 * 1024**2
+          (root / 'manifest.json').write_text(json.dumps({p.name: dict(bytes=p.stat().st_size,
+              sha256=hashlib.sha256(p.read_bytes()).hexdigest()) for p in files}, indent=2) + '\n')
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always() && hashFiles('tls-darwin-types/manifest.json') != ''
+        with:
+          name: tls-darwin-type-object
+          path: tls-darwin-types/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Remove this job's compiler container
+        if: always()
+        shell: bash
+        run: |
+          if test -f "$RUNNER_TEMP/tls-types-container"; then
+            id=$(cat "$RUNNER_TEMP/tls-types-container")
+            [[ "$id" =~ ^[0-9a-f]{64}$ ]] && docker rm --force "$id" > /dev/null
+          fi
+
+  inspect:
+    needs: compile
+    runs-on: macos-15-intel
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: controls
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          sparse-checkout: .github/openclaw
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: tls-darwin-type-object
+          path: tls-darwin-types
+      - name: Admit every type-object artifact entry
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json, stat
+          from pathlib import Path
+          root = Path('tls-darwin-types')
+          manifest = json.loads((root / 'manifest.json').read_text())
+          assert set(manifest) == {p.name for p in root.iterdir()} - {'manifest.json'}
+          for name, entry in manifest.items():
+              p = root / name
+              assert p.name == name and stat.S_ISREG(p.lstat().st_mode)
+              assert p.stat().st_size == entry['bytes'] and hashlib.sha256(p.read_bytes()).hexdigest() == entry['sha256']
+          assert (root / 'controller.py').read_bytes() == Path('controls/.github/openclaw/tls-darwin-types.py').read_bytes()
+          assert (root / 'inventory.py').read_bytes() == Path('controls/.github/openclaw/tls-darwin-capability.py').read_bytes()
+          PY
+      - name: Admit complete layouts without launching an inferior
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcrun lldb --batch --no-lldbinit --no-use-colors \
+            -o 'settings set target.load-script-from-symbol-file false' \
+            -o 'script import runpy; _ = runpy.run_path("controls/.github/openclaw/tls-darwin-types.py", run_name="__lldb__")' \
+            > tls-darwin-types/debugger.log 2>&1
+          test -f tls-darwin-types/layouts.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          result = json.loads(Path('tls-darwin-types/layouts.json').read_text())
+          assert result['missing'] == [] and result['inferior_launched'] is False
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: tls-darwin-type-layouts
+          path: |
+            tls-darwin-types/layouts.json
+            tls-darwin-types/debugger.log
+          if-no-files-found: error
+          retention-days: 7

@@ -93,21 +93,7 @@ def prepare():
         claim='static capability inventory only; no inferior launch or GC-root proof'), indent=2) + '\n')
 
 
-def inspect(debugger):
-    import lldb
-    debugger.SetAsync(False)
-    debugger.SetUseColor(False)
-    command = lldb.SBCommandReturnObject()
-    debugger.GetCommandInterpreter().HandleCommand('settings set target.load-script-from-symbol-file false', command)
-    assert command.Succeeded()
-    target = debugger.CreateTarget(str(ROOT / 'bun-profile'))
-    assert target.IsValid() and target.GetTriple().startswith('x86_64-apple-')
-    command = lldb.SBCommandReturnObject()
-    debugger.GetCommandInterpreter().HandleCommand('target symbols add ' + shlex.quote(str(ROOT / 'bun-profile.dSYM')), command)
-    assert command.Succeeded(), command.GetError()
-    module = target.FindModule(target.GetExecutable())
-    inputs = json.loads((OUT / 'inputs.json').read_text())
-    assert module.GetUUIDString().lower() == inputs['uuid']
+def type_layouts(target):
     layouts = {}
     for name in ('JSC::VM', 'JSC::Heap', 'JSC::Collector', 'JSC::PreciseAllocation',
                  'JSC::VerifierSlotVisitor', 'JSC::VerifierSlotVisitor::PreciseAllocationData',
@@ -127,6 +113,25 @@ def inspect(debugger):
                 fields=[dict(name=f.GetName(), offset=f.GetOffsetInBytes(), type=f.GetType().GetName(),
                              bytes=f.GetType().GetByteSize()) for f in fields]))
         layouts[name] = values
+    return layouts
+
+
+def inspect(debugger):
+    import lldb
+    debugger.SetAsync(False)
+    debugger.SetUseColor(False)
+    command = lldb.SBCommandReturnObject()
+    debugger.GetCommandInterpreter().HandleCommand('settings set target.load-script-from-symbol-file false', command)
+    assert command.Succeeded()
+    target = debugger.CreateTarget(str(ROOT / 'bun-profile'))
+    assert target.IsValid() and target.GetTriple().startswith('x86_64-apple-')
+    command = lldb.SBCommandReturnObject()
+    debugger.GetCommandInterpreter().HandleCommand('target symbols add ' + shlex.quote(str(ROOT / 'bun-profile.dSYM')), command)
+    assert command.Succeeded(), command.GetError()
+    module = target.FindModule(target.GetExecutable())
+    inputs = json.loads((OUT / 'inputs.json').read_text())
+    assert module.GetUUIDString().lower() == inputs['uuid']
+    layouts = type_layouts(target)
     functions = {}
     for name in ('JSC::constructWeakRef', 'JSC__VM__runGC', 'posix_spawn_bun',
                  'JSC::MachineThreads::gatherConservativeRoots', 'JSC::ConservativeRoots::genericAddSpan',
