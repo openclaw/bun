@@ -1,4 +1,4 @@
-name: OpenClaw TLS full-symbol reproduction
+name: OpenClaw TLS saved-symbol reproduction
 
 on:
   pull_request:
@@ -7,103 +7,167 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
-  group: openclaw-tls-fullsymbols-${{ github.head_ref || github.ref }}
+  group: openclaw-tls-saved-symbols-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 jobs:
   linux-arm64:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 340
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: 454a78a4d3b0202ecdbedf7dd051fc84ffc59e9e
           path: source
           persist-credentials: false
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: openclaw/WebKit
-          ref: b82bc917e99110b61c3a21202d6def7457aa194c
-          path: webkit
-          persist-credentials: false
-      - name: Prepare native diagnostic build
+      - name: Prepare saved diagnostic inputs
         shell: bash
         run: |
           set -euo pipefail
           test "$(uname -m)" = aarch64
           test "$(git -C source rev-parse HEAD)" = 454a78a4d3b0202ecdbedf7dd051fc84ffc59e9e
-          test "$(git -C webkit rev-parse HEAD)" = b82bc917e99110b61c3a21202d6def7457aa194c
           echo 'd4c04a72b89bc7d33c292a16a57c38f5da540815dc2e141adfd58c1bd9973af2  source/test/js/bun/net/socket-retention.test.ts' | sha256sum --check
           mkdir diagnostics
           printf '%s\n' 'Bun=454a78a4d3b0202ecdbedf7dd051fc84ffc59e9e' \
             'WebKit=b82bc917e99110b61c3a21202d6def7457aa194c' \
             'Diagnostic variance: non-LTO C++/JSC; Debian 13 system ICU; Rust-only release LTO may remain enabled.' > diagnostics/inputs.txt
           cat > diagnostics/probe.py <<'PY'
-          import gdb, json
-          gdb.execute("set breakpoint pending off")
+          import json, lldb, re
+          from pathlib import Path
+          target = lldb.debugger.GetSelectedTarget()
+          assert target.IsValid(), "missing diagnostic target"
+          module = target.FindModule(target.GetExecutable())
+          assert module.IsValid(), "missing executable module"
+          uuid = re.sub("[^0-9a-fA-F]", "", module.GetUUIDString() or "").lower()
+          expected = re.findall(r"Build ID: (\w+)", Path("/work/diagnostics/bun-build-id.txt").read_text())
+          assert len(expected) == 1 and uuid == expected[0], "LLDB module identity mismatch"
           types = {}
           for name in ("JSC::JSCell", "JSC::Heap", "JSC::SlotVisitor", "JSC::ConservativeRoots"):
-              value = gdb.lookup_type(name).strip_typedefs()
-              fields = value.fields()
-              assert value.sizeof > 0 and fields, "incomplete type: " + name
-              types[name] = {"bytes": value.sizeof, "fields": len(fields)}
+              candidates = target.FindTypes(name)
+              complete = []
+              for i in range(candidates.GetSize()):
+                  value = candidates.GetTypeAtIndex(i).GetCanonicalType()
+                  fields = value.GetNumberOfFields()
+                  if value.IsTypeComplete() and value.GetByteSize() > 0 and fields > 0:
+                      layout = [{"name": value.GetFieldAtIndex(j).GetName(), "offset_bits": value.GetFieldAtIndex(j).GetOffsetInBits()} for j in range(fields)]
+                      complete.append({"bytes": value.GetByteSize(), "fields": fields, "layout": layout})
+              assert complete, "incomplete type: " + name
+              types[name] = complete
           functions = {}
           for name in ("JSC::Collector::runEndPhase", "JSC::MachineThreads::gatherConservativeRoots"):
-              point = gdb.Breakpoint(name)
-              addresses = [location.address for location in point.locations]
-              assert addresses and all(addresses), "unresolved function: " + name
-              functions[name] = addresses
-          print(json.dumps({"types": types, "functions": functions}, indent=2))
+              contexts = module.FindFunctions(name, lldb.eFunctionNameTypeAny)
+              functions[name] = []
+              for i in range(contexts.GetSize()):
+                  context = contexts.GetContextAtIndex(i)
+                  function = context.GetFunction()
+                  unit = context.GetCompileUnit()
+                  if not function.IsValid() or not unit.IsValid():
+                      continue
+                  address = function.GetStartAddress().GetFileAddress()
+                  if address not in (0, lldb.LLDB_INVALID_ADDRESS):
+                      functions[name].append({"address": address, "name": function.GetName(), "compile_unit": str(unit.GetFileSpec())})
+              assert functions[name], "missing debug function: " + name
+          Path("/work/diagnostics/symbol-capability.json").write_text(json.dumps({"module_uuid": uuid, "types": types, "functions": functions}, indent=2) + "\n")
           PY
-          # Only this disposable hosted runner is affected; leave Docker images alone.
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/share/boost /usr/share/swift
-          df -h /
-      - uses: ./source/.github/actions/setup-bun
-        with:
-          bun-version: "1.4.4"
-      - name: Generate common toolchain provisioning
-        id: provision
-        shell: bash
-        run: |
-          set -euo pipefail
-          # No target sysroot: local WebKit uses system ICU in this container.
-          script=$(bun -e 'import { resolve } from "node:path"; import { provision } from "./source/scripts/openclaw-release/release.ts"; console.log(provision(resolve("source"), []));' | tail -1)
-          echo "script=${script#"$GITHUB_WORKSPACE"/}" >> "$GITHUB_OUTPUT"
-      - name: Provision native ARM64 container
+      - name: Fetch the frozen failed build
         shell: bash
         env:
-          SCRIPT: ${{ steps.provision.outputs.script }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          for attempt in 1 2 3 4; do
-            docker rm --force tls-symbols > /dev/null 2>&1 || true
-            docker run --detach --name tls-symbols -e CI=true -v "$GITHUB_WORKSPACE:/work" -w /work \
-              docker.io/library/debian:13@sha256:9cc080028c43b27d2074d63a5f9caf7166d731494965616c1a6d2827a004585c \
-              sleep infinity > /dev/null
-            if docker exec -e SCRIPT tls-symbols sh -euc \
-              'sh "$SCRIPT" 454a78a4d3b0202ecdbedf7dd051fc84ffc59e9e openclaw-tls-diagnostic && apt-get update && apt-get install --yes --no-install-recommends libicu-dev libjson-pp-perl gdb binutils zstd'; then
-              exit 0
-            fi
-            echo "::warning::Provisioning attempt $attempt failed"
-            [ "$attempt" = 4 ] && exit 1
-            sleep $((attempt * 120))
-          done
-      - name: Build release with full C++ and JSC symbols
+          gh api repos/openclaw/bun/actions/runs/41177263900 > diagnostics/producer-run.json
+          gh api repos/openclaw/bun/actions/artifacts/13034855054 > diagnostics/producer-artifact.json
+          gh api repos/openclaw/bun/actions/artifacts/13034855054/zip > artifact.zip
+          python3 - <<'PYCODE'
+          import hashlib, json, stat, zipfile
+          from pathlib import Path, PurePosixPath
+          artifact = json.loads(Path("diagnostics/producer-artifact.json").read_text())
+          run = json.loads(Path("diagnostics/producer-run.json").read_text())
+          assert run["id"] == 41177263900 and run["conclusion"] == "failure"
+          assert run["head_sha"] == "dc683a462eb90a5c5b22abb1a85dd25639cfc5b6"
+          assert artifact["id"] == 13034855054 and not artifact["expired"]
+          assert artifact["name"] == "tls-linux-arm64-fullsymbols" and artifact["size_in_bytes"] == 319038169
+          assert artifact["workflow_run"]["id"] == run["id"] and artifact["workflow_run"]["head_sha"] == run["head_sha"]
+          digest = "d4ebf132092bb9c3a6de65fd848523200aaff74e36cd09ecf60f1a5fc69abbb3"
+          assert artifact["digest"] == "sha256:" + digest
+          with Path("artifact.zip").open("rb") as archive:
+              assert hashlib.file_digest(archive, "sha256").hexdigest() == digest
+          with zipfile.ZipFile("artifact.zip") as archive:
+              entries = archive.infolist()
+              assert len(entries) <= 20 and sum(entry.file_size for entry in entries) <= 8 * 1024**3
+              seen = set()
+              for entry in entries:
+                  name = PurePosixPath(entry.filename)
+                  assert not name.is_absolute() and len(name.parts) == 1 and name.name not in ("", ".", "..")
+                  assert not entry.is_dir() and not stat.S_ISLNK(entry.external_attr >> 16) and name.name not in seen
+                  seen.add(name.name)
+                  target = Path("producer") / name.name
+                  target.parent.mkdir(exist_ok=True)
+                  with target.open("xb") as output, archive.open(entry) as content:
+                      import shutil
+                      shutil.copyfileobj(content, output)
+          sums = dict(line.split(None, 1)[::-1] for line in Path("producer/SHA256SUMS").read_text().splitlines())
+          assert set(sums) == {"source/build/tls-arm64-fullsymbols/bun", "source/build/tls-arm64-fullsymbols/bun-profile", "diagnostics/matched-symbols.tar.zst"}
+          with Path("producer/matched-symbols.tar.zst").open("rb") as archive:
+              assert hashlib.file_digest(archive, "sha256").hexdigest() == sums["diagnostics/matched-symbols.tar.zst"]
+          Path("diagnostics/producer-policy.txt").write_text("Producer binary policy FAILED: extra static initializer init_have_sme. These saved non-LTO/system-ICU inputs are diagnostic only; no shipping gate is waived.\n")
+          PYCODE
+      - name: Restore matched inputs in the original container layout
         shell: bash
         run: |
           set -euo pipefail
-          docker exec tls-symbols bash -euo pipefail -c '
-            . /etc/profile.d/bun-ci.sh
-            git config --global --add safe.directory /work/source
-            git config --global --add safe.directory /work/webkit
-            { bun --version; node --version; clang --version; cmake --version; rustc --version; gdb --version; dpkg-query -W libicu-dev; } > /work/diagnostics/tools.txt
-            cd /work/source
-            export BUN_WEBKIT_PATH=/work/webkit CMAKE_BUILD_PARALLEL_LEVEL=2
-            bun run build:release --ci=on --webkit=local --lto=off --os=linux --arch=aarch64 --abi=gnu --build-dir=build/tls-arm64-fullsymbols -j2
+          docker run --detach --name tls-symbols -e CI=true -v "$GITHUB_WORKSPACE:/work" -w /work \
+            docker.io/library/debian:13@sha256:9cc080028c43b27d2074d63a5f9caf7166d731494965616c1a6d2827a004585c \
+            sleep infinity > /dev/null
+          docker exec tls-symbols sh -euc '
+            apt-get update
+            apt-get install --yes --no-install-recommends ca-certificates curl python3 binutils zstd libicu76
+            curl -fsSL --retry 5 https://apt.llvm.org/llvm-snapshot.gpg.key > /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+            echo "deb https://apt.llvm.org/trixie/ llvm-toolchain-trixie-23 main" > /etc/apt/sources.list.d/llvm.list
+            apt-get update
+            apt-get install --yes --no-install-recommends llvm-23 lldb-23 python3-lldb-23
           '
+          docker exec -i tls-symbols python3 - <<'PYCODE'
+          import hashlib, json, re, shutil, subprocess, tarfile
+          from pathlib import Path, PurePosixPath
+          expected_icu = re.search(r"^libicu-dev(?::arm64)?\s+(\S+)$", Path("producer/tools.txt").read_text(), re.M)
+          assert expected_icu, "producer ICU identity missing"
+          actual_icu = subprocess.check_output(["dpkg-query", "-W", "-f=${Version}", "libicu76"], text=True)
+          assert actual_icu == expected_icu[1], (actual_icu, expected_icu[1])
+          count = size = 0
+          seen = set()
+          child = subprocess.Popen(["zstd", "--decompress", "--stdout", "producer/matched-symbols.tar.zst"], stdout=subprocess.PIPE)
+          try:
+              with tarfile.open(fileobj=child.stdout, mode="r|") as archive:
+                  for member in archive:
+                      name = PurePosixPath(member.name)
+                      assert member.isfile() and not name.is_absolute() and ".." not in name.parts
+                      assert str(name).startswith("source/build/tls-arm64-fullsymbols/") and str(name) not in seen
+                      assert name.name in ("bun", "bun-profile") or name.suffix == ".dwo"
+                      seen.add(str(name)); count += 1; size += member.size
+                      assert count <= 20000 and size <= 8 * 1024**3
+                      target = Path(str(name)); target.parent.mkdir(parents=True, exist_ok=True)
+                      with target.open("xb") as output, archive.extractfile(member) as content:
+                          shutil.copyfileobj(content, output)
+                      target.chmod(0o755 if name.name in ("bun", "bun-profile") else 0o644)
+              assert child.wait(timeout=30) == 0
+          finally:
+              child.stdout.close()
+              if child.poll() is None:
+                  child.kill(); child.wait()
+          sums = dict(line.split(None, 1)[::-1] for line in Path("producer/SHA256SUMS").read_text().splitlines())
+          for name in ("source/build/tls-arm64-fullsymbols/bun", "source/build/tls-arm64-fullsymbols/bun-profile"):
+              with Path(name).open("rb") as binary:
+                  assert hashlib.file_digest(binary, "sha256").hexdigest() == sums[name]
+          Path("diagnostics/restored-inputs.json").write_text(json.dumps({"files": count, "bytes": size, "icu": actual_icu}, indent=2) + "\n")
+          PYCODE
+          docker exec tls-symbols sh -euc 'ldd source/build/tls-arm64-fullsymbols/bun' > diagnostics/runtime-libraries.txt
+          ! grep -q 'not found' diagnostics/runtime-libraries.txt
+          docker exec tls-symbols sh -euc 'lldb-23 --version; llvm-dwarfdump-23 --version; dpkg-query -W libicu76 python3 llvm-23 lldb-23 python3-lldb-23 binutils zstd' > diagnostics/runtime-tools.txt
       - name: Verify matched symbols and capture capability
         shell: bash
         run: |
@@ -120,7 +184,27 @@ jobs:
           ids = [re.findall(r"Build ID: (\w+)", (report / name).read_text()) for name in ("bun-build-id.txt", "profile-build-id.txt")]
           assert len(ids[0]) == 1 and ids[0] == ids[1], ids
           PY
-            gdb --batch --nx --init-eval-command="set auto-load off" -ex "file $build/bun-profile" -ex "python exec(compile(open(\"/work/diagnostics/probe.py\").read(), \"probe.py\", \"exec\"))" > /work/diagnostics/symbol-probe.txt 2>&1
+            python3 - <<'"'"'PYCODE'"'"'
+          import json, subprocess
+          from pathlib import Path
+          with Path("/work/diagnostics/dwarf-reference.txt").open("w") as output:
+              result = subprocess.run(["llvm-dwarfdump-23", "--show-parents", "--show-form", "--show-children", "--recurse-depth=2", "--debug-info=0x2cad422", "build/tls-arm64-fullsymbols/bun-profile"], stdout=output, stderr=subprocess.STDOUT, timeout=120)
+          Path("/work/diagnostics/dwarf-inspection.json").write_text(json.dumps({"status": result.returncode, "prior_gdb_error": "DWARF reference to DIE 0 from DIE 0x2cad422", "prior_run": 41180631285}) + "\n")
+          PYCODE
+            lldb-23 --no-lldbinit --batch \
+              -o "settings set target.load-script-from-symbol-file false" \
+              -o "target create $build/bun" \
+              -o "target symbols add $build/bun-profile" \
+              -o "script exec(open(\"/work/diagnostics/probe.py\").read())" > /work/diagnostics/symbol-probe.txt 2>&1
+            python3 - <<'"'"'PYCODE'"'"'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("/work/diagnostics/symbol-capability.json").read_text())
+          assert set(report["types"]) == {"JSC::JSCell", "JSC::Heap", "JSC::SlotVisitor", "JSC::ConservativeRoots"}
+          assert all(values and all(value["bytes"] > 0 and value["fields"] > 0 for value in values) for values in report["types"].values())
+          assert set(report["functions"]) == {"JSC::Collector::runEndPhase", "JSC::MachineThreads::gatherConservativeRoots"}
+          assert all(values and all(value["address"] > 0 and value["compile_unit"] and value["name"] for value in values) for values in report["functions"].values())
+          PYCODE
           '
       - name: Run the unchanged destroyed-completion case
         shell: bash
@@ -142,7 +226,7 @@ jobs:
           assert facts == {"commit": "454a78a4d3b0202ecdbedf7dd051fc84ffc59e9e", "webkit": "b82bc917e99110b61c3a21202d6def7457aa194c", "platform": "linux", "arch": "arm64"}, facts
           name = "a TLS Duplex completion retains its owner and is inert after destroy"
           with (report / "stdout.txt").open("w") as stdout, (report / "stderr.txt").open("w") as stderr:
-              result = subprocess.run([str(exe), "test", str(fixture), "--test-name-pattern", "^" + name + "$", "--reporter=junit", "--reporter-outfile=" + str(report / "result.xml")], stdout=stdout, stderr=stderr)
+              result = subprocess.run([str(exe), "test", str(fixture), "--test-name-pattern", "^" + name + "$", "--reporter=junit", "--reporter-outfile=" + str(report / "result.xml")], stdout=stdout, stderr=stderr, timeout=120)
           cases = [case for case in ElementTree.parse(report / "result.xml").iter("testcase") if case.get("name") == name]
           assert len(cases) == 1 and cases[0].find("skipped") is None, "selected case did not execute"
           outcome = {"exitCode": result.returncode, "name": name, "failure": cases[0].find("failure") is not None, "error": cases[0].find("error") is not None}
@@ -153,36 +237,14 @@ jobs:
           sys.exit(result.returncode)
           PY
           '
-      - name: Retain matched binary and split DWARF inputs
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo chown -R "$(id -u):$(id -g)" diagnostics
-          if [ -f source/build/tls-arm64-fullsymbols/bun-profile ]; then
-            python3 - <<'PY'
-          from pathlib import Path
-          import subprocess
-          root = Path("source/build/tls-arm64-fullsymbols")
-          files = [root / "bun", root / "bun-profile", *root.rglob("*.dwo")]
-          files = [p for p in files if p.is_file()]
-          assert len(files) <= 20000 and sum(p.stat().st_size for p in files) <= 8 * 1024**3, "artifact-budget-exceeded"
-          with Path("diagnostics/symbol-inputs.txt").open("w") as out:
-              out.write("\n".join(str(p) for p in files) + "\n")
-          subprocess.run(["tar", "--zstd", "-cf", "diagnostics/matched-symbols.tar.zst", "-T", "diagnostics/symbol-inputs.txt"], check=True)
-          PY
-            find source/build/tls-arm64-fullsymbols -name CMakeCache.txt -exec sh -c 'for cache; do printf "\n%s\n" "$cache"; cat "$cache"; done' sh {} + > diagnostics/cmake-caches.txt
-            sha256sum source/build/tls-arm64-fullsymbols/bun source/build/tls-arm64-fullsymbols/bun-profile diagnostics/matched-symbols.tar.zst > diagnostics/SHA256SUMS
-          fi
       - name: Upload diagnostic evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: tls-linux-arm64-fullsymbols
+          name: tls-linux-arm64-saved-symbols
           path: diagnostics
           if-no-files-found: error
           retention-days: 7
-          compression-level: 0
       - name: Stop diagnostic container
         if: always()
         run: docker rm --force tls-symbols > /dev/null
