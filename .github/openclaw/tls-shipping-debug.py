@@ -1,4 +1,5 @@
 """Build typed TLS diagnostic bytes with the frozen shipping optimization and ICU inputs."""
+import difflib
 import hashlib
 import json
 import os
@@ -133,8 +134,67 @@ argv = ['cmake', '-S', str(ENGINE), '-B', str(engine_build), '-G', 'Ninja',
         '-DUSE_MIMALLOC=ON', '-DUSE_EXTERNAL_MIMALLOC=ON']
 write('engine-build-command.json', {'argv': argv, 'compiler': 'clang/clang++ 23.1.1',
                                    'linker_flags': '-fuse-ld=lld'})
+def check_headers(headers, phase):
+    missing = [str(name) for name in headers if str(name) not in before]
+    mismatched = {str(name): {'shipping': before[str(name)], 'rebuilt': sha(path)}
+                  for name, path in headers.items() if str(name) in before and sha(path) != before[str(name)]}
+    evidence = {}
+    evidence_bytes = 0
+    for name in sorted(mismatched)[:4]:
+        paths = {'shipping': bundle / name, 'rebuilt': headers[Path(name)]}
+        size = sum(path.stat().st_size for path in paths.values())
+        if evidence_bytes + size > 128 * 1024**2:
+            evidence[name] = {'omitted': 'header evidence exceeds 128 MiB'}
+            continue
+        evidence[name] = {}
+        for kind, path in paths.items():
+            destination = OUT / 'header-evidence' / phase / (name + '.' + kind)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(path, destination)
+            evidence[name][kind] = {'path': str(destination.relative_to(OUT)),
+                                    'bytes': path.stat().st_size, 'sha256': sha(destination)}
+        evidence_bytes += size
+        # Retain large raw headers, but bound the in-memory line comparison separately.
+        if size > 8 * 1024**2:
+            evidence[name]['diff'] = {'omitted': 'diff inputs exceed 8 MiB'}
+            continue
+        destination = OUT / 'header-evidence' / phase / (name + '.diff')
+        difference_bytes = 0
+        with destination.open('xb') as stream:
+            for line in difflib.unified_diff(
+                    paths['shipping'].read_text().splitlines(keepends=True),
+                    paths['rebuilt'].read_text().splitlines(keepends=True),
+                    fromfile='shipping/' + name, tofile='rebuilt/' + name):
+                content = line.encode()
+                if evidence_bytes + difference_bytes + len(content) > 128 * 1024**2:
+                    break
+                stream.write(content)
+                difference_bytes += len(content)
+            else:
+                stream.flush()
+                evidence[name]['diff'] = {'path': str(destination.relative_to(OUT)),
+                                          'bytes': difference_bytes, 'sha256': sha(destination)}
+        if 'diff' not in evidence[name]:
+            destination.unlink()
+            evidence[name]['diff'] = {'omitted': 'diff exceeds remaining evidence budget'}
+        else:
+            evidence_bytes += difference_bytes
+    write(phase + '-header-parity.json', {'files': len(headers), 'missing': missing,
+                                         'mismatched': mismatched, 'evidence': evidence})
+    assert not missing and not mismatched, 'rebuilt core headers differ from the shipping consumer headers'
+
+
 run(argv, 'engine-configure.log', cwd=ROOT, env=engine_env, timeout=600)
 try:
+    # These generated headers can reject an incompatible rebuild before compiling the core libraries.
+    run(['cmake', '--build', str(engine_build), '--config', 'Release', '--parallel', '2',
+         '--target', 'JavaScriptCore/DerivedSources/LLIntAssembly.h'],
+        'engine-header-build.log', cwd=ROOT, env=engine_env, timeout=1200)
+    early_headers = {Path('include/cmakeconfig.h'): engine_build / 'cmakeconfig.h'}
+    for name in ('LLIntAssembly.h', 'LLIntDesiredOffsets.h', 'LLIntDesiredSettings.h'):
+        early_headers[Path('include/JavaScriptCore') / name] = engine_build / 'JavaScriptCore/DerivedSources' / name
+    assert all(path.is_file() for path in early_headers.values()), 'generated header preflight incomplete'
+    check_headers(early_headers, 'generated')
     run(['cmake', '--build', str(engine_build), '--config', 'Release', '--parallel', '2',
          '--target', 'jsc', '--target', 'testFFI'], 'engine-build.log', cwd=ROOT, env=engine_env, timeout=7200)
 finally:
@@ -169,11 +229,7 @@ for directory, destination in [('WTF/Headers/wtf', 'include/wtf'), ('bmalloc/Hea
         if path.is_file():
             headers[Path(destination) / path.relative_to(parent)] = path
 assert headers
-missing = [str(name) for name in headers if str(name) not in before]
-mismatched = {str(name): {'shipping': before[str(name)], 'rebuilt': sha(path)}
-              for name, path in headers.items() if str(name) in before and sha(path) != before[str(name)]}
-write('core-header-parity.json', {'files': len(headers), 'missing': missing, 'mismatched': mismatched})
-assert not missing and not mismatched, 'rebuilt core headers differ from the shipping consumer headers'
+check_headers(headers, 'core')
 for name in LIBS:
     shutil.copyfile(engine_build / 'lib' / name, bundle / 'lib' / name)
 after = inventory(bundle)
