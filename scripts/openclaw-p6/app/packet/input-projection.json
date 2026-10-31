@@ -80,7 +80,7 @@
       "projectedSha256": "29ad1ad089f28720ff1ac2c3036c5153b873856698ecb18122411a0c0d0db277"
     }
   },
-  "manifestSha256": "1e5189d5839e9a47df1d5704d1f7b2c09f9a783ca437d3a686ac67af86bc3bb3",
+  "manifestSha256": "9f80a1edc2678c7a9f2fd1c2ff1ff8462d45717203a1d5909153c9c5a8b081cf",
   "runtimeControllerRepair": {
     "terminalClassification": "Actual SIGTERM fixture child exit -15 formerly normalized to 1; retain timeout, cancellation and signal classification after cleanup",
     "guestQmpPath": "Generated C2 guest label shortened consistently for preparation and raw collection, reducing Linux QMP pathname from108 to98bytes"

@@ -378,7 +378,10 @@ def measure(plan, env, receipt):
         try:
             runpy.run_path(plan['measurementUtility'], run_name='__main__')
         except SystemExit as exit_result:
-            require(exit_result.code in [None, 0], f'Build command exited {exit_result.code}')
+            code = exit_result.code
+            if isinstance(code, int) and (code == 124 or code < 0 or code >= 128):
+                raise
+            require(code in [None, 0], f'Build command exited {code}')
     finally:
         os.chdir(old_cwd)
         os.environ.clear()

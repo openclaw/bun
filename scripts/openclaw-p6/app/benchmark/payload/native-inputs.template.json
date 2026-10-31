@@ -119,7 +119,7 @@
     "harness/config-roundtrip.mjs": "511d9140896da1cff71e116a428a985b7d1f695bd07b0423afebac6f1601d6b0",
     "harness/fixture-config.mjs": "1d028bfe83d0906f9fe1a651e5066a09442e850c08470eff584bf6487f4fbcc7",
     "harness/gateway-readiness.mjs": "a007aa71fd55a888d0b159ee4ab51cc63a35492586c87769086d95a50e3d0759",
-    "harness/measurement-owner.py": "c610495003a00a6da6e4b870c752e14c9db55b06d38bda78f376a05c3722c724",
+    "harness/measurement-owner.py": "784af301b728e9563c1551f5bce8295e0884a240f379c5314f6e6d9e58c51d44",
     "stream-cohort.py": "534faa35fcaf5f48766323463cf42fc8d3fbf3d75ca442b26fc548483c16abb3",
     "package-inventory.mjs": "c406013d6d33cdff0776833c0ab7e027683c361700af4633dc3cfd84ef1a7978",
     "measure-install.py": "5b8aaf5d7b0c8d839ad3089b9e83e48e7c4a8d4ed7cca5e1e6ab330c9a381cef",

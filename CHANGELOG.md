@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Stop AOT qualification after a measurement timeout or signal exit while retaining ordinary failure reporting.
+
 - Resolve extensionless package names through runtime plugin hooks, including Plugin SDK imports from external AOT code.
 
 - Accept hardened GNU builds whose fortified memory copies inline, while retaining stack-protector and checked-formatting import checks.

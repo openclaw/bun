@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+import runpy
 import shutil
 import signal
 import subprocess
@@ -136,6 +137,39 @@ row=owner['run_command']([sys.executable,str(root/target),str(root),sys.argv[4]]
         self.assertTrue(row['timeout'])
         self.assertEqual(row['exitCode'], -signal.SIGTERM)
         self.assertFalse(row['forcedCleanup'])
+
+
+class MeasurementOwnerExit(unittest.TestCase):
+    def test_measurement_exit_preserves_terminal_status_and_restores_process_state(self):
+        for relative in ['packet/payload/build-prep/build-linux.py',
+                         'benchmark/payload/harness/measurement-owner.py']:
+            owner = runpy.run_path(str(HERE / relative), run_name='measurement_owner_test')
+            with tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                utility = root / 'measure.py'
+                utility.write_text('import sys\nraise SystemExit(int(sys.argv[-1]))\n')
+                plan = {'measurementUtility': str(utility), 'variant': 'synthetic',
+                        'source': str(root), 'timeoutSeconds': 1}
+                for code in [0, 23, 124, -signal.SIGTERM, 137, 143]:
+                    with self.subTest(owner=relative, exitCode=code):
+                        argv, env, cwd = sys.argv, dict(os.environ), Path.cwd()
+                        handlers = {sig: signal.getsignal(sig) for sig in [signal.SIGINT, signal.SIGTERM]}
+                        plan['command'] = [str(code)]
+                        try:
+                            if code == 0:
+                                owner['measure'](plan, {'MEASUREMENT_FIXTURE': '1'}, root)
+                            elif code == 23:
+                                with self.assertRaisesRegex(ValueError, '^Build command exited 23$'):
+                                    owner['measure'](plan, {'MEASUREMENT_FIXTURE': '1'}, root)
+                            else:
+                                with self.assertRaises(SystemExit) as result:
+                                    owner['measure'](plan, {'MEASUREMENT_FIXTURE': '1'}, root)
+                                self.assertEqual(result.exception.code, code)
+                        finally:
+                            self.assertIs(sys.argv, argv)
+                            self.assertTrue(dict(os.environ) == env, 'measurement must restore the environment')
+                            self.assertEqual(Path.cwd(), cwd)
+                            self.assertEqual({sig: signal.getsignal(sig) for sig in handlers}, handlers)
 
 
 @unittest.skipUnless(sys.platform == 'linux', 'Requires real Linux GNU time')
