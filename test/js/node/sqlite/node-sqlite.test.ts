@@ -239,10 +239,6 @@ describe("sqlite.db.query", () => {
 });
 
 declare module "node:sqlite" {
-  interface StatementSync {
-    close(): void;
-    [Symbol.dispose](): void;
-  }
   class Session {
     private constructor();
   }

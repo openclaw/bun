@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Preserve `node:sqlite` query diagnostics through upstream module loading and AOT hook classification, and keep databases open when a subscriber disposes them, matching Node.
+- Preserve `node:sqlite` query diagnostics through upstream module loading and AOT hook classification, keep databases open when a subscriber disposes them, publish constructor aliases and statement disposal types, and support custom SQLite libraries without tracing.
 
 - Accept hardened GNU builds whose fortified memory copies inline, while retaining stack-protector and checked-formatting import checks.
 
