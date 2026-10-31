@@ -97,7 +97,11 @@ def build():
     assert wrapper.is_file() and 'root-pch.h' in wrapper.name
     witness.write_text('#include "' + str(wrapper) + '"\n' + ''.join(
         '#include <JavaScriptCore/' + name + '>\n' for name in required_headers) +
-        '\nstatic_assert(sizeof(JSC::VM) > 0);\nstatic_assert(sizeof(JSC::ConservativeRoots) > 0);\n')
+        '\nstatic_assert(sizeof(JSC::VM) > 0);\nstatic_assert(sizeof(JSC::ConservativeRoots) > 0);\n'
+        'static_assert(sizeof(JSC::VerifierSlotVisitor) > 0);\n'
+        # An external vtable leaves only a declaration unless this object witnesses the layout.
+        '[[gnu::used, gnu::noinline]] static void retainVerifierLayout(JSC::VerifierSlotVisitor& visitor)\n'
+        '{ __asm__ __volatile__("" : : "m"(visitor) : "memory"); }\n')
     output = OUT / 'types.o'
     # This object supplies layouts only. No runtime code or shipping profile is replaced.
     replacement = {'-g1': '-g', '-flto=thin': '-fno-lto',
