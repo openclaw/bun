@@ -1,0 +1,390 @@
+"""Join one original checkpoint's physical observations to its later heap graph."""
+import difflib
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import runpy
+import shlex
+import struct
+import subprocess
+import sys
+import time
+from xml.etree import ElementTree
+
+OUT = Path('tls-cycle-root')
+SOURCE = Path('source')
+ROOT = Path(os.environ['RUNNER_TEMP']) / 'tls-darwin-input'
+FIXTURE = 'test/js/bun/net/socket-retention.test.ts'
+CASE = 'TLS Duplex cycles collect after startup while a retained origin keeps its wrapper alive'
+SOURCE_SHA = '510fef558b464c58de1209298f638fa476d03eef'
+FIXTURE_SHA = 'd4c04a72b89bc7d33c292a16a57c38f5da540815dc2e141adfd58c1bd9973af2'
+PROFILE_SHA = '52f2048920d8b31ef4471e121cc06ad7b4828761a2c3278349f66ed9b4acaf2b'
+DSYM_SHA = '45aa427a18e5f97dda7a9fb23641ee066ecc5084de26d121b54530f62c41b0c6'
+UUID = '4c4c4432-5555-3144-a125-d2b0a4297913'
+EXPECTED = dict(retainedAlive=True, droppedCollected=False, releasedCollected=True)
+
+
+def sha(path):
+    with path.open('rb') as stream:
+        return hashlib.file_digest(stream, 'sha256').hexdigest()
+
+
+def write(name, value):
+    (OUT / name).write_text(json.dumps(value, indent=2) + '\n')
+
+
+def environment():
+    return dict(PATH=os.environ['PATH'], HOME=str(ROOT / 'empty-home'),
+                TMPDIR=str(ROOT / 'child-tmp'), CI='true', LANG='en_US.UTF-8')
+
+
+def run(args, name, **kwargs):
+    result = subprocess.run(args, stdin=subprocess.DEVNULL, capture_output=True, timeout=120,
+                            cwd=SOURCE, env=environment(), **kwargs)
+    assert len(result.stdout) + len(result.stderr) <= 4 * 1024**2
+    (OUT / (name + '.stdout')).write_bytes(result.stdout)
+    (OUT / (name + '.stderr')).write_bytes(result.stderr)
+    return result
+
+
+def prepare():
+    assert os.uname().sysname == 'Darwin' and os.uname().machine == 'x86_64'
+    assert not any(os.environ.get(k) for k in ('GH_TOKEN', 'GITHUB_TOKEN', 'NODE_OPTIONS', 'BUN_OPTIONS'))
+    library = runpy.run_path(str(Path(__file__).with_name('tls-darwin-capability.py')))
+    library['prepare']()
+    write('inputs.json', json.loads(Path('tls-darwin-proof/inputs.json').read_text()))
+    assert sha(ROOT / 'bun-profile') == PROFILE_SHA and sha(ROOT / 'bun-profile.dSYM') == DSYM_SHA
+    exe = (ROOT / 'bun-profile').resolve()
+    exe.chmod(0o700)
+    for name in ('empty-home', 'child-tmp'):
+        (ROOT / name).mkdir()
+    identity = run([str(exe), '-e', 'console.log(JSON.stringify({revision:Bun.revision,webkit:process.versions.webkit,platform:process.platform,arch:process.arch}))'], 'identity')
+    assert identity.returncode == 0 and not identity.stderr
+    assert json.loads(identity.stdout) == dict(revision=SOURCE_SHA,
+        webkit='b82bc917e99110b61c3a21202d6def7457aa194c', platform='darwin', arch='x64')
+    assert subprocess.check_output(['git', '-C', str(SOURCE), 'rev-parse', 'HEAD'], text=True).strip() == SOURCE_SHA
+    assert not subprocess.check_output(['git', '-C', str(SOURCE), 'diff', '--name-only', 'HEAD'], text=True)
+    fixture = SOURCE / FIXTURE
+    original = fixture.read_bytes()
+    assert hashlib.sha256(original).hexdigest() == FIXTURE_SHA
+    receipt = dict(source=SOURCE_SHA, fixture_sha256=FIXTURE_SHA, profile_sha256=PROFILE_SHA,
+        dsym_sha256=DSYM_SHA, uuid=UUID, scanner_cause_proven=False, retaining_writer_proven=False,
+        claim='original GC32 observations joined to a later snapshot GC; profile is not the production binary',
+        observer_effects=['profile executable', 'outgoing object tags', 'diagnostic imports',
+                          'snapshot performs an additional full GC', 'debugger stops'], runs=[])
+    try:
+        for name, contents in [('baseline', original), ('materialize', None)]:
+            report = (OUT / (name + '.xml')).resolve()
+            if contents is None:
+                text = original.decode()
+                start = text.index('test(' + json.dumps(CASE))
+                begin = text.index('      `', start)
+                end = text.index('      `,', begin + 7) + 6
+                child = (OUT / 'original-child.js').resolve()
+                prefix = '      ((value) => { require("node:fs").writeFileSync(' + json.dumps(str(child)) + ', value); return value; })(`'
+                contents = (text[:begin] + prefix + text[begin + 7:end] + '`),' + text[end + 2:]).encode()
+                (OUT / 'materialize.patch').write_text(''.join(difflib.unified_diff(
+                    original.decode().splitlines(True), contents.decode().splitlines(True),
+                    fromfile=FIXTURE, tofile=FIXTURE)))
+            fixture.write_bytes(contents)
+            result = run([str(exe), 'test', FIXTURE, '--test-name-pattern', '^' + re.escape(CASE) + '$',
+                          '--reporter=junit', '--reporter-outfile=' + str(report)], name)
+            doc = ElementTree.parse(report).getroot()
+            selected = [c for c in doc.iter('testcase') if c.get('name') == CASE]
+            assert len(selected) == 1 and not list(doc.iter('error'))
+            case = selected[0]
+            assert case.get('file') == FIXTURE and case.find('skipped') is None
+            assert all(c.find('skipped') is not None and c.find('failure') is None
+                       for c in doc.iter('testcase') if c is not case)
+            failures = case.findall('failure')
+            assert result.returncode == 1 and len(failures) == 1
+            match = re.search(r'Received: "(\{[^\n]+\})"', failures[0].get('message', ''))
+            assert match and json.loads(match[1]) == EXPECTED
+            receipt['runs'].append(dict(arm=name, exit_code=1, received=EXPECTED))
+        child = (OUT / 'original-child.js').read_text()
+        template = original.decode()[begin + 7:end]
+        before, after = template.split('${JSON.stringify(tlsCert)}')
+        assert child.startswith(before) and child.endswith(after)
+        cert = json.loads(child[len(before):len(child) - len(after)])
+        harness = (SOURCE / 'test/harness.ts').read_text()
+        cert_source = harness.split('export const tls = Object.freeze({', 1)[1].split('\n});', 1)[0]
+        pairs = re.findall(r'^  (\w+): ("(?:[^"\\]|\\.)*"),?$', cert_source, re.M)
+        assert dict((k, json.loads(v)) for k, v in pairs) == cert and set(cert) == {'cert', 'key'}
+        preload = '        const tls = require("node:tls");'
+        before_return = '          return { weak: new WeakRef(client._handle), origin: retain ? clientSide : null };'
+        checkpoint = '        for (let i = 0; i < 30; i++) { await turn(); Bun.gc(true); }'
+        tags = '''          Object.defineProperty(clientSide, retain ? "__tls_cycle_control_origin" : "__tls_cycle_dropped_origin", { value: Object.create(null) });
+          Object.defineProperty(client._handle, retain ? "__tls_cycle_control_handle" : "__tls_cycle_dropped_handle", { value: Object.create(null) });
+'''
+        assert child.count(preload) == child.count(before_return) == 1 and child.count(checkpoint) == 2
+        tagged = child.replace(preload, '        const { generateHeapSnapshotForDebugging } = require("bun:jsc");\n        const { writeFileSync } = require("node:fs");\n' + preload)
+        tagged = tagged.replace(before_return, tags + before_return)
+        for name, code in [('direct-baseline', child), ('tagged-control', tagged)]:
+            result = run([str(exe), '-e', code], name)
+            assert result.returncode == 0 and json.loads(result.stdout) == EXPECTED
+            receipt['runs'].append(dict(arm=name, exit_code=0, received=EXPECTED))
+        snapshot = (OUT / 'snapshot.json').resolve()
+        insertion = '\n        const snapshotText = JSON.stringify(generateHeapSnapshotForDebugging());\n        if (Buffer.byteLength(snapshotText) > 24 * 1024**2) throw new Error("snapshot too large");\n        writeFileSync(' + json.dumps(str(snapshot)) + ', snapshotText);'
+        captured = tagged.replace(checkpoint, checkpoint + insertion, 1)
+        assert captured.count('Bun.gc(true)') == child.count('Bun.gc(true)')
+        (OUT / 'debugger-child.js').write_text(captured)
+        receipt['original_child_sha256'] = hashlib.sha256(child.encode()).hexdigest()
+        receipt['debugger_child_sha256'] = hashlib.sha256(captured.encode()).hexdigest()
+    finally:
+        fixture.write_bytes(original)
+        assert sha(fixture) == FIXTURE_SHA
+        assert not subprocess.check_output(['git', '-C', str(SOURCE), 'diff', '--name-only', 'HEAD'], text=True)
+        receipt['source_restored'] = True
+        write('receipt.json', receipt)
+
+
+def inspect(debugger):
+    import lldb
+    debugger.SetAsync(True)
+    command = lldb.SBCommandReturnObject()
+    debugger.GetCommandInterpreter().HandleCommand('settings set target.load-script-from-symbol-file false', command)
+    assert command.Succeeded()
+    target = debugger.CreateTarget(str((ROOT / 'bun-profile').resolve()))
+    assert target.IsValid() and target.GetTriple().startswith('x86_64-apple-')
+    debugger.GetCommandInterpreter().HandleCommand('target symbols add ' + shlex.quote(str((ROOT / 'bun-profile.dSYM').resolve())), command)
+    assert command.Succeeded(), command.GetError()
+    module = target.FindModule(target.GetExecutable())
+    assert module.GetUUIDString().lower() == UUID
+    report = dict(gc_count=0, gc32_completed=False, spans=[], marks=[], thread_states=[],
+                  scanner_cause_proven=False, retaining_writer_proven=False, inferior_launched=False)
+    process = None
+    pending_spans, pending_marks = {}, {}
+    raw = bytearray()
+    active = False
+    points = {}
+    dynamic = {}
+
+    def save():
+        write('capture.json', report)
+        (OUT / 'spans.bin').write_bytes(raw)
+
+    def memory(address, size):
+        assert address > 0 and 0 <= size <= 4 * 1024**2
+        error = lldb.SBError()
+        data = process.ReadMemory(address, size, error)
+        assert error.Success() and len(data) == size, (hex(address), size, str(error))
+        return data
+
+    def word(address):
+        return struct.unpack('<Q', memory(address, 8))[0]
+
+    def reg(frame, name):
+        value = frame.FindRegister(name)
+        assert value.IsValid()
+        return value.GetValueAsUnsigned()
+
+    def frames(thread):
+        assert thread.GetNumFrames() <= 256
+        return [dict(pc=f.GetPC(), sp=f.GetSP(), fp=f.GetFP(), function=f.GetDisplayFunctionName(),
+                     file=f.GetLineEntry().GetFileSpec().GetFilename(), line=f.GetLineEntry().GetLine())
+                for f in [thread.GetFrameAtIndex(i) for i in range(thread.GetNumFrames())]]
+
+    def point(name, address, mnemonic, operands=None, enabled=True, thread=None):
+        address = target.ResolveFileAddress(address) if isinstance(address, int) else address
+        instructions = target.ReadInstructions(address, 1)
+        assert instructions.GetSize() == 1
+        instruction = instructions.GetInstructionAtIndex(0)
+        assert instruction.GetMnemonic(target) == mnemonic, (name, instruction.GetMnemonic(target))
+        if operands is not None:
+            assert instruction.GetOperands(target) == operands
+        bp = target.BreakpointCreateBySBAddress(address)
+        assert bp.GetNumLocations() == 1
+        bp.SetEnabled(enabled)
+        if thread is not None:
+            bp.SetThreadID(thread)
+        points[bp.GetID()] = name
+        return bp
+
+    gc = point('gc', 0x10055a780, 'pushq', '%rbp')
+    scans = [point('span', a, 'pushq', '%rbp', False) for a in (0x103bcf0a0, 0x103bcf1d0)]
+    gather = point('gather', 0x103c368c0, 'pushq', '%rbp', False)
+    pre = point('mark-before', 0x103c4b37d, 'lock', enabled=False)
+    post = point('mark-after', 0x103c4b384, 'jb', enabled=False)
+    report['physical_points'] = {str(k): v for k, v in points.items()}
+    launch = lldb.SBLaunchInfo(['-e', (OUT / 'debugger-child.js').read_text()])
+    launch.SetWorkingDirectory(str(SOURCE.resolve()))
+    launch.SetEnvironmentEntries([k + '=' + v for k, v in environment().items()], False)
+    assert launch.AddOpenFileAction(0, '/dev/null', True, False)
+    assert launch.AddOpenFileAction(1, str((OUT / 'debugger.stdout').resolve()), False, True)
+    assert launch.AddOpenFileAction(2, str((OUT / 'debugger.stderr').resolve()), False, True)
+    launch.SetDetachOnError(False)
+    listener = debugger.GetListener()
+    launch.SetListener(listener)
+    error = lldb.SBError()
+    try:
+        process = target.Launch(launch, error)
+        assert error.Success() and process.IsValid(), str(error)
+        report['inferior_launched'] = True
+        report['pid'] = process.GetProcessID()
+        deadline, stops = time.monotonic() + 240, 0
+        while process.GetState() not in (lldb.eStateExited, lldb.eStateCrashed, lldb.eStateDetached):
+            assert time.monotonic() < deadline, 'debugger capture deadline'
+            if process.GetState() != lldb.eStateStopped:
+                event = lldb.SBEvent()
+                listener.WaitForEvent(1, event)
+                continue
+            stops += 1
+            assert stops <= 30000
+            handled = False
+            for thread in process:
+                if thread.GetStopReason() != lldb.eStopReasonBreakpoint:
+                    continue
+                frame, tid = thread.GetFrameAtIndex(0), thread.GetThreadID()
+                assert thread.GetStopReasonDataCount() % 2 == 0
+                for i in range(0, thread.GetStopReasonDataCount(), 2):
+                    ident = thread.GetStopReasonDataAtIndex(i)
+                    name = points[ident]
+                    handled = True
+                    if name == 'gc':
+                        report['gc_count'] += 1
+                        if report['gc_count'] == 32:
+                            active = True
+                            report['gc32_entry_frames'] = frames(thread)
+                            ret = target.ResolveLoadAddress(word(frame.GetSP()))
+                            bp = target.BreakpointCreateBySBAddress(ret)
+                            bp.SetThreadID(tid)
+                            assert bp.GetNumLocations() == 1
+                            points[bp.GetID()] = 'gc-return'
+                            for b in scans + [gather, pre, post]:
+                                b.SetEnabled(True)
+                    elif name == 'gc-return':
+                        assert active and not pending_spans and not pending_marks
+                        report['gc32_completed'] = True
+                        active = False
+                        for b in scans + [gather, pre, post, gc]:
+                            b.SetEnabled(False)
+                        target.BreakpointDelete(ident)
+                    elif name == 'gather':
+                        assert active
+                        state = reg(frame, 'r8')
+                        row = dict(thread=tid, state=state)
+                        if state:
+                            origin, top, registers = struct.unpack('<QQQ', memory(state, 24))
+                            row.update(stack_origin=origin, stack_top=top, registers=registers,
+                                       register_words=list(struct.unpack('<6Q', memory(registers, 48))))
+                        report['thread_states'].append(row)
+                    elif name == 'span':
+                        assert active and tid not in pending_spans and len(report['spans']) < 64
+                        roots, begin, end = (reg(frame, r) for r in ('rdi', 'rsi', 'rdx'))
+                        begin, end = sorted((begin, end))
+                        assert end - begin <= 1024**2 and len(raw) + end - begin <= 4 * 1024**2
+                        assert (end - begin) % 8 == 0
+                        # Exact x64 type witness 41247026590: m_roots at 0, m_size at 8.
+                        row = dict(thread=tid, begin=begin, end=end, raw_offset=len(raw),
+                                   roots=roots, count_before=word(roots + 8),
+                                   threads=[dict(id=t.GetThreadID(), frames=frames(t)) for t in process])
+                        raw.extend(memory(begin, end - begin))
+                        ret = target.ResolveLoadAddress(word(frame.GetSP()))
+                        bp = target.BreakpointCreateBySBAddress(ret)
+                        bp.SetThreadID(tid)
+                        assert bp.GetNumLocations() == 1
+                        points[bp.GetID()] = 'span-return'
+                        dynamic[bp.GetID()] = row
+                        pending_spans[tid] = bp.GetID()
+                    elif name == 'span-return':
+                        assert active and pending_spans.pop(tid) == ident
+                        row = dynamic.pop(ident)
+                        count = word(row['roots'] + 8)
+                        assert row['count_before'] <= count <= 100000
+                        address = word(row['roots']) + row['count_before'] * 8
+                        data = memory(address, (count - row['count_before']) * 8)
+                        row['accepted_roots'] = list(struct.unpack('<' + 'Q' * (len(data) // 8), data))
+                        report['spans'].append(row)
+                        target.BreakpointDelete(ident)
+                    elif name == 'mark-before':
+                        assert active and tid not in pending_marks and len(report['marks']) < 12000
+                        cell, block, index, bit = (reg(frame, r) for r in ('rsi', 'rbx', 'rcx', 'rax'))
+                        assert block == cell & ~0x3fff and bit < 64
+                        address = block + index + 0x28
+                        pending_marks[tid] = dict(thread=tid, cell=cell, bitmap_word=address, bit=bit,
+                            before=word(address), caller=thread.GetFrameAtIndex(1).GetPC())
+                    elif name == 'mark-after':
+                        assert active
+                        row = pending_marks.pop(tid)
+                        assert row['cell'] == reg(frame, 'rsi')
+                        row['after'] = word(row['bitmap_word'])
+                        row['carry'] = reg(frame, 'rflags') & 1
+                        row['new_mark'] = not bool(row['carry'])
+                        assert row['after'] & (1 << row['bit'])
+                        if row['new_mark']:
+                            assert not row['before'] & (1 << row['bit'])
+                        report['marks'].append(row)
+            assert handled, 'unexpected debugger stop'
+            assert process.Continue().Success()
+        report['exit_status'] = process.GetExitStatus()
+        report['terminal_state'] = lldb.SBDebugger.StateAsCString(process.GetState())
+        assert report['gc32_completed'] and report['exit_status'] == 0
+        assert json.loads((OUT / 'debugger.stdout').read_text()) == EXPECTED
+        report['original_failure_preserved'] = True
+    finally:
+        if process is not None and process.IsValid() and process.GetState() not in (lldb.eStateExited, lldb.eStateDetached):
+            report['task_process_killed'] = process.Kill().Success()
+        save()
+
+
+def seal():
+    try:
+        receipt = json.loads((OUT / 'receipt.json').read_text())
+        capture = json.loads((OUT / 'capture.json').read_text())
+        snapshot = OUT / 'snapshot.json'
+        assert snapshot.is_file() and snapshot.stat().st_size <= 24 * 1024**2
+        library = runpy.run_path(str(Path(__file__).with_name('tls-cycle-heap.py')))
+        graph = library['project_graph'](json.loads(snapshot.read_text()))
+        write('graph.json', graph)
+        target = graph['targets']['__tls_cycle_dropped_handle']
+        assert target['present'] and not target['root_paths'] and target['synthetic_root_path'] is None
+        external = {edge['source'] for edge in target['scc_external_incoming']}
+        assert len(external) == 1, 'external owner changed; inspect raw evidence'
+        raw_graph = json.loads(snapshot.read_text())
+        nodes = raw_graph['nodes']
+        owner = next(nodes[i:i + 7] for i in range(0, len(nodes), 7) if nodes[i] in external)
+        assert raw_graph['nodeClassNames'][owner[2]] == 'JSLexicalEnvironment'
+        cell = int(owner[5], 16)
+        edges = raw_graph['edges']
+        assert all(edges[i + 1] != owner[0] for i in range(0, len(edges), 4))
+        assert owner[0] not in raw_graph['roots'][::3]
+        spans = (OUT / 'spans.bin').read_bytes()
+        matches = []
+        for span in capture['spans']:
+            data = spans[span['raw_offset']:span['raw_offset'] + span['end'] - span['begin']]
+            for offset in range(0, len(data), 8):
+                if struct.unpack_from('<Q', data, offset)[0] != cell:
+                    continue
+                address = span['begin'] + offset
+                owners = []
+                for thread in span['threads']:
+                    for frame, caller in zip(thread['frames'], thread['frames'][1:]):
+                        if 0 < frame['sp'] <= address < caller['sp'] < 2**64 - 1:
+                            owners.append(dict(thread=thread['id'], frame=frame, caller=caller))
+                matches.append(dict(address=address, span_begin=span['begin'], span_end=span['end'],
+                    accepted=cell in span['accepted_roots'], physical_frames=owners))
+        marks = [m for m in capture['marks'] if m['cell'] == cell]
+        write('join.json', dict(owner_id=owner[0], owner_cell=owner[5], gc32_word_matches=matches,
+            gc32_mark_events=marks, scanner_cause_proven=False, retaining_writer_proven=False,
+            claim='physical observations; identify the frame writer before proposing a runtime repair'))
+        receipt.update(snapshot_sha256=sha(snapshot), gc32_completed=capture['gc32_completed'],
+                       word_matches=len(matches), new_marks=sum(m['new_mark'] for m in marks),
+                       original_failure_preserved=capture.get('original_failure_preserved', False))
+        write('receipt.json', receipt)
+        assert capture['gc32_completed'] and capture['original_failure_preserved']
+        assert any(m['accepted'] for m in matches) and any(m['new_mark'] for m in marks), 'root not established; no causal claim'
+    finally:
+        files = sorted(OUT.iterdir())
+        assert len(files) <= 32 and all(p.is_file() and not p.is_symlink() for p in files)
+        assert sum(p.stat().st_size for p in files) <= 32 * 1024**2
+        write('manifest.json', {p.name: dict(bytes=p.stat().st_size, sha256=sha(p)) for p in files
+                                if p.name != 'manifest.json'})
+
+
+if __name__ == '__lldb__':
+    import lldb
+    inspect(lldb.debugger)
+elif __name__ == '__main__':
+    {'prepare': prepare, 'seal': seal}[sys.argv[1]]()
