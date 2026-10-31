@@ -113,7 +113,12 @@ const {
 ];
 
 // The Worker constructor secretly takes an extra parameter to provide the node:worker_threads instance.
-type WebWorkerConstructor = new (filename: string | URL, options: object, nodeWorker: Worker, evalSource?: string) => WebWorker;
+type WebWorkerConstructor = new (
+  filename: string | URL,
+  options: object,
+  nodeWorker: Worker,
+  evalSource?: string,
+) => WebWorker;
 
 interface NodeWorkerOptions {
   argv?: unknown[];

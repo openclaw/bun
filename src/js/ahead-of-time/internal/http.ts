@@ -127,9 +127,23 @@ const http1ServerPipeline: {
   resumeFallbackReadsOnDrain?: (socket: $Node.HttpSocket) => void;
   finishDrainedResponse?: (res: $Node.ServerResponse) => void;
   mustCloseConnection?: (res: $Node.ServerResponse) => boolean;
-  publishResponseFinish?: (req: $Node.IncomingMessage, res: $Node.ServerResponse, socket: $Node.HttpSocket, server: $Node.HttpSocketServer) => void;
-  publishRequestStart?: (req: $Node.IncomingMessage, res: $Node.ServerResponse, socket: $Node.HttpSocket, server: $Node.HttpSocketServer) => void;
-  createFallbackResponse?: (ResponseClass: $Node.ServerResponseConstructor, req: $Node.IncomingMessage, handle: $Node.Http1ResponseHandle) => $Node.ServerResponse;
+  publishResponseFinish?: (
+    req: $Node.IncomingMessage,
+    res: $Node.ServerResponse,
+    socket: $Node.HttpSocket,
+    server: $Node.HttpSocketServer,
+  ) => void;
+  publishRequestStart?: (
+    req: $Node.IncomingMessage,
+    res: $Node.ServerResponse,
+    socket: $Node.HttpSocket,
+    server: $Node.HttpSocketServer,
+  ) => void;
+  createFallbackResponse?: (
+    ResponseClass: $Node.ServerResponseConstructor,
+    req: $Node.IncomingMessage,
+    handle: $Node.Http1ResponseHandle,
+  ) => $Node.ServerResponse;
 } = {};
 
 export const enum NodeHTTPResponseAbortEvent {

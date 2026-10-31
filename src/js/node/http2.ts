@@ -446,7 +446,11 @@ function emitEventNT(self: $Node.EventEmitter, event: string, ...args: unknown[]
 // The frame is passed in: destroy() clears it off the session before emitting
 // 'error', so a throwing listener on either event cannot leave a retained
 // session pinning the store.
-function emitSessionCloseNT(self: Http2Session, error: Error | null | undefined, frame: import("./async_hooks").Frame | undefined) {
+function emitSessionCloseNT(
+  self: Http2Session,
+  error: Error | null | undefined,
+  frame: import("./async_hooks").Frame | undefined,
+) {
   if (error) {
     runInFrame(frame, self.emit, self, "error", error);
   }

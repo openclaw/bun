@@ -316,7 +316,11 @@ fn dirname_of_latin1<'a, const WINDOWS: bool, const FLAT_ONLY: bool>(
 fn dirname_of_utf8<'a, const WINDOWS: bool>(heap: &JsHeap<'a>, path: Text<'a>) -> TextResult<'a> {
     let path = path.view(heap)?;
     if path.is_utf16() {
-        let answer = if WINDOWS { dirname_windows_t(path.utf16()) } else { dirname_posix_t(path.utf16()) };
+        let answer = if WINDOWS {
+            dirname_windows_t(path.utf16())
+        } else {
+            dirname_posix_t(path.utf16())
+        };
         return heap.create_utf16_string_from_vec(answer.to_vec());
     }
     let utf8 = path.to_utf8();
@@ -349,7 +353,11 @@ fn extname_of_latin1<'a, const WINDOWS: bool, const FLAT_ONLY: bool>(
 fn extname_of_utf8<'a, const WINDOWS: bool>(heap: &JsHeap<'a>, path: Text<'a>) -> TextResult<'a> {
     let path = path.view(heap)?;
     if path.is_utf16() {
-        let answer = if WINDOWS { extname_windows_t(path.utf16()) } else { extname_posix_t(path.utf16()) };
+        let answer = if WINDOWS {
+            extname_windows_t(path.utf16())
+        } else {
+            extname_posix_t(path.utf16())
+        };
         return heap.create_utf16_string_from_vec(answer.to_vec());
     }
     let utf8 = path.to_utf8();
@@ -451,7 +459,11 @@ fn parse_utf8<'a, const WINDOWS: bool>(
 ) -> bindgen::Result<'a, ParsedPath<'a>> {
     let path = path.view(heap)?;
     if path.is_utf16() {
-        let parsed = if WINDOWS { parse_windows_t(path.utf16()) } else { parse_posix_t(path.utf16()) };
+        let parsed = if WINDOWS {
+            parse_windows_t(path.utf16())
+        } else {
+            parse_posix_t(path.utf16())
+        };
         return Ok(ParsedPath {
             root: heap.create_utf16_string_from_vec(parsed.root.to_vec())?,
             dir: heap.create_utf16_string_from_vec(parsed.dir.to_vec())?,
@@ -703,12 +715,17 @@ fn join_utf8<'a, const WINDOWS: bool>(heap: &JsHeap<'a>, paths: &'a [Text<'a>]) 
         }
     }
     if views.iter().any(|view| view.is_utf16()) {
-        let wide: SmallVec<[PathUtf16<'_>; FEW]> = views.iter().map(|view| PathUtf16::of(view)).collect();
+        let wide: SmallVec<[PathUtf16<'_>; FEW]> =
+            views.iter().map(|view| PathUtf16::of(view)).collect();
         let parts: SmallVec<[&[u16]; FEW]> = wide.iter().map(PathUtf16::slice).collect();
         let buf_len = join_buf_len(WINDOWS, &parts);
         let mut scratch = vec![0u16; buf_len * 2];
         let (buf, buf2) = scratch.split_at_mut(buf_len);
-        let answer = if WINDOWS { join_windows_t(&parts, buf, buf2) } else { join_posix_t(&parts, buf, buf2) };
+        let answer = if WINDOWS {
+            join_windows_t(&parts, buf, buf2)
+        } else {
+            join_posix_t(&parts, buf, buf2)
+        };
         return heap.create_utf16_string_from_vec(answer.to_vec());
     }
     let owned: SmallVec<[Utf8Bytes<'_>; FEW]> = views.iter().map(|view| view.to_utf8()).collect();
@@ -874,7 +891,9 @@ fn relative_utf8<'a, const WINDOWS: bool, R: Resolved<'a>>(
         } else {
             relative_posix_t(from.slice(), to.slice(), buf, from_buf, tmp_buf)
         } {
-            Ok(answer) => heap.create_utf16_string_from_vec(answer.to_vec()).map(R::from_text),
+            Ok(answer) => heap
+                .create_utf16_string_from_vec(answer.to_vec())
+                .map(R::from_text),
             Err(error) => Ok(R::from_error(heap, error)),
         };
     }
@@ -896,7 +915,10 @@ fn relative_utf8<'a, const WINDOWS: bool, R: Resolved<'a>>(
 by_form_of_operands!(relative, relative_other, relative_latin1, relative_utf8, <R: Resolved<'a>>(from: Text<'a>, to: Text<'a>) -> R);
 
 unsafe extern "C" {
-    safe fn Process__getPathCwd(global: &crate::jsc::JSGlobalObject, posix: bool) -> crate::jsc::JSValue;
+    safe fn Process__getPathCwd(
+        global: &crate::jsc::JSGlobalObject,
+        posix: bool,
+    ) -> crate::jsc::JSValue;
 }
 
 /// `None` unless the paths that count are 8-bit strings and [`SHORT`] together.
@@ -1015,7 +1037,9 @@ fn path_cwd<'a>(cx: &mut JsScope<'a>, posix: bool) -> TextResult<'a> {
         let global = cx.global();
         crate::jsc::call_zero_is_throw(global, || Process__getPathCwd(global, posix))?
     };
-    Ok(JsLocal::new(&cx.heap, value).as_string().expect("process.cwd returns a string"))
+    Ok(JsLocal::new(&cx.heap, value)
+        .as_string()
+        .expect("process.cwd returns a string"))
 }
 
 #[inline(never)]
@@ -1040,7 +1064,8 @@ fn resolve_utf8<'a, const WINDOWS: bool, R: Resolved<'a>>(
             break;
         }
     }
-    let owned: SmallVec<[Utf8Bytes<'_>; FEW]> = views.iter().map(|view| path_string_to_wtf8(view)).collect();
+    let owned: SmallVec<[Utf8Bytes<'_>; FEW]> =
+        views.iter().map(|view| path_string_to_wtf8(view)).collect();
     let parts: SmallVec<[&[u8]; FEW]> = owned.iter().rev().map(Utf8Bytes::slice).collect();
     let mut cached_cwd = None;
     if paths.is_empty() || (paths.len() == 1 && (parts.is_empty() || parts[0] == b".")) {
@@ -1058,7 +1083,11 @@ fn resolve_utf8<'a, const WINDOWS: bool, R: Resolved<'a>>(
             #[cfg(not(windows))]
             {
                 let mut bytes = bytes.into_vec();
-                bytes.iter_mut().for_each(|byte| { if *byte == b'/' { *byte = b'\\'; } });
+                bytes.iter_mut().for_each(|byte| {
+                    if *byte == b'/' {
+                        *byte = b'\\';
+                    }
+                });
                 return create_wtf8_path_text(&cx.heap, &bytes).map(R::from_text);
             }
         }
@@ -1067,14 +1096,22 @@ fn resolve_utf8<'a, const WINDOWS: bool, R: Resolved<'a>>(
     let mut cwd_capacity = MAX_PATH_BYTES;
     loop {
         let buf_len = (parts.iter().map(|part| part.len() + 1).sum::<usize>()
-            + cwd_capacity + 1 + if WINDOWS { 8 } else { 0 }).max(path_size::<u8>()) + 2;
+            + cwd_capacity
+            + 1
+            + if WINDOWS { 8 } else { 0 })
+        .max(path_size::<u8>())
+            + 2;
         let error = {
             let mut scratch = PathScratch::new(&cx.heap, buf_len * 2);
             let (buf, buf2) = scratch.slice().split_at_mut(buf_len);
             let result = if WINDOWS {
-                resolve_windows_t_with_cwd(&parts, buf, buf2, cwd_capacity, |cwd| copy_cached_cwd(&cached_cwd, cwd, cwd_capacity))
+                resolve_windows_t_with_cwd(&parts, buf, buf2, cwd_capacity, |cwd| {
+                    copy_cached_cwd(&cached_cwd, cwd, cwd_capacity)
+                })
             } else {
-                resolve_posix_t_with_cwd(&parts, buf, buf2, cwd_capacity, |cwd| copy_cached_cwd(&cached_cwd, cwd, cwd_capacity))
+                resolve_posix_t_with_cwd(&parts, buf, buf2, cwd_capacity, |cwd| {
+                    copy_cached_cwd(&cached_cwd, cwd, cwd_capacity)
+                })
             };
             match result {
                 Ok(answer) => return create_wtf8_path_text(&cx.heap, answer).map(R::from_text),
@@ -1096,7 +1133,8 @@ fn resolve_utf8<'a, const WINDOWS: bool, R: Resolved<'a>>(
     }
 }
 fn resolve<'a, const WINDOWS: bool, R: Resolved<'a>>(
-    cx: &mut JsScope<'a>, paths: &'a [JsLocal<'a>],
+    cx: &mut JsScope<'a>,
+    paths: &'a [JsLocal<'a>],
 ) -> bindgen::Result<'a, R> {
     match resolve_latin1::<WINDOWS, true>(&cx.heap, paths) {
         Ok(Some(answer)) => return Ok(R::from_text(answer)),
@@ -1147,13 +1185,30 @@ fn format_with_separator<'a>(
     };
     let heap = &cx.heap;
     if members.iter().flatten().any(|member| member.is_utf16()) {
-        let wide = members.each_ref().map(|member| member.as_ref().map(PathUtf16::of));
-        let [root, dir, base, name, ext] = wide.each_ref().map(|member| member.as_ref().map_or(&[][..], PathUtf16::slice));
-        let mut scratch = vec![0u16; root.len() + dir.len() + base.len() + name.len() + ext.len() + 2];
-        let answer = format_t(&PathParsed { root, dir, base, name, ext }, u16::from(separator), &mut scratch);
+        let wide = members
+            .each_ref()
+            .map(|member| member.as_ref().map(PathUtf16::of));
+        let [root, dir, base, name, ext] = wide
+            .each_ref()
+            .map(|member| member.as_ref().map_or(&[][..], PathUtf16::slice));
+        let mut scratch =
+            vec![0u16; root.len() + dir.len() + base.len() + name.len() + ext.len() + 2];
+        let answer = format_t(
+            &PathParsed {
+                root,
+                dir,
+                base,
+                name,
+                ext,
+            },
+            u16::from(separator),
+            &mut scratch,
+        );
         return heap.create_utf16_string_from_vec(answer.to_vec());
     }
-    let members = members.each_ref().map(|member| member.as_ref().map(|member| member.to_utf8()));
+    let members = members
+        .each_ref()
+        .map(|member| member.as_ref().map(|member| member.to_utf8()));
     let [root, dir, base, name, ext] = members.each_ref().map(|member| match member {
         Some(utf8) => utf8.slice(),
         None => &[],
@@ -1267,7 +1322,9 @@ pub(crate) fn to_namespaced_path_win32<'a>(
         let mut scratch = vec![0u16; buf_len * 2];
         let (buf, buf2) = scratch.split_at_mut(buf_len);
         return match to_namespaced_path_windows_t(view.utf16(), buf, buf2) {
-            Ok(answer) => heap.create_utf16_string_from_vec(answer.to_vec()).map(JsLocal::as_value),
+            Ok(answer) => heap
+                .create_utf16_string_from_vec(answer.to_vec())
+                .map(JsLocal::as_value),
             Err(error) => Ok(<JsLocal<'a> as Resolved<'a>>::from_error(heap, error)),
         };
     }

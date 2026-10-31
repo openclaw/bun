@@ -5791,7 +5791,9 @@ impl VirtualMachine {
             self.has_any_macro_remappings =
                 self.has_any_macro_remappings || self.transpiler.options.macro_remap.count() > 0;
         }
-        ret.is_embedded = result.flags.contains(bun_resolver::ResultFlags::IS_STANDALONE_MODULE);
+        ret.is_embedded = result
+            .flags
+            .contains(bun_resolver::ResultFlags::IS_STANDALONE_MODULE);
         ret.is_external = result.flags.is_external();
         if ret.is_embedded {
             query_string = b"";

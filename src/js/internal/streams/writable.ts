@@ -234,7 +234,11 @@ function _write(stream: $Node.Writable, state: WritableState, chunk, encoding, c
 }
 
 // Internal byte-counted operations share the byte stream's queue and lifecycle.
-Writable.prototype[kWriteOperation] = function (this: $Node.Writable, operation: { length: number }, callback?: WriteCallback) {
+Writable.prototype[kWriteOperation] = function (
+  this: $Node.Writable,
+  operation: { length: number },
+  callback?: WriteCallback,
+) {
   const state = this._writableState;
   const cb = callback ?? nop;
   if ((state[kState] & Flag.EndingOrDestroyed) !== 0) {
@@ -242,7 +246,14 @@ Writable.prototype[kWriteOperation] = function (this: $Node.Writable, operation:
     return false;
   }
   state.pendingcb!++;
-  return writeOrBuffer(this, state, operation, kWriteOperation, cb, (state[kState] & Flag.ObjectMode) !== 0 ? 1 : operation.length);
+  return writeOrBuffer(
+    this,
+    state,
+    operation,
+    kWriteOperation,
+    cb,
+    (state[kState] & Flag.ObjectMode) !== 0 ? 1 : operation.length,
+  );
 };
 
 const writeBytes = function _write(stream: $Node.Writable, state: WritableState, chunk, encoding, cb: WriteCallback) {

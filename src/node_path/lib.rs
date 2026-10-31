@@ -2077,7 +2077,9 @@ pub fn relative_windows_t<'a, T: PathCharCwd>(
 /// Based on Node v21.6.1 path.posix.resolve:
 /// https://github.com/nodejs/node/blob/6ae20aa63de78294b18d5015481485b7cd8fbb60/lib/path.js#L1095
 pub fn resolve_posix_t<'a, T: PathCharCwd>(
-    paths: &[&[T]], buf: &'a mut [T], buf2: &mut [T],
+    paths: &[&[T]],
+    buf: &'a mut [T],
+    buf2: &mut [T],
 ) -> MaybeSlice<'a, T> {
     resolve_posix_t_with_cwd(paths, buf, buf2, MAX_PATH_SIZE_UPPER, posix_cwd_t::<T>)
 }
@@ -2195,7 +2197,9 @@ where
 /// Based on Node v21.6.1 path.win32.resolve:
 /// https://github.com/nodejs/node/blob/6ae20aa63de78294b18d5015481485b7cd8fbb60/lib/path.js#L162
 pub fn resolve_windows_t<'a, T: PathCharCwd>(
-    paths: &[&[T]], buf: &'a mut [T], buf2: &mut [T],
+    paths: &[&[T]],
+    buf: &'a mut [T],
+    buf2: &mut [T],
 ) -> MaybeSlice<'a, T> {
     resolve_windows_t_with_cwd(paths, buf, buf2, MAX_PATH_SIZE_UPPER, get_cwd_t::<T>)
 }
@@ -2464,7 +2468,8 @@ where
                                 return Err(bun_sys::Error::from_code(
                                     bun_sys::E::ENAMETOOLONG,
                                     bun_sys::Tag::TODO,
-                                ).into());
+                                )
+                                .into());
                             }
                             // SAFETY: src/dst within live buffers; ptr::copy handles overlap.
                             unsafe {
@@ -2484,7 +2489,8 @@ where
                                 return Err(bun_sys::Error::from_code(
                                     bun_sys::E::ENAMETOOLONG,
                                     bun_sys::Tag::TODO,
-                                ).into());
+                                )
+                                .into());
                             }
                             // SAFETY: src/dst within live buffers; ptr::copy handles overlap.
                             unsafe {

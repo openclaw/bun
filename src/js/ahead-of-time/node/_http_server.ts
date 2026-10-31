@@ -538,12 +538,14 @@ interface ListenerGeneration {
   drainedAtClose: boolean;
 }
 
-type PipelinedOperation = ["flush"] | [
-  kind: "raw" | "write" | "end",
-  chunk: $Node.HttpChunk | null | undefined,
-  encoding: string | null | undefined,
-  callback: $Node.HttpWriteCallback | null | undefined,
-];
+type PipelinedOperation =
+  | ["flush"]
+  | [
+      kind: "raw" | "write" | "end",
+      chunk: $Node.HttpChunk | null | undefined,
+      encoding: string | null | undefined,
+      callback: $Node.HttpWriteCallback | null | undefined,
+    ];
 
 /** What a response holds while it waits behind the response in flight on its connection. */
 interface PipelinedQueuedState {
@@ -1180,34 +1182,41 @@ Server.prototype[setSecureContextSymbol] = function (this: $Node.HttpServer, opt
   this[tlsSymbol] = normalizeServerTls(next);
 };
 
-function startServerListen(server: $Node.HttpServer, tls: $Node.HttpServerTLSOptions | null, port: number | string | undefined, host: string | undefined, socketPath: string | undefined, serverNameHost: string | undefined) {
+function startServerListen(
+  server: $Node.HttpServer,
+  tls: $Node.HttpServerTLSOptions | null,
+  port: number | string | undefined,
+  host: string | undefined,
+  socketPath: string | undefined,
+  serverNameHost: string | undefined,
+) {
   if (isPrimary) {
     server[kRealListen](tls, port, host, socketPath, false, serverNameHost);
     return;
   }
 
   if (CAN_BE_CLUSTER_WORKER) {
-  if (cluster === undefined) cluster = loadChild();
+    if (cluster === undefined) cluster = loadChild();
 
-  server.once("listening", () => {
-    // No channel (NODE_UNIQUE_ID inherited by a plain child, or already disconnected): nothing to notify.
-    if (!process.connected) return;
-    cluster!.worker!.state = "listening";
-    const address = server.address();
-    const isObjectAddress = address !== null && typeof address === "object";
-    const boundHost = host && isObjectAddress ? address : null;
-    const message = {
-      cmd: "NODE_CLUSTER",
-      act: "listening",
-      port: socketPath ? -1 : (isObjectAddress && address.port) || port,
-      data: null,
-      address: socketPath ?? (boundHost && boundHost.address) ?? null,
-      addressType: socketPath ? -1 : boundHost && boundHost.family === "IPv6" ? 6 : 4,
-    };
-    process.send!(message, undefined, kInternalSendOptions);
-  });
+    server.once("listening", () => {
+      // No channel (NODE_UNIQUE_ID inherited by a plain child, or already disconnected): nothing to notify.
+      if (!process.connected) return;
+      cluster!.worker!.state = "listening";
+      const address = server.address();
+      const isObjectAddress = address !== null && typeof address === "object";
+      const boundHost = host && isObjectAddress ? address : null;
+      const message = {
+        cmd: "NODE_CLUSTER",
+        act: "listening",
+        port: socketPath ? -1 : (isObjectAddress && address.port) || port,
+        data: null,
+        address: socketPath ?? (boundHost && boundHost.address) ?? null,
+        addressType: socketPath ? -1 : boundHost && boundHost.family === "IPv6" ? 6 : 4,
+      };
+      process.send!(message, undefined, kInternalSendOptions);
+    });
 
-  server[kRealListen](tls, port, host, socketPath, true, serverNameHost);
+    server[kRealListen](tls, port, host, socketPath, true, serverNameHost);
   }
 }
 
@@ -1629,7 +1638,7 @@ Server.prototype[kRealListen] = function (
           // The 503 is queued behind the in-flight responses; the connection
           // closes once it has been written, like Node.js (Connection: close).
           http_res[kMustCloseConnection] = true;
-        http_res.$exchange.mustClose = true;
+          http_res.$exchange.mustClose = true;
         } else {
           socket.destroy();
         }
@@ -2250,7 +2259,13 @@ function onResponseSocketDrain(this: $Node.HttpSocket) {
   if (response) flushWriteAccountingNT(response);
 }
 
-function queueResponseSocketWrite(response: $Node.ServerResponse, kind: ResponseSocketOperation["kind"], chunk: $Node.HttpChunk | null | undefined, encoding: string | null | undefined, callback?: $Node.HttpWriteCallback) {
+function queueResponseSocketWrite(
+  response: $Node.ServerResponse,
+  kind: ResponseSocketOperation["kind"],
+  chunk: $Node.HttpChunk | null | undefined,
+  encoding: string | null | undefined,
+  callback?: $Node.HttpWriteCallback,
+) {
   const headerState = response[headerStateSymbol];
   let strict;
   let length = 0;
@@ -2315,7 +2330,12 @@ function queueResponseSocketWrite(response: $Node.ServerResponse, kind: Response
   return kind === "write" && !response._hasBody ? true : result;
 }
 
-function queueResponseSocketEnd(res: $Node.ServerResponse, chunk: $Node.HttpChunk | null | undefined, encoding: string | null | undefined, callback: $Node.HttpWriteCallback | undefined) {
+function queueResponseSocketEnd(
+  res: $Node.ServerResponse,
+  chunk: $Node.HttpChunk | null | undefined,
+  encoding: string | null | undefined,
+  callback: $Node.HttpWriteCallback | undefined,
+) {
   const socket = res.socket!;
   queueResponseSocketWrite(res, "end", chunk, encoding, callback);
   res.finished = true;
@@ -2328,7 +2348,8 @@ function queueResponseSocketEnd(res: $Node.ServerResponse, chunk: $Node.HttpChun
 
 function executeResponseSocketWrite(operation: ResponseSocketOperation, callback: $Node.ErrorCallback) {
   const { response, kind, chunk, encoding } = operation;
-  if (kind === "write" || kind === "end") response[kResponseQueuedBodyBytes] = response[kResponseQueuedBodyBytes]! - operation.bodyLength;
+  if (kind === "write" || kind === "end")
+    response[kResponseQueuedBodyBytes] = response[kResponseQueuedBodyBytes]! - operation.bodyLength;
   if (kind === "write") {
     ServerResponsePrototypeWrite.$call(response, chunk, encoding, callback, kResponseSocketWrite, operation);
   } else if (kind === "end") {
@@ -3225,7 +3246,11 @@ function getNodeHTTPServerSocket(): NodeHTTPServerSocketConstructor {
       return this;
     }
 
-    _write(...[_chunk, _encoding, _callback]: [$Node.HttpChunk, string, $Node.ErrorCallback] | [ResponseSocketOperation, typeof kWriteOperation, $Node.ErrorCallback]) {
+    _write(
+      ...[_chunk, _encoding, _callback]:
+        | [$Node.HttpChunk, string, $Node.ErrorCallback]
+        | [ResponseSocketOperation, typeof kWriteOperation, $Node.ErrorCallback]
+    ) {
       flushSocketHeldChunk(this);
       if (_encoding === kWriteOperation) {
         const operation = _chunk;
@@ -3774,7 +3799,9 @@ function statusMessageToSend(res: $Node.ServerResponse): string | undefined {
 // the user actually set, even after the headers have been flushed.
 function snapshotResponseSocketHeaders(res: $Node.ServerResponse, fromEnd: boolean) {
   const exchange = res.$exchange;
-  const flat = renderNativeHeaders(res, exchange, exchange !== undefined && exchange.response === res).map(value => String(value));
+  const flat = renderNativeHeaders(res, exchange, exchange !== undefined && exchange.response === res).map(value =>
+    String(value),
+  );
   const headers = { flat, autoHeaders: renderedAutoHeaders, keepAliveSecs: renderedKeepAliveSecs };
   res[kResponseHeadersQueued] = headers;
   let bytes =
@@ -3992,7 +4019,11 @@ function publishResponseCreated(request: $Node.IncomingMessage, response: $Node.
   }
 }
 
-function createFallbackResponse(ResponseClass: $Node.ServerResponseConstructor, request: $Node.IncomingMessage, handle: $Node.Http1ResponseHandle) {
+function createFallbackResponse(
+  ResponseClass: $Node.ServerResponseConstructor,
+  request: $Node.IncomingMessage,
+  handle: $Node.Http1ResponseHandle,
+) {
   request[kFallbackResponseHandle] = handle;
   try {
     return new ResponseClass(request);
@@ -4001,14 +4032,24 @@ function createFallbackResponse(ResponseClass: $Node.ServerResponseConstructor, 
   }
 }
 
-function publishRequestStart(request: $Node.IncomingMessage, response: $Node.ServerResponse, socket: $Node.HttpSocket, server: $Node.HttpSocketServer) {
+function publishRequestStart(
+  request: $Node.IncomingMessage,
+  response: $Node.ServerResponse,
+  socket: $Node.HttpSocket,
+  server: $Node.HttpSocketServer,
+) {
   if (onRequestStartChannel.hasSubscribers) {
     prepareUnassignedResponse(response, socket);
     onRequestStartChannel.publish({ request, response, socket, server });
   }
 }
 
-function publishResponseFinish(request: $Node.IncomingMessage | undefined, response: $Node.ServerResponse, socket: $Node.HttpSocket | null | undefined, server: $Node.HttpSocketServer | undefined) {
+function publishResponseFinish(
+  request: $Node.IncomingMessage | undefined,
+  response: $Node.ServerResponse,
+  socket: $Node.HttpSocket | null | undefined,
+  server: $Node.HttpSocketServer | undefined,
+) {
   if (onResponseFinishChannel.hasSubscribers) {
     onResponseFinishChannel.publish({ request, response, socket, server });
   }
@@ -4207,7 +4248,11 @@ function advancePipelineIfIdleNT(server: $Node.HttpServer, socket: $Node.HttpSer
 // outgoing queue: park the response behind the connection's in-flight one.
 // Its write()/end() buffer (kPipelinedQueuedState) until
 // advanceResponsePipeline assigns it the socket and replays them.
-function prepareUnassignedResponse(res: $Node.ServerResponse, socket: $Node.HttpSocket, isAncient = res.req.httpVersionMajor! < 1 || res.req.httpVersionMinor! < 1) {
+function prepareUnassignedResponse(
+  res: $Node.ServerResponse,
+  socket: $Node.HttpSocket,
+  isAncient = res.req.httpVersionMajor! < 1 || res.req.httpVersionMinor! < 1,
+) {
   const exchange = res.$exchange;
   if (exchange !== undefined) exchange.flags |= EXCHANGE_WAITS_ITS_TURN;
   return (res[kPipelinedQueuedState] ??= {
@@ -5595,7 +5640,11 @@ function responseEnd(
 
   const exchange = this.$exchange;
   let flags = exchange !== undefined && exchange.response === this ? exchange.flags : EXCHANGE_WAITS_ITS_TURN;
-  if (exchange === undefined || exchange.response !== this || (!fromSocket && ((flags & EXCHANGE_WAITS_ITS_TURN) !== 0 || this.finished || this.destroyed))) {
+  if (
+    exchange === undefined ||
+    exchange.response !== this ||
+    (!fromSocket && ((flags & EXCHANGE_WAITS_ITS_TURN) !== 0 || this.finished || this.destroyed))
+  ) {
     ("unlikely");
     return endInFull(this, exchange, chunk, encoding, callback, token, operation);
   }
@@ -5657,7 +5706,13 @@ function responseEnd(
   }
   let draining = false;
   if (headerState !== NodeHTTPHeaderState.sent) {
-    const renderedHeaders = (fromSocket ? renderResponseSocketHeaders(this) : held !== null ? headOf(held) : renderNativeHeaders(this, exchange, true)) as string[];
+    const renderedHeaders = (
+      fromSocket
+        ? renderResponseSocketHeaders(this)
+        : held !== null
+          ? headOf(held)
+          : renderNativeHeaders(this, exchange, true)
+    ) as string[];
     const hasSnapshot = (flags & EXCHANGE_HAS_SNAPSHOT) !== 0;
     const statusCode = hasSnapshot ? exchange.statusCode : this.statusCode;
     const statusMessage = hasSnapshot
@@ -5665,7 +5720,11 @@ function responseEnd(
       : this.statusMessage === undefined
         ? undefined
         : this.statusMessage;
-    const strict = fromSocket ? operation!.strict : this.strictContentLength ? contentLengthToKeepTo(this, headerState, true) : undefined;
+    const strict = fromSocket
+      ? operation!.strict
+      : this.strictContentLength
+        ? contentLengthToKeepTo(this, headerState, true)
+        : undefined;
     const autoHeaders = renderedAutoHeaders;
     const keepAliveSecs = renderedKeepAliveSecs;
     let contentLength: number;
@@ -5848,7 +5907,11 @@ function responseWrite(
 
   const exchange = this.$exchange;
   const flags = exchange !== undefined && exchange.response === this ? exchange.flags : EXCHANGE_WAITS_ITS_TURN;
-  if (exchange === undefined || exchange.response !== this || (!fromSocket && ((flags & EXCHANGE_WAITS_ITS_TURN) !== 0 || this.finished || this.destroyed))) {
+  if (
+    exchange === undefined ||
+    exchange.response !== this ||
+    (!fromSocket && ((flags & EXCHANGE_WAITS_ITS_TURN) !== 0 || this.finished || this.destroyed))
+  ) {
     ("unlikely");
     return writeInFull(this, exchange, chunk, encoding, callback, token, operation);
   }
@@ -5931,7 +5994,9 @@ function responseWrite(
 
   if (exchange.headerState !== NodeHTTPHeaderState.sent) {
     handle.cork(() => {
-      const renderedHeaders = fromSocket ? renderResponseSocketHeaders(this) : renderNativeHeaders(this, exchange, true);
+      const renderedHeaders = fromSocket
+        ? renderResponseSocketHeaders(this)
+        : renderNativeHeaders(this, exchange, true);
       handle.writeHead(
         statusCodeToSend(this),
         statusMessageToSend(this),
@@ -6373,7 +6438,13 @@ ServerResponse.prototype.flushHeaders = function (this: $Node.ServerResponse) {
       storeHeaderState(this, exchange, NodeHTTPHeaderState.sent);
       if (arguments[0] === kResponseSocketWrite) {
         const headers = renderResponseSocketHeaders(this);
-        handle.writeHead(statusCodeToSend(this), statusMessageToSend(this), headers as string[], renderedAutoHeaders, renderedKeepAliveSecs);
+        handle.writeHead(
+          statusCodeToSend(this),
+          statusMessageToSend(this),
+          headers as string[],
+          renderedAutoHeaders,
+          renderedKeepAliveSecs,
+        );
       } else {
         writeHeadToHandle(this, exchange, handle);
       }
@@ -6691,9 +6762,11 @@ function endInFull(
   }
   let draining = false;
   if (headerState !== NodeHTTPHeaderState.sent) {
-    const renderedHeaders = (fromSocket ? renderResponseSocketHeaders(res) : renderNativeHeaders(
-      res, exchange, exchange !== undefined && exchange.response === res,
-    )) as string[];
+    const renderedHeaders = (
+      fromSocket
+        ? renderResponseSocketHeaders(res)
+        : renderNativeHeaders(res, exchange, exchange !== undefined && exchange.response === res)
+    ) as string[];
     let contentLength: number;
     try {
       contentLength = handle.writeHeadAndEnd(
@@ -6717,7 +6790,13 @@ function endInFull(
     res._contentLength = contentLength;
   } else {
     if (!(!chunk && flags & NodeHTTPResponseFlags.ended) && !(flags & NodeHTTPResponseFlags.socket_closed)) {
-      draining = handle.end(chunk, encoding, undefined, fromSocket ? operation!.strict : strictContentLength(res, headerState, true)) < 0;
+      draining =
+        handle.end(
+          chunk,
+          encoding,
+          undefined,
+          fromSocket ? operation!.strict : strictContentLength(res, headerState, true),
+        ) < 0;
     }
   }
   res._header = " ";
@@ -6786,7 +6865,13 @@ function writeInFull(
     if (fromSocket) {
       const headers = renderResponseSocketHeaders(res);
       handle.cork(() => {
-        handle.writeHead(statusCodeToSend(res), statusMessageToSend(res), headers as string[], renderedAutoHeaders, renderedKeepAliveSecs);
+        handle.writeHead(
+          statusCodeToSend(res),
+          statusMessageToSend(res),
+          headers as string[],
+          renderedAutoHeaders,
+          renderedKeepAliveSecs,
+        );
         storeHeaderState(res, exchange, NodeHTTPHeaderState.sent);
         result = handle.write(chunk, encoding, onWritable, strict);
       });
