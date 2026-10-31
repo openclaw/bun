@@ -265,6 +265,8 @@ def inspect(debugger):
             report['last_stop'] = dict(id=process.GetStopID(), threads=[dict(
                 thread=t.GetThreadID(), reason=t.GetStopReason(),
                 data=[t.GetStopReasonDataAtIndex(i) for i in range(min(t.GetStopReasonDataCount(), 32))],
+                description=t.GetStopDescription(512), pc=t.GetFrameAtIndex(0).GetPC(),
+                sp=t.GetFrameAtIndex(0).GetSP(), fp=t.GetFrameAtIndex(0).GetFP(),
                 function=t.GetFrameAtIndex(0).GetDisplayFunctionName()) for t in process])
             handled = False
             for thread in process:
@@ -273,14 +275,14 @@ def inspect(debugger):
                     assert thread.GetStopReasonDataCount() == 1
                     assert thread.GetStopReasonDataAtIndex(0) == watch.GetID()
                     row = report['word_watch']
-                    assert len(row['changes']) < 12000
+                    assert len(row['writes']) < 12000
                     frame = thread.GetFrameAtIndex(0)
                     pc = frame.GetPC()
                     value = word(row['address'])
                     event = dict(thread=thread.GetThreadID(), gc_count=report['gc_count'],
                         before=row['last_value'], after=value, stop_pc=pc,
                         stop_file_pc=target.ResolveLoadAddress(pc).GetFileAddress())
-                    # Capture every value change; expensive context is useful only for potential cell pointers.
+                    # Capture every write; expensive context is useful only for potential cell pointers.
                     if 0x10000 <= value < 2**44 and value % 16 == 0:
                         function, symbol = frame.GetFunction(), frame.GetSymbol()
                         start = function.GetStartAddress() if function.IsValid() else symbol.GetStartAddress()
@@ -303,7 +305,7 @@ def inspect(debugger):
                             ('rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi', 'rbp', 'rsp', 'r8', 'r9', 'r10', 'r11', 'r12', 'r13', 'r14', 'r15', 'rflags')},
                             frames=frames(thread), preceding_instruction=[] if index is None else instructions(decoded, index, index + 1),
                             instruction_window=[] if index is None else instructions(decoded, max(0, index - 5), min(decoded.GetSize(), index + 3)))
-                    row['changes'].append(event)
+                    row['writes'].append(event)
                     row['last_value'] = value
                     handled = True
                     continue
@@ -321,14 +323,18 @@ def inspect(debugger):
                             owner = module_frame(thread)
                             address = owner['sp']
                             error = lldb.SBError()
-                            watch = target.WatchAddress(address, 8, False, True, error)
+                            options = lldb.SBWatchpointOptions()
+                            options.SetWatchpointTypeRead(False)
+                            options.SetWatchpointTypeWrite(lldb.eWatchpointWriteTypeAlways)
+                            assert options.GetWatchpointTypeWrite() == lldb.eWatchpointWriteTypeAlways
+                            watch = target.WatchpointCreateByAddress(address, 8, options, error)
                             assert error.Success() and watch.IsValid(), str(error)
                             assert watch.GetWatchAddress() == address and watch.GetWatchSize() == 8
                             initial = word(address)
                             report['word_watch'] = dict(address=address, initial_value=initial, last_value=initial,
-                                initial_owner=owner, changes=[],
-                                context_filter='0x10000 <= value < 2**44 and value % 16 == 0; all changes retain values and PC',
-                                claim='one physical address; its frame may exit or storage may be reused; equal-value stores may be unreported')
+                                initial_owner=owner, writes=[], write_mode='always',
+                                context_filter='0x10000 <= value < 2**44 and value % 16 == 0; all writes retain values and PC',
+                                claim='one physical address; its frame may exit or storage may be reused; unexpected stops remain failures')
                         if report['gc_count'] == 32:
                             owner = module_frame(thread)
                             report['word_watch']['gc32_owner'] = owner
@@ -407,6 +413,8 @@ def inspect(debugger):
                         if row['new_mark']:
                             assert not row['before'] & (1 << row['bit'])
                         report['marks'].append(row)
+            if not handled and watch is not None:
+                report['last_stop']['watched_value'] = word(report['word_watch']['address'])
             assert handled, 'unexpected debugger stop'
             assert process.Continue().Success()
         report['exit_status'] = process.GetExitStatus()
@@ -464,12 +472,12 @@ def seal():
                     accepted=cell in span['accepted_roots'], physical_frames=owners))
         marks = [m for m in capture['marks'] if m['cell'] == cell]
         watched = capture['word_watch']
-        changes = [row for row in watched['changes'] if row['after'] == cell]
+        owner_writes = [row for row in watched['writes'] if row['after'] == cell]
         watch_join = dict(address=watched['address'], initial_value_matches=watched['initial_value'] == cell,
             gc32_return_value_matches=watched['gc32_return_value'] == cell,
             accepted_root_matches=any(m['accepted'] and m['address'] == watched['address'] for m in matches),
-            observed_changes_to_owner=changes,
-            claim='observed value-changing stores only; decode the preceding instruction and intended lifetime before proposing a repair')
+            observed_writes_of_owner=owner_writes,
+            claim='observed write accesses; decode the preceding instruction and intended lifetime before proposing a repair')
         write('join.json', dict(owner_id=owner[0], owner_cell=owner[5], gc32_word_matches=matches,
             gc32_mark_events=marks, word_watch=watch_join, scanner_cause_proven=False, retaining_writer_proven=False,
             claim='physical observations; identify the frame writer before proposing a runtime repair'))
@@ -480,7 +488,7 @@ def seal():
         assert capture['gc32_completed'] and capture['original_failure_preserved']
         assert any(m['accepted'] for m in matches) and any(m['new_mark'] for m in marks), 'root not established; no causal claim'
         assert watch_join['accepted_root_matches'] and watch_join['gc32_return_value_matches']
-        assert changes, 'owner value was not observed being written; earlier writer remains unknown'
+        assert owner_writes, 'owner value was not observed being written; earlier writer remains unknown'
     finally:
         files = sorted(OUT.iterdir())
         assert len(files) <= 32 and all(p.is_file() and not p.is_symlink() for p in files)
