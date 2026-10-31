@@ -192,6 +192,73 @@ def debugger_stage():
                                   'file_address': address.GetFileAddress()})
         return bp, address
 
+    def inventory_inline_roots():
+        # Inspect debug scopes and immutable instructions before launching an inferior.
+        # Inline add() contexts are not physical ABI entries; their registers cannot
+        # be interpreted as x0/x1/x2 arguments of add().
+        parents = {}
+        for name in ['JSC::MachineThreads::gatherConservativeRoots',
+                     'JSC::ConservativeRoots::add',
+                     'JSC::ConservativeRoots::genericAddSpan',
+                     'JSC::ConservativeRoots::genericAddPointer']:
+            contexts = module.FindFunctions(name, lldb.eFunctionNameTypeAny)
+            assert contexts.GetSize() <= 64, 'root inventory context budget'
+            for i in range(contexts.GetSize()):
+                function = contexts.GetContextAtIndex(i).GetFunction()
+                if function.IsValid():
+                    parents[function.GetStartAddress().GetFileAddress()] = function
+        assert 0 < len(parents) <= 16, 'root inventory physical-parent budget'
+        total_instructions = 0
+        for start, function in sorted(parents.items()):
+            scopes = []
+            pending = [function.GetBlock()]
+            visited = 0
+            while pending:
+                block = pending.pop()
+                if not block.IsValid():
+                    continue
+                visited += 1
+                assert visited <= 4096, 'root inventory block budget'
+                sibling, child = block.GetSibling(), block.GetFirstChild()
+                if sibling.IsValid():
+                    pending.append(sibling)
+                if child.IsValid():
+                    pending.append(child)
+                name = block.GetInlinedName() or ''
+                if 'ConservativeRoots::' not in name:
+                    continue
+                assert block.GetNumRanges() <= 128, 'root inventory range budget'
+                ranges = [(block.GetRangeStartAddress(i).GetFileAddress(),
+                           block.GetRangeEndAddress(i).GetFileAddress())
+                          for i in range(block.GetNumRanges())]
+                variables = block.GetVariables(target, True, True, False)
+                assert variables.GetSize() <= 256, 'root inventory variable budget'
+                declarations = []
+                for i in range(variables.GetSize()):
+                    value = variables.GetValueAtIndex(i)
+                    declaration = value.GetDeclaration()
+                    declarations.append({'name': value.GetName(), 'type': value.GetTypeName(),
+                        'file': declaration.GetFileSpec().GetFilename(), 'line': declaration.GetLine()})
+                scopes.append({'name': name, 'ranges': ranges, 'variables': declarations})
+            instructions = function.GetInstructions(target)
+            assert instructions.GetSize() <= 32768, 'root inventory disassembly budget'
+            rows = []
+            for i in range(instructions.GetSize()):
+                instruction = instructions.GetInstructionAtIndex(i)
+                address = instruction.GetAddress()
+                pc = address.GetFileAddress()
+                line = address.GetLineEntry()
+                file = line.GetFileSpec().GetFilename()
+                in_scope = any(a <= pc < b for scope in scopes for a, b in scope['ranges'])
+                if not in_scope and file != 'ConservativeRoots.cpp':
+                    continue
+                total_instructions += 1
+                assert total_instructions <= 8192, 'root inventory output budget'
+                rows.append({'file_address': pc, 'file': file, 'line': line.GetLine(),
+                    'mnemonic': instruction.GetMnemonic(target), 'operands': instruction.GetOperands(target)})
+            event('inline-root-inventory', function=function.GetName(), file_address=start,
+                  scopes=scopes, instructions=rows, blocks_visited=visited)
+
     def reg(frame, name):
         value = frame.FindRegister(name)
         assert value.IsValid() and value.GetError().Success(), name
@@ -443,6 +510,8 @@ def debugger_stage():
                 bp, _ = entry('JSC::ConservativeRoots::add', signature, required=False)
                 scan_bps.append(bp)
             root_bps = [stack_roots_bp, *scan_bps]
+            if any(bp is None for bp in root_bps):
+                inventory_inline_roots()
             assert all(bp is not None for bp in root_bps), 'required root-span observer entries unavailable'
             for bp in root_bps:
                 bp.SetEnabled(False)
