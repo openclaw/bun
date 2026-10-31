@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import runpy
+import re
 import shlex
 import struct
 import subprocess
@@ -98,10 +99,7 @@ def build():
     witness.write_text('#include "' + str(wrapper) + '"\n' + ''.join(
         '#include <JavaScriptCore/' + name + '>\n' for name in required_headers) +
         '\nstatic_assert(sizeof(JSC::VM) > 0);\nstatic_assert(sizeof(JSC::ConservativeRoots) > 0);\n'
-        'static_assert(sizeof(JSC::VerifierSlotVisitor) > 0);\n'
-        # An external vtable leaves only a declaration unless this object witnesses the layout.
-        '[[gnu::used, gnu::noinline]] static void retainVerifierLayout(JSC::VerifierSlotVisitor& visitor)\n'
-        '{ __asm__ __volatile__("" : : "m"(visitor) : "memory"); }\n')
+        'static_assert(sizeof(JSC::VerifierSlotVisitor) > 0);\n')
     output = OUT / 'types.o'
     # This object supplies layouts only. No runtime code or shipping profile is replaced.
     replacement = {'-g1': '-g', '-flto=thin': '-fno-lto',
@@ -111,6 +109,20 @@ def build():
     write('compile-command.json', dict(directory=chosen[0]['directory'], original=original,
         successful_pch_command=pch['command'], canonical_flags=flags, witness=adapted,
         variance='full standalone type metadata, no LTO or whole-program vtables, original PCH wrapper included as text, synthetic include-only translation unit; never linked or executed'))
+    layout_argv = flags + ['-fsyntax-only', '-Xclang', '-fdump-record-layouts', str(witness)]
+    run('ast-record-layouts', layout_argv, cwd=Path(chosen[0]['directory']), timeout=600)
+    blocks = (OUT / 'ast-record-layouts.log').read_text().split('*** Dumping AST Record Layout')
+    verifier = [block.strip() for block in blocks if block.strip() and
+        block.strip().splitlines()[0].partition('|')[2].strip() == 'class JSC::VerifierSlotVisitor']
+    assert len(verifier) == 1, 'missing or ambiguous VerifierSlotVisitor AST record layout'
+    layout = verifier[0]
+    size = re.search(r'\[sizeof=(\d+),.*?align=(\d+),', layout, re.S)
+    assert size and int(size[1]) > 0 and int(size[2]) > 0
+    assert all(field in layout for field in ('m_preciseAllocationMap', 'm_doneMarking'))
+    write('ast-layouts.json', dict(type='JSC::VerifierSlotVisitor', bytes=int(size[1]),
+        alignment=int(size[2]), raw_layout=layout, argv=layout_argv,
+        complete_ast_layout=True, root_capture_ready=False, linked=False, executed=False,
+        claim='compiler AST layout only; nested map/bucket and physical root admission remain separate'))
     run('compile-types', adapted, cwd=Path(chosen[0]['directory']), timeout=600)
     assert 0 < output.stat().st_size <= 64 * 1024**2
     with output.open('rb') as stream:
@@ -133,6 +145,7 @@ def build():
         cmakeconfig_sha256=sha(config), header_manifest_sha256=sha(OUT / 'header-manifest.json'),
         generated_headers_sha256=sha(OUT / 'generated-headers.json'),
         witness_sha256=sha(output), witness_bytes=output.stat().st_size,
+        ast_layouts_sha256=sha(OUT / 'ast-layouts.json'), ast_dump_sha256=sha(OUT / 'ast-record-layouts.log'),
         configured_inputs_reconstructed=True, original_shipping_compile_database_available=False,
         profile_replaced=False, linked=False, executed=False,
         claim='reconstructed matching-header layouts only; no optimized local, instruction or GC-root proof'))
