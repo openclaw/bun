@@ -142,8 +142,12 @@ def debugger_stage():
     module = target.FindModule(target.GetExecutable())
     assert re.sub('[^0-9a-fA-F]', '', module.GetUUIDString() or '').lower() == UUID
     stage = os.environ['TLS_CAPTURE_STAGE']
-    report = {'stage': stage, 'passed': False, 'events': []}
+    report = {'stage': stage, 'passed': False, 'events': [], 'entries': [], 'breakpoint_hits': {}}
     process = None
+    weak = []
+    owner = None
+    returned = False
+    gc_count = 0
 
     def event(kind, **values):
         report['events'].append({'kind': kind, **values})
@@ -162,6 +166,8 @@ def debugger_stage():
         address = next(iter(addresses.values()))
         bp = target.BreakpointCreateBySBAddress(address)
         assert bp.GetNumLocations() == 1, name
+        report['entries'].append({'name': name, 'breakpoint': bp.GetID(),
+                                  'file_address': address.GetFileAddress()})
         return bp, address
 
     def reg(frame, name):
@@ -238,11 +244,7 @@ def debugger_stage():
             mark_bp.SetEnabled(False)
             _, dump_address = entry('JSC::VerifierSlotVisitor::dumpMarkerData')
             target.GetBreakpointAtIndex(target.GetNumBreakpoints() - 1).SetEnabled(False)
-            weak = []
-            owner = None
-            returned = False
             return_bp = None
-            gc_count = 0
         info = lldb.SBLaunchInfo(args)
         info.SetWorkingDirectory(str(SOURCE))
         info.SetEnvironmentEntries([key + '=' + value for key, value in environment.items()], False)
@@ -262,6 +264,11 @@ def debugger_stage():
             thread = threads[0]
             frame = thread.GetFrameAtIndex(0)
             ids = {thread.GetStopReasonDataAtIndex(i) for i in range(0, thread.GetStopReasonDataCount(), 2)}
+            for bp_id in ids:
+                key = str(bp_id)
+                report['breakpoint_hits'][key] = report['breakpoint_hits'].get(key, 0) + 1
+            report['last_stop'] = {'pc': frame.GetPC(), 'function': frame.GetFunctionName(),
+                                   'breakpoints': sorted(ids)}
             if stage == 'capture':
                 assert ids == {spawn.GetID()}
                 argv = reg(frame, 'x3')
@@ -280,11 +287,14 @@ def debugger_stage():
             elif weak_bp.GetID() in ids:
                 weak.append({'weak': reg(frame, 'x0'), 'vm': reg(frame, 'x1'), 'owner': reg(frame, 'x2')})
                 assert len(weak) <= 16
+                event('weak-ref-entry', **weak[-1])
             elif completion_bp.GetID() in ids:
                 call = reg(frame, 'x1')
                 # Frozen CallFrame.h: callee, argumentCountIncludingThis, then this, in 8-byte registers.
                 callee, count, this = word(call + 24), word(call + 32, 4), word(call + 40)
                 candidates = [w for w in weak if w['owner'] == this]
+                event('completion-entry', callee=callee, this=this, argument_count_including_this=count,
+                      matching_weak_targets=len(candidates))
                 if candidates:
                     function = typed(callee, 'Zig::JSFFIFunction')
                     native = number(field(function, 'm_function'))
@@ -301,6 +311,8 @@ def debugger_stage():
                 returned = True
                 event('late-callback-returned')
             elif gc_bp.GetID() in ids:
+                event('explicit-gc-entry', vm=reg(frame, 'x0'), sync=reg(frame, 'w1'),
+                      after_late_callback=returned)
                 if returned and reg(frame, 'x0') == owner['vm']:
                     assert reg(frame, 'w1') == 1
                     gc_count += 1
@@ -344,7 +356,7 @@ def debugger_stage():
             producer = list(ElementTree.parse(ROOT / 'producer-evidence/diagnostics/fixture.xml').iter('testcase'))
             admit_failure(cases, producer)
         else:
-            assert report['exit_code'] == 0 and gc_count == 31
+            assert report['exit_code'] == 0 and gc_count == 31, '31 post-callback explicit collections not observed'
             facts = json.loads((OUT / 'trace.stdout').read_text().strip())
             assert facts['callbackRoot'] is True and facts['collected'] is False and facts['settled'] == ['ECANCELED']
             assert any(e['kind'] == 'marker-chain-dumped-after-mark' for e in report['events'])
@@ -358,6 +370,9 @@ def debugger_stage():
         report['gap'] = str(error)
         raise
     finally:
+        if stage == 'trace':
+            report['observation'] = {'weak_targets': weak, 'owner': owner, 'returned': returned,
+                                      'gc_count': gc_count}
         if process is not None and process.IsValid() and process.GetState() != lldb.eStateExited:
             process.Kill()
         write(stage + '.json', report)
