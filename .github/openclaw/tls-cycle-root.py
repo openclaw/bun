@@ -143,7 +143,7 @@ def prepare():
 
 def inspect(debugger):
     import lldb
-    debugger.SetAsync(True)
+    debugger.SetAsync(False)
     command = lldb.SBCommandReturnObject()
     debugger.GetCommandInterpreter().HandleCommand('settings set target.load-script-from-symbol-file false', command)
     assert command.Succeeded()
@@ -212,25 +212,25 @@ def inspect(debugger):
     launch = lldb.SBLaunchInfo(['-e', (OUT / 'debugger-child.js').read_text()])
     launch.SetWorkingDirectory(str(SOURCE.resolve()))
     launch.SetEnvironmentEntries([k + '=' + v for k, v in environment().items()], False)
+    launch.SetLaunchFlags(0)
+    report['launch_flags'] = launch.GetLaunchFlags()
     assert launch.AddOpenFileAction(0, '/dev/null', True, False)
     assert launch.AddOpenFileAction(1, str((OUT / 'debugger.stdout').resolve()), False, True)
     assert launch.AddOpenFileAction(2, str((OUT / 'debugger.stderr').resolve()), False, True)
     launch.SetDetachOnError(False)
-    listener = debugger.GetListener()
-    launch.SetListener(listener)
     error = lldb.SBError()
     try:
         process = target.Launch(launch, error)
         assert error.Success() and process.IsValid(), str(error)
         report['inferior_launched'] = True
         report['pid'] = process.GetProcessID()
-        deadline, stops = time.monotonic() + 240, 0
+        deadline, stops, previous_stop = time.monotonic() + 240, 0, 0
         while process.GetState() not in (lldb.eStateExited, lldb.eStateCrashed, lldb.eStateDetached):
             assert time.monotonic() < deadline, 'debugger capture deadline'
-            if process.GetState() != lldb.eStateStopped:
-                event = lldb.SBEvent()
-                listener.WaitForEvent(1, event)
-                continue
+            assert process.GetState() == lldb.eStateStopped, 'synchronous debugger did not stop'
+            stop_id = process.GetStopID()
+            assert stop_id > previous_stop, 'duplicate debugger stop would corrupt GC numbering'
+            previous_stop = stop_id
             stops += 1
             assert stops <= 30000
             report['last_stop'] = dict(id=process.GetStopID(), threads=[dict(
