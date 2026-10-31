@@ -197,12 +197,15 @@ def debugger_stage():
         assert error.Success() and value is not None and len(value.encode()) < limit - 1
         return value
 
-    def typed(address, name):
+    def concrete_type(name):
         values = target.FindTypes(name)
         types = [values.GetTypeAtIndex(i).GetCanonicalType() for i in range(values.GetSize())]
         types = [t for t in types if t.IsTypeComplete() and t.GetNumberOfFields() > 0]
         assert types and len({t.GetByteSize() for t in types}) == 1, name
-        return target.CreateValueFromAddress(name, target.ResolveLoadAddress(address), types[0]).GetNonSyntheticValue()
+        return types[0]
+
+    def typed(address, name):
+        return target.CreateValueFromAddress(name, target.ResolveLoadAddress(address), concrete_type(name)).GetNonSyntheticValue()
 
     def field(value, name):
         value = value.GetNonSyntheticValue().GetChildMemberWithName(name, lldb.eNoDynamicValues)
@@ -229,6 +232,65 @@ def debugger_stage():
                 result += pointer(child, pointee, depth + 1)
         return result
 
+    def marker_snapshot(visitor, cell):
+        # This fixture's owner is precise-allocated. Use frozen HashTable metadata and DWARF field offsets;
+        # target-side marker printers symbolize through native libraries and faulted on these saved bytes.
+        assert target.GetAddressByteSize() == 8 and target.GetByteOrder() == lldb.eByteOrderLittle
+        assert cell & 8, 'owner is not the observed precise-allocation kind'
+        header = concrete_type('JSC::PreciseAllocation').GetByteSize()
+        allocation = cell - ((header + 15) & ~15)
+        marked = field(field(typed(allocation, 'JSC::PreciseAllocation'), 'm_isMarked'), 'value')
+        assert marked.GetByteSize() == 1 and word(marked.GetLoadAddress(), 1) == 1, 'owner was not marked by the real GC'
+        table_value = field(field(field(visitor, 'm_preciseAllocationMap'), 'm_impl'), 'm_table')
+        table = number(table_value)
+        assert table
+        capacity = word(table - 4, 4)
+        bucket_type = table_value.GetType().GetCanonicalType().GetPointeeType().GetCanonicalType()
+        stride = bucket_type.GetByteSize()
+        members = {bucket_type.GetFieldAtIndex(i).GetName(): bucket_type.GetFieldAtIndex(i)
+                   for i in range(bucket_type.GetNumberOfFields())}
+        assert {'key', 'value'} <= members.keys()
+        key = members['key']
+        assert key.GetType().GetCanonicalType().IsPointerType() and key.GetType().GetByteSize() == 8
+        offset = key.GetOffsetInBytes()
+        assert 0 < capacity <= 2**20 and capacity & (capacity - 1) == 0
+        assert 8 <= stride <= 256 and offset + 8 <= stride and capacity * stride <= 16 * 1024**2
+        error = lldb.SBError()
+        buckets = process.ReadMemory(table, capacity * stride, error)
+        assert error.Success() and len(buckets) == capacity * stride
+        matches = [i for i in range(capacity)
+                   if int.from_bytes(buckets[i * stride + offset:i * stride + offset + 8], 'little') == allocation]
+        assert len(matches) == 1, 'actual precise allocation missing/duplicated in verifier map'
+        bucket = target.CreateValueFromAddress('owner-marker-bucket',
+                    target.ResolveLoadAddress(table + matches[0] * stride), bucket_type).GetNonSyntheticValue()
+        data = pointer(field(bucket, 'value'), 'JSC::VerifierSlotVisitor::PreciseAllocationData')
+        assert len(data) == 1 and data[0]
+        record = typed(data[0], 'JSC::VerifierSlotVisitor::PreciseAllocationData')
+        assert number(field(record, 'm_allocation')) == allocation
+        marker = field(record, 'm_marker')
+        referrer = number(field(field(marker, 'm_referrer'), 'm_bits'))
+        assert referrer == 6, 'marker is not the observed direct ConservativeScan root'
+        stacks = pointer(field(marker, 'm_stack'), 'WTF::StackTrace')
+        assert len(stacks) == 1 and stacks[0]
+        stack = typed(stacks[0], 'WTF::StackTrace')
+        count, initial = number(field(stack, 'm_size')), number(field(stack, 'm_initialFrame'))
+        assert 0 < count <= 100 and initial == 2
+        start = field(stack, 'm_stack').GetLoadAddress() + initial * 8
+        frames = []
+        for i in range(count):
+            pc = word(start + i * 8)
+            assert pc
+            address = target.ResolveLoadAddress(pc)
+            function, symbol = address.GetFunction(), address.GetSymbol()
+            name = function.GetName() if function.IsValid() else symbol.GetName() if symbol.IsValid() else None
+            line = address.GetLineEntry()
+            frames.append({'pc': pc, 'function': name, 'file_address': address.GetFileAddress(),
+                           'line': line.GetLine() if line.IsValid() else None})
+        assert any(frame['function'] for frame in frames), 'no marker frame resolved'
+        event('passive-marker-snapshot', owner=cell, allocation=allocation, real_gc_marked=True, referrer_bits=referrer,
+              root_reason='ConservativeScan', stack=stacks[0], frames=frames,
+              unresolved_frames=sum(frame['function'] is None for frame in frames))
+
     try:
         environment = {'PATH': '/usr/bin:/bin', 'CI': '1', 'BUN_GARBAGE_COLLECTOR_LEVEL': '0'}
         if stage == 'capture':
@@ -253,8 +315,6 @@ def debugger_stage():
             mark_bp = target.BreakpointCreateByLocation('Collector.cpp', 1068)
             assert mark_bp.GetNumLocations() > 0, 'missing post-mark verifier boundary'
             mark_bp.SetEnabled(False)
-            _, dump_address = entry('JSC::VerifierSlotVisitor::dumpMarkerData')
-            target.GetBreakpointAtIndex(target.GetNumBreakpoints() - 1).SetEnabled(False)
             return_bp = None
         info = lldb.SBLaunchInfo(args)
         info.SetWorkingDirectory(str(SOURCE))
@@ -366,15 +426,7 @@ def debugger_stage():
                       weak_last_access=number(field(w, 'm_lastAccessVersion')),
                       vm_weak_version=number(field(vm, 'm_currentWeakRefVersion')))
                 target.DisableAllBreakpoints()
-                options = lldb.SBExpressionOptions()
-                options.SetLanguage(lldb.eLanguageTypeC_plus_plus)
-                options.SetTimeoutInMicroSeconds(10_000_000)
-                options.SetIgnoreBreakpoints(True)
-                expression = '((void (*)(void*, void*))0x%x)((void*)0x%x, (void*)0x%x)' % (
-                    dump_address.GetLoadAddress(target), visitor_ptrs[0], owner['owner'])
-                result = frame.EvaluateExpression(expression, options)
-                assert result.GetError().Success(), str(result.GetError())
-                event('marker-chain-dumped-after-mark')
+                marker_snapshot(visitor, owner['owner'])
             else:
                 raise RuntimeError('unrecognized breakpoint')
             assert process.Continue().Success()
@@ -389,12 +441,10 @@ def debugger_stage():
             assert report['exit_code'] == 0 and gc_count == 31, '31 post-callback explicit collections not observed'
             facts = json.loads((OUT / 'trace.stdout').read_text().strip())
             assert facts['callbackRoot'] is True and facts['collected'] is False and facts['settled'] == ['ECANCELED']
-            assert any(e['kind'] == 'marker-chain-dumped-after-mark' for e in report['events'])
-            marker = (OUT / 'trace.stderr').read_text()
-            assert ('cell 0x%x was marked' % owner['owner']) in marker
-            assert 'In the verifier GC, cell' in marker and 'Marker data is not available' not in marker
+            snapshots = [e for e in report['events'] if e['kind'] == 'passive-marker-snapshot']
+            assert len(snapshots) == 1 and snapshots[0]['owner'] == owner['owner']
             report['outcome'] = facts
-            report['classification'] = 'raw marker path captured; requires maintainer interpretation'
+            report['classification'] = 'stored ConservativeScan marker stack captured; originating word remains unproven'
         report['passed'] = True
     except BaseException as error:
         report['gap'] = str(error)
