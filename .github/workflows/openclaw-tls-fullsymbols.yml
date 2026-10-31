@@ -36,21 +36,42 @@ jobs:
             'WebKit=b82bc917e99110b61c3a21202d6def7457aa194c' \
             'Diagnostic variance: non-LTO C++/JSC; Debian 13 system ICU; Rust-only release LTO may remain enabled.' > diagnostics/inputs.txt
           cat > diagnostics/probe.py <<'PY'
-          import gdb, json
-          gdb.execute("set breakpoint pending off")
+          import json, lldb, re
+          from pathlib import Path
+          target = lldb.debugger.GetSelectedTarget()
+          assert target.IsValid(), "missing diagnostic target"
+          module = target.FindModule(target.GetExecutable())
+          assert module.IsValid(), "missing executable module"
+          uuid = re.sub("[^0-9a-fA-F]", "", module.GetUUIDString() or "").lower()
+          expected = re.findall(r"Build ID: (\w+)", Path("/work/diagnostics/bun-build-id.txt").read_text())
+          assert len(expected) == 1 and uuid == expected[0], "LLDB module identity mismatch"
           types = {}
           for name in ("JSC::JSCell", "JSC::Heap", "JSC::SlotVisitor", "JSC::ConservativeRoots"):
-              value = gdb.lookup_type(name).strip_typedefs()
-              fields = value.fields()
-              assert value.sizeof > 0 and fields, "incomplete type: " + name
-              types[name] = {"bytes": value.sizeof, "fields": len(fields)}
+              candidates = target.FindTypes(name)
+              complete = []
+              for i in range(candidates.GetSize()):
+                  value = candidates.GetTypeAtIndex(i).GetCanonicalType()
+                  fields = value.GetNumberOfFields()
+                  if value.IsTypeComplete() and value.GetByteSize() > 0 and fields > 0:
+                      layout = [{"name": value.GetFieldAtIndex(j).GetName(), "offset_bits": value.GetFieldAtIndex(j).GetOffsetInBits()} for j in range(fields)]
+                      complete.append({"bytes": value.GetByteSize(), "fields": fields, "layout": layout})
+              assert complete, "incomplete type: " + name
+              types[name] = complete
           functions = {}
           for name in ("JSC::Collector::runEndPhase", "JSC::MachineThreads::gatherConservativeRoots"):
-              point = gdb.Breakpoint(name)
-              addresses = [location.address for location in point.locations]
-              assert addresses and all(addresses), "unresolved function: " + name
-              functions[name] = addresses
-          print(json.dumps({"types": types, "functions": functions}, indent=2))
+              contexts = module.FindFunctions(name, lldb.eFunctionNameTypeAny)
+              functions[name] = []
+              for i in range(contexts.GetSize()):
+                  context = contexts.GetContextAtIndex(i)
+                  function = context.GetFunction()
+                  unit = context.GetCompileUnit()
+                  if not function.IsValid() or not unit.IsValid():
+                      continue
+                  address = function.GetStartAddress().GetFileAddress()
+                  if address not in (0, lldb.LLDB_INVALID_ADDRESS):
+                      functions[name].append({"address": address, "name": function.GetName(), "compile_unit": str(unit.GetFileSpec())})
+              assert functions[name], "missing debug function: " + name
+          Path("/work/diagnostics/symbol-capability.json").write_text(json.dumps({"module_uuid": uuid, "types": types, "functions": functions}, indent=2) + "\n")
           PY
       - name: Fetch the frozen failed build
         shell: bash
@@ -102,7 +123,14 @@ jobs:
           docker run --detach --name tls-symbols -e CI=true -v "$GITHUB_WORKSPACE:/work" -w /work \
             docker.io/library/debian:13@sha256:9cc080028c43b27d2074d63a5f9caf7166d731494965616c1a6d2827a004585c \
             sleep infinity > /dev/null
-          docker exec tls-symbols sh -euc 'apt-get update && apt-get install --yes --no-install-recommends python3 gdb binutils zstd libicu76'
+          docker exec tls-symbols sh -euc '
+            apt-get update
+            apt-get install --yes --no-install-recommends ca-certificates curl python3 binutils zstd libicu76
+            curl -fsSL --retry 5 https://apt.llvm.org/llvm-snapshot.gpg.key > /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+            echo "deb https://apt.llvm.org/trixie/ llvm-toolchain-trixie-23 main" > /etc/apt/sources.list.d/llvm.list
+            apt-get update
+            apt-get install --yes --no-install-recommends llvm-23 lldb-23 python3-lldb-23
+          '
           docker exec -i tls-symbols python3 - <<'PYCODE'
           import hashlib, json, re, shutil, subprocess, tarfile
           from pathlib import Path, PurePosixPath
@@ -139,7 +167,7 @@ jobs:
           PYCODE
           docker exec tls-symbols sh -euc 'ldd source/build/tls-arm64-fullsymbols/bun' > diagnostics/runtime-libraries.txt
           ! grep -q 'not found' diagnostics/runtime-libraries.txt
-          docker exec tls-symbols sh -euc 'gdb --version; dpkg-query -W libicu76 python3 gdb binutils zstd' > diagnostics/runtime-tools.txt
+          docker exec tls-symbols sh -euc 'lldb-23 --version; llvm-dwarfdump-23 --version; dpkg-query -W libicu76 python3 llvm-23 lldb-23 python3-lldb-23 binutils zstd' > diagnostics/runtime-tools.txt
       - name: Verify matched symbols and capture capability
         shell: bash
         run: |
@@ -156,7 +184,27 @@ jobs:
           ids = [re.findall(r"Build ID: (\w+)", (report / name).read_text()) for name in ("bun-build-id.txt", "profile-build-id.txt")]
           assert len(ids[0]) == 1 and ids[0] == ids[1], ids
           PY
-            gdb --batch --nx --init-eval-command="set auto-load off" -ex "file $build/bun-profile" -ex "python exec(compile(open(\"/work/diagnostics/probe.py\").read(), \"probe.py\", \"exec\"))" > /work/diagnostics/symbol-probe.txt 2>&1
+            python3 - <<'"'"'PYCODE'"'"'
+          import json, subprocess
+          from pathlib import Path
+          with Path("/work/diagnostics/dwarf-reference.txt").open("w") as output:
+              result = subprocess.run(["llvm-dwarfdump-23", "--show-parents", "--show-form", "--show-children", "--recurse-depth=2", "--debug-info=0x2cad422", "build/tls-arm64-fullsymbols/bun-profile"], stdout=output, stderr=subprocess.STDOUT, timeout=120)
+          Path("/work/diagnostics/dwarf-inspection.json").write_text(json.dumps({"status": result.returncode, "prior_gdb_error": "DWARF reference to DIE 0 from DIE 0x2cad422", "prior_run": 41180631285}) + "\n")
+          PYCODE
+            lldb-23 --no-lldbinit --batch \
+              -o "settings set target.load-script-from-symbol-file false" \
+              -o "target create $build/bun" \
+              -o "target symbols add $build/bun-profile" \
+              -o "script exec(open(\"/work/diagnostics/probe.py\").read())" > /work/diagnostics/symbol-probe.txt 2>&1
+            python3 - <<'"'"'PYCODE'"'"'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("/work/diagnostics/symbol-capability.json").read_text())
+          assert set(report["types"]) == {"JSC::JSCell", "JSC::Heap", "JSC::SlotVisitor", "JSC::ConservativeRoots"}
+          assert all(values and all(value["bytes"] > 0 and value["fields"] > 0 for value in values) for values in report["types"].values())
+          assert set(report["functions"]) == {"JSC::Collector::runEndPhase", "JSC::MachineThreads::gatherConservativeRoots"}
+          assert all(values and all(value["address"] > 0 and value["compile_unit"] and value["name"] for value in values) for values in report["functions"].values())
+          PYCODE
           '
       - name: Run the unchanged destroyed-completion case
         shell: bash
