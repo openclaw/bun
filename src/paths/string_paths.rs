@@ -12,13 +12,6 @@ use crate::windows;
 use bun_core::strings;
 use bun_core::{WStr, ZStr};
 
-// Generic code-unit bound for fns that operate over both u8 and u16 paths:
-// `crate::PathChar` (provides
-// `from_u8`/`IS_U16`) plus `Into<u32>` + `NoUninit` for `strings::contains_char_t`.
-pub trait Ch: PathChar + Into<u32> + bun_core::NoUninit {}
-impl Ch for u8 {}
-impl Ch for u16 {}
-
 /// Borrow `wbuf[..len]` as a `&WStr`, where `wbuf[len] == 0`. Safe-surface
 /// form of [`WStr::from_raw`] for the dominant call shape in this module: a
 /// stack `WPathBuffer` filled to `len` with a NUL written at `wbuf[len]`.
@@ -32,14 +25,14 @@ fn wstr_in_buf(wbuf: &[u16], len: usize) -> &WStr {
 }
 
 #[inline(always)]
-fn ch<T: Ch>(c: u8) -> T {
+fn ch<T: PathChar>(c: u8) -> T {
     T::from_u8(c)
 }
 
 /// Local helper: `has_prefix_ascii_t` — compare `&[T]` against an ASCII `&[u8]`
 /// literal by widening each prefix byte via `T::from_u8`.
 #[inline]
-fn has_prefix_ascii_t<T: Ch>(s: &[T], prefix: &[u8]) -> bool {
+fn has_prefix_ascii_t<T: PathChar>(s: &[T], prefix: &[u8]) -> bool {
     if s.len() < prefix.len() {
         return false;
     }
@@ -59,7 +52,7 @@ fn has_prefix_ascii_t<T: Ch>(s: &[T], prefix: &[u8]) -> bool {
 /// debug-asserts the precondition `Platform.windows.isAbsoluteT(chars)`
 /// (bun_core can't, as `bun_paths` would be a tier-0 cycle there).
 #[inline]
-pub fn is_windows_absolute_path_missing_drive_letter<T: Ch + From<u8>>(chars: &[T]) -> bool {
+pub fn is_windows_absolute_path_missing_drive_letter<T: PathChar + From<u8>>(chars: &[T]) -> bool {
     debug_assert!(crate::Platform::Windows.is_absolute_t(chars));
     bun_core::strings::is_windows_absolute_path_missing_drive_letter(chars)
 }
@@ -75,7 +68,7 @@ pub fn from_w_path<'a>(buf: &'a mut [u8], utf16: &[u16]) -> &'a ZStr {
     ZStr::from_buf(buf, written)
 }
 
-pub fn without_nt_prefix<T: Ch>(path: &[T]) -> &[T] {
+pub fn without_nt_prefix<T: PathChar>(path: &[T]) -> &[T] {
     if !cfg!(windows) {
         return path;
     }
@@ -187,6 +180,60 @@ pub fn to_w_path_normalized<'a>(wbuf: &'a mut [u16], utf8: &[u8]) -> &'a WStr {
     }
 
     to_w_path(wbuf, path_to_use)
+}
+
+fn to_w_path_normalized16<'a>(wbuf: &'a mut [u16], path: &[u16]) -> &'a WStr {
+    // Input (plus the NUL) doesn't fit in `wbuf` — fail-safe to "" like
+    // `to_w_path_maybe_dir` does, instead of panicking in the
+    // `normalize_slashes_only_t` copy below.
+    if path.len() >= wbuf.len() {
+        wbuf[0] = 0;
+        return wstr_in_buf(wbuf, 0);
+    }
+
+    // Capture the length and re-derive the mutable slice (borrowck-friendly
+    // alternative to writing into wbuf and re-slicing it).
+    let len = {
+        let mut path_to_use = normalize_slashes_only_t::<u16, b'\\', true>(wbuf, path);
+
+        // is there a trailing slash? Let's remove it before converting to UTF-16
+        if path_to_use.len() > 3
+            && resolve_path::is_sep_any_t::<u16>(path_to_use[path_to_use.len() - 1])
+        {
+            path_to_use = &path_to_use[..path_to_use.len() - 1];
+        }
+        path_to_use.len()
+    };
+
+    wbuf[len] = 0;
+
+    wstr_in_buf(wbuf, len)
+}
+
+fn normalize_slashes_only_t<'a, T: PathChar, const DESIRED_SLASH: u8, const ALWAYS_COPY: bool>(
+    buf: &'a mut [T],
+    path: &'a [T],
+) -> &'a [T] {
+    // Was `const _: () = assert!(..)` but Rust forbids const items
+    // referencing outer const-generic params (E0401). Debug-assert instead.
+    debug_assert!(DESIRED_SLASH == b'/' || DESIRED_SLASH == b'\\');
+    let undesired_slash: u8 = if DESIRED_SLASH == b'/' { b'\\' } else { b'/' };
+
+    if strings::contains_char_t(path, undesired_slash) {
+        buf[..path.len()].copy_from_slice(path);
+        for c in buf[..path.len()].iter_mut() {
+            if *c == ch(undesired_slash) {
+                *c = ch(DESIRED_SLASH);
+            }
+        }
+        return &buf[..path.len()];
+    }
+
+    if ALWAYS_COPY {
+        buf[..path.len()].copy_from_slice(path);
+        return &buf[..path.len()];
+    }
+    path
 }
 
 // `desired_slash` is a runtime arg (not a const generic) since a
@@ -351,7 +398,7 @@ pub fn path_contains_node_modules_folder(path: &[u8]) -> bool {
 pub use crate::is_sep_any as char_is_any_slash;
 
 #[inline(always)]
-pub fn starts_with_windows_drive_letter_t<T: Ch>(s: &[T]) -> bool {
+pub fn starts_with_windows_drive_letter_t<T: PathChar>(s: &[T]) -> bool {
     s.len() > 2 && s[1] == ch(b':') && {
         let c = s[0];
         (c >= ch(b'a') && c <= ch(b'z')) || (c >= ch(b'A') && c <= ch(b'Z'))

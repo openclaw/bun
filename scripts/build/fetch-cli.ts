@@ -22,7 +22,7 @@
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { closeSync, existsSync, openSync, readFileSync, readSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { downloadWithRetry, extractTarGz, fetchPrebuilt } from "./download.ts";
@@ -70,7 +70,7 @@ async function main(): Promise<void> {
         text = text.split(pairs[i]!).join(pairs[i + 1]!);
       }
       // dep_subst is restat=1 — preserve mtime when the rendered text is
-      // unchanged so depfile-tracked .o files (libarchive ← zlib.h) don't
+      // unchanged so depfile-tracked .o files (libspng ← zlib.h) don't
       // recompile after a no-op re-fetch.
       writeIfChanged(outPath, text);
       return;
@@ -95,6 +95,18 @@ async function main(): Promise<void> {
       throw new BuildError(Buffer.from(args[0], "base64url").toString("utf8"));
     }
 
+    case "check-defined": {
+      // fetch-cli.ts check-defined <name> <lib> <stamp> <symbols>
+      // <symbols> is comma-separated. Writes <stamp> when <lib> names every
+      // one of them. See Provides.requireDefined in source.ts.
+      const [name, lib, stamp, symbols] = args;
+      assert(
+        name !== undefined && lib !== undefined && stamp !== undefined && symbols !== undefined,
+        "check-defined: missing name/lib/stamp/symbols",
+      );
+      return checkDefined(name, lib, stamp, symbols.split(","));
+    }
+
     case "prebuilt": {
       // fetch-cli.ts prebuilt <name> <base64url-url> <dest> <identity> <sha256|-> [...rm_paths]
       const [name, encodedUrl, dest, identity, sha256, ...rmPaths] = args;
@@ -104,6 +116,7 @@ async function main(): Promise<void> {
       );
       assert(sha256 !== undefined, "prebuilt: missing sha256 or '-' sentinel");
       const url = Buffer.from(encodedUrl, "base64url").toString("utf8");
+      // The fork verifies the complete manifest-pinned archive, including code generators.
       return fetchPrebuilt(name, url, dest, identity, rmPaths, sha256 === "-" ? undefined : sha256);
     }
 
@@ -196,6 +209,44 @@ function checkUndefined(name: string, nm: string, rspfile: string, stamp: string
     });
   }
   // dep_check_undefined is restat=1: an existing stamp keeps its mtime.
+  writeIfChanged(stamp, "");
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// check-defined: a prebuilt library has to name the given symbols
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * An archive's index and the string table of each member, object or bitcode,
+ * hold a name as plain bytes, so this needs no tool that may be missing. Only
+ * the definition names these symbols: nothing in the library refers to them.
+ */
+function checkDefined(name: string, lib: string, stamp: string, symbols: string[]): void {
+  const found = new Set<string>();
+  const longest = Math.max(...symbols.map(symbol => symbol.length));
+  const buffer = Buffer.allocUnsafe(64 << 20);
+  const descriptor = openSync(lib, "r");
+  try {
+    // What is kept from one read to the next is a name that lies across the two.
+    for (let kept = 0, read; (read = readSync(descriptor, buffer, kept, buffer.length - kept, null)) > 0;) {
+      const bytes = buffer.subarray(0, kept + read);
+      for (const symbol of symbols) if (bytes.includes(symbol)) found.add(symbol);
+      kept = Math.min(longest - 1, bytes.length);
+      buffer.copyWithin(0, bytes.length - kept, bytes.length);
+    }
+  } finally {
+    closeSync(descriptor);
+  }
+  const missing = symbols.filter(symbol => !found.has(symbol));
+  if (missing.length > 0) {
+    throw new BuildError(
+      `${name}: ${lib} was not compiled with what this build asks of it. It does not define ${missing.join(", ")}`,
+      {
+        hint: `requireDefined in scripts/build/deps/${name.toLowerCase()}.ts says which option each symbol stands for. Take a version of ${name} whose prebuilts are compiled with it, or compile ${name} here`,
+      },
+    );
+  }
+  // dep_check_defined is restat=1: an existing stamp keeps its mtime.
   writeIfChanged(stamp, "");
 }
 

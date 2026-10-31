@@ -3,7 +3,17 @@
 
 #![feature(adt_const_params)]
 
-use bun_core::strings;
+mod tidy;
+pub use tidy::{
+    ParsedPosixLatin1, RelativePosixLatin1, basename_posix_latin1,
+    basename_without_suffix_posix_latin1, dirname_posix_latin1, extname_posix_latin1, is_ascii,
+    is_resolved_ascii_posix, is_tidy_ascii_posix, normalize_posix_latin1, parse_posix_latin1,
+    relative_posix_latin1, resolve_absolute_posix_latin1,
+};
+
+#[cfg(windows)]
+use bun_core::strings::CodeUnitsMut;
+use bun_core::strings::{self, CodeUnits};
 use bun_paths::{self, MAX_PATH_BYTES, Platform};
 
 const PATH_MIN_WIDE: usize = 4096; // 4 KB
@@ -13,10 +23,9 @@ const PATH_MIN_WIDE: usize = 4096; // 4 KB
 pub use bun_paths::PathChar;
 
 /// Runtime-only extension over [`PathChar`]: adds the `bun_sys`-coupled
-/// per-width `get_cwd` plus the `bytemuck::Pod`/`Default` bounds this module
-/// needs for `PathScratch`'s `cast_slice` and zero-init. Every generic `_t`
+/// per-width `get_cwd` plus `Default` for zero-init. Every generic `_t`
 /// fn here bounds on `PathCharCwd` (only `u8`/`u16` ever instantiate it).
-pub trait PathCharCwd: PathChar + Default + bytemuck::Pod {
+pub trait PathCharCwd: PathChar + Default {
     /// Per-width `get_cwd` — replaces the `IS_U16` runtime dispatch in `get_cwd_t`.
     fn get_cwd(buf: &mut [Self]) -> bun_sys::Result<&mut [Self]>;
 }
@@ -41,15 +50,9 @@ fn l<T: PathCharCwd>(s: &'static [u8]) -> &'static [T] {
 
 /// Compares ASCII values case-insensitively, non-ASCII values are compared directly
 fn eql_ignore_case_t<T: PathCharCwd>(a: &[T], b: &[T]) -> bool {
-    if !T::IS_U16 {
-        // T == u8 when !IS_U16; bytemuck statically checks the layout.
-        let a8: &[u8] = bytemuck::cast_slice::<T, u8>(a);
-        let b8: &[u8] = bytemuck::cast_slice::<T, u8>(b);
-        return strings::eql_case_insensitive_ascii(a8, b8, true);
+    if let (CodeUnits::U8(a), CodeUnits::U8(b)) = (T::units(a), T::units(b)) {
+        return strings::eql_case_insensitive_ascii(a, b, true);
     }
-    // In practice the only callers instantiate with `T == u8`; provide a sound
-    // u16 compare so
-    // the generic body type-checks and behaves correctly if ever exercised.
     if a.len() != b.len() {
         return false;
     }
@@ -97,6 +100,18 @@ const CHAR_QUESTION_MARK: u8 = b'?';
 const CHAR_STR_BACKWARD_SLASH: &[u8] = b"\\";
 const CHAR_STR_FORWARD_SLASH: &[u8] = b"/";
 pub const CHAR_STR_DOT: &[u8] = b".";
+
+/// Based on Node v21.6.1 path.parse:
+/// https://github.com/nodejs/node/blob/6ae20aa63de78294b18d5015481485b7cd8fbb60/lib/path.js#L919
+/// The structs returned by parse methods.
+#[derive(Default)]
+pub struct PathParsed<'a, T: PathCharCwd> {
+    pub root: &'a [T],
+    pub dir: &'a [T],
+    pub base: &'a [T],
+    pub ext: &'a [T],
+    pub name: &'a [T],
+}
 
 const fn max_path_size<T: PathCharCwd>() -> usize {
     if T::IS_U16 {
@@ -183,17 +198,28 @@ fn without_trailing_slash(s: &[u8]) -> &[u8] {
     &s[..end]
 }
 
+/// What [`resolve_posix_t`] puts in front of a path that is not absolute, where the system's own paths are POSIX paths.
+#[cfg(not(windows))]
+#[inline]
+pub fn posix_working_directory() -> &'static [u8] {
+    working_directory()
+}
+
+fn working_directory() -> &'static [u8] {
+    match bun_core::working_directory_in_executable() {
+        Some(directory) => directory,
+        None => without_trailing_slash(bun_paths::fs::FileSystem::instance().top_level_dir()),
+    }
+}
+
 fn get_cwd_u8(buf: &mut [u8]) -> MaybeBuf<'_, u8> {
-    let cached_cwd = without_trailing_slash(bun_paths::fs::FileSystem::instance().top_level_dir());
+    let cached_cwd = working_directory();
     buf[0..cached_cwd.len()].copy_from_slice(cached_cwd);
     Ok(&mut buf[0..cached_cwd.len()])
 }
 
 fn get_cwd_u16(buf: &mut [u16]) -> MaybeBuf<'_, u16> {
-    let result = strings::convert_utf8_to_utf16_in_buffer(
-        buf,
-        without_trailing_slash(bun_paths::fs::FileSystem::instance().top_level_dir()),
-    );
+    let result = strings::convert_utf8_to_utf16_in_buffer(buf, working_directory());
     Ok(result)
 }
 
@@ -764,6 +790,103 @@ pub fn is_absolute_windows_t<T: PathCharCwd>(path: &[T]) -> bool {
             && is_sep_windows_t(path[2]))
 }
 
+/// Based on Node v21.6.1 private helper _format:
+/// https://github.com/nodejs/node/blob/6ae20aa63de78294b18d5015481485b7cd8fbb60/lib/path.js#L145
+pub fn format_t<'a, T: PathCharCwd>(
+    path_object: &PathParsed<'a, T>,
+    sep: T,
+    buf: &'a mut [T],
+) -> &'a [T] {
+    // validateObject of `pathObject` is performed in pub fn format.
+    let root = path_object.root;
+    let dir = path_object.dir;
+    let base = path_object.base;
+    let ext = path_object.ext;
+    // Prefix with _ to avoid shadowing the identifier in the outer scope.
+    let _name = path_object.name;
+
+    // Translated from the following JS code:
+    //   const dir = pathObject.dir || pathObject.root;
+    // Compare as `&[T]` so the comparison is correct for `T == u16` too.
+    let dir_is_root = dir.is_empty() || dir == root;
+    let dir_or_root = if dir_is_root { root } else { dir };
+    let dir_len = dir_or_root.len();
+
+    let mut buf_offset: usize;
+    let mut buf_size: usize;
+
+    // Translated from the following JS code:
+    //   const base = pathObject.base ||
+    //     `${pathObject.name || ''}${formatExt(pathObject.ext)}`;
+    let mut base_len = base.len();
+    // Borrowck: track range into buf instead of slice.
+
+    let base_or_name_ext_range: (usize, usize) = if base_len > 0 {
+        memmove(&mut buf[0..base_len], base);
+        (0, base_len)
+    } else {
+        let formatted_ext_len = {
+            // Borrowck: inline format_ext_t to avoid overlapping &mut.
+            let ext_len = ext.len();
+            if ext_len == 0 {
+                0
+            } else if ext[0] == T::from_u8(CHAR_DOT) {
+                memmove(&mut buf[0..ext_len], ext);
+                ext_len
+            } else {
+                buf[0] = T::from_u8(CHAR_DOT);
+                memmove(&mut buf[1..ext_len + 1], ext);
+                ext_len + 1
+            }
+        };
+        let name_len = _name.len();
+        let ext_len = formatted_ext_len;
+        buf_offset = name_len;
+        buf_size = buf_offset + ext_len;
+        if ext_len > 0 {
+            // Move all bytes to the right by _name.len.
+            // Use copy_within because formattedExt and buf overlap.
+            buf.copy_within(0..ext_len, buf_offset);
+        }
+        if name_len > 0 {
+            memmove(&mut buf[0..name_len], _name);
+        }
+        if buf_size > 0 {
+            (0, buf_size)
+        } else {
+            (0, base_len)
+        }
+    };
+
+    // Translated from the following JS code:
+    //   if (!dir) {
+    //     return base;
+    //   }
+    if dir_len == 0 {
+        return &buf[base_or_name_ext_range.0..base_or_name_ext_range.1];
+    }
+
+    // Translated from the following JS code:
+    //   return dir === pathObject.root ? `${dir}${base}` : `${dir}${sep}${base}`;
+    base_len = base_or_name_ext_range.1 - base_or_name_ext_range.0;
+    if base_len > 0 {
+        buf_offset = if dir_is_root { dir_len } else { dir_len + 1 };
+        // Move all bytes to the right by dirLen + (maybe 1 for the separator).
+        // Use copy_within because baseOrNameExt and buf overlap.
+        buf.copy_within(
+            base_or_name_ext_range.0..base_or_name_ext_range.1,
+            buf_offset,
+        );
+    }
+    memmove(&mut buf[0..dir_len], dir_or_root);
+    buf_size = dir_len + base_len;
+    if !dir_is_root {
+        buf_size += 1;
+        buf[dir_len] = sep;
+    }
+    &buf[0..buf_size]
+}
+
 /// Based on Node v21.6.1 path.posix.join:
 /// https://github.com/nodejs/node/blob/6ae20aa63de78294b18d5015481485b7cd8fbb60/lib/path.js#L1169
 pub fn join_posix_t<'a, T: PathCharCwd>(
@@ -1294,6 +1417,326 @@ pub fn normalize_windows_t<'a, T: PathCharCwd>(path: &[T], buf: &'a mut [T]) -> 
     &buf[0..buf_size]
 }
 
+// Based on Node v21.6.1 path.posix.parse
+// https://github.com/nodejs/node/blob/6ae20aa63de78294b18d5015481485b7cd8fbb60/lib/path.js#L1452
+pub fn parse_posix_t<T: PathCharCwd>(path: &[T]) -> PathParsed<'_, T> {
+    // validateString of `path` is performed in pub fn parse.
+    let len = path.len();
+    if len == 0 {
+        return PathParsed::default();
+    }
+
+    let mut root: &[T] = &[];
+    let mut dir: &[T] = &[];
+    let mut base: &[T] = &[];
+    let mut ext: &[T] = &[];
+    // Prefix with _ to avoid shadowing the identifier in the outer scope.
+    let mut _name: &[T] = &[];
+    // Prefix with _ to avoid shadowing the identifier in the outer scope.
+    let _is_absolute = path[0] == T::from_u8(CHAR_FORWARD_SLASH);
+    let mut start: usize = 0;
+    if _is_absolute {
+        root = l::<T>(CHAR_STR_FORWARD_SLASH);
+        start = 1;
+    }
+
+    // We use an optional value instead of -1, as in Node code, for easier number type use.
+    let mut start_dot: Option<usize> = None;
+    let mut start_part: usize = 0;
+    // We use an optional value instead of -1, as in Node code, for easier number type use.
+    let mut end: Option<usize> = None;
+    let mut matched_slash = true;
+    let mut i_i64 = i64::try_from(len - 1).expect("int cast");
+
+    // Track the state of characters (if any) we see before our first dot and
+    // after any path separator we find
+
+    // We use an optional value instead of -1, as in Node code, for easier number type use.
+    let mut pre_dot_state: Option<usize> = Some(0);
+
+    // Get non-dir info
+    while i_i64 >= i64::try_from(start).expect("int cast") {
+        let i = usize::try_from(i_i64).expect("int cast");
+        let byte = path[i];
+        if byte == T::from_u8(CHAR_FORWARD_SLASH) {
+            // If we reached a path separator that was not part of a set of path
+            // separators at the end of the string, stop now
+            if !matched_slash {
+                start_part = i + 1;
+                break;
+            }
+            i_i64 -= 1;
+            continue;
+        }
+        if end.is_none() {
+            // We saw the first non-path separator, mark this as the end of our
+            // extension
+            matched_slash = false;
+            end = Some(i + 1);
+        }
+        if byte == T::from_u8(CHAR_DOT) {
+            // If this is our first dot, mark it as the start of our extension
+            if start_dot.is_none() {
+                start_dot = Some(i);
+            } else if let Some(_pre_dot_state) = pre_dot_state {
+                if _pre_dot_state != 1 {
+                    pre_dot_state = Some(1);
+                }
+            }
+        } else if start_dot.is_some() {
+            // We saw a non-dot and non-path separator before our dot, so we should
+            // have a good chance at having a non-empty extension
+            pre_dot_state = None;
+        }
+        i_i64 -= 1;
+    }
+
+    if let Some(_end) = end {
+        let _pre_dot_state = pre_dot_state.unwrap_or(0);
+        let _start_dot = start_dot.unwrap_or(0);
+        start = if start_part == 0 && _is_absolute {
+            1
+        } else {
+            start_part
+        };
+        if start_dot.is_none()
+            // We saw a non-dot character immediately before the dot
+            || (pre_dot_state.is_some() && _pre_dot_state == 0)
+            // The (right-most) trimmed path component is exactly '..'
+            || (_pre_dot_state == 1 && _start_dot == _end - 1 && _start_dot == start_part + 1)
+        {
+            _name = &path[start.._end];
+            base = _name;
+        } else {
+            _name = &path[start.._start_dot];
+            base = &path[start.._end];
+            ext = &path[_start_dot.._end];
+        }
+    }
+
+    if start_part > 0 {
+        dir = &path[0..(start_part - 1)];
+    } else if _is_absolute {
+        dir = l::<T>(CHAR_STR_FORWARD_SLASH);
+    }
+
+    PathParsed {
+        root,
+        dir,
+        base,
+        ext,
+        name: _name,
+    }
+}
+
+// Based on Node v21.6.1 path.win32.parse
+// https://github.com/nodejs/node/blob/6ae20aa63de78294b18d5015481485b7cd8fbb60/lib/path.js#L916
+pub fn parse_windows_t<T: PathCharCwd>(path: &[T]) -> PathParsed<'_, T> {
+    // validateString of `path` is performed in pub fn parse.
+    let mut root: &[T] = &[];
+    let mut dir: &[T] = &[];
+    let mut base: &[T] = &[];
+    let mut ext: &[T] = &[];
+    // Prefix with _ to avoid shadowing the identifier in the outer scope.
+    let mut _name: &[T] = &[];
+
+    let len = path.len();
+    if len == 0 {
+        return PathParsed {
+            root,
+            dir,
+            base,
+            ext,
+            name: _name,
+        };
+    }
+
+    let is_sep_t = is_sep_windows_t::<T>;
+
+    let mut root_end: usize = 0;
+    let mut byte = path[0];
+
+    if len == 1 {
+        if is_sep_t(byte) {
+            // `path` contains just a path separator, exit early to avoid
+            // unnecessary work
+            root = path;
+            dir = path;
+        } else {
+            base = path;
+            _name = path;
+        }
+        return PathParsed {
+            root,
+            dir,
+            base,
+            ext,
+            name: _name,
+        };
+    }
+
+    // Try to match a root
+    if is_sep_t(byte) {
+        // Possible UNC root
+
+        root_end = 1;
+        if is_sep_t(path[1]) {
+            // Matched double path separator at the beginning
+            let mut j: usize = 2;
+            let mut last: usize = j;
+            // Match 1 or more non-path separators
+            while j < len && !is_sep_t(path[j]) {
+                j += 1;
+            }
+            if j < len && j != last {
+                // Matched!
+                last = j;
+                // Match 1 or more path separators
+                while j < len && is_sep_t(path[j]) {
+                    j += 1;
+                }
+                if j < len && j != last {
+                    // Matched!
+                    last = j;
+                    // Match 1 or more non-path separators
+                    while j < len && !is_sep_t(path[j]) {
+                        j += 1;
+                    }
+                    if j == len {
+                        // We matched a UNC root only
+                        root_end = j;
+                    } else if j != last {
+                        // We matched a UNC root with leftovers
+                        root_end = j + 1;
+                    }
+                }
+            }
+        }
+    } else if is_windows_device_root_t(byte) && path[1] == T::from_u8(CHAR_COLON) {
+        // Possible device root
+        if len <= 2 {
+            // `path` contains just a drive root, exit early to avoid
+            // unnecessary work
+            root = path;
+            dir = path;
+            return PathParsed {
+                root,
+                dir,
+                base,
+                ext,
+                name: _name,
+            };
+        }
+        root_end = 2;
+        if is_sep_t(path[2]) {
+            if len == 3 {
+                // `path` contains just a drive root, exit early to avoid
+                // unnecessary work
+                root = path;
+                dir = path;
+                return PathParsed {
+                    root,
+                    dir,
+                    base,
+                    ext,
+                    name: _name,
+                };
+            }
+            root_end = 3;
+        }
+    }
+    if root_end > 0 {
+        root = &path[0..root_end];
+    }
+
+    // We use an optional value instead of -1, as in Node code, for easier number type use.
+    let mut start_dot: Option<usize> = None;
+    let mut start_part = root_end;
+    // We use an optional value instead of -1, as in Node code, for easier number type use.
+    let mut end: Option<usize> = None;
+    let mut matched_slash = true;
+    let mut i_i64 = i64::try_from(len - 1).expect("int cast");
+
+    // Track the state of characters (if any) we see before our first dot and
+    // after any path separator we find
+
+    // We use an optional value instead of -1, as in Node code, for easier number type use.
+    let mut pre_dot_state: Option<usize> = Some(0);
+
+    // Get non-dir info
+    while i_i64 >= i64::try_from(root_end).expect("int cast") {
+        let i = usize::try_from(i_i64).expect("int cast");
+        byte = path[i];
+        if is_sep_t(byte) {
+            // If we reached a path separator that was not part of a set of path
+            // separators at the end of the string, stop now
+            if !matched_slash {
+                start_part = i + 1;
+                break;
+            }
+            i_i64 -= 1;
+            continue;
+        }
+        if end.is_none() {
+            // We saw the first non-path separator, mark this as the end of our
+            // extension
+            matched_slash = false;
+            end = Some(i + 1);
+        }
+        if byte == T::from_u8(CHAR_DOT) {
+            // If this is our first dot, mark it as the start of our extension
+            if start_dot.is_none() {
+                start_dot = Some(i);
+            } else if let Some(_pre_dot_state) = pre_dot_state {
+                if _pre_dot_state != 1 {
+                    pre_dot_state = Some(1);
+                }
+            }
+        } else if start_dot.is_some() {
+            // We saw a non-dot and non-path separator before our dot, so we should
+            // have a good chance at having a non-empty extension
+            pre_dot_state = None;
+        }
+        i_i64 -= 1;
+    }
+
+    if let Some(_end) = end {
+        let _pre_dot_state = pre_dot_state.unwrap_or(0);
+        let _start_dot = start_dot.unwrap_or(0);
+        if start_dot.is_none()
+            // We saw a non-dot character immediately before the dot
+            || (pre_dot_state.is_some() && _pre_dot_state == 0)
+            // The (right-most) trimmed path component is exactly '..'
+            || (_pre_dot_state == 1 && _start_dot == _end - 1 && _start_dot == start_part + 1)
+        {
+            // Prefix with _ to avoid shadowing the identifier in the outer scope.
+            _name = &path[start_part.._end];
+            base = _name;
+        } else {
+            _name = &path[start_part.._start_dot];
+            base = &path[start_part.._end];
+            ext = &path[_start_dot.._end];
+        }
+    }
+
+    // If the directory is the root, use the entire root as the `dir` including
+    // the trailing slash if any (`C:\abc` -> `C:\`). Otherwise, strip out the
+    // trailing slash (`C:\abc\def` -> `C:\abc`).
+    if start_part > 0 && start_part != root_end {
+        dir = &path[0..(start_part - 1)];
+    } else {
+        dir = root;
+    }
+
+    PathParsed {
+        root,
+        dir,
+        base,
+        ext,
+        name: _name,
+    }
+}
+
 /// Based on Node v21.6.1 path.posix.relative:
 /// https://github.com/nodejs/node/blob/6ae20aa63de78294b18d5015481485b7cd8fbb60/lib/path.js#L1193
 pub fn relative_posix_t<'a, T: PathCharCwd>(
@@ -1638,6 +2081,20 @@ pub fn resolve_posix_t<'a, T: PathCharCwd>(
     buf: &'a mut [T],
     buf2: &mut [T],
 ) -> MaybeSlice<'a, T> {
+    resolve_posix_t_with_cwd(paths, buf, buf2, MAX_PATH_SIZE_UPPER, posix_cwd_t::<T>)
+}
+
+pub fn resolve_posix_t_with_cwd<'a, T: PathCharCwd, E, F>(
+    paths: &[&[T]],
+    buf: &'a mut [T],
+    buf2: &mut [T],
+    cwd_buffer_capacity: usize,
+    mut get_cwd: F,
+) -> Result<&'a [T], E>
+where
+    E: From<bun_sys::Error>,
+    F: for<'b> FnMut(&'b mut [T]) -> Result<&'b mut [T], E>,
+{
     // Backed by expandable buf2 because resolvedPath may be long.
     // We use buf2 here because resolvePosixT is called by other methods and using
     // buf2 here avoids stepping on others' toes.
@@ -1656,12 +2113,17 @@ pub fn resolve_posix_t<'a, T: PathCharCwd>(
         // in this scope; copy into buf2 before reusing.
         // Sized to the larger of the two T variants.
         let mut tmp_buf: [T; MAX_PATH_SIZE_UPPER];
+        let mut tmp_spill: Vec<T>;
         let path: &[T] = if i_i64 >= 0 {
             paths[usize::try_from(i_i64).expect("int cast")]
         } else {
-            // cwd is limited to MAX_PATH_BYTES.
-            tmp_buf = [T::default(); MAX_PATH_SIZE_UPPER];
-            &*posix_cwd_t(&mut tmp_buf)?
+            if cwd_buffer_capacity > MAX_PATH_SIZE_UPPER {
+                tmp_spill = vec![T::default(); cwd_buffer_capacity];
+                &*get_cwd(&mut tmp_spill)?
+            } else {
+                tmp_buf = [T::default(); MAX_PATH_SIZE_UPPER];
+                &*get_cwd(&mut tmp_buf)?
+            }
         };
         // validateString of `path` is performed in pub fn resolve.
         let len = path.len();
@@ -1739,9 +2201,30 @@ pub fn resolve_windows_t<'a, T: PathCharCwd>(
     buf: &'a mut [T],
     buf2: &mut [T],
 ) -> MaybeSlice<'a, T> {
+    resolve_windows_t_with_cwd(paths, buf, buf2, MAX_PATH_SIZE_UPPER, get_cwd_t::<T>)
+}
+
+pub fn resolve_windows_t_with_cwd<'a, T: PathCharCwd, E, F>(
+    paths: &[&[T]],
+    buf: &'a mut [T],
+    buf2: &mut [T],
+    cwd_buffer_capacity: usize,
+    mut get_cwd: F,
+) -> Result<&'a [T], E>
+where
+    E: From<bun_sys::Error>,
+    F: for<'b> FnMut(&'b mut [T]) -> Result<&'b mut [T], E>,
+{
     let is_sep_t = is_sep_windows_t::<T>;
     // Sized to the larger of the two T variants.
-    let mut tmp_buf = [T::default(); MAX_PATH_SIZE_UPPER + 1];
+    let mut tmp_stack = [T::default(); MAX_PATH_SIZE_UPPER + 3];
+    let mut tmp_spill;
+    let tmp_buf: &mut [T] = if cwd_buffer_capacity > MAX_PATH_SIZE_UPPER {
+        tmp_spill = vec![T::default(); cwd_buffer_capacity + 3];
+        &mut tmp_spill
+    } else {
+        &mut tmp_stack
+    };
 
     // Backed by tmpBuf.
     // Borrowck: track resolved_device length into tmp_buf.
@@ -1791,7 +2274,7 @@ pub fn resolve_windows_t<'a, T: PathCharCwd>(
             path_len = p.len();
         } else if resolved_device_len == 0 {
             // cwd is limited to MAX_PATH_BYTES.
-            cwd_len = get_cwd_t(&mut tmp_buf[..])?.len();
+            cwd_len = get_cwd(&mut tmp_buf[..])?.len();
             path_ptr = tmp_buf.as_ptr();
             path_len = cwd_len;
         } else {
@@ -1838,40 +2321,38 @@ pub fn resolve_windows_t<'a, T: PathCharCwd>(
                         &mut buf2[buf_offset..buf_size],
                         &tmp_buf[0..resolved_device_len],
                     );
-                    if T::IS_U16 {
-                        // `getenv_w` requires the NUL be addressable via the slice's
-                        // pointer (it forwards `.as_ptr()` as LPCWSTR). `buf2` is a
-                        // reused arena buffer with arbitrary prior contents past
-                        // `buf_size`, so write the terminator explicitly.
-                        buf2[buf_size] = T::from_u8(0);
-                        // T == u16 when IS_U16; bytemuck statically checks the layout.
-                        break 'brk bytemuck::cast_slice::<T, u16>(&buf2[..=buf_size]);
+                    // `getenv_w` forwards `.as_ptr()` as LPCWSTR, and neither buffer is zeroed past the key.
+                    match T::units_mut(buf2) {
+                        CodeUnitsMut::U16(key) => {
+                            key[buf_size] = 0;
+                            &key[..=buf_size]
+                        }
+                        CodeUnitsMut::U8(key) => {
+                            let n = strings::convert_utf8_to_utf16_in_buffer(
+                                &mut u16_buf[..],
+                                &key[..buf_size],
+                            )
+                            .len();
+                            u16_buf[n] = 0;
+                            &u16_buf[..=n]
+                        }
                     }
-                    // T == u8 when !IS_U16; bytemuck statically checks the layout.
-                    let key8: &[u8] = bytemuck::cast_slice::<T, u8>(&buf2[..buf_size]);
-                    // Write the NUL after widening; a pooled buffer is not zeroed.
-                    let n = strings::convert_utf8_to_utf16_in_buffer(&mut u16_buf[..], key8).len();
-                    u16_buf[n] = 0;
-                    &u16_buf[..=n]
                 };
                 // TODO: Enable test once spawnResult.stdout works on Windows.
                 // test/js/node/path/resolve.test.js
                 if let Some(r) = bun_sys::windows::getenv_w(key_w) {
                     // Store in tmp_buf AFTER the device: buf2[0..resolved_tail_len]
                     // already backs the accumulated tail, so writing there clobbers it.
-                    if T::IS_U16 {
-                        buf_size = r.len().min(tmp_buf.len() - resolved_device_len);
-                        // T == u16 when IS_U16; bytemuck checks the layout at runtime.
-                        let dst: &mut [u16] = bytemuck::cast_slice_mut::<T, u16>(
-                            &mut tmp_buf[resolved_device_len..resolved_device_len + buf_size],
-                        );
-                        memmove(dst, &r[..buf_size]);
-                    } else {
-                        // T == u8 when !IS_U16; bytemuck statically checks the layout.
-                        let dst: &mut [u8] =
-                            bytemuck::cast_slice_mut::<T, u8>(&mut tmp_buf[resolved_device_len..]);
-                        buf_size = strings::convert_utf16_to_utf8_in_buffer(dst, &r).len();
-                    }
+                    buf_size = match T::units_mut(&mut tmp_buf[resolved_device_len..]) {
+                        CodeUnitsMut::U16(dst) => {
+                            let n = r.len().min(dst.len());
+                            memmove(&mut dst[..n], &r[..n]);
+                            n
+                        }
+                        CodeUnitsMut::U8(dst) => {
+                            strings::convert_utf16_to_utf8_in_buffer(dst, &r).len()
+                        }
+                    };
                     env_path_len = Some(buf_size);
                 }
             }
@@ -1881,7 +2362,7 @@ pub fn resolve_windows_t<'a, T: PathCharCwd>(
             } else {
                 // cwd is limited to MAX_PATH_BYTES. Store it AFTER the device:
                 // tmp_buf[0..resolved_device_len] backs resolvedDevice.
-                cwd_len = get_cwd_t(&mut tmp_buf[resolved_device_len..])?.len();
+                cwd_len = get_cwd(&mut tmp_buf[resolved_device_len..])?.len();
                 path_ptr = tmp_buf[resolved_device_len..].as_ptr();
                 path_len = cwd_len;
                 // We must set envPath here so that it doesn't hit the null check just below.
@@ -1987,7 +2468,8 @@ pub fn resolve_windows_t<'a, T: PathCharCwd>(
                                 return Err(bun_sys::Error::from_code(
                                     bun_sys::E::ENAMETOOLONG,
                                     bun_sys::Tag::TODO,
-                                ));
+                                )
+                                .into());
                             }
                             // SAFETY: src/dst within live buffers; ptr::copy handles overlap.
                             unsafe {
@@ -2007,7 +2489,8 @@ pub fn resolve_windows_t<'a, T: PathCharCwd>(
                                 return Err(bun_sys::Error::from_code(
                                     bun_sys::E::ENAMETOOLONG,
                                     bun_sys::Tag::TODO,
-                                ));
+                                )
+                                .into());
                             }
                             // SAFETY: src/dst within live buffers; ptr::copy handles overlap.
                             unsafe {
