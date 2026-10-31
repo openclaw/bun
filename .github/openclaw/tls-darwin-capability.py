@@ -140,6 +140,7 @@ def inspect(debugger):
                  'JSC::Heap::testAndSetMarked', 'JSC::sanitizeStackForVM',
                  'JSC::MachineThreads::gatherConservativeRoots', 'JSC::ConservativeRoots::genericAddSpan',
                  'JSC::ConservativeRoots::genericAddPointer', 'JSC::Interpreter::executeCall',
+                 'JSC::Interpreter::executeModuleProgram', 'vmEntryToJavaScript',
                  'Bun__UpgradedDuplex__onWriteComplete',
                  'bun_runtime::socket::socket_body::DuplexUpgradeContext::run_event',
                  'bun_runtime::socket::socket_body::DuplexUpgradeContext::deinit'):
@@ -161,8 +162,13 @@ def inspect(debugger):
             rows = []
             for j in range(instructions.GetSize()):
                 insn = instructions.GetInstructionAtIndex(j)
-                rows.append(dict(address=insn.GetAddress().GetFileAddress(), mnemonic=insn.GetMnemonic(target),
-                                 operands=insn.GetOperands(target), comment=insn.GetComment(target)))
+                entry = insn.GetAddress().GetLineEntry()
+                data = bytes(insn.GetData(target).uint8s)
+                assert len(data) == insn.GetByteSize()
+                rows.append(dict(address=insn.GetAddress().GetFileAddress(), bytes=data.hex(),
+                                 mnemonic=insn.GetMnemonic(target), operands=insn.GetOperands(target),
+                                 comment=insn.GetComment(target), file=entry.GetFileSpec().GetFilename(),
+                                 line=entry.GetLine()))
             parents[key] = dict(name=resolved, address=key, instructions=rows)
         functions[name] = list(parents.values())
     assert not target.GetProcess().IsValid(), 'static inventory launched an inferior'
