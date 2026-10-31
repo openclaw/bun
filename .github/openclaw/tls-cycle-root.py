@@ -268,6 +268,13 @@ def inspect(debugger):
                 description=t.GetStopDescription(512), pc=t.GetFrameAtIndex(0).GetPC(),
                 sp=t.GetFrameAtIndex(0).GetSP(), fp=t.GetFrameAtIndex(0).GetFP(),
                 function=t.GetFrameAtIndex(0).GetDisplayFunctionName()) for t in process])
+            unexpected = [t.GetThreadID() for t in process if t.GetStopReason() not in
+                          (lldb.eStopReasonInvalid, lldb.eStopReasonNone,
+                           lldb.eStopReasonWatchpoint, lldb.eStopReasonBreakpoint)]
+            if unexpected:
+                if watch is not None:
+                    report['last_stop']['watched_value'] = word(report['word_watch']['address'])
+                raise AssertionError('unexpected debugger stop on threads ' + str(unexpected))
             handled = False
             for thread in process:
                 if thread.GetStopReason() == lldb.eStopReasonWatchpoint:
@@ -312,7 +319,7 @@ def inspect(debugger):
                 if thread.GetStopReason() != lldb.eStopReasonBreakpoint:
                     continue
                 frame, tid = thread.GetFrameAtIndex(0), thread.GetThreadID()
-                assert thread.GetStopReasonDataCount() % 2 == 0
+                assert thread.GetStopReasonDataCount() > 0 and thread.GetStopReasonDataCount() % 2 == 0
                 for i in range(0, thread.GetStopReasonDataCount(), 2):
                     ident = thread.GetStopReasonDataAtIndex(i)
                     name = points[ident]
