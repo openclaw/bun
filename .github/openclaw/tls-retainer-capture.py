@@ -174,9 +174,10 @@ def debugger_stage():
             address = function.GetStartAddress() if function.IsValid() else context.GetSymbol().GetStartAddress()
             report['resolutions'][resolution_key].append({'function': resolved, 'file_address': address.GetFileAddress()})
             # FindFunctions includes inline scopes whose GetFunction is the enclosing physical function.
-            if not resolved or resolved.split('(', 1)[0].strip().removeprefix('::') != name:
-                continue
-            if signature is not None and resolved.removeprefix('::') != signature:
+            if signature is not None:
+                if not resolved or resolved.removeprefix('::') != signature:
+                    continue
+            elif not resolved or resolved.split('(', 1)[0].strip().removeprefix('::') != name:
                 continue
             if address.IsValid():
                 addresses[address.GetFileAddress()] = address
@@ -505,9 +506,9 @@ def debugger_stage():
             stack_roots_bp, _ = entry('JSC::MachineThreads::gatherConservativeRoots', required=False)
             scan_bps = []
             for signature in [
-                    'JSC::ConservativeRoots::add(void*, void*)',
-                    'JSC::ConservativeRoots::add(void*, void*, JSC::JITStubRoutineSet&, JSC::CodeBlockSet&)']:
-                bp, _ = entry('JSC::ConservativeRoots::add', signature, required=False)
+                    'void JSC::ConservativeRoots::genericAddSpan<JSC::DummyMarkHook>(void*, void*, JSC::DummyMarkHook&)',
+                    'void JSC::ConservativeRoots::genericAddSpan<JSC::CompositeMarkHook>(void*, void*, JSC::CompositeMarkHook&)']:
+                bp, _ = entry('JSC::ConservativeRoots::genericAddSpan', signature, required=False)
                 scan_bps.append(bp)
             root_bps = [stack_roots_bp, *scan_bps]
             if any(bp is None for bp in root_bps):
