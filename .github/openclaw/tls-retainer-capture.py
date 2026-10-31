@@ -434,6 +434,54 @@ def debugger_stage():
                 assert len(candidates) <= 64, 'candidate-word bound exceeded'
         return begin, end, cell_size, candidates, hashlib.sha256(raw).hexdigest()
 
+    def conducting_state(frame, thread, heap):
+        collector = typed(number(field(heap, 'm_collector')), 'JSC::Collector')
+        state_address, conductor = reg(frame, 'x4'), reg(frame, 'x5')
+        assert state_address and conductor, 'no original conducting-mutator state'
+        assert number(field(collector, 'm_conductingMutatorState')) == state_address
+        assert number(field(collector, 'm_conductorThread')) == conductor
+        state = typed(state_address, 'JSC::CurrentThreadState')
+        top, origin = number(field(state, 'stackTop')), number(field(state, 'stackOrigin'))
+        registers = number(field(state, 'registerState'))
+        assert registers and 0 < origin - top <= 16 * 1024**2
+        saved = typed(registers, 'JSC::RegisterState')
+        fp = number(field(saved, 'x29'))
+        links = []
+        for _ in range(128):
+            if not fp:
+                break
+            assert fp % 16 == 0 and top <= fp and fp + 16 <= origin, 'saved FP outside conducting stack'
+            previous, saved_lr = word(fp), word(fp + 8)
+            links.append(dict(fp=fp, previous_fp=previous, saved_lr=saved_lr,
+                              caller=symbolize(saved_lr, True) if saved_lr else None))
+            assert not previous or previous > fp, 'conducting FP chain does not increase'
+            fp = previous
+        else:
+            raise RuntimeError('conducting frame-pointer budget exhausted')
+        assert len(links) >= 2, 'conducting frame-pointer chain unavailable'
+        return dict(address=state_address, conductor=conductor, debugger_thread=thread.GetThreadID(),
+                    scanner_sp=reg(frame, 'sp'), stack_top=top, stack_origin=origin,
+                    registers=registers, register_bytes=saved.GetByteSize(), links=links)
+
+    def word_provenance(scan, witness):
+        state = root_collections[scan['collection']]['conducting_state']
+        begin, end = sorted((scan['begin'], scan['end']))
+        address = witness['address']
+        if (begin, end) == (state['registers'], state['registers'] + state['register_bytes']):
+            offset = address - begin
+            assert offset % 8 == 0 and 0 <= offset < 88
+            return dict(kind='saved-conductor-register', register='x' + str(19 + offset // 8),
+                        storage_address=address, conducting_state=state['address'])
+        assert (begin, end) == (state['stack_top'], state['stack_origin']), 'witnessed span is not an admitted original conductor span'
+        intervals = []
+        for lower, upper in zip(state['links'], state['links'][1:]):
+            if lower['fp'] + 16 <= address and address + 8 <= upper['fp']:
+                intervals.append(dict(lower=lower, upper=upper, offset_from_lower_fp=address - lower['fp']))
+        assert len(intervals) == 1, 'scanner word lacks a bounded adjacent-frame interval'
+        return dict(kind='original-conductor-stack', storage_address=address,
+                    conducting_state=state['address'], interval=intervals[0],
+                    interpretation='original stack word bounded by adjacent saved FP records; source variable and originating writer remain unproven')
+
     def accepted_span(scan, after):
         assert after['roots'] == scan['roots'] and after['count'] >= scan['before_count']
         accepted = [i for i in after['owner_indices'] if i >= scan['before_count']]
@@ -450,6 +498,8 @@ def debugger_stage():
         if word_witness is not None and word_witness['span_return'] == scan['return_breakpoint']:
             assert set(word_witness['accepted_owner_indices']) <= set(accepted)
             receipt['scanner_word'] = word_witness
+            receipt['candidate_interpretation'] = 'exact scanner word proved by watched read and call-return insertion'
+            receipt['word_provenance'] = word_provenance(scan, word_witness)
         event('accepted-owner-span', **receipt)
 
     def marker_snapshot(visitor, cell):
@@ -552,6 +602,16 @@ def debugger_stage():
                         scanner_loops.append(dict(span_breakpoint=bp.GetID(), read_stop=load_pc + 4,
                                                   call=load_pc + 28, returned=load_pc + 32, callee=callee))
             report['scanner_loops'] = scanner_loops
+            # Frozen Linux ARM64 layouts, admitted from DWARF before any inferior reads.
+            for name, size, fields in [
+                    ('JSC::CurrentThreadState', 24, ['stackOrigin', 'stackTop', 'registerState']),
+                    ('JSC::RegisterState', 88, ['x' + str(i) for i in range(19, 30)])]:
+                layout = concrete_type(name)
+                assert layout.GetByteSize() == size and layout.GetNumberOfFields() == len(fields)
+                for i, expected in enumerate(fields):
+                    member = layout.GetFieldAtIndex(i)
+                    assert member.GetName() == expected and member.GetOffsetInBytes() == i * 8
+                    assert member.GetType().GetByteSize() == 8
             root_bps = [stack_roots_bp, *scan_bps]
             if any(bp is None for bp in root_bps):
                 inventory_inline_roots()
@@ -675,6 +735,7 @@ def debugger_stage():
                 assert initial_roots['count'] == 0
                 root_collection = dict(index=len(root_collections), roots=roots, phase='machine-stack',
                                        accepted_spans=[], initial=initial_roots)
+                root_collection['conducting_state'] = conducting_state(frame, thread, heap)
                 root_collections.append(root_collection)
                 event('machine-stack-gather-entry', collection=root_collection['index'], **initial_roots)
                 stack_roots_return = target.BreakpointCreateByAddress(reg(frame, 'x30'))
@@ -861,7 +922,11 @@ def debugger_stage():
             report['root_collections'] = root_collections
             assert word_witness is not None and word_pending is None
             report['scanner_word'] = word_witness
-            report['classification'] = 'exact scanner word appended the owner to accepted roots and real-mark writer captured; originating source frame remains unproven'
+            provenance = [span['word_provenance'] for collection in root_collections
+                          for span in collection['accepted_spans'] if 'word_provenance' in span]
+            assert len(provenance) == 1
+            report['word_provenance'] = provenance[0]
+            report['classification'] = 'exact accepted scanner word and original conductor provenance captured; source variable and originating writer remain unproven'
         report['passed'] = True
     except BaseException as error:
         report['gap'] = str(error)
