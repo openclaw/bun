@@ -11,6 +11,7 @@ import struct
 import subprocess
 import sys
 import time
+import traceback
 from xml.etree import ElementTree
 
 OUT = Path('tls-cycle-root')
@@ -232,6 +233,10 @@ def inspect(debugger):
                 continue
             stops += 1
             assert stops <= 30000
+            report['last_stop'] = dict(id=process.GetStopID(), threads=[dict(
+                thread=t.GetThreadID(), reason=t.GetStopReason(),
+                data=[t.GetStopReasonDataAtIndex(i) for i in range(min(t.GetStopReasonDataCount(), 32))],
+                function=t.GetFrameAtIndex(0).GetDisplayFunctionName()) for t in process])
             handled = False
             for thread in process:
                 if thread.GetStopReason() != lldb.eStopReasonBreakpoint:
@@ -323,6 +328,11 @@ def inspect(debugger):
         assert report['gc32_completed'] and report['exit_status'] == 0
         assert json.loads((OUT / 'debugger.stdout').read_text()) == EXPECTED
         report['original_failure_preserved'] = True
+    except BaseException as exc:
+        report['error'] = dict(type=type(exc).__name__, message=str(exc)[:2000],
+            frames=[dict(file=Path(f.filename).name, line=f.lineno, function=f.name)
+                    for f in traceback.extract_tb(exc.__traceback__)])
+        raise
     finally:
         if process is not None and process.IsValid() and process.GetState() not in (lldb.eStateExited, lldb.eStateDetached):
             report['task_process_killed'] = process.Kill().Success()
