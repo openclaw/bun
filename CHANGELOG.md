@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep module-object export coverage aligned with upstream’s explicit default aliases.
+
 - Sync current AOT frontend and loader fixes; use upstream per-module export metadata while retaining its regression. Retained-run tests use the runner timeout. Thanks @vincentkoc.
 
 - Read the current engine's per-module object-export table, including defaults that are not own properties.

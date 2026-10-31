@@ -107,10 +107,11 @@ fn default_export_is_the_module_object() {
 }
 
 #[test]
-fn module_object_exports_do_not_require_an_own_property() {
+fn module_object_exports_use_canonical_metadata() {
     let module = RuntimeModule::BunFfi;
     let object = namespace_of(module);
-    assert_eq!(own_member(object, name("default")), None);
+    let default = own_member(object, name("default")).unwrap();
+    assert_eq!(canonical_id(default), object);
     assert_eq!(default_export_of(module), module_object_of(module));
     for module in RuntimeModule::ALL {
         for &export in module_data(module).exports_holding_module_object {
