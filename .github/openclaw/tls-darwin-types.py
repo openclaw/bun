@@ -39,7 +39,7 @@ def run(name, args, cwd=SOURCE, timeout=600):
 
 
 def build():
-    assert os.uname().machine == 'x86_64' and os.uname().sysname == 'Linux'
+    assert os.uname().machine == 'aarch64' and os.uname().sysname == 'Linux'
     assert subprocess.check_output(['git', '-C', str(SOURCE), 'rev-parse', 'HEAD'], text=True).strip() == COMMIT
     assert not subprocess.check_output(['git', '-C', str(SOURCE), 'diff', '--name-only', 'HEAD'], text=True)
     manifest = SOURCE / 'scripts/build/deps/webkit-artifacts.json'

@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   compile:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -50,7 +50,8 @@ jobs:
             sleep infinity)
           [[ "$id" =~ ^[0-9a-f]{64}$ ]]
           echo "$id" > "$RUNNER_TEMP/tls-types-container"
-          docker exec "$id" sh "$script" 510fef558b464c58de1209298f638fa476d03eef openclaw-release
+          docker exec "$id" sh "$script" 510fef558b464c58de1209298f638fa476d03eef openclaw-release \
+            2>&1 | tee tls-darwin-types/provision.log
       - name: Emit a separate type object using the native compile owner
         shell: bash
         run: |
