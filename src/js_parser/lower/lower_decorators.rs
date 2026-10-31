@@ -274,7 +274,85 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
         }
     }
 
+    /// `this.#p += 1`, `this.#p++`, and destructuring need a reference.
+    /// `__privateGet(...)` is a call, so those forms are a SyntaxError.
+    /// The wrapper's `_` property gets and sets the private member.
+    fn private_wrapper_expr(
+        &mut self,
+        obj: Expr,
+        info: &PrivateLoweredInfo,
+        l: bun_ast::Loc,
+    ) -> Expr {
+        let storage = self.use_ref(info.storage_ref, l);
+        let (setter, getter) = if let Some(fn_ref) = info.method_fn_ref {
+            // `__privateGet` brand-checks, then calls the getter. Passing the
+            // method would run it. A WeakSet has no setter, so a write throws.
+            let f = self.use_ref(fn_ref, l);
+            let ret = self.s(S::Return { value: Some(f) }, l);
+            let getter = self.new_expr(
+                E::Arrow {
+                    args: js_ast::StoreSlice::EMPTY,
+                    body: G::FnBody {
+                        loc: l,
+                        stmts: self.arena.alloc_slice_copy(&[ret]).into(),
+                    },
+                    prefer_expr: true,
+                    ..Default::default()
+                },
+                l,
+            );
+            (self.new_expr(E::Undefined {}, l), getter)
+        } else if let Some(desc_ref) = info.accessor_desc_ref {
+            let desc_for_set = self.use_ref(desc_ref, l);
+            let desc_for_get = self.use_ref(desc_ref, l);
+            (
+                self.new_expr(
+                    E::Dot {
+                        target: desc_for_set,
+                        name: b"set".into(),
+                        name_loc: l,
+                        ..Default::default()
+                    },
+                    l,
+                ),
+                self.new_expr(
+                    E::Dot {
+                        target: desc_for_get,
+                        name: b"get".into(),
+                        name_loc: l,
+                        ..Default::default()
+                    },
+                    l,
+                ),
+            )
+        } else {
+            let setter = match info.setter_fn_ref {
+                Some(fn_ref) => self.use_ref(fn_ref, l),
+                None => self.new_expr(E::Undefined {}, l),
+            };
+            let getter = match info.getter_fn_ref {
+                Some(fn_ref) => self.use_ref(fn_ref, l),
+                None => self.new_expr(E::Undefined {}, l),
+            };
+            (setter, getter)
+        };
+        let call = self.call_rt(l, b"__privateWrapper", &[obj, storage, setter, getter]);
+        self.new_expr(
+            E::Dot {
+                target: call,
+                name: b"_".into(),
+                name_loc: l,
+                ..Default::default()
+            },
+            l,
+        )
+    }
+
     fn rewrite_private_accesses_in_expr(&mut self, expr: &mut Expr, map: &PrivateLoweredMap) {
+        self.rewrite_private_expr(expr, map, false);
+    }
+
+    fn rewrite_private_expr(&mut self, expr: &mut Expr, map: &PrivateLoweredMap, as_target: bool) {
         if !self.stack_check.is_safe_to_recurse() || self.reported_stack_overflow.get() {
             self.report_stack_overflow(expr.loc);
             return;
@@ -288,7 +366,11 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                 if let js_ast::ExprData::EPrivateIdentifier(pi) = &e.index.data {
                     if let Some(info) = map.get(&pi.ref_.inner_index()).copied() {
                         let target = e.target;
-                        *expr = self.private_get_expr(target, &info, expr_loc);
+                        *expr = if as_target {
+                            self.private_wrapper_expr(target, &info, expr_loc)
+                        } else {
+                            self.private_get_expr(target, &info, expr_loc)
+                        };
                         return;
                     }
                 }
@@ -297,7 +379,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                 e.index = idx;
             }
             js_ast::ExprData::EBinary(e) => {
-                if e.op == js_ast::OpCode::BinAssign {
+                if !as_target && e.op == js_ast::OpCode::BinAssign {
                     if let js_ast::ExprData::EIndex(left_idx) = &mut e.left.data {
                         if let js_ast::ExprData::EPrivateIdentifier(pi) = &left_idx.index.data {
                             if let Some(info) = map.get(&pi.ref_.inner_index()).copied() {
@@ -310,6 +392,17 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                             }
                         }
                     }
+                }
+                // `=` inside a pattern is a default (`{ 0: this.#p = 1 }`), so the
+                // left side stays a reference. Compound assignment always does.
+                if e.op.binary_assign_target() != js_ast::AssignTarget::None {
+                    let mut lt = e.left;
+                    self.rewrite_private_expr(&mut lt, map, true);
+                    e.left = lt;
+                    let mut rt = e.right;
+                    self.rewrite_private_accesses_in_expr(&mut rt, map);
+                    e.right = rt;
+                    return;
                 }
                 if e.op == js_ast::OpCode::BinIn {
                     if let js_ast::ExprData::EPrivateIdentifier(pi) = &e.left.data {
@@ -398,10 +491,19 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                     self.rewrite_private_accesses_in_expr(arg, map);
                 }
             }
-            js_ast::ExprData::EUnary(e) => self.rewrite_private_accesses_in_expr(&mut e.value, map),
+            js_ast::ExprData::EUnary(e) => {
+                let updating = matches!(
+                    e.op,
+                    js_ast::OpCode::UnPreDec
+                        | js_ast::OpCode::UnPreInc
+                        | js_ast::OpCode::UnPostDec
+                        | js_ast::OpCode::UnPostInc
+                );
+                self.rewrite_private_expr(&mut e.value, map, updating);
+            }
             js_ast::ExprData::EDot(e) => self.rewrite_private_accesses_in_expr(&mut e.target, map),
             js_ast::ExprData::ESpread(e) => {
-                self.rewrite_private_accesses_in_expr(&mut e.value, map)
+                self.rewrite_private_expr(&mut e.value, map, as_target);
             }
             js_ast::ExprData::EIf(e) => {
                 let mut t = e.test;
@@ -430,12 +532,26 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
             }
             js_ast::ExprData::EArray(e) => {
                 for item in e.items.slice_mut() {
-                    self.rewrite_private_accesses_in_expr(item, map);
+                    self.rewrite_private_expr(item, map, as_target);
                 }
             }
             js_ast::ExprData::EObject(e) => {
                 for prop in e.properties.slice_mut() {
-                    self.rewrite_private_accesses_in_property(prop, map);
+                    if as_target {
+                        if prop.flags.contains(Flags::Property::IsComputed)
+                            && let Some(key) = &mut prop.key
+                        {
+                            self.rewrite_private_accesses_in_expr(key, map);
+                        }
+                        if let Some(value) = &mut prop.value {
+                            self.rewrite_private_expr(value, map, true);
+                        }
+                        if let Some(initializer) = &mut prop.initializer {
+                            self.rewrite_private_accesses_in_expr(initializer, map);
+                        }
+                    } else {
+                        self.rewrite_private_accesses_in_property(prop, map);
+                    }
                 }
             }
             js_ast::ExprData::ETemplate(e) => {
@@ -588,11 +704,19 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
         js_ast::StmtNodeList::from_bump(new_stmts)
     }
 
-    /// The declaration in the head of `for (const { a = this.#x } of ...)`. An
-    /// assignment target there is not a read and stays as written.
+    /// A `for` head is either a declaration (`for (const { a = this.#x } of ...)`,
+    /// where `#x` is read) or an assignment target (`for (this.#p of ...)`,
+    /// where each value is written). A call is not a valid for-of target.
     fn rewrite_private_accesses_in_loop_head(&mut self, init: &mut Stmt, map: &PrivateLoweredMap) {
+        // `for (const { a = this.#x } of ...)`. The binding is not a write
+        // to `#x`; the default is a read.
         if matches!(init.data, js_ast::StmtData::SLocal(_)) {
             self.rewrite_private_accesses_in_stmts(core::slice::from_mut(init), map);
+            return;
+        }
+        // `for (this.#p of arr)` assigns each value to the private member.
+        if let js_ast::StmtData::SExpr(data) = &mut init.data {
+            self.rewrite_private_expr(&mut data.value, map, true);
         }
     }
 

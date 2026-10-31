@@ -360,3 +360,15 @@ export var __exportCjs = /* @__PURE__ */ (target, getters, setters) => {
       configurable: true,
     });
 };
+
+// Last on purpose. A new statement above here changes the part index of
+// `__esm` and `__promiseAll`, which changes bundle debugId hashes.
+// `__privateGet(...)` is a call and is not a valid assignment target.
+export var __privateWrapper = (obj, member, setter, getter) => ({
+  set _(value) {
+    return __privateSet(obj, member, value, setter);
+  },
+  get _() {
+    return __privateGet(obj, member, getter);
+  },
+});
