@@ -128,21 +128,32 @@ jobs:
           [ "$id" = "$(awk '{print $2}' diagnostics/profile-uuid.txt)" ]
           [ "$id" = "$(awk '{print $2}' diagnostics/dsym-uuid.txt)" ]
           otool -l "$exe" > diagnostics/executable-load-commands.txt
+          cat > diagnostics/inspect-symbols.py <<'PY'
+          import lldb
+
+          result = lldb.SBCommandReturnObject()
+          lldb.debugger.GetCommandInterpreter().HandleCommand(
+              "image lookup -rn 'JSC::Collector::runEndPhase|JSC::MachineThreads::gatherConservativeRoots'", result)
+          output = result.GetOutput() or ""
+          error = result.GetError() or ""
+          with open("diagnostics/capture-functions.txt", "w") as report:
+              report.write(output + error or "no matching functions\n")
+              report.write(f"lookup succeeded: {result.Succeeded()}\n")
+          if error:
+              raise RuntimeError(error)
+          target = lldb.debugger.GetSelectedTarget()
+          with open("diagnostics/types.txt", "w") as report:
+              for name in ("JSCell", "Heap", "SlotVisitor", "ConservativeRoots"):
+                  kind = target.FindFirstType("JSC::" + name)
+                  complete = kind.IsValid() and kind.IsTypeComplete()
+                  report.write(f"{name}: complete={complete}, bytes={kind.GetByteSize()}, fields={kind.GetNumberOfFields()}\n")
+          PY
           xcrun lldb --no-lldbinit --batch \
             -o 'settings set target.load-script-from-symbol-file false' \
             -o "target create $exe" -o "target symbols add $dsym" \
-            -o "image lookup -rn 'JSC::Collector::runEndPhase|JSC::MachineThreads::gatherConservativeRoots'" \
-            > diagnostics/capture-functions.txt 2>&1
-          for type in JSCell Heap SlotVisitor ConservativeRoots; do
-            if xcrun lldb --no-lldbinit --batch \
-              -o 'settings set target.load-script-from-symbol-file false' \
-              -o "target create $exe" -o "target symbols add $dsym" \
-              -o "image lookup -t JSC::$type" > "diagnostics/type-$type.txt" 2>&1; then
-              echo "$type: available" >> diagnostics/types.txt
-            else
-              echo "$type: unavailable" >> diagnostics/types.txt
-            fi
-          done
+            -o 'script exec(open("diagnostics/inspect-symbols.py").read())' \
+            > diagnostics/debugger.txt 2>&1
+          [ "$(wc -l < diagnostics/types.txt)" -eq 4 ]
 
       - name: Report inspection scope
         if: always()
