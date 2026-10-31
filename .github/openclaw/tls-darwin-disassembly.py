@@ -26,7 +26,9 @@ def macho(path, filetype):
     with path.open('rb') as stream:
         header = stream.read(32)
         magic, cpu, subtype, kind, count, size, flags, reserved = struct.unpack('<8I', header)
-        assert (magic, cpu, subtype, kind) == (0xfeedfacf, 0x01000007, 3, filetype)
+        assert (magic, cpu, kind) == (0xfeedfacf, 0x01000007, filetype), tuple(map(hex, (magic, cpu, subtype, kind)))
+        # CPU_SUBTYPE_LIB64 is a capability bit, not a different x86_64 architecture.
+        assert subtype in (3, 0x80000003), hex(subtype)
         assert 0 < count <= 1024 and 0 < size <= 1024**2
         data = stream.read(size)
     assert len(data) == size
@@ -53,7 +55,7 @@ def macho(path, filetype):
                     sections.append((address, address + extent))
         offset += length
     assert offset == size and len(identities) == 1
-    return identities[0], sections
+    return identities[0], sections, subtype
 
 
 def tool(name, args):
@@ -118,7 +120,7 @@ def main():
     extract(archive, 'bun-darwin-x64-profile.zip', profile_zip, 1024**3)
     for path in (profile, dsym):
         extract(profile_zip, 'bun-darwin-x64-profile/' + path.name, path, 2 * 1024**3)
-    identity, sections = macho(profile, 2)
+    identity, sections, subtype = macho(profile, 2)
     assert identity == macho(dsym, 10)[0] == '4c4c4432-5555-3144-a125-d2b0a4297913'
     assert len(sections) == 1
     version = tool('llvm-version', ['llvm-objdump-23', '--version'])
@@ -153,7 +155,7 @@ def main():
         item['assembly_sha256'] = sha(path)
     receipt = dict(commit=COMMIT, producer_run=RUN, artifact_id=ARTIFACT, artifact_sha256=DIGEST,
         identities={p.name: sha(p) for p in (profile_zip, profile, dsym)}, uuid=identity,
-        sections=sections, symbol_owner=symbol_owner, functions=symbols, llvm_version=version,
+        sections=sections, cpu_subtype=hex(subtype), symbol_owner=symbol_owner, functions=symbols, llvm_version=version,
         inferior_launched=False, control_flow_review_pending=True, gc_root_proven=False)
     (OUT / 'receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
     files = sorted(OUT.iterdir())
