@@ -162,6 +162,7 @@ def inspect(debugger):
     points = {}
     dynamic = {}
     watch = None
+    decoded_functions = {}
 
     def save():
         write('capture.json', report)
@@ -272,27 +273,37 @@ def inspect(debugger):
                     assert thread.GetStopReasonDataCount() == 1
                     assert thread.GetStopReasonDataAtIndex(0) == watch.GetID()
                     row = report['word_watch']
-                    assert len(row['changes']) < 2048
+                    assert len(row['changes']) < 12000
                     frame = thread.GetFrameAtIndex(0)
                     pc = frame.GetPC()
                     value = word(row['address'])
-                    function, symbol = frame.GetFunction(), frame.GetSymbol()
-                    decoded = function.GetInstructions(target) if function.IsValid() else symbol.GetInstructions(target)
-                    window, preceding = [], []
-                    if 0 < decoded.GetSize() <= 16384:
-                        for i in range(decoded.GetSize()):
-                            insn = decoded.GetInstructionAtIndex(i)
-                            end = insn.GetAddress().GetLoadAddress(target) + insn.GetByteSize()
-                            if end == pc:
-                                window = instructions(decoded, max(0, i - 5), min(decoded.GetSize(), i + 3))
-                                preceding = instructions(decoded, i, i + 1)
-                                break
-                    row['changes'].append(dict(thread=thread.GetThreadID(), gc_count=report['gc_count'],
+                    event = dict(thread=thread.GetThreadID(), gc_count=report['gc_count'],
                         before=row['last_value'], after=value, stop_pc=pc,
-                        stop_file_pc=target.ResolveLoadAddress(pc).GetFileAddress(),
-                        registers={name: reg(frame, name) for name in
-                                   ('rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi', 'rbp', 'rsp', 'r8', 'r9', 'r10', 'r11', 'r12', 'r13', 'r14', 'r15', 'rflags')},
-                        frames=frames(thread), preceding_instruction=preceding, instruction_window=window))
+                        stop_file_pc=target.ResolveLoadAddress(pc).GetFileAddress())
+                    # Capture every value change; expensive context is useful only for potential cell pointers.
+                    if 0x10000 <= value < 2**44 and value % 16 == 0:
+                        function, symbol = frame.GetFunction(), frame.GetSymbol()
+                        start = function.GetStartAddress() if function.IsValid() else symbol.GetStartAddress()
+                        image = start.GetModule()
+                        key = (image.GetUUIDString(), start.GetFileAddress()) if image.IsValid() and image.GetUUIDString() else None
+                        cached = decoded_functions.get(key) if key is not None else None
+                        if cached is None:
+                            decoded = function.GetInstructions(target) if function.IsValid() else symbol.GetInstructions(target)
+                            ends = {}
+                            if 0 < decoded.GetSize() <= 16384:
+                                ends = {decoded.GetInstructionAtIndex(i).GetAddress().GetLoadAddress(target)
+                                        + decoded.GetInstructionAtIndex(i).GetByteSize(): i
+                                        for i in range(decoded.GetSize())}
+                            cached = (decoded, ends)
+                            if key is not None:
+                                decoded_functions[key] = cached
+                        decoded, ends = cached
+                        index = ends.get(pc)
+                        event.update(registers={name: reg(frame, name) for name in
+                            ('rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi', 'rbp', 'rsp', 'r8', 'r9', 'r10', 'r11', 'r12', 'r13', 'r14', 'r15', 'rflags')},
+                            frames=frames(thread), preceding_instruction=[] if index is None else instructions(decoded, index, index + 1),
+                            instruction_window=[] if index is None else instructions(decoded, max(0, index - 5), min(decoded.GetSize(), index + 3)))
+                    row['changes'].append(event)
                     row['last_value'] = value
                     handled = True
                     continue
@@ -316,11 +327,12 @@ def inspect(debugger):
                             initial = word(address)
                             report['word_watch'] = dict(address=address, initial_value=initial, last_value=initial,
                                 initial_owner=owner, changes=[],
+                                context_filter='0x10000 <= value < 2**44 and value % 16 == 0; all changes retain values and PC',
                                 claim='one physical address; its frame may exit or storage may be reused; equal-value stores may be unreported')
                         if report['gc_count'] == 32:
                             owner = module_frame(thread)
-                            assert owner['sp'] == report['word_watch']['address'], 'GC32 uses a different stack slot'
                             report['word_watch']['gc32_owner'] = owner
+                            assert owner['sp'] == report['word_watch']['address'], 'GC32 uses a different stack slot'
                             assert word(owner['sp']) == report['word_watch']['last_value']
                             active = True
                             report['gc32_entry_frames'] = frames(thread)
@@ -431,6 +443,7 @@ def seal():
         owner = next(nodes[i:i + 7] for i in range(0, len(nodes), 7) if nodes[i] in external)
         assert raw_graph['nodeClassNames'][owner[2]] == 'JSLexicalEnvironment'
         cell = int(owner[5], 16)
+        assert 0x10000 <= cell < 2**44 and cell % 16 == 0, 'owner falls outside the detailed-context filter'
         edges = raw_graph['edges']
         assert all(edges[i + 1] != owner[0] for i in range(0, len(edges), 4))
         assert owner[0] not in raw_graph['roots'][::3]
