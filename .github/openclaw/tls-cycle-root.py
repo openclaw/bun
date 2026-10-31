@@ -168,6 +168,8 @@ def inspect(debugger):
 
     def memory(address, size):
         assert address > 0 and 0 <= size <= 4 * 1024**2
+        if size == 0:
+            return b''
         error = lldb.SBError()
         data = process.ReadMemory(address, size, error)
         assert error.Success() and len(data) == size, (hex(address), size, str(error))
