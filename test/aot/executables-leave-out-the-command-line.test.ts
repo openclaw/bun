@@ -154,7 +154,7 @@ describe.skipIf(!canTrim || !!unsupported)("bun build --compile --aot, without -
       exitCode: 0,
     });
     expect(await run([app], folder)).toEqual({ stdout: "compiled entry\n", stderr: "", exitCode: 0 });
-  }, 600_000);
+  });
 
   test.skipIf(!process.env.AOT_NPM_CLI)(
     "retaining run executes npm's CLI to install and load a disk package",
@@ -199,7 +199,6 @@ describe.skipIf(!canTrim || !!unsupported)("bun build --compile --aot, without -
       expect(installed.exitCode).toBe(0);
       expect(await run([app, "load.cjs"], folder, asBun)).toEqual({ stdout: "42\n", stderr: "", exitCode: 0 });
     },
-    600_000,
   );
 
   test.each(["--help", "-h", "--check", "--aot", "-i"])(
