@@ -1,0 +1,168 @@
+name: OpenClaw TLS shipping-symbol capability
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/openclaw-tls-symbols.yml
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: openclaw-tls-shipping-symbols-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+# Inspect the original failing PR #215 bytes; never execute or rebuild them.
+env:
+  SOURCE_COMMIT: 454a78a4d3b0202ecdbedf7dd051fc84ffc59e9e
+  SOURCE_RUN: "40897692970"
+  TARGET: linux-arm64
+  TRIPLET: bun-linux-aarch64
+  ARTIFACT_ID: "12908842070"
+  ARTIFACT_SHA256: 65f1e6de6618b9fc2dd75c688d49fff27bcedc61fd03105f1f92c9df49e4f5c4
+
+jobs:
+  inspect:
+    name: Inspect shipping Linux ARM64 symbols
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - name: Fetch and verify frozen artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir diagnostics
+          gh api "repos/openclaw/bun/actions/artifacts/$ARTIFACT_ID" > diagnostics/artifact.json
+          gh api "repos/openclaw/bun/actions/artifacts/$ARTIFACT_ID/zip" > artifact.zip
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+
+          artifact = json.loads(Path("diagnostics/artifact.json").read_text())
+          assert artifact["id"] == int(os.environ["ARTIFACT_ID"]), artifact
+          assert artifact["name"] == "build-" + os.environ["TARGET"], artifact
+          assert not artifact["expired"], artifact
+          assert artifact["workflow_run"]["id"] == int(os.environ["SOURCE_RUN"]), artifact
+          assert artifact["workflow_run"]["head_sha"] == os.environ["SOURCE_COMMIT"], artifact
+          expected = os.environ["ARTIFACT_SHA256"]
+          assert artifact["digest"] == "sha256:" + expected, artifact
+          PY
+          actual=$(shasum -a 256 artifact.zip | awk '{print $1}')
+          [ "$actual" = "$ARTIFACT_SHA256" ]
+          unzip -q artifact.zip -d downloaded
+          unzip -q "downloaded/$TRIPLET.zip" -d unpacked
+          unzip -q "downloaded/$TRIPLET-profile.zip" -d unpacked
+          shasum -a 256 "unpacked/$TRIPLET/bun" \
+            "unpacked/$TRIPLET-profile/bun-profile" > diagnostics/executables.sha256
+
+
+      - name: Prepare LLVM capability probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = aarch64
+          cat > diagnostics/probe.py <<'PY'
+          import json, lldb, re
+          from pathlib import Path
+
+          target = lldb.debugger.GetSelectedTarget()
+          assert target.IsValid(), "missing shipping target"
+          module = target.FindModule(target.GetExecutable())
+          assert module.IsValid(), "missing executable module"
+          uuid = re.sub("[^0-9a-fA-F]", "", module.GetUUIDString() or "").lower()
+          expected = re.findall(r"Build ID: (\w+)", Path("/work/diagnostics/executable-notes.txt").read_text())
+          assert len(expected) == 1 and uuid == expected[0], "shipping module identity mismatch"
+          types = {}
+          for name in ("JSC::JSCell", "JSC::Heap", "JSC::SlotVisitor", "JSC::ConservativeRoots"):
+              candidates = target.FindTypes(name)
+              complete = []
+              for i in range(candidates.GetSize()):
+                  value = candidates.GetTypeAtIndex(i).GetCanonicalType()
+                  fields = value.GetNumberOfFields()
+                  if value.IsTypeComplete() and value.GetByteSize() > 0 and fields > 0:
+                      complete.append({"bytes": value.GetByteSize(), "fields": fields})
+              types[name] = {"candidates": candidates.GetSize(), "complete": complete}
+          functions = {}
+          for name in ("JSC::Collector::runEndPhase", "JSC::MachineThreads::gatherConservativeRoots"):
+              contexts = module.FindFunctions(name, lldb.eFunctionNameTypeAny)
+              debug = []
+              for i in range(contexts.GetSize()):
+                  context = contexts.GetContextAtIndex(i)
+                  function = context.GetFunction()
+                  unit = context.GetCompileUnit()
+                  if not function.IsValid() or not unit.IsValid():
+                      continue
+                  address = function.GetStartAddress().GetFileAddress()
+                  if address not in (0, lldb.LLDB_INVALID_ADDRESS):
+                      debug.append({"address": address, "name": function.GetName(), "compile_unit": str(unit.GetFileSpec())})
+              functions[name] = {"debug": debug, "symbols": []}
+          for i in range(module.GetNumSymbols()):
+              symbol = module.GetSymbolAtIndex(i)
+              name = symbol.GetName() or ""
+              for owner, entries in functions.items():
+                  if name == owner or name.startswith(owner + "("):
+                      address = symbol.GetStartAddress().GetFileAddress()
+                      if address not in (0, lldb.LLDB_INVALID_ADDRESS):
+                          entries["symbols"].append({"name": name, "address": address})
+          complete = all(value["complete"] for value in types.values()) and all(value["debug"] for value in functions.values())
+          Path("/work/diagnostics/shipping-capability.json").write_text(json.dumps({"module_uuid": uuid, "complete": complete, "types": types, "functions": functions}, indent=2) + "\n")
+          PY
+          docker run --detach --name tls-shipping-symbols -v "$GITHUB_WORKSPACE:/work" -w /work \
+            docker.io/library/debian:13@sha256:9cc080028c43b27d2074d63a5f9caf7166d731494965616c1a6d2827a004585c \
+            sleep infinity > /dev/null
+          docker exec tls-shipping-symbols sh -euc '
+            apt-get update
+            apt-get install --yes --no-install-recommends ca-certificates curl python3 binutils
+            curl -fsSL --retry 5 https://apt.llvm.org/llvm-snapshot.gpg.key > /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+            echo "deb https://apt.llvm.org/trixie/ llvm-toolchain-trixie-23 main" > /etc/apt/sources.list.d/llvm.list
+            apt-get update
+            apt-get install --yes --no-install-recommends llvm-23 lldb-23 python3-lldb-23
+          '
+          docker exec tls-shipping-symbols sh -euc 'lldb-23 --version; dpkg-query -W llvm-23 lldb-23 python3-lldb-23' > diagnostics/runtime-tools.txt
+
+      - name: Require shipping type and function capability
+        shell: bash
+        run: |
+          set -euo pipefail
+          exe="unpacked/$TRIPLET/bun"
+          profile="unpacked/$TRIPLET-profile/bun-profile"
+          readelf -n "$exe" > diagnostics/executable-notes.txt
+          readelf -n "$profile" > diagnostics/profile-notes.txt
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          ids = [re.findall(r"Build ID: (\w+)", Path("diagnostics", name).read_text()) for name in ("executable-notes.txt", "profile-notes.txt")]
+          assert len(ids[0]) == 1 and ids[0] == ids[1], ids
+          PY
+          docker exec tls-shipping-symbols lldb-23 --no-lldbinit --batch \
+            -o 'settings set target.load-script-from-symbol-file false' \
+            -o "target create /work/$exe" -o "target symbols add /work/$profile" \
+            -o 'script exec(open("/work/diagnostics/probe.py").read())' > diagnostics/debugger.txt 2>&1
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("diagnostics/shipping-capability.json").read_text())
+          assert set(report["types"]) == {"JSC::JSCell", "JSC::Heap", "JSC::SlotVisitor", "JSC::ConservativeRoots"}
+          assert all(value["complete"] and all(item["bytes"] > 0 and item["fields"] > 0 for item in value["complete"]) for value in report["types"].values()), "shipping GC types unavailable"
+          assert set(report["functions"]) == {"JSC::Collector::runEndPhase", "JSC::MachineThreads::gatherConservativeRoots"}
+          assert all(value["debug"] and all(item["address"] > 0 and item["name"] and item["compile_unit"] for item in value["debug"]) for value in report["functions"].values()), "shipping debug functions unavailable"
+          assert report["complete"] is True
+          PY
+
+      - name: Retain shipping capability evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: tls-shipping-symbols-linux-arm64
+          path: diagnostics
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Stop diagnostic container
+        if: always()
+        shell: bash
+        run: docker rm --force tls-shipping-symbols > /dev/null 2>&1 || true

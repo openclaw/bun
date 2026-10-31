@@ -1,0 +1,392 @@
+name: OpenClaw TLS native debug proof
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/openclaw-tls-fullsymbols.yml
+      - .github/openclaw/tls-symbol-capability.py
+      - .github/openclaw/tls-shipping-debug.py
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: openclaw-tls-saved-symbols-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: pipeline
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          sparse-checkout: .github/openclaw
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 454a78a4d3b0202ecdbedf7dd051fc84ffc59e9e
+          path: source
+          persist-credentials: false
+      - name: Prepare saved diagnostic inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = aarch64
+          test "$(git -C source rev-parse HEAD)" = 454a78a4d3b0202ecdbedf7dd051fc84ffc59e9e
+          echo 'd4c04a72b89bc7d33c292a16a57c38f5da540815dc2e141adfd58c1bd9973af2  source/test/js/bun/net/socket-retention.test.ts' | sha256sum --check
+          mkdir diagnostics
+          printf '%s\n' 'Bun=454a78a4d3b0202ecdbedf7dd051fc84ffc59e9e' \
+            'WebKit=b82bc917e99110b61c3a21202d6def7457aa194c' \
+            'Diagnostic variance: non-LTO C++/JSC; Debian 13 system ICU; Rust-only release LTO may remain enabled.' > diagnostics/inputs.txt
+          cp pipeline/.github/openclaw/tls-symbol-capability.py diagnostics/probe.py
+      - name: Fetch the frozen failed build
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api repos/openclaw/bun/actions/runs/41177263900 > diagnostics/producer-run.json
+          gh api repos/openclaw/bun/actions/artifacts/13034855054 > diagnostics/producer-artifact.json
+          gh api repos/openclaw/bun/actions/artifacts/13034855054/zip > artifact.zip
+          python3 - <<'PYCODE'
+          import hashlib, json, stat, zipfile
+          from pathlib import Path, PurePosixPath
+          artifact = json.loads(Path("diagnostics/producer-artifact.json").read_text())
+          run = json.loads(Path("diagnostics/producer-run.json").read_text())
+          assert run["id"] == 41177263900 and run["conclusion"] == "failure"
+          assert run["head_sha"] == "dc683a462eb90a5c5b22abb1a85dd25639cfc5b6"
+          assert artifact["id"] == 13034855054 and not artifact["expired"]
+          assert artifact["name"] == "tls-linux-arm64-fullsymbols" and artifact["size_in_bytes"] == 319038169
+          assert artifact["workflow_run"]["id"] == run["id"] and artifact["workflow_run"]["head_sha"] == run["head_sha"]
+          digest = "d4ebf132092bb9c3a6de65fd848523200aaff74e36cd09ecf60f1a5fc69abbb3"
+          assert artifact["digest"] == "sha256:" + digest
+          with Path("artifact.zip").open("rb") as archive:
+              assert hashlib.file_digest(archive, "sha256").hexdigest() == digest
+          with zipfile.ZipFile("artifact.zip") as archive:
+              entries = archive.infolist()
+              assert len(entries) <= 20 and sum(entry.file_size for entry in entries) <= 8 * 1024**3
+              seen = set()
+              for entry in entries:
+                  name = PurePosixPath(entry.filename)
+                  assert not name.is_absolute() and len(name.parts) == 1 and name.name not in ("", ".", "..")
+                  assert not entry.is_dir() and not stat.S_ISLNK(entry.external_attr >> 16) and name.name not in seen
+                  seen.add(name.name)
+                  target = Path("producer") / name.name
+                  target.parent.mkdir(exist_ok=True)
+                  with target.open("xb") as output, archive.open(entry) as content:
+                      import shutil
+                      shutil.copyfileobj(content, output)
+          sums = dict(line.split(None, 1)[::-1] for line in Path("producer/SHA256SUMS").read_text().splitlines())
+          assert set(sums) == {"source/build/tls-arm64-fullsymbols/bun", "source/build/tls-arm64-fullsymbols/bun-profile", "diagnostics/matched-symbols.tar.zst"}
+          with Path("producer/matched-symbols.tar.zst").open("rb") as archive:
+              assert hashlib.file_digest(archive, "sha256").hexdigest() == sums["diagnostics/matched-symbols.tar.zst"]
+          Path("diagnostics/producer-policy.txt").write_text("Producer binary policy FAILED: extra static initializer init_have_sme. These saved non-LTO/system-ICU inputs are diagnostic only; no shipping gate is waived.\n")
+          PYCODE
+      - name: Restore matched inputs in the original container layout
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --detach --name tls-symbols -e CI=true -v "$GITHUB_WORKSPACE:/work" -w /work \
+            docker.io/library/debian:13@sha256:9cc080028c43b27d2074d63a5f9caf7166d731494965616c1a6d2827a004585c \
+            sleep infinity > /dev/null
+          docker exec tls-symbols sh -euc '
+            apt-get update
+            apt-get install --yes --no-install-recommends ca-certificates curl python3 binutils zstd libicu76
+            curl -fsSL --retry 5 https://apt.llvm.org/llvm-snapshot.gpg.key > /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+            echo "deb https://apt.llvm.org/trixie/ llvm-toolchain-trixie-23 main" > /etc/apt/sources.list.d/llvm.list
+            apt-get update
+            apt-get install --yes --no-install-recommends llvm-23 lldb-23 python3-lldb-23
+          '
+          docker exec -i tls-symbols python3 - <<'PYCODE'
+          import hashlib, json, re, shutil, subprocess, tarfile
+          from pathlib import Path, PurePosixPath
+          expected_icu = re.search(r"^libicu-dev(?::arm64)?\s+(\S+)$", Path("producer/tools.txt").read_text(), re.M)
+          assert expected_icu, "producer ICU identity missing"
+          actual_icu = subprocess.check_output(["dpkg-query", "-W", "-f=${Version}", "libicu76"], text=True)
+          assert actual_icu == expected_icu[1], (actual_icu, expected_icu[1])
+          count = size = 0
+          seen = set()
+          child = subprocess.Popen(["zstd", "--decompress", "--stdout", "producer/matched-symbols.tar.zst"], stdout=subprocess.PIPE)
+          try:
+              with tarfile.open(fileobj=child.stdout, mode="r|") as archive:
+                  for member in archive:
+                      name = PurePosixPath(member.name)
+                      assert member.isfile() and not name.is_absolute() and ".." not in name.parts
+                      assert str(name).startswith("source/build/tls-arm64-fullsymbols/") and str(name) not in seen
+                      assert name.name in ("bun", "bun-profile") or name.suffix == ".dwo"
+                      seen.add(str(name)); count += 1; size += member.size
+                      assert count <= 20000 and size <= 8 * 1024**3
+                      target = Path(str(name)); target.parent.mkdir(parents=True, exist_ok=True)
+                      with target.open("xb") as output, archive.extractfile(member) as content:
+                          shutil.copyfileobj(content, output)
+                      target.chmod(0o755 if name.name in ("bun", "bun-profile") else 0o644)
+              assert child.wait(timeout=30) == 0
+          finally:
+              child.stdout.close()
+              if child.poll() is None:
+                  child.kill(); child.wait()
+          sums = dict(line.split(None, 1)[::-1] for line in Path("producer/SHA256SUMS").read_text().splitlines())
+          for name in ("source/build/tls-arm64-fullsymbols/bun", "source/build/tls-arm64-fullsymbols/bun-profile"):
+              with Path(name).open("rb") as binary:
+                  assert hashlib.file_digest(binary, "sha256").hexdigest() == sums[name]
+          Path("diagnostics/restored-inputs.json").write_text(json.dumps({"files": count, "bytes": size, "icu": actual_icu}, indent=2) + "\n")
+          PYCODE
+          docker exec tls-symbols sh -euc 'ldd source/build/tls-arm64-fullsymbols/bun' > diagnostics/runtime-libraries.txt
+          ! grep -q 'not found' diagnostics/runtime-libraries.txt
+          docker exec tls-symbols sh -euc 'lldb-23 --version; llvm-dwarfdump-23 --version; dpkg-query -W libicu76 python3 llvm-23 lldb-23 python3-lldb-23 binutils zstd' > diagnostics/runtime-tools.txt
+      - name: Verify matched symbols and capture capability
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker exec tls-symbols bash -euo pipefail -c '
+            cd /work/source
+            build=build/tls-arm64-fullsymbols
+            readelf -n "$build/bun" > /work/diagnostics/bun-build-id.txt
+            readelf -n "$build/bun-profile" > /work/diagnostics/profile-build-id.txt
+            python3 - <<'"'"'PY'"'"'
+          import re
+          from pathlib import Path
+          report = Path("/work/diagnostics")
+          ids = [re.findall(r"Build ID: (\w+)", (report / name).read_text()) for name in ("bun-build-id.txt", "profile-build-id.txt")]
+          assert len(ids[0]) == 1 and ids[0] == ids[1], ids
+          PY
+            python3 - <<'"'"'PYCODE'"'"'
+          import json, subprocess
+          from pathlib import Path
+          with Path("/work/diagnostics/dwarf-reference.txt").open("w") as output:
+              result = subprocess.run(["llvm-dwarfdump-23", "--show-parents", "--show-form", "--show-children", "--recurse-depth=2", "--debug-info=0x2cad422", "build/tls-arm64-fullsymbols/bun-profile"], stdout=output, stderr=subprocess.STDOUT, timeout=120)
+          Path("/work/diagnostics/dwarf-inspection.json").write_text(json.dumps({"status": result.returncode, "prior_gdb_error": "DWARF reference to DIE 0 from DIE 0x2cad422", "prior_run": 41180631285}) + "\n")
+          PYCODE
+            lldb-23 --no-lldbinit --batch \
+              -o "settings set target.load-script-from-symbol-file false" \
+              -o "target create $build/bun" \
+              -o "target symbols add $build/bun-profile" \
+              -o "script exec(open(\"/work/diagnostics/probe.py\").read())" > /work/diagnostics/symbol-probe.txt 2>&1
+            python3 - <<'"'"'PYCODE'"'"'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("/work/diagnostics/symbol-capability.json").read_text())
+          assert set(report["types"]) == {"JSC::JSCell", "JSC::Heap", "JSC::SlotVisitor", "JSC::ConservativeRoots"}
+          assert all(values and all(value["bytes"] > 0 and value["fields"] > 0 for value in values) for values in report["types"].values())
+          assert set(report["functions"]) == {"JSC::Collector::runEndPhase", "JSC::MachineThreads::gatherConservativeRoots"}
+          assert all(values and all(value["address"] > 0 and value["compile_unit"] and value["name"] for value in values) for values in report["functions"].values())
+          PYCODE
+          '
+      - name: Run the unchanged destroyed-completion case
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker exec tls-symbols bash -euo pipefail -c '
+            cd /work/source
+            python3 - <<'"'"'PY'"'"'
+          import hashlib, json, subprocess, sys
+          from pathlib import Path
+          from xml.etree import ElementTree
+          report = Path("/work/diagnostics")
+          fixture = Path("test/js/bun/net/socket-retention.test.ts")
+          assert hashlib.sha256(fixture.read_bytes()).hexdigest() == "d4c04a72b89bc7d33c292a16a57c38f5da540815dc2e141adfd58c1bd9973af2"
+          exe = Path("build/tls-arm64-fullsymbols/bun").resolve()
+          identity = subprocess.run([str(exe), "-e", "console.log(JSON.stringify({commit:Bun.revision,webkit:process.versions.webkit,platform:process.platform,arch:process.arch}))"], text=True, capture_output=True, check=True)
+          facts = json.loads(identity.stdout)
+          (report / "identity.json").write_text(json.dumps(facts, indent=2) + "\n")
+          assert facts == {"commit": "454a78a4d3b0202ecdbedf7dd051fc84ffc59e9e", "webkit": "b82bc917e99110b61c3a21202d6def7457aa194c", "platform": "linux", "arch": "arm64"}, facts
+          name = "a TLS Duplex completion retains its owner and is inert after destroy"
+          with (report / "stdout.txt").open("w") as stdout, (report / "stderr.txt").open("w") as stderr:
+              result = subprocess.run([str(exe), "test", str(fixture), "--test-name-pattern", "^" + name + "$", "--reporter=junit", "--reporter-outfile=" + str(report / "result.xml")], stdout=stdout, stderr=stderr, timeout=120)
+          cases = [case for case in ElementTree.parse(report / "result.xml").iter("testcase") if case.get("name") == name]
+          assert len(cases) == 1 and cases[0].find("skipped") is None, "selected case did not execute"
+          outcome = {"exitCode": result.returncode, "name": name, "failure": cases[0].find("failure") is not None, "error": cases[0].find("error") is not None}
+          (report / "outcome.json").write_text(json.dumps(outcome, indent=2) + "\n")
+          print(json.dumps(outcome))
+          if result.returncode == 0:
+              assert not outcome["failure"] and not outcome["error"], outcome
+          sys.exit(result.returncode)
+          PY
+          '
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: tls-linux-arm64-saved-symbols
+          path: diagnostics
+          if-no-files-found: error
+          retention-days: 7
+      - name: Stop diagnostic container
+        if: always()
+        run: docker rm --force tls-symbols > /dev/null
+
+  shipping-debug-linux-arm64:
+    if: >-
+      github.repository == 'openclaw/bun' &&
+      (github.head_ref == 'claude/webkit-tls-artifact-diagnostics-20261031' ||
+       github.ref == 'refs/heads/claude/webkit-tls-artifact-diagnostics-20261031')
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: pipeline
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          sparse-checkout: .github/openclaw
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: openclaw/bun
+          ref: 454a78a4d3b0202ecdbedf7dd051fc84ffc59e9e
+          path: source
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: openclaw/WebKit
+          ref: b82bc917e99110b61c3a21202d6def7457aa194c
+          path: engine
+          persist-credentials: false
+      - name: Free disposable runner space
+        if: runner.environment == 'github-hosted'
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache /usr/local/share/boost /usr/share/swift /usr/local/julia* /opt/microsoft
+      - uses: ./source/.github/actions/setup-bun
+        with:
+          bun-version: '1.4.4'
+      - name: Generate the frozen shipping provisioning script
+        id: provision
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir diagnostics
+          script=$(bun source/scripts/openclaw-release/release.ts provision --source source --target linux-arm64 | tail -1)
+          test -f "$script"
+          echo "script=${script#"$GITHUB_WORKSPACE"/}" >> "$GITHUB_OUTPUT"
+          cp pipeline/.github/openclaw/tls-symbol-capability.py diagnostics/probe.py
+      - name: Provision the original shipping toolchain and sysroot
+        id: shipping-container
+        shell: bash
+        env:
+          SCRIPT: ${{ steps.provision.outputs.script }}
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = aarch64
+          container_id=$(docker run --detach --name tls-shipping-debug -e CI=true -v "$GITHUB_WORKSPACE:/work" -w /work \
+            docker.io/library/debian:13@sha256:9cc080028c43b27d2074d63a5f9caf7166d731494965616c1a6d2827a004585c \
+            sleep infinity)
+          echo "id=$container_id" >> "$GITHUB_OUTPUT"
+          docker exec -e SCRIPT tls-shipping-debug sh -euc 'sh "$SCRIPT" 454a78a4d3b0202ecdbedf7dd051fc84ffc59e9e openclaw-release'
+          docker exec tls-shipping-debug sh -euc '
+            apt-get update
+            apt-get install --yes --no-install-recommends python3 binutils zstd ruby bison gawk perl libxml2-dev pkg-config
+            curl -fsSL --retry 5 https://apt.llvm.org/llvm-snapshot.gpg.key > /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+            echo "deb https://apt.llvm.org/trixie/ llvm-toolchain-trixie-23 main" > /etc/apt/sources.list.d/llvm.list
+            apt-get update
+            apt-get install --yes --no-install-recommends llvm-23 lldb-23 python3-lldb-23
+          '
+      - name: Build full debug information with shipping optimizations and bundled ICU
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker exec tls-shipping-debug bash -e -lc '. /etc/profile.d/bun-ci.sh; git config --global --add safe.directory /work/source; git config --global --add safe.directory /work/engine; python3 pipeline/.github/openclaw/tls-shipping-debug.py'
+      - name: Require matched executable IDs and complete GC types
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          def identity(name):
+              values = re.findall(r"Build ID: (\w+)", Path("diagnostics/" + name + "-build-id.txt").read_text())
+              assert len(values) == 1
+              return values[0]
+          assert identity("bun") == identity("bun-profile")
+          PY
+          docker exec tls-shipping-debug timeout 600 lldb-23 --no-lldbinit --batch \
+            -o 'target create /work/source/build/tls-arm64-shipping-debug/bun-profile' \
+            -o 'command script import /work/diagnostics/probe.py' > diagnostics/lldb-capability.log 2>&1
+          python3 - <<'PY'
+          import json, re
+          from pathlib import Path
+          result = json.loads(Path("diagnostics/symbol-capability.json").read_text())
+          assert result["module_uuid"] == re.findall(r"Build ID: (\w+)", Path("diagnostics/bun-build-id.txt").read_text())[0]
+          assert set(result["types"]) == {"JSC::JSCell", "JSC::Heap", "JSC::SlotVisitor", "JSC::ConservativeRoots"}
+          assert all(result["types"].values())
+          assert set(result["functions"]) == {"JSC::Collector::runEndPhase", "JSC::MachineThreads::gatherConservativeRoots"}
+          assert all(result["functions"].values())
+          PY
+      - name: Run the unchanged destroyed-completion case once
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker exec tls-shipping-debug bash -lc '. /etc/profile.d/bun-ci.sh; cd /work/source; python3 - <<'"'"'PY'"'"'
+          import hashlib, json, subprocess, sys
+          from pathlib import Path
+          from xml.etree import ElementTree
+          fixture = Path("test/js/bun/net/socket-retention.test.ts")
+          assert hashlib.sha256(fixture.read_bytes()).hexdigest() == "d4c04a72b89bc7d33c292a16a57c38f5da540815dc2e141adfd58c1bd9973af2"
+          name = "a TLS Duplex completion retains its owner and is inert after destroy"
+          out = Path("/work/diagnostics")
+          binary = Path("build/tls-arm64-shipping-debug/bun").resolve()
+          with (out / "fixture.stdout").open("x") as stdout, (out / "fixture.stderr").open("x") as stderr:
+              result = subprocess.run([str(binary), "test", str(fixture), "--test-name-pattern", "^" + name + "$", "--reporter=junit", "--reporter-outfile=" + str(out / "fixture.xml")], stdout=stdout, stderr=stderr, timeout=120)
+          cases = list(ElementTree.parse(out / "fixture.xml").iter("testcase"))
+          selected = [case for case in cases if case.get("name") == name]
+          assert len(selected) == 1 and selected[0].find("skipped") is None
+          outcome = {"exitCode": result.returncode, "name": name, "failure": selected[0].find("failure") is not None, "error": selected[0].find("error") is not None}
+          (out / "fixture-outcome.json").write_text(json.dumps(outcome, indent=2) + "\n")
+          if result.returncode == 0:
+              assert not outcome["failure"] and not outcome["error"]
+          sys.exit(result.returncode)
+          PY
+          '
+      - name: Retain matched bytes and bounded diagnostic evidence
+        if: always()
+        shell: bash
+        env:
+          CONTAINER_ID: ${{ steps.shipping-container.outputs.id }}
+        run: |
+          set -euo pipefail
+          if test -n "$CONTAINER_ID"; then
+            [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]]
+            docker stop --time 30 "$CONTAINER_ID" > /dev/null
+            test "$(docker inspect --format '{{.State.Running}}' "$CONTAINER_ID")" = false
+          fi
+          python3 - <<'PY'
+          import hashlib, json, stat, subprocess
+          from pathlib import Path
+          files = sorted(path for path in Path("diagnostics").rglob("*") if path.is_file())
+          files += [path for path in (Path("source/build/tls-arm64-shipping-debug") / name for name in ("bun", "bun-profile")) if path.is_file()]
+          assert files and len(files) <= 64 and all(stat.S_ISREG(path.lstat().st_mode) for path in files)
+          assert sum(path.stat().st_size for path in files) <= 8 * 1024**3
+          def digest(path):
+              with path.open("rb") as stream:
+                  return hashlib.file_digest(stream, "sha256").hexdigest()
+          manifest = Path("diagnostics/archive-manifest.json")
+          manifest.write_text(json.dumps({str(path): {"bytes": path.stat().st_size, "sha256": digest(path)} for path in files}, indent=2) + "\n")
+          files.append(manifest)
+          output = Path("matched-shipping-debug.tar.zst.partial")
+          with output.open("xb") as stream:
+              subprocess.run(["tar", "--zstd", "-cf", "-", "--", *map(str, files)], stdout=stream, check=True)
+          assert output.stat().st_size <= 4 * 1024**3
+          output.rename("matched-shipping-debug.tar.zst")
+          Path("shipping-debug-SHA256SUMS").write_text(digest(Path("matched-shipping-debug.tar.zst")) + "  matched-shipping-debug.tar.zst\n")
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: tls-linux-arm64-shipping-debug
+          path: |
+            matched-shipping-debug.tar.zst
+            shipping-debug-SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+      - name: Stop shipping diagnostic container
+        if: always()
+        env:
+          CONTAINER_ID: ${{ steps.shipping-container.outputs.id }}
+        run: |
+          if test -n "$CONTAINER_ID"; then
+            [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]]
+            docker rm --force "$CONTAINER_ID" > /dev/null
+          fi
