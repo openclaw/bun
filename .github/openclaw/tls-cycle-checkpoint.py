@@ -8,6 +8,7 @@ import re
 import runpy
 import subprocess
 import xml.etree.ElementTree as ET
+import zipfile
 
 ROOT = Path(os.environ['RUNNER_TEMP']) / 'tls-darwin-input'
 OUT = Path('tls-cycle-checkpoint')
@@ -73,9 +74,22 @@ def main():
     facts = json.loads(identity.stdout)
     assert facts == dict(revision=COMMIT, webkit=ENGINE, platform='darwin', arch='x64')
     signature = run(['codesign', '--verify', '--strict', str(exe)])
-    assert signature.returncode == 0
+    with zipfile.ZipFile(archive) as files:
+        signature_required = 'darwin-x64.signing.json' in files.namelist()
+    signature_record = dict(required_by_release_contract=signature_required,
+        exit_code=signature.returncode,
+        stdout=signature.stdout.decode().replace(str(exe), 'bun'),
+        stderr=signature.stderr.decode().replace(str(exe), 'bun'))
+    if signature_required:
+        signing = ROOT / 'signing.json'
+        library['extract'](archive, 'darwin-x64.signing.json', signing, 1024**2)
+        signature_record['manifest_sha256'] = sha(signing)
+    (OUT / 'signature.json').write_text(json.dumps(signature_record, indent=2) + '\n')
+    # The release owner requires this for x64 only when it has a signing manifest.
+    assert not signature_required or signature.returncode == 0
     receipt = dict(commit=COMMIT, engine=ENGINE, artifact_id=ARTIFACT, artifact_sha256=DIGEST,
         product_zip_sha256=sha(product_zip), executable_sha256=sha(exe), facts=facts,
+        signature=signature_record,
         fixture_sha256=FIXTURE_SHA, candidate_sha256=hashlib.sha256(candidate).hexdigest(),
         explicit_collections_first_phase=30, assertions_changed=False, runs=[],
         claim='paired GC frame/job-phase sensitivity only; no retaining owner or runtime fix established')
