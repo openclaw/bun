@@ -1,0 +1,170 @@
+name: OpenClaw TLS symbol inspection
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/openclaw-tls-symbols.yml
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: openclaw-tls-symbols-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+# Inspect the exact failing PR #215 artifacts without rebuilding or running them.
+env:
+  SOURCE_COMMIT: 454a78a4d3b0202ecdbedf7dd051fc84ffc59e9e
+  SOURCE_RUN: "40897692970"
+
+jobs:
+  inspect:
+    name: Inspect ${{ matrix.target }} symbols
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+            triplet: bun-linux-aarch64
+            artifact: "12908842070"
+            sha256: 65f1e6de6618b9fc2dd75c688d49fff27bcedc61fd03105f1f92c9df49e4f5c4
+          - target: darwin-x64
+            runner: macos-15-intel
+            triplet: bun-darwin-x64
+            artifact: "12909560910"
+            sha256: 99eb0c3444b61fd6756b4879dfa5698c4a9e69706a9a1ff7f1cff685a741d1d9
+    env:
+      TARGET: ${{ matrix.target }}
+      TRIPLET: ${{ matrix.triplet }}
+      ARTIFACT_ID: ${{ matrix.artifact }}
+      ARTIFACT_SHA256: ${{ matrix.sha256 }}
+    steps:
+      - name: Fetch and verify frozen artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir diagnostics
+          gh api "repos/openclaw/bun/actions/artifacts/$ARTIFACT_ID" > diagnostics/artifact.json
+          gh api "repos/openclaw/bun/actions/artifacts/$ARTIFACT_ID/zip" > artifact.zip
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+
+          artifact = json.loads(Path("diagnostics/artifact.json").read_text())
+          assert artifact["id"] == int(os.environ["ARTIFACT_ID"]), artifact
+          assert artifact["name"] == "build-" + os.environ["TARGET"], artifact
+          assert not artifact["expired"], artifact
+          assert artifact["workflow_run"]["id"] == int(os.environ["SOURCE_RUN"]), artifact
+          assert artifact["workflow_run"]["head_sha"] == os.environ["SOURCE_COMMIT"], artifact
+          expected = os.environ["ARTIFACT_SHA256"]
+          assert artifact["digest"] == "sha256:" + expected, artifact
+          PY
+          actual=$(shasum -a 256 artifact.zip | awk '{print $1}')
+          [ "$actual" = "$ARTIFACT_SHA256" ]
+          unzip -q artifact.zip -d downloaded
+          unzip -q "downloaded/$TRIPLET.zip" -d unpacked
+          unzip -q "downloaded/$TRIPLET-profile.zip" -d unpacked
+          shasum -a 256 "unpacked/$TRIPLET/bun" \
+            "unpacked/$TRIPLET-profile/bun-profile" > diagnostics/executables.sha256
+
+      - name: Install Linux debugger
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends gdb binutils
+
+      - name: Inspect Linux build identity and types
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ "$(uname -m)" = aarch64 ]
+          exe="unpacked/$TRIPLET/bun"
+          profile="unpacked/$TRIPLET-profile/bun-profile"
+          readelf -n "$exe" > diagnostics/executable-notes.txt
+          readelf -n "$profile" > diagnostics/profile-notes.txt
+          id=$(sed -n 's/.*Build ID: //p' diagnostics/executable-notes.txt)
+          profile_id=$(sed -n 's/.*Build ID: //p' diagnostics/profile-notes.txt)
+          [ -n "$id" ] && [ "$id" = "$profile_id" ]
+          readelf -SW "$exe" > diagnostics/executable-sections.txt
+          readelf -SW "$profile" > diagnostics/profile-sections.txt
+          gdb --batch --nx --init-eval-command='set auto-load off' \
+            -ex "file $profile" -ex "exec-file $exe" \
+            -ex 'info functions JSC::Collector::runEndPhase' \
+            -ex 'info functions JSC::MachineThreads::gatherConservativeRoots' \
+            > diagnostics/capture-functions.txt 2>&1
+          for type in JSCell Heap SlotVisitor ConservativeRoots; do
+            if gdb --batch --nx --init-eval-command='set auto-load off' \
+              -ex "file $exe" -ex "symbol-file $profile" -ex "ptype /o JSC::$type" \
+              > "diagnostics/type-$type.txt" 2>&1; then
+              echo "$type: available" >> diagnostics/types.txt
+            else
+              echo "$type: unavailable" >> diagnostics/types.txt
+            fi
+          done
+
+      - name: Inspect Darwin UUID and types
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ "$(uname -m)" = x86_64 ]
+          exe="unpacked/$TRIPLET/bun"
+          profile="unpacked/$TRIPLET-profile/bun-profile"
+          dsym="$profile.dSYM"
+          xcrun dwarfdump --uuid "$exe" > diagnostics/executable-uuid.txt
+          xcrun dwarfdump --uuid "$profile" > diagnostics/profile-uuid.txt
+          xcrun dwarfdump --uuid "$dsym" > diagnostics/dsym-uuid.txt
+          id=$(awk '{print $2}' diagnostics/executable-uuid.txt)
+          [ -n "$id" ]
+          [ "$id" = "$(awk '{print $2}' diagnostics/profile-uuid.txt)" ]
+          [ "$id" = "$(awk '{print $2}' diagnostics/dsym-uuid.txt)" ]
+          otool -l "$exe" > diagnostics/executable-load-commands.txt
+          xcrun lldb --no-lldbinit --batch \
+            -o 'settings set target.load-script-from-symbol-file false' \
+            -o "target create $exe" -o "target symbols add $dsym" \
+            -o "image lookup -rn 'JSC::Collector::runEndPhase|JSC::MachineThreads::gatherConservativeRoots'" \
+            > diagnostics/capture-functions.txt 2>&1
+          for type in JSCell Heap SlotVisitor ConservativeRoots; do
+            if xcrun lldb --no-lldbinit --batch \
+              -o 'settings set target.load-script-from-symbol-file false' \
+              -o "target create $exe" -o "target symbols add $dsym" \
+              -o "image lookup -t JSC::$type" > "diagnostics/type-$type.txt" 2>&1; then
+              echo "$type: available" >> diagnostics/types.txt
+            else
+              echo "$type: unavailable" >> diagnostics/types.txt
+            fi
+          done
+
+      - name: Report inspection scope
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### TLS symbol inspection: $TARGET"
+            echo "Source: $SOURCE_COMMIT; build run: $SOURCE_RUN; artifact: $ARTIFACT_ID."
+            echo 'This inspects saved symbols without running the executable or collecting a heap.'
+            echo 'Type availability is a prerequisite, not proof of usable root or stack capture.'
+            if [ -f diagnostics/types.txt ]; then
+              echo '```text'
+              cat diagnostics/types.txt
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Retain symbol inspection
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: tls-symbols-${{ matrix.target }}
+          path: diagnostics
+          if-no-files-found: error
+          retention-days: 7
