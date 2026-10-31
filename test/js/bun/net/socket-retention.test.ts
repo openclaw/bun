@@ -528,9 +528,7 @@ test("TLS Duplex cycles collect after startup while a retained origin keeps its 
         }
         let retained = await makePair(true);
         const dropped = await makePair(false);
-        for (let i = 0; i < 30; i++) {
-          await new Promise(resolve => setImmediate(() => { Bun.gc(true); resolve(); }));
-        }
+        for (let i = 0; i < 30; i++) { await turn(); Bun.gc(true); }
         const retainedAlive = !!retained.weak.deref();
         const droppedCollected = !dropped.weak.deref();
         retained.origin = null;
