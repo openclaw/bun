@@ -74,7 +74,7 @@ def prepare():
         dsym_sha256=DSYM_SHA, uuid=UUID, scanner_cause_proven=False, retaining_writer_proven=False,
         claim='original GC32 observations joined to a later snapshot GC; profile is not the production binary',
         observer_effects=['profile executable', 'outgoing object tags', 'diagnostic imports',
-                          'snapshot performs an additional full GC', 'debugger stops'], runs=[])
+                          'snapshot performs an additional full GC', 'debugger stops', 'circular debugger logging'], runs=[])
     try:
         for name, contents in [('baseline', original), ('materialize', None)]:
             report = (OUT / (name + '.xml')).resolve()
@@ -164,6 +164,17 @@ def inspect(debugger):
     watch = None
     decoded_functions = {}
 
+    def debugger_command(text):
+        result = lldb.SBCommandReturnObject()
+        debugger.GetCommandInterpreter().HandleCommand(text, result)
+        output, error = result.GetOutput() or '', result.GetError() or ''
+        assert len(output.encode()) + len(error.encode()) <= 4 * 1024**2, text
+        return dict(command=text, succeeded=result.Succeeded(), output=output, error=error)
+
+    def debugger_state():
+        return [debugger_command(text) for text in
+                ('thread plan list -i -v all', 'breakpoint list -v', 'watchpoint list -v')]
+
     def save():
         write('capture.json', report)
         (OUT / 'spans.bin').write_bytes(raw)
@@ -249,6 +260,10 @@ def inspect(debugger):
     launch.SetDetachOnError(False)
     error = lldb.SBError()
     try:
+        report['log_setup'] = [debugger_command(text) for text in
+            ('log enable -h circular -b 4096 -s -T -p lldb process thread step break watch',
+             'log enable -h circular -b 4096 -s -T -p gdb-remote packets')]
+        assert all(row['succeeded'] for row in report['log_setup']), 'circular debugger logs unavailable'
         process = target.Launch(launch, error)
         assert error.Success() and process.IsValid(), str(error)
         report['inferior_launched'] = True
@@ -342,6 +357,8 @@ def inspect(debugger):
                                 initial_owner=owner, writes=[], write_mode='always',
                                 context_filter='0x10000 <= value < 2**44 and value % 16 == 0; all writes retain values and PC',
                                 claim='one physical address; its frame may exit or storage may be reused; unexpected stops remain failures')
+                            report['watch_admission'] = debugger_state()
+                            assert all(row['succeeded'] for row in report['watch_admission'])
                         if report['gc_count'] == 32:
                             owner = module_frame(thread)
                             report['word_watch']['gc32_owner'] = owner
@@ -433,6 +450,18 @@ def inspect(debugger):
         report['error'] = dict(type=type(exc).__name__, message=str(exc)[:2000],
             frames=[dict(file=Path(f.filename).name, line=f.lineno, function=f.name)
                     for f in traceback.extract_tb(exc.__traceback__)])
+        try:
+            # Dump history before inspection commands overwrite the circular packet buffer.
+            report['failure_logs'] = [debugger_command('log dump ' + channel)
+                                      for channel in ('lldb', 'gdb-remote')]
+            report['failure_debugger_state'] = debugger_state()
+            if process is not None and process.IsValid() and process.GetState() == lldb.eStateStopped:
+                report['failure_threads'] = [dict(thread=t.GetThreadID(), frames=frames(t),
+                    stop_instructions=instructions(target.ReadInstructions(t.GetFrameAtIndex(0).GetPCAddress(), 4)))
+                    for t in process if t.GetStopReason() not in (lldb.eStopReasonInvalid, lldb.eStopReasonNone)]
+        except BaseException as diagnostic_error:
+            report['failure_diagnostics_error'] = dict(type=type(diagnostic_error).__name__,
+                                                       message=str(diagnostic_error)[:2000])
         raise
     finally:
         if process is not None and process.IsValid() and process.GetState() not in (lldb.eStateExited, lldb.eStateDetached):
