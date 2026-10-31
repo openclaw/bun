@@ -161,6 +161,7 @@ def inspect(debugger):
     active = False
     points = {}
     dynamic = {}
+    watch = None
 
     def save():
         write('capture.json', report)
@@ -188,6 +189,31 @@ def inspect(debugger):
         return [dict(pc=f.GetPC(), sp=f.GetSP(), fp=f.GetFP(), function=f.GetDisplayFunctionName(),
                      file=f.GetLineEntry().GetFileSpec().GetFilename(), line=f.GetLineEntry().GetLine())
                 for f in [thread.GetFrameAtIndex(i) for i in range(thread.GetNumFrames())]]
+
+    def instructions(rows, begin=0, end=None):
+        result = []
+        for i in range(begin, rows.GetSize() if end is None else end):
+            insn = rows.GetInstructionAtIndex(i)
+            address = insn.GetAddress()
+            entry = address.GetLineEntry()
+            data = bytes(insn.GetData(target).uint8s)
+            assert len(data) == insn.GetByteSize()
+            result.append(dict(address=address.GetFileAddress(), bytes=data.hex(),
+                mnemonic=insn.GetMnemonic(target), operands=insn.GetOperands(target),
+                comment=insn.GetComment(target), file=entry.GetFileSpec().GetFilename(), line=entry.GetLine()))
+        return result
+
+    module_rows = target.ReadInstructions(target.ResolveFileAddress(0x103cf8280), 244)
+    assert module_rows.GetSize() == 244
+    report['module_entry_instructions'] = instructions(module_rows)
+    call = next(r for r in report['module_entry_instructions'] if r['address'] == 0x103cf8527)
+    assert call['bytes'] == 'e8dc8c5d01' and call['mnemonic'] == 'callq'
+
+    def module_frame(thread):
+        selected = [f for f in frames(thread) if f['file'] == 'Interpreter.cpp' and f['line'] == 1839
+                    and target.ResolveLoadAddress(f['pc']).GetFileAddress() == 0x103cf852c]
+        assert len(selected) == 1 and selected[0]['fp'] - selected[0]['sp'] == 224
+        return selected[0]
 
     def point(name, address, mnemonic, operands=None, enabled=True, thread=None):
         address = target.ResolveFileAddress(address) if isinstance(address, int) else address
@@ -241,6 +267,35 @@ def inspect(debugger):
                 function=t.GetFrameAtIndex(0).GetDisplayFunctionName()) for t in process])
             handled = False
             for thread in process:
+                if thread.GetStopReason() == lldb.eStopReasonWatchpoint:
+                    assert watch is not None and watch.IsEnabled()
+                    assert thread.GetStopReasonDataCount() == 1
+                    assert thread.GetStopReasonDataAtIndex(0) == watch.GetID()
+                    row = report['word_watch']
+                    assert len(row['changes']) < 2048
+                    frame = thread.GetFrameAtIndex(0)
+                    pc = frame.GetPC()
+                    value = word(row['address'])
+                    function, symbol = frame.GetFunction(), frame.GetSymbol()
+                    decoded = function.GetInstructions(target) if function.IsValid() else symbol.GetInstructions(target)
+                    window, preceding = [], []
+                    if 0 < decoded.GetSize() <= 16384:
+                        for i in range(decoded.GetSize()):
+                            insn = decoded.GetInstructionAtIndex(i)
+                            end = insn.GetAddress().GetLoadAddress(target) + insn.GetByteSize()
+                            if end == pc:
+                                window = instructions(decoded, max(0, i - 5), min(decoded.GetSize(), i + 3))
+                                preceding = instructions(decoded, i, i + 1)
+                                break
+                    row['changes'].append(dict(thread=thread.GetThreadID(), gc_count=report['gc_count'],
+                        before=row['last_value'], after=value, stop_pc=pc,
+                        stop_file_pc=target.ResolveLoadAddress(pc).GetFileAddress(),
+                        registers={name: reg(frame, name) for name in
+                                   ('rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi', 'rbp', 'rsp', 'r8', 'r9', 'r10', 'r11', 'r12', 'r13', 'r14', 'r15', 'rflags')},
+                        frames=frames(thread), preceding_instruction=preceding, instruction_window=window))
+                    row['last_value'] = value
+                    handled = True
+                    continue
                 if thread.GetStopReason() != lldb.eStopReasonBreakpoint:
                     continue
                 frame, tid = thread.GetFrameAtIndex(0), thread.GetThreadID()
@@ -251,7 +306,22 @@ def inspect(debugger):
                     handled = True
                     if name == 'gc':
                         report['gc_count'] += 1
+                        if report['gc_count'] == 1:
+                            owner = module_frame(thread)
+                            address = owner['sp']
+                            error = lldb.SBError()
+                            watch = target.WatchAddress(address, 8, False, True, error)
+                            assert error.Success() and watch.IsValid(), str(error)
+                            assert watch.GetWatchAddress() == address and watch.GetWatchSize() == 8
+                            initial = word(address)
+                            report['word_watch'] = dict(address=address, initial_value=initial, last_value=initial,
+                                initial_owner=owner, changes=[],
+                                claim='one physical address; its frame may exit or storage may be reused; equal-value stores may be unreported')
                         if report['gc_count'] == 32:
+                            owner = module_frame(thread)
+                            assert owner['sp'] == report['word_watch']['address'], 'GC32 uses a different stack slot'
+                            report['word_watch']['gc32_owner'] = owner
+                            assert word(owner['sp']) == report['word_watch']['last_value']
                             active = True
                             report['gc32_entry_frames'] = frames(thread)
                             ret = target.ResolveLoadAddress(word(frame.GetSP()))
@@ -268,6 +338,8 @@ def inspect(debugger):
                         for b in scans + [gather, pre, post, gc]:
                             b.SetEnabled(False)
                         target.BreakpointDelete(ident)
+                        report['word_watch']['gc32_return_value'] = word(report['word_watch']['address'])
+                        assert target.DeleteWatchpoint(watch.GetID())
                     elif name == 'gather':
                         assert active
                         state = reg(frame, 'r8')
@@ -378,8 +450,15 @@ def seal():
                 matches.append(dict(address=address, span_begin=span['begin'], span_end=span['end'],
                     accepted=cell in span['accepted_roots'], physical_frames=owners))
         marks = [m for m in capture['marks'] if m['cell'] == cell]
+        watched = capture['word_watch']
+        changes = [row for row in watched['changes'] if row['after'] == cell]
+        watch_join = dict(address=watched['address'], initial_value_matches=watched['initial_value'] == cell,
+            gc32_return_value_matches=watched['gc32_return_value'] == cell,
+            accepted_root_matches=any(m['accepted'] and m['address'] == watched['address'] for m in matches),
+            observed_changes_to_owner=changes,
+            claim='observed value-changing stores only; decode the preceding instruction and intended lifetime before proposing a repair')
         write('join.json', dict(owner_id=owner[0], owner_cell=owner[5], gc32_word_matches=matches,
-            gc32_mark_events=marks, scanner_cause_proven=False, retaining_writer_proven=False,
+            gc32_mark_events=marks, word_watch=watch_join, scanner_cause_proven=False, retaining_writer_proven=False,
             claim='physical observations; identify the frame writer before proposing a runtime repair'))
         receipt.update(snapshot_sha256=sha(snapshot), gc32_completed=capture['gc32_completed'],
                        word_matches=len(matches), new_marks=sum(m['new_mark'] for m in marks),
@@ -387,6 +466,8 @@ def seal():
         write('receipt.json', receipt)
         assert capture['gc32_completed'] and capture['original_failure_preserved']
         assert any(m['accepted'] for m in matches) and any(m['new_mark'] for m in marks), 'root not established; no causal claim'
+        assert watch_join['accepted_root_matches'] and watch_join['gc32_return_value_matches']
+        assert changes, 'owner value was not observed being written; earlier writer remains unknown'
     finally:
         files = sorted(OUT.iterdir())
         assert len(files) <= 32 and all(p.is_file() and not p.is_symlink() for p in files)
