@@ -31,6 +31,8 @@ def sha(path):
 
 
 def clean():
+    # Refresh checkout stat metadata without staging mode/content changes.
+    subprocess.run(['git', '-C', str(SOURCE), 'update-index', '--refresh'], check=True)
     result = subprocess.run(['git', '-C', str(SOURCE), 'diff-index', '--quiet', 'HEAD', '--'])
     if result.returncode:
         subprocess.run(['git', '-C', str(SOURCE), 'diff', '--name-status', 'HEAD', '--'], check=True)
