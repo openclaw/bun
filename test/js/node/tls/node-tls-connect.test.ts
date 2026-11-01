@@ -2703,27 +2703,29 @@ describe.each([
       const tls = require("node:tls");
       const { Duplex } = require("node:stream");
       const { once } = require("node:events");
-      const reports = [];
-      for (const started of [false, true]) {
-        let endReads = 0, endCalls = 0, finishes = 0;
-        const transport = new Duplex({ read() {}, write(chunk, encoding, callback) { callback(); } });
-        Object.defineProperty(transport, "end", {
-          get() {
-            endReads++;
-            return function () { endCalls++; throw new Error("destroy called end"); };
-          },
-        });
-        transport.on("finish", () => finishes++);
-        const socket = tls.connect({ socket: transport, rejectUnauthorized: false });
-        const closed = once(socket, "close");
-        if (started) await new Promise(resolve => setImmediate(resolve));
-        socket.destroy();
-        await closed;
-        await new Promise(resolve => setImmediate(resolve));
-        reports.push({ started, endReads, endCalls, finishes });
-        transport.destroy();
-      }
-      console.log(JSON.stringify(reports));
+      (async () => {
+        const reports = [];
+        for (const started of [false, true]) {
+          let endReads = 0, endCalls = 0, finishes = 0;
+          const transport = new Duplex({ read() {}, write(chunk, encoding, callback) { callback(); } });
+          Object.defineProperty(transport, "end", {
+            get() {
+              endReads++;
+              return function () { endCalls++; throw new Error("destroy called end"); };
+            },
+          });
+          transport.on("finish", () => finishes++);
+          const socket = tls.connect({ socket: transport, rejectUnauthorized: false });
+          const closed = once(socket, "close");
+          if (started) await new Promise(resolve => setImmediate(resolve));
+          socket.destroy();
+          await closed;
+          await new Promise(resolve => setImmediate(resolve));
+          reports.push({ started, endReads, endCalls, finishes });
+          transport.destroy();
+        }
+        console.log(JSON.stringify(reports));
+      })().catch(error => { console.error(error); process.exitCode = 1; });
     `;
     await using proc = Bun.spawn({ cmd: [exe!, "-e", script], env: bunEnv, stdout: "pipe", stderr: "pipe" });
     const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
@@ -4429,11 +4431,7 @@ describe.each([
       expect(await run("duplex-destroySoon", "after-first-flight")).toEqual(clientDestroyed);
     });
 
-    // Known gap in bun: 'finish' does not wait for the transport's end(). In
-    // the turn that created the socket it fires before the engine exists, so
-    // destroySoon()'s destroy() runs first and destroys the transport: no
-    // ClientHello and no final(), the peer only sees the connection close.
-    (!exe ? it.skip : runtime === "bun" ? it.failing : it)(
+    it.skipIf(!exe)(
       "destroySoon() in the turn that created the socket ends the transport, then closes the socket",
       async () => {
         expect(await run("duplex-destroySoon", "same-turn")).toEqual(clientDestroyed);

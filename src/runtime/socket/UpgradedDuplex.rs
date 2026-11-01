@@ -68,8 +68,8 @@ pub(crate) struct UpgradedDuplex {
     /// forever, so stage them here and replay them from
     /// [`Self::drain_pending`] as soon as the engine is up.
     pub pending_data: JsCell<Vec<u8>>,
-    /// The transport closed before the TLS engine existed (same window as
-    /// [`Self::pending_data`]). Consumed by the queued `StartTLS` task.
+    /// Close arrived before the engine existed or while graceful shutdown
+    /// still owned a transport completion.
     pub pending_close: Cell<bool>,
     /// Shutdown is waiting for the engine or the transport's ciphertext completion.
     pub pending_shutdown: Cell<bool>,
@@ -242,7 +242,16 @@ impl UpgradedDuplex {
     fn on_close(this: *mut Self) {
         bun_output::scoped_log!(UpgradedDuplex, "onClose");
         // SAFETY: see handler note above.
-        unsafe { &*this }.finish_close();
+        let this = unsafe { &*this };
+        // SSL close can re-enter shutdown() before it queues origin.end(),
+        // or still own reciprocal close_notify ciphertext after peer shutdown.
+        if !this.write_failed.get()
+            && (this.pending_shutdown.get() || this.pending_writes.get() > 0)
+        {
+            this.pending_close.set(true);
+            return;
+        }
+        this.finish_close();
     }
 
     pub(super) fn finish_close(&self) {
@@ -727,15 +736,26 @@ impl UpgradedDuplex {
             self.pending_close.set(true);
             return;
         };
+        let deferred_close = self.pending_close.replace(false);
+        self.pending_shutdown.set(false);
+        self.write_failed.set(true);
         let _ = w.shutdown(true);
+        // A deferred SSL close has already consumed its one native notification.
+        if deferred_close && !self.origin.get().is_empty() {
+            self.finish_close();
+        }
     }
 
     /// Half-close like `us_internal_ssl_shutdown`: close_notify (none mid-handshake), then end().
     #[uws_callback(export = "UpgradedDuplex__shutdown")]
     pub(crate) fn shutdown(&self) {
         let _keep_alive = self.keep_alive();
+        if self.origin.get().is_empty() || self.write_failed.get() || self.shutdown_queued.get() {
+            return;
+        }
+        // shutdown(false) may synchronously deliver the peer's close_notify.
+        self.pending_shutdown.set(true);
         let Some(w) = self.wrapper_ref() else {
-            self.pending_shutdown.set(true);
             return;
         };
         let _ = w.shutdown(false);
@@ -743,7 +763,6 @@ impl UpgradedDuplex {
             return;
         }
         if self.pending_writes.get() > 0 {
-            self.pending_shutdown.set(true);
             return;
         }
         let Some(global) = self.global else { return };
@@ -1077,7 +1096,11 @@ pub(crate) fn dispatch_write_complete(cx: &mut JsScope<'_>, callee: JsLocal<'_>,
     } else if this.transport_idle() && !this.origin.get().is_empty() {
         this.drain_pending_shutdown();
         if !this.origin.get().is_empty() && !this.write_failed.get() && this.transport_idle() {
-            (this.handlers.on_writable)(this.handlers.ctx);
+            if this.pending_close.replace(false) {
+                this.finish_close();
+            } else {
+                (this.handlers.on_writable)(this.handlers.ctx);
+            }
         }
     }
 }
