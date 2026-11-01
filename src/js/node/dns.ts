@@ -317,9 +317,19 @@ function validateLookupOptions(options: LookupOptions) {
 
 function lookup(
   hostname: string | null | undefined,
-  // The translated options are stored back into it.
+  options: LookupOptions & { all: true },
+  callback: (err: Error | null, addresses: LookupAddress[]) => void,
+): void;
+function lookup(
+  hostname: string | null | undefined,
   options?: LookupOptions | number | LookupCallback | null,
   callback?: LookupCallback,
+): void;
+function lookup(
+  hostname: string | null | undefined,
+  // The translated options are stored back into it.
+  options?: LookupOptions | number | LookupCallback | null,
+  callback?: Parameters<typeof guardCallback>[0],
 ) {
   if (typeof hostname !== "string" && hostname) {
     throw $ERR_INVALID_ARG_TYPE("hostname", "string", hostname);

@@ -43,6 +43,12 @@ interface StdioWriteStream extends $Node.Writable {
   [Symbol.asyncIterator]?(): AsyncGenerator<never, void, unknown>;
 }
 
+/** The fd-less fast-path constructor installs both methods for its already-open sink. */
+interface StdioSinkWriteStream extends StdioWriteStream {
+  _writev(chunks: $Node.ChunkToWrite[], callback: $Node.ErrorCallback): void;
+  _final(callback: $Node.ErrorCallback): void;
+}
+
 /** `process.stdin`: a `tty.ReadStream` or an `fs.ReadStream`. */
 interface StdinStream extends $Node.Readable {
   fd: number;
@@ -73,7 +79,11 @@ export function getStdioWriteStream(
   } else {
     const fs = require("node:fs");
     const createStdioSink = $bindgen("FileSink.bind.ts", "createStdio");
-    stream = new fs.WriteStream(null, { autoClose: false, $fastPath: createStdioSink(fd) });
+    const fsStream: StdioSinkWriteStream = new fs.WriteStream(null, {
+      autoClose: false,
+      $fastPath: createStdioSink(fd),
+    });
+    stream = fsStream;
     stream.readable = false;
     stream._type = "fs";
 
@@ -88,9 +98,9 @@ export function getStdioWriteStream(
         const shutdownStdio = $newCppFunction("BunProcess.cpp", "jsFunctionShutdownStdio", 2);
         const { ErrnoException } = require("internal/shared");
         const epipe = process.binding("uv").UV_EPIPE;
-        const write = stream._write;
-        const writev = stream._writev;
-        const final = stream._final;
+        const write = fsStream._write;
+        const writev = fsStream._writev;
+        const final = fsStream._final;
         let shutdown = false;
         stream._write = function (chunk, encoding, cb) {
           if (shutdown) return cb(new ErrnoException(epipe, "write"));

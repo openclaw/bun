@@ -95,7 +95,7 @@ declare global {
     }
 
     interface Writable extends StreamWithState {
-      [kWriteOperation](operation: { length: number }, callback?: ErrorCallback): boolean;
+      [kWriteOperation](operation: { length: number }, callback?: ErrorCallback | null): boolean;
       _writableState: WritableState;
       _write(chunk: unknown, encoding: string, callback: ErrorCallback): void;
       /** `null` on the prototype: only ever tested for truth. */
@@ -237,7 +237,7 @@ function _write(stream: $Node.Writable, state: WritableState, chunk, encoding, c
 Writable.prototype[kWriteOperation] = function (
   this: $Node.Writable,
   operation: { length: number },
-  callback?: WriteCallback,
+  callback?: WriteCallback | null,
 ) {
   const state = this._writableState;
   const cb = callback ?? nop;

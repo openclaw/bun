@@ -299,7 +299,9 @@ function emitCloseNT(self: $Node.ServerResponse) {
   }
 }
 
-function setCloseCallback(self: $Node.HttpServerSocket, callback: (this: $Node.HttpServerSocket) => void) {
+function setCloseCallback(self: $Node.HttpServerSocket, callback: (this: $Node.HttpServerSocket) => void): void;
+function setCloseCallback(self: $Node.ServerResponse, callback: () => void): void;
+function setCloseCallback(self: $Node.HttpServerSocket | $Node.ServerResponse, callback: () => void) {
   const current = self[kCloseCallback];
   if (callback === current) {
     return;
@@ -614,6 +616,7 @@ declare global {
       SNICallback?: import("node:tls").TlsOptions["SNICallback"];
       handshakeTimeout?: number;
       allowHalfOpen?: boolean;
+      allowPartialTrustChain?: boolean;
     }
 
     /** `tls` of `Bun.serve()`. */
@@ -1726,7 +1729,7 @@ Server.prototype[kRealListen] = function (
       http_res.$exchange.dispatchPromise = pendingPromise;
       return pendingPromise;
     };
-    const bunServer = Bun.serve<any>({
+    const bunServer: $Node.NativeHTTPServer = Bun.serve<any>({
       idleTimeout: 0, // nodejs dont have a idleTimeout by default
       tls: tls as any,
       port,
@@ -2250,7 +2253,12 @@ function hasResponseSocketWork(socket: $Node.HttpSocket) {
   return !!(state && (state.corked || state.length || state.writing));
 }
 
-function shouldQueueResponseWrite(response: $Node.ServerResponse) {
+type SocketQueuedResponse = $Node.ServerResponse & {
+  socket: $Node.HttpServerSocket;
+  [kHandle]: $Node.NodeHTTPResponse;
+};
+
+function shouldQueueResponseWrite(response: $Node.ServerResponse): response is SocketQueuedResponse {
   const socket = response.socket;
   return !!(
     socket &&
@@ -2260,17 +2268,17 @@ function shouldQueueResponseWrite(response: $Node.ServerResponse) {
   );
 }
 
-function onResponseSocketDrain(this: $Node.HttpSocket) {
+function onResponseSocketDrain(this: $Node.HttpServerSocket) {
   const response = this._httpMessage;
   if (response) flushWriteAccountingNT(response);
 }
 
 function queueResponseSocketWrite(
-  response: $Node.ServerResponse,
+  response: SocketQueuedResponse,
   kind: ResponseSocketOperation["kind"],
   chunk: $Node.HttpChunk | null | undefined,
   encoding: string | null | undefined,
-  callback?: $Node.HttpWriteCallback,
+  callback?: $Node.HttpWriteCallback | null,
 ) {
   const headerState = response[headerStateSymbol];
   let strict;
@@ -2292,7 +2300,8 @@ function queueResponseSocketWrite(
     if (implicitEnd && !response.hasHeader("content-length")) response._contentLength = length;
     freezeBufferedResponseHeaders(response, kind === "end");
     if (!response[kResponseHeadersQueued] && response._contentLength == null && response.hasHeader("content-length")) {
-      const declared = +response.getHeader("content-length");
+      const value = response.getHeader("content-length");
+      const declared = value === undefined ? NaN : +value;
       if (!NumberIsNaN(declared)) response._contentLength = declared;
     }
     if (kind === "write" || kind === "end") strict = strictContentLength(response, headerState, kind === "end");
@@ -2328,16 +2337,23 @@ function queueResponseSocketWrite(
     socket.on("drain", onResponseSocketDrain);
   }
   const responseCorked = kind === "write" && !!response[kCorked] && willBeChunked(response);
-  const result = socket[kWriteOperation](
-    { response, kind, chunk, encoding, length, bodyLength, strict, responseCorked },
-    callback,
-  );
+  const operation: ResponseSocketOperation = {
+    response,
+    kind,
+    chunk,
+    encoding,
+    length,
+    bodyLength,
+    strict,
+    responseCorked,
+  };
+  const result = socket[kWriteOperation](operation, callback);
   if (!result && kind === "write" && response._hasBody) response[kResponseQueueNeedDrain] = true;
   return kind === "write" && !response._hasBody ? true : result;
 }
 
 function queueResponseSocketEnd(
-  res: $Node.ServerResponse,
+  res: SocketQueuedResponse,
   chunk: $Node.HttpChunk | null | undefined,
   encoding: string | null | undefined,
   callback: $Node.HttpWriteCallback | undefined,
@@ -2427,7 +2443,7 @@ const kStreamingEnabled = Symbol("kStreamingEnabled");
 // destroySoon() was called: native lets the read that is being parsed reach the request, then closes right behind the FIN.
 const kDestroySoon = Symbol("kDestroySoon");
 // Scratch options object for the builtin ServerResponse (see the dispatcher).
-const scratchResponseOptions = {
+const scratchResponseOptions: $Node.ServerResponseOptions = {
   [kHandle]: undefined,
   [kUpgradeResponse]: false,
   highWaterMark: 0,
@@ -3252,6 +3268,8 @@ function getNodeHTTPServerSocket(): NodeHTTPServerSocketConstructor {
       return this;
     }
 
+    _write(_chunk: $Node.HttpChunk, _encoding: string, _callback: $Node.ErrorCallback): void;
+    _write(_chunk: ResponseSocketOperation, _encoding: typeof kWriteOperation, _callback: $Node.ErrorCallback): void;
     _write(
       ...[_chunk, _encoding, _callback]:
         | [$Node.HttpChunk, string, $Node.ErrorCallback]
@@ -3293,7 +3311,7 @@ function getNodeHTTPServerSocket(): NodeHTTPServerSocketConstructor {
         if (handle) {
           handle.ondrain ??= this.#onDrain.bind(this);
           const flushed = handle.write(_chunk, _encoding);
-          if (!flushed && handle.ondrain) {
+          if (!flushed && handle.ondrain != null) {
             // Streaming mode (CONNECT tunnels): wait for the native drain
             // callback before completing the write.
             this.#pendingCallback = done;
@@ -3350,7 +3368,7 @@ function getNodeHTTPServerSocket(): NodeHTTPServerSocketConstructor {
 }
 
 let NodeHTTPTLSServerSocketPrototype;
-function isNodeHTTPServerSocket(socket) {
+function isNodeHTTPServerSocket(socket: unknown): socket is $Node.HttpServerSocket {
   return !!(
     NodeHTTPServerSocket &&
     (socket instanceof NodeHTTPServerSocket ||
@@ -4054,7 +4072,7 @@ function publishResponseFinish(
   request: $Node.IncomingMessage | undefined,
   response: $Node.ServerResponse,
   socket: $Node.HttpSocket | null | undefined,
-  server: $Node.HttpSocketServer | undefined,
+  server: $Node.HttpSocketServer | null | undefined,
 ) {
   if (onResponseFinishChannel.hasSubscribers) {
     onResponseFinishChannel.publish({ request, response, socket, server });
@@ -4283,7 +4301,11 @@ function takeUnassignedResponse(res: $Node.ServerResponse, socket: $Node.HttpSoc
   return pending;
 }
 
-function queuePipelinedResponse(socket: $Node.HttpSocket, res: $Node.ServerResponse, isAncient: boolean) {
+function queuePipelinedResponse(
+  socket: $Node.HttpSocket,
+  res: $Node.ServerResponse,
+  isAncient: boolean,
+): asserts res is $Node.ServerResponse & { [kPipelinedQueuedState]: PipelinedQueuedState } {
   prepareUnassignedResponse(res, socket, isAncient);
   const exchange = res.$exchange;
   if (exchange !== undefined) exchange.flags |= EXCHANGE_WAITS_ITS_TURN;

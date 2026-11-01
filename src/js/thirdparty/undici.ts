@@ -321,7 +321,7 @@ const interceptors = {
 
 // Error classes
 class UndiciError extends Error {
-  constructor(message, options) {
+  constructor(message?: string, options?: ErrorOptions) {
     super(message, options);
     this.name = "UndiciError";
     this.code = "UND_ERR";
@@ -330,7 +330,7 @@ class UndiciError extends Error {
 class AbortError extends UndiciError {}
 class HTTPParserError extends Error {}
 class HeadersTimeoutError extends UndiciError {
-  constructor(message) {
+  constructor(message?: string) {
     super(message);
     this.name = "HeadersTimeoutError";
     this.message = message || "Headers Timeout Error";
@@ -339,7 +339,7 @@ class HeadersTimeoutError extends UndiciError {
 }
 class HeadersOverflowError extends UndiciError {}
 class BodyTimeoutError extends UndiciError {
-  constructor(message) {
+  constructor(message?: string) {
     super(message);
     this.name = "BodyTimeoutError";
     this.message = message || "Body Timeout Error";
@@ -348,7 +348,7 @@ class BodyTimeoutError extends UndiciError {
 }
 class RequestContentLengthMismatchError extends UndiciError {}
 class ConnectTimeoutError extends UndiciError {
-  constructor(message) {
+  constructor(message?: string) {
     super(message);
     this.name = "ConnectTimeoutError";
     this.message = message || "Connect Timeout Error";

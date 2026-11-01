@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Restore extra child-process pipe connections after the upstream cache removal and reconcile internal stdio, worker, DNS, HTTP, and native-handle types with their runtime owners.
+
 - Keep the Windows environment getter type compatible with built-in function code generation after the upstream sync.
 
 - Declare `module.stripTypeScriptTypes()` validation, option getters, and warning effects for AOT compilation without treating the input as executed source.

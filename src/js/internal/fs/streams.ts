@@ -54,7 +54,7 @@ interface FileStreamOptions extends $Node.ReadableOptions, $Node.WritableOptions
   flush?: boolean | null;
   /** A raw Win32 `HANDLE`, wrapped in a file descriptor the stream owns. Windows only. */
   windowsHandle?: bigint | null;
-  $fastPath?: boolean;
+  $fastPath?: boolean | FileSink;
 }
 
 declare global {
@@ -88,7 +88,6 @@ declare global {
       flush: boolean;
       bytesWritten: number;
       destroySoon: Writable["end"];
-      [kWriteMonkeyPatchDefense]?: boolean;
     }
   }
 }
@@ -483,7 +482,7 @@ function close(stream: FileStream, err: Error | null | undefined, cb: ErrorCallb
     stream.fd = null;
     let maybePromise;
     try {
-      maybePromise = fastPath.end(err);
+      maybePromise = fastPath.end();
     } catch (endErr) {
       cb(err || endErr);
       return;
@@ -756,8 +755,7 @@ function writeToFileSink(stream: $Node.WriteStream, data: Buffer, cb: (err?: unk
     let fileSink = stream[kWriteStreamFastPath];
     if (fileSink === true) {
       fileSink = stream[kWriteStreamFastPath] = Bun.file(stream.path!).writer();
-      // @ts-expect-error
-      stream.fd = fileSink._getFd();
+      stream.fd = fileSink._getFd() ?? null;
     }
     $assert(fileSink);
     result = fileSink.write(data);

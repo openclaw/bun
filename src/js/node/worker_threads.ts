@@ -149,7 +149,8 @@ let urlRevokeRegistry: FinalizationRegistry<string> | undefined = undefined;
 const workerThreadsChannel = require("node:diagnostics_channel").channel("worker_threads");
 
 type Listener = (...args: any[]) => unknown;
-type EventListener = (event: any) => unknown;
+type IncomingEvent = Event & { readonly data?: unknown; readonly detail?: unknown };
+type EventListener = (event: IncomingEvent) => unknown;
 
 function injectFakeEmitter(Class: { prototype: EventTarget }) {
   // Per-instance registry mapping each event to (user listener -> wrapper), so
@@ -173,24 +174,24 @@ function injectFakeEmitter(Class: { prototype: EventTarget }) {
     return map;
   }
 
-  function messageEventHandler(event: MessageEvent) {
+  function messageEventHandler(event: IncomingEvent) {
     return event.data;
   }
 
   // fakeParentPort routes self's native ErrorEvent (.error) here; emit() sends CustomEvent (.detail)
   const _ErrorEvent = ErrorEvent;
-  function errorEventHandler(event) {
+  function errorEventHandler(event: IncomingEvent) {
     return event instanceof _ErrorEvent ? event.error : event.detail;
   }
 
-  function customEventHandler(event: { detail: unknown }) {
+  function customEventHandler(event: IncomingEvent) {
     return event.detail;
   }
 
   const kEmittedValue = Symbol("emittedValue");
   const defineProperty = Object.defineProperty;
-  function wrapped<E extends Event>(run: (event: E) => unknown, listener: Listener) {
-    return function (event: E) {
+  function wrapped(run: EventListener, listener: Listener) {
+    return function (event: IncomingEvent) {
       return listener.$call(this, kEmittedValue in event ? event[kEmittedValue] : run(event));
     };
   }
@@ -255,7 +256,7 @@ function injectFakeEmitter(Class: { prototype: EventTarget }) {
     // EventTarget drops a {once:true} listener natively, without telling the
     // registry — so purge it here or listenerCount()/eventNames() keep counting
     // a listener that already fired.
-    function onceWrapper(ev: unknown) {
+    function onceWrapper(ev: IncomingEvent) {
       registryFor(target, false)?.get(event)?.delete(listener);
       return wrapper.$call(target, ev);
     }
@@ -861,7 +862,7 @@ function moveMessagePortToContext(port, _context) {
 }
 
 class Worker extends EventEmitter {
-  declare _events: Record<string | symbol, unknown>;
+  declare _events: $Node.Events;
   declare _eventsCount: number;
   #worker: WebWorker;
   #performance;

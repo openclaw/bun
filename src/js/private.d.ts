@@ -7,6 +7,10 @@
 declare function $bundleError(...message: any[]): never;
 
 declare module "bun" {
+  interface FileSink {
+    _getFd(): number | null | undefined;
+  }
+
   namespace SQL.__internal {
     type Define<T, K extends keyof T = never> = T extends any
       ? T & {
@@ -1197,6 +1201,7 @@ declare namespace $Node {
     $end(data?: string | ArrayBufferView | ArrayBuffer, encoding?: string): boolean;
     write(data: string | ArrayBufferView | ArrayBuffer, byteOffset?: number, byteLength?: number): number;
     end(data?: string | ArrayBufferView | ArrayBuffer, byteOffset?: number, byteLength?: number): number;
+    [Symbol.dispose](): number;
     flush(): void;
     shutdown(halfClose?: boolean): void;
     /** The native method takes nothing. `node:net` passes the callback that a libuv handle would call. */
@@ -1724,7 +1729,7 @@ declare namespace $Node {
 
 declare namespace $Node {
   interface FileSink {
-    _getFd(): number;
+    _getFd(): number | null | undefined;
   }
 
   // node:fs. src/runtime/node/node_fs_binding.bind.ts (NodeJSFS), node_fs.rs, Stat.rs, StatFS.rs; src/jsc/bindings/NodeFSStatBinding.cpp, NodeDirent.cpp
@@ -2721,6 +2726,7 @@ declare namespace $Bindgen {
     kill(signal?: number | string): void;
     send(message: unknown, handle?: unknown, options?: object, callback?: (error: Error | null) => void): boolean;
     disconnect(): void;
+    $setChannelRef(enabled: boolean): void;
     ref(): void;
     unref(): void;
   }

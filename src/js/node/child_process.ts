@@ -1292,28 +1292,29 @@ class ChildProcess extends EventEmitter {
               stream.destroy();
               return stream;
             }
-            const result = require("internal/fs/streams").writableFromFileSink(stdin as $Node.FileSink);
-            result.readable = false;
-            result._handle = new StdioPipeHandle(() => stdin._getFd());
             // Node's child.stdin is a net.Socket: forward ref/unref to the
             // FileSink, edge-triggered like a Socket. The sink starts ref'd
             // and #spawn's eager-load loop calls ref() on every slot, so a
             // bare counter would need two unref() calls to take effect.
             let refed = true;
-            result.ref = function ref() {
-              if (!refed) {
-                refed = true;
-                stdin.ref();
-              }
-              return this;
-            };
-            result.unref = function unref() {
-              if (refed) {
-                refed = false;
-                stdin.unref();
-              }
-              return this;
-            };
+            const result = ObjectAssign(require("internal/fs/streams").writableFromFileSink(stdin), {
+              readable: false,
+              _handle: new StdioPipeHandle(() => stdin._getFd()),
+              ref() {
+                if (!refed) {
+                  refed = true;
+                  stdin.ref();
+                }
+                return this;
+              },
+              unref() {
+                if (refed) {
+                  refed = false;
+                  stdin.unref();
+                }
+                return this;
+              },
+            });
             return result;
           }
           case "inherit":
@@ -1385,13 +1386,12 @@ class ChildProcess extends EventEmitter {
         switch (io) {
           case "pipe":
           case "socket-fd": {
-            if (!NetModule) NetModule = require("node:net");
             // #spawn mapped "pipe" at i>=3 to "socket-fd", so the parent-end
             // fd in handle.stdio[i] is UnownedFd: we own it and
             // net.connect({fd}) -> usockets will close it on socket close.
             const fd = handle && handle.stdio[i];
             if (fd == null) return null;
-            const socket = NetModule.connect({ fd });
+            const socket = require("node:net").connect({ fd });
             const nativeHandle = socket._handle;
             this.#extraStdioHandles[i] = nativeHandle;
             this.#closesNeeded++;
@@ -2077,11 +2077,11 @@ function abortChildProcess(child: ChildProcess, killSignal: string | number | un
 
 // Node's Control from lib/internal/child_process.js.
 class Control extends EventEmitter {
-  #handle;
+  #handle: $Bindgen.Subprocess;
   #refs = 0;
   #refExplicitlySet = false;
 
-  constructor(handle) {
+  constructor(handle: $Bindgen.Subprocess) {
     super();
     this.#handle = handle;
   }

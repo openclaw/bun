@@ -1010,7 +1010,7 @@ function globSync(pattern: string | string[], options?: GlobOptions) {
 }
 
 // Keep the last matcher per platform: POSIX backslashes are literal characters.
-const patternCache = [undefined, undefined];
+const patternCache: [Minimatch | undefined, Minimatch | undefined] = [undefined, undefined];
 function matchGlobPattern(path, pattern, windows) {
   validateString(path, "path");
   validateString(pattern, "pattern");
@@ -1081,6 +1081,7 @@ interface MinimatchASTConstructor {
 }
 
 interface Minimatch {
+  pattern: string;
   set: PatternPart[][];
   globParts: string[][];
   match(file: string, partial?: boolean): boolean;
