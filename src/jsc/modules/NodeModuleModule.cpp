@@ -1084,7 +1084,8 @@ static JSC::JSValue callCustomizationHooksExport(Zig::GlobalObject* globalObject
 {
     auto& vm = JSC::getVM(globalObject);
     auto scope = DECLARE_THROW_SCOPE(vm);
-    JSValue mod = globalObject->internalModuleRegistry()->requireId(globalObject, vm, InternalModuleRegistry::Field::InternalModulesCustomizationHooks);
+    JSValue mod = BUN_REQUIRE_INTERNAL_MODULE(globalObject, InternalModulesCustomizationHooks, "node:module.registerHooks",
+        "runResolveHooksBun"_s, "runLoadHooksBun"_s, "getResolvedImportAttributes"_s, "discardResolvedContext"_s, "getResolvedBuiltin"_s);
     RETURN_IF_EXCEPTION(scope, {});
     JSObject* modObject = mod.getObject();
     if (!modObject) [[unlikely]]

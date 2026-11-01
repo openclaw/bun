@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Declare TLS completion and Worker environment dependencies for AOT code generation, and retain native `module.registerHooks()` dispatch through its declared module owner.
+
 - Honor Rust CI's generator-only WebKit setup with a checksum-pinned source archive and reject native build targets in that setup.
 
 - Preserve `node:sqlite` query diagnostics through upstream module loading and AOT hook classification, keep databases open when a subscriber disposes them, publish constructor aliases and statement disposal types, and support custom SQLite libraries without tracing.

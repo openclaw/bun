@@ -1,7 +1,9 @@
 // b.leftOut(): what the table leaves out of a host.
 import { expect, test } from "bun:test";
-import { parseHashTable } from "../../../src/codegen/builtins/collect-static-tables.ts";
-import type { LeftOutDeclaration, Source } from "../../../src/codegen/builtins/declarations.ts";
+import { tempDir } from "harness";
+import { resolve } from "node:path";
+import { collectStaticTables, parseHashTable } from "../../../src/codegen/builtins/collect-static-tables.ts";
+import { Problems, type LeftOutDeclaration, type Source, type SourcedDeclaration } from "../../../src/codegen/builtins/declarations.ts";
 import { leftOut } from "../../../src/codegen/builtins/lib.ts";
 import { ModelBuilder } from "../../../src/codegen/builtins/model-builder.ts";
 
@@ -61,4 +63,51 @@ test("a static table has the rows of the names that are defined", () => {
   expect(keysWith()).toEqual(["always", "first", "second"]);
   expect(keysWith("WITHOUT_OTHER")).toEqual(["always", "first", "second"]);
   expect(keysWith("WITHOUT_FIRST")).toEqual(["always", "instead"]);
+});
+
+function collect(root: string, file: string, table: string) {
+  const declaration: SourcedDeclaration = {
+    declaration: { declares: "StaticTable", holder: "process", table: { file, table } },
+    source: { file: "custom-value.builtins.ts", line: null, origin: "Host", proof: "Structure" },
+  };
+  const problems = new Problems();
+  const members = collectStaticTables([declaration], { Engine: root, Host: root }, problems);
+  return { members: members.map(({ declaration }) => declaration), problems };
+}
+
+test("native process data properties retain their getter and setter symbols", () => {
+  const { members, problems } = collect(
+    resolve(import.meta.dir, "../../.."),
+    "src/jsc/bindings/BunProcess.cpp",
+    "processObjectTable",
+  );
+  expect(problems.lines).toEqual([]);
+  for (const [name, getter, setter] of [
+    ["ppid", "processPpid", "setProcessPpid"],
+    ["title", "processTitle", "setProcessTitle"],
+  ]) {
+    expect(members).toContainEqual(
+      expect.objectContaining({
+        declares: "Member",
+        path: `process.${name}`,
+        kind: "DataProperty",
+        columns: expect.objectContaining({ nativeSymbols: [getter, setter], hasSetter: true }),
+      }),
+    );
+  }
+});
+
+test("read-only native data properties have no setter and unknown attributes still fail", () => {
+  using directory = tempDir("custom-value-table", {
+    "table.cpp": "@begin properties\nvalue readValue CustomValue|ReadOnly\nbad readBad UnknownValue\n@end\n",
+  });
+  const { members, problems } = collect(String(directory), "table.cpp", "properties");
+  expect(members).toContainEqual(
+    expect.objectContaining({
+      path: "process.value",
+      kind: "DataProperty",
+      columns: expect.objectContaining({ nativeSymbols: ["readValue"], hasSetter: false }),
+    }),
+  );
+  expect(problems.lines).toEqual([expect.stringContaining("process.bad: unknown attribute UnknownValue")]);
 });
