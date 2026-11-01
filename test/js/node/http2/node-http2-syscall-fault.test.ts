@@ -217,23 +217,29 @@ describe.skipIf(skip)("node:http2 under injected syscall faults", () => {
   });
 
   // Hive-pool user-poison, so only ASAN observes the freed-slot read.
-  test.skipIf(!isASAN)(
-    "send → backpressure then session.destroy() inside the drained write callback does not UAF",
-    async () => {
-      // Runs in a subprocess: the failure mode is an ASAN abort inside
-      // on_native_writable, not an exception the test runner can catch.
-      await using proc = Bun.spawn({
-        cmd: [bunExe(), path.join(import.meta.dir, "node-http2-writable-destroy-fixture.ts")],
-        env: { ...bunEnv, ASAN_OPTIONS: [bunEnv.ASAN_OPTIONS, "symbolize=0"].filter(Boolean).join(":") },
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
-      expect(stderr).not.toContain("AddressSanitizer");
-      expect(stdout.trim()).toBe("ok");
-      expect(exitCode).toBe(0);
-    },
-  );
+  for (const transport of ["TCP", "TLS"]) {
+    test.skipIf(!isASAN)(
+      `send → backpressure then session.destroy() inside the drained ${transport} write callback does not UAF`,
+      async () => {
+        // Runs in a subprocess: the failure mode is an ASAN abort inside
+        // on_native_writable, not an exception the test runner can catch.
+        await using proc = Bun.spawn({
+          cmd: [
+            bunExe(),
+            path.join(import.meta.dir, "node-http2-writable-destroy-fixture.ts"),
+            ...(transport === "TLS" ? ["--tls"] : []),
+          ],
+          env: { ...bunEnv, ASAN_OPTIONS: [bunEnv.ASAN_OPTIONS, "symbolize=0"].filter(Boolean).join(":") },
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+        expect(stderr).not.toContain("AddressSanitizer");
+        expect(stdout.trim()).toBe("ok");
+        expect(exitCode).toBe(0);
+      },
+    );
+  }
 });
 
 describe.skipIf(skip)("node:http2 seeded short-I/O fuzz", () => {

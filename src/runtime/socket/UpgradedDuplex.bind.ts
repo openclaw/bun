@@ -14,7 +14,19 @@ export const onReceivedData = b.fn({
 });
 export const onEnd = b.fn({ ...listener, export: "Bun__UpgradedDuplex__onEnd" });
 export const onWritable = b.fn({ ...listener, export: "Bun__UpgradedDuplex__onWritable" });
-export const onCloseJS = b.fn({ ...listener, export: "Bun__UpgradedDuplex__onCloseJS" });
+export const onCloseJS = b.fn({ ...listener, export: "Bun__UpgradedDuplex__onCloseJS", throws: true });
+export const onWriteComplete = b.fn({
+  ...listener,
+  export: "Bun__UpgradedDuplex__onWriteComplete",
+  args: { error: b.any },
+  throws: true,
+});
+export const dispatchWriteComplete = b.fn({
+  ...listener,
+  export: "Bun__UpgradedDuplex__dispatchWriteComplete",
+  args: { status: b.i32 },
+});
+export const dispatchClose = b.fn({ ...listener, export: "Bun__UpgradedDuplex__dispatchClose" });
 
 export const endTransport = b.fn({
   export: "Bun__UpgradedDuplex__endTransport",

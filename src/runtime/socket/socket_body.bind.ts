@@ -25,7 +25,21 @@ function socket<SSL extends boolean>(ssl: SSL) {
     internalFields: [
       "handlers",
       "data",
-      ...(ssl ? ["duplexOrigin", "duplexOnData", "duplexOnEnd", "duplexOnWritable", "duplexOnClose"] : []),
+      "nativeAttachments",
+      ...(ssl
+        ? [
+            "nativeShutdown",
+            "nativeTransportToken",
+            "duplexOrigin",
+            "duplexOnData",
+            "duplexOnEnd",
+            "duplexOnWritable",
+            "duplexOnClose",
+            "duplexOnWrite",
+            "duplexWriteDispatch",
+            "duplexCloseDispatch",
+          ]
+        : []),
     ],
     proto: {
       alpnProtocol: { ...js, getter: b.any },
@@ -108,7 +122,23 @@ export const releaseHeldFlight = b.fn({ args: { socket: SocketHandle } });
 export const checkServerIdentityInHandshake = b.fn({ args: { socket: SocketHandle, inHandshake: b.bool } });
 export const firstFlightBeforeFin = b.fn({ args: { socket: SocketHandle } });
 export const isNamedPipeSocket = b.fn({ args: { socket: SocketHandle }, returns: b.bool });
+export const hasNativeSocketListeners = b.fn({ args: { socket: SocketHandle }, returns: b.bool });
 export const getBufferedAmount = b.fn({ args: { socket: SocketHandle }, returns: b.usize });
+
+// Internal StreamBase ownership for node:tls; generic Duplexes retain JSStreamSocket.
+export const attachNativeTLSTransport = b.fn({
+  args: { socket: TLSSocket, transport: SocketHandle, previousWrites: b.bool, initialData: b.any, token: b.any },
+  returns: b.bool,
+  capability: "js",
+  throws: true,
+});
+export const nativeTLSPreviousWritesDone = b.fn({ args: { socket: TLSSocket }, capability: "js" });
+export const shutdownNativeTLSTransport = b.fn({
+  args: { socket: SocketHandle, callback: b.any },
+  returns: b.bool,
+  capability: "js",
+});
+
 /** `tls` is `true` or what `SSLConfig` takes, and can hold the `secureContext`. */
 export const DuplexTLSOptions = b.dictionary({
   isNodeSocket: b.bool.loose.default(false),
