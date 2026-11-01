@@ -83,8 +83,7 @@ describe("compile/aot/types of node's classes", () => {
         signal: null,
       });
       expect(ran.stderr).not.toMatch(/^error\b/m);
-    }),
-  );
+    }));
 
   test(
     "a position of such a type is not read by name",

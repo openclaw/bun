@@ -3,7 +3,12 @@ import { expect, test } from "bun:test";
 import { tempDir } from "harness";
 import { resolve } from "node:path";
 import { collectStaticTables, parseHashTable } from "../../../src/codegen/builtins/collect-static-tables.ts";
-import { Problems, type LeftOutDeclaration, type Source, type SourcedDeclaration } from "../../../src/codegen/builtins/declarations.ts";
+import {
+  Problems,
+  type LeftOutDeclaration,
+  type Source,
+  type SourcedDeclaration,
+} from "../../../src/codegen/builtins/declarations.ts";
 import { leftOut } from "../../../src/codegen/builtins/lib.ts";
 import { ModelBuilder } from "../../../src/codegen/builtins/model-builder.ts";
 
