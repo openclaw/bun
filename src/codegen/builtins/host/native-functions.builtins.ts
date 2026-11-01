@@ -323,7 +323,7 @@ export default b.declarations(
     implementation: b.hostCall,
   }),
   b.static(cpp("BunProcess.cpp", "jsFunctionShutdownStdio"), {
-    args: { fd: b.i32, callback: b.callable },
+    args: { fd: b.f64, callback: b.callable },
     returns: b.undefined,
     capability: "heap",
     throws: true,

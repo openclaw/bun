@@ -178,23 +178,21 @@ export default b.declarations(
     implementation: b.hostCall,
   }),
   b.static("process.mainModule", b.property(b.union(moduleObject, b.undefined))),
-  b.class("node:module", {
-    hasPrototype: false,
-    call: {
-      args: { operands: b.any.rest },
-      returns: b.undefined,
-      capability: "none",
-      uses: { operands: b.inspected },
-      implementation: b.generic,
-    },
-    construct: {
-      args: { id: b.any.optional, parent: b.any.optional },
-      returns: moduleObject,
-      capability: "heap",
-      throws: true,
-      uses: { id: b.inspected, parent: [b.retained] },
-      implementation: b.generic,
-    },
+  // Module is a callable export; its constructed CommonJS modules have a separate native class.
+  b.callOfConstructor("node:module", {
+    args: { operands: b.any.rest },
+    returns: b.undefined,
+    capability: "none",
+    uses: { operands: b.inspected },
+    implementation: b.generic,
+  }),
+  b.construction("node:module", {
+    args: { id: b.any.optional, parent: b.any.optional },
+    returns: moduleObject,
+    capability: "heap",
+    throws: true,
+    uses: { id: b.inspected, parent: [b.retained] },
+    implementation: b.generic,
   }),
   b.same("node:module.Module", "node:module"),
   b.extend("node:module.Module", { mutability: "AlwaysLocked" }),

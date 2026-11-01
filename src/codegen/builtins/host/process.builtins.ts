@@ -183,7 +183,25 @@ const readsListenerLists = (signature: Pick<b.SignatureOptions, "args" | "return
     reads: listenerLists,
   });
 
-const listsListeners = readsListenerLists({ args: { event: b.propertyKey.loose }, returns: newArrayOf(b.any) });
+const listsListeners = methodOfEventEmitter({
+  args: { event: b.propertyKey.loose },
+  returns: newArrayOf(b.any),
+  capability: "js",
+  throws: true,
+  uses: { this: b.inspected },
+  reads: listenerLists,
+});
+
+// A once wrapper captures its emitter; caching it also assigns .listener through an ordinary property put.
+const listsRawListeners = methodOfEventEmitter({
+  args: { event: b.propertyKey.loose },
+  returns: newArrayOf(b.any),
+  capability: "js",
+  throws: true,
+  uses: { this: [b.retained] },
+  reads: listenerLists,
+  writes: listenerLists,
+});
 
 // It calls the listeners that were added under the event, each with the values and with the object that a listener was last added through as `this`.
 const emitsEvent = {
@@ -724,7 +742,7 @@ export default b.declarations(
       getMaxListeners: readsListenerLists({ returns: b.f64 }),
       listenerCount: readsListenerLists({ args: { event: b.propertyKey.loose }, returns: b.f64 }),
       listeners: listsListeners,
-      rawListeners: listsListeners,
+      rawListeners: listsRawListeners,
     },
   }),
   b.inherits("process", "%EventEmitter%.prototype"),

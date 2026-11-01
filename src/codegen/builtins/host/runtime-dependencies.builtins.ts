@@ -280,6 +280,16 @@ const streamedModuleFunctions = functionsIn("builtins/WasmStreaming", "consumeSt
 const fakeTimerFunctions = functionsIn("builtins/useFakeTimers", "createPerformance");
 
 const calledFunctionsByPath: Readonly<Record<b.BuiltinPath, readonly b.CalledFunctionSpec[]>> = {
+  "%EventEmitter%.prototype.rawListeners": [
+    b.functionUsed(
+      b.functionIn("builtins/EventEmitterOnce", "createOnceWrapper"),
+      b.calledByHost({
+        times: "Repeatedly",
+        this: b.undefined,
+        args: [b.nativeMemory, b.union(b.string, b.symbol), b.nativeMemory, b.bool],
+      }),
+    ),
+  ],
   "%ModuleObject%.children": moduleChildrenFunctions,
   "%ModuleObject%.parent": moduleChildrenFunctions,
   "%ModuleRequire%.cache": requireCacheFunctions,
@@ -349,6 +359,12 @@ const calledFunctionsByPath: Readonly<Record<b.BuiltinPath, readonly b.CalledFun
     ),
   ],
   "node:module._initPaths": [heldAs(b.functionIn("builtins/NodeModuleObject", "_initPaths"), "node:module._initPaths")],
+  "node:module.registerHooks": [
+    heldAs(b.functionIn("builtins/NodeModuleObject", "registerHooks"), "node:module.registerHooks"),
+  ],
+  "node:module.stripTypeScriptTypes": [
+    heldAs(b.functionIn("builtins/NodeModuleObject", "stripTypeScriptTypes"), "node:module.stripTypeScriptTypes"),
+  ],
   "node:module._cache": requireCacheFunctions,
   "process._rawDebug": [heldAs(processInternal("rawDebug"), "process._rawDebug")],
   "process.allowedNodeEnvironmentFlags": builtBy(

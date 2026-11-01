@@ -44,6 +44,48 @@ server.listen(0, async () => {
 `;
 
 describe("compile/aot/types of node's classes", () => {
+  test("native module utilities and once wrappers remain callable", () =>
+    slot(async () => {
+      using dir = tempDir("aot-native-module-utilities", {
+        "main.ts": `
+          import Module, { createRequire, registerHooks, stripTypeScriptTypes } from "node:module";
+          const module = new Module("aot-module");
+          console.log(module.id, module.children.length, typeof module.require);
+          let resolved = false;
+          const hooks = registerHooks({
+            resolve(specifier, context, next) {
+              if (specifier === "node:path") resolved = true;
+              return next(specifier, context);
+            },
+          });
+          const path = createRequire(import.meta.url)("node:path");
+          hooks.deregister();
+          console.log(resolved, path.basename("/a/b"));
+          console.log(stripTypeScriptTypes("const value: number = 42;").includes(": number"));
+          let heard = 0;
+          process.once("beforeExit", function(value) {
+            if (this !== process) throw new Error("wrong once receiver");
+            heard += value;
+          });
+          const [once] = process.rawListeners("beforeExit");
+          once(42);
+          once(100);
+          console.log(heard, process.listenerCount("beforeExit"));
+        `,
+      });
+      const folder = String(dir);
+      const executable = join(folder, isWindows ? "app.exe" : "app");
+      built(await spawned([bunExe(), ...compileCommand, "main.ts", "--outfile", executable], folder, bunEnv));
+      const ran = await spawned([executable], folder, bunEnv);
+      expect({ stdout: ran.stdout, exitCode: ran.exitCode, signal: ran.signal }).toEqual({
+        stdout: "aot-module 0 function\ntrue b\nfalse\n42 0\n",
+        exitCode: 0,
+        signal: null,
+      });
+      expect(ran.stderr).not.toMatch(/^error\b/m);
+    }),
+  );
+
   test(
     "a position of such a type is not read by name",
     () =>
