@@ -36,6 +36,63 @@ async function run(script: string | string[], expected = "ok", env: Record<strin
 // build enables); release builds may read garbage without trapping. Each
 // test spawns an independent subprocess so they can run concurrently.
 describe.concurrent.skipIf(!isASAN && !isDebug)("tls.connect({socket: Duplex}) does not read freed Handlers", () => {
+  for (const phase of ["startup", "completion"]) {
+    test.serial(`terminating a worker releases queued TLS ${phase}`, async () => {
+      const workerSource = `
+        const tls = require("node:tls");
+        const { Duplex } = require("node:stream");
+        const { once } = require("node:events");
+        const { parentPort, workerData } = require("node:worker_threads");
+        (async () => {
+          let a, b;
+          const side = peer => new Duplex({
+            allowHalfOpen: true,
+            read() {},
+            write(chunk, encoding, callback) { peer().push(chunk); callback(); },
+          });
+          a = side(() => b);
+          b = side(() => a);
+          const server = new tls.TLSSocket(b, { isServer: true, ...workerData.certs });
+          const client = tls.connect({ socket: a, rejectUnauthorized: false });
+          server.on("error", error => { throw error; });
+          client.on("error", error => { throw error; });
+          if (workerData.phase === "completion") {
+            await once(client, "secureConnect");
+            await new Promise(resolve => setImmediate(resolve));
+            let completion;
+            b.write = (chunk, encoding, callback) => {
+              completion = typeof encoding === "function" ? encoding : callback;
+              return true;
+            };
+            server.write("x", () => {});
+            if (typeof completion !== "function") throw new Error("missing ciphertext completion");
+            completion();
+          }
+          // Stop this invocation before StartTLS/the completion Immediate can run.
+          parentPort.postMessage(workerData.phase);
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);
+        })().catch(error => { throw error; });
+      `;
+      await run(`
+        const { Worker } = require("node:worker_threads");
+        const { once } = require("node:events");
+        const assert = require("node:assert/strict");
+        const worker = new Worker(${JSON.stringify(workerSource)}, {
+          eval: true,
+          workerData: { phase: ${JSON.stringify(phase)}, certs: ${JSON.stringify(tlsCert)} },
+        });
+        try {
+          const [ready] = await once(worker, "message");
+          assert.equal(ready, ${JSON.stringify(phase)});
+          assert.equal(await worker.terminate(), 1);
+          console.log("ok");
+        } finally {
+          await worker.terminate();
+        }
+      `);
+    });
+  }
+
   test("closing a duplex does not call its throwing end method", async () => {
     // Closing once called end() after freeing the Handlers. Like Node, destruction
     // now avoids end() entirely, including when the transport emits close.

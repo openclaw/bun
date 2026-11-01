@@ -1157,6 +1157,8 @@ declare namespace $Node {
   interface TLSUpgradeOptions<Data> {
     data: Data;
     tls: unknown;
+    /** `upgradeDuplexToTLS`: the transport has `net.Socket` lifecycle semantics. */
+    isNodeSocket?: boolean;
     /** The table of handlers (`open`, `data`, `close` ..). */
     socket: object;
     isServer?: boolean;

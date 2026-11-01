@@ -6,10 +6,10 @@
  * `.github/workflows/openclaw-release.yml`.
  *
  *   bun scripts/openclaw-release/release.ts tag [--commit <rev>] [--rebuild <n>]
- *   bun scripts/openclaw-release/release.ts plan [--tag <tag>] [--publish] [--windows-signed]
+ *   bun scripts/openclaw-release/release.ts plan [--tag <tag>] [--publish] [--windows-signed] [--qualify-tls]
  *   bun scripts/openclaw-release/release.ts provision --source <dir> --target <t>...
  *   bun scripts/openclaw-release/release.ts build --source <dir> --target <t> --out <dir>
- *   bun scripts/openclaw-release/release.ts smoke --zip <zip> --target <t> --commit <sha> --webkit <sha>
+ *   bun scripts/openclaw-release/release.ts smoke --zip <zip> --target <t> --commit <sha> --webkit <sha> [--qualify-tls --source <dir> --out <reports>]
  *   bun scripts/openclaw-release/release.ts manifest --dist <dir> --tag <tag> --commit <sha> --out <dir>
  *
  * Every command takes `--source <dir>`, the checkout of the commit being
@@ -27,8 +27,9 @@ import {
   lstatSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   utimesSync,
@@ -406,8 +407,96 @@ export function zip(path: string, dir: string, files: string[], mtime: number): 
 
 // ─────────────────────────────────────────────────────────────── smoke test
 
+export const tlsQualificationFiles = [
+  "test/js/bun/net/socket-retention.test.ts",
+  "test/js/node/tls/node-tls-duplex-end-verify.test.ts",
+  "test/js/node/tls/node-tls-duplex-close-throw-uaf.test.ts",
+  "test/js/node/tls/node-tls-raw-end.test.ts",
+  "test/js/node/tls/node-tls-wrapped-socket-close.test.ts",
+  "test/js/node/http2/node-http2-upgrade.test.mts",
+] as const;
+
+export function validateTLSQualification(names: readonly TargetName[], publish = false, tag = ""): void {
+  if (publish || tag) throw new Error("TLS qualification requires a dry run without a release tag");
+  if (names.some(name => targets[name].abi === "musl")) {
+    throw new Error("TLS qualification requires native runners; musl containers have no qualified Node.js reference");
+  }
+}
+
+/** Checks the single-file report emitted by Bun, including declared skips. This is not a general XML reader. */
+export function tlsQualificationResult(xml: string): { passed: number; skipped: number } {
+  const root = /^\s*(?:<\?xml[^?]*\?>\s*)?<testsuites\b([^>]*)>/.exec(xml);
+  const count = (name: string) => {
+    const value = root && new RegExp(`\\s${name}="(\\d+)"`).exec(root[1]!)?.[1];
+    if (value === null || value === undefined) throw new Error(`TLS report is missing a valid ${name} count`);
+    const result = Number(value);
+    if (!Number.isSafeInteger(result)) throw new Error(`TLS report has an invalid ${name} count`);
+    return result;
+  };
+  const tests = count("tests");
+  const skipped = count("skipped");
+  const failures = count("failures");
+  if (!/<\/testsuites>\s*$/.test(xml) || (xml.match(/<testsuites\b/g) ?? []).length !== 1) {
+    throw new Error("TLS report is incomplete or contains multiple runs");
+  }
+  if (tests !== (xml.match(/<testcase\b/g) ?? []).length || skipped !== (xml.match(/<skipped\b/g) ?? []).length) {
+    throw new Error("TLS report counts do not match its test cases");
+  }
+  if (failures !== 0 || /\serrors="(?!0")/.test(root![1]!) || /<(?:failure|error)\b/.test(xml) || tests <= skipped) {
+    throw new Error("TLS report must contain passing cases and no failures or errors");
+  }
+  return { passed: tests - skipped, skipped };
+}
+
+function qualifyTLS(exe: string, t: Target, source: string, reports: string, commit: string, webkit: string): void {
+  validateTLSQualification([t.name]);
+  const facts = sourceFacts(source, "HEAD");
+  if (facts.commit !== commit || facts.webkitVersion !== webkit) {
+    throw new Error("TLS qualification checkout does not match the artifact's source and WebKit commits");
+  }
+  const node = Bun.which("node");
+  if (!node) throw new Error("TLS qualification requires Node.js 26.12.1 on PATH");
+  const reference = JSON.parse(
+    run(
+      [
+        node,
+        "-e",
+        `console.log(JSON.stringify({
+    name: process.release.name, version: process.versions.node, bun: process.versions.bun ?? null,
+    platform: process.platform, arch: process.arch, exe: process.execPath
+  }))`,
+      ],
+      {},
+    ),
+  );
+  if (
+    reference.name !== "node" ||
+    reference.version !== "26.12.1" ||
+    reference.bun !== null ||
+    reference.platform !== (t.os === "windows" ? "win32" : t.os) ||
+    reference.arch !== t.arch ||
+    realpathSync(reference.exe) !== realpathSync(node)
+  ) {
+    throw new Error("TLS qualification requires genuine Node.js 26.12.1 for the artifact's platform and architecture");
+  }
+  mkdirSync(reports, { recursive: true });
+  for (const file of tlsQualificationFiles) {
+    const report = join(reports, `${basename(file)}.xml`);
+    // A failed invocation must never reuse a report from an earlier attempt.
+    rmSync(report, { force: true });
+    run([exe, "test", file, "--reporter=junit", `--reporter-outfile=${report}`], { cwd: source, stdio: "inherit" });
+    console.log(`${file}: ${JSON.stringify(tlsQualificationResult(readFileSync(report, "utf8")))}`);
+  }
+}
+
 /** Runs the binary of `zipPath` on this machine and checks it is the build the release says it is. */
-export function smoke(zipPath: string, name: TargetName, commit: string, webkitVersion: string): void {
+export function smoke(
+  zipPath: string,
+  name: TargetName,
+  commit: string,
+  webkitVersion: string,
+  qualification?: { source: string; reports: string },
+): void {
   const t = targets[name];
   const dir = mkdtempSync(join(tmpdir(), "openclaw-smoke-"));
   try {
@@ -458,6 +547,7 @@ export function smoke(zipPath: string, name: TargetName, commit: string, webkitV
       problems.push(`the DFG JIT did not compile (numberOfDFGCompiles: ${facts.dfg})`);
     if (problems.length) throw new Error(`${name} smoke test failed:\n  ${problems.join("\n  ")}`);
     console.log(`${name}: ${run([exe, "--revision"], {}).trim()}, WebKit ${facts.webkit}, DFG compiles: ${facts.dfg}`);
+    if (qualification) qualifyTLS(exe, t, qualification.source, qualification.reports, commit, webkitVersion);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -710,6 +800,7 @@ async function main(argv: string[]): Promise<void> {
       rebuild: { type: "string" },
       tag: { type: "string" },
       publish: { type: "boolean", default: false },
+      "qualify-tls": { type: "boolean", default: false },
       "windows-signed": { type: "boolean", default: false },
       main: { type: "string", default: "origin/main" },
       target: { type: "string", multiple: true },
@@ -724,6 +815,9 @@ async function main(argv: string[]): Promise<void> {
     },
   });
   const source = resolve(values.source!);
+  if (values["qualify-tls"] && command !== "plan" && command !== "smoke") {
+    throw new Error("--qualify-tls is supported only by plan and smoke");
+  }
   const names = (): TargetName[] => {
     const list = [...(values.target ?? []), ...(values.targets ? [values.targets] : [])].join(",");
     const parsed = parseTargets(list);
@@ -752,6 +846,7 @@ async function main(argv: string[]): Promise<void> {
         }
       }
       const built = planTargets(values.targets, values.publish, values["windows-signed"]);
+      if (values["qualify-tls"]) validateTLSQualification(built, values.publish, tag);
       output("matrix", JSON.stringify(matrix(built, values.publish)));
       output("darwin", String(built.some(name => targets[name].os === "darwin")));
       output("windows", String(built.some(name => targets[name].os === "windows")));
@@ -770,6 +865,7 @@ async function main(argv: string[]): Promise<void> {
       output("version", facts.version);
       output("webkit", facts.webkitVersion);
       output("publish", String(values.publish));
+      output("qualify-tls", String(values["qualify-tls"]));
       output("windows-signed", String(values["windows-signed"]));
       return;
     }
@@ -784,7 +880,14 @@ async function main(argv: string[]): Promise<void> {
     }
     case "smoke": {
       const name = names()[0]!;
-      smoke(resolve(values.zip!), name, values.commit!, values.webkit!);
+      if (values["qualify-tls"]) validateTLSQualification([name], values.publish, values.tag);
+      smoke(
+        resolve(values.zip!),
+        name,
+        values.commit!,
+        values.webkit!,
+        values["qualify-tls"] ? { source, reports: resolve(values.out ?? "tls-results") } : undefined,
+      );
       return;
     }
     case "manifest": {
