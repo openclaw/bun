@@ -510,6 +510,7 @@ type InternalEnvMap = Record<string, string>;
 type EditWindowsEnvVarCb = (key: string, value: null | string) => void;
 type CoerceEnvVarForWrite = (key: string, value: unknown) => string;
 type ResetEnvVarForDelete = (key: string) => void;
+type GetSharedEnv = () => InternalEnvMap | undefined;
 
 export function windowsEnv(
   internalEnv: InternalEnvMap,
@@ -517,7 +518,7 @@ export function windowsEnv(
   editWindowsEnvVar: EditWindowsEnvVarCb,
   coerceForWrite: CoerceEnvVarForWrite,
   resetForDelete: ResetEnvVarForDelete,
-  getSharedEnv: () => InternalEnvMap | undefined,
+  getSharedEnv: GetSharedEnv,
   customInspect: symbol,
 ) {
   let sharedEnv;
