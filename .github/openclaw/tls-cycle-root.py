@@ -162,7 +162,6 @@ def inspect(debugger):
     points = {}
     dynamic = {}
     watch = None
-    decoded_functions = {}
 
     def debugger_command(text):
         result = lldb.SBCommandReturnObject()
@@ -273,9 +272,9 @@ def inspect(debugger):
             report['last_stop'] = dict(id=process.GetStopID(), threads=[dict(
                 thread=t.GetThreadID(), reason=t.GetStopReason(),
                 data=[t.GetStopReasonDataAtIndex(i) for i in range(min(t.GetStopReasonDataCount(), 32))],
-                description=t.GetStopDescription(512), pc=t.GetFrameAtIndex(0).GetPC(),
+                pc=t.GetFrameAtIndex(0).GetPC(),
                 sp=t.GetFrameAtIndex(0).GetSP(), fp=t.GetFrameAtIndex(0).GetFP(),
-                function=t.GetFrameAtIndex(0).GetDisplayFunctionName()) for t in process])
+                ) for t in process])
             unexpected = [t.GetThreadID() for t in process if t.GetStopReason() not in
                           (lldb.eStopReasonInvalid, lldb.eStopReasonNone,
                            lldb.eStopReasonWatchpoint, lldb.eStopReasonBreakpoint)]
@@ -296,30 +295,9 @@ def inspect(debugger):
                     value = word(row['address'])
                     event = dict(thread=thread.GetThreadID(), gc_count=report['gc_count'],
                         before=row['last_value'], after=value, stop_pc=pc,
-                        stop_file_pc=target.ResolveLoadAddress(pc).GetFileAddress())
-                    # Capture every value change; expensive context is useful only for potential cell pointers.
-                    if 0x10000 <= value < 2**44 and value % 16 == 0:
-                        function, symbol = frame.GetFunction(), frame.GetSymbol()
-                        start = function.GetStartAddress() if function.IsValid() else symbol.GetStartAddress()
-                        image = start.GetModule()
-                        key = (image.GetUUIDString(), start.GetFileAddress()) if image.IsValid() and image.GetUUIDString() else None
-                        cached = decoded_functions.get(key) if key is not None else None
-                        if cached is None:
-                            decoded = function.GetInstructions(target) if function.IsValid() else symbol.GetInstructions(target)
-                            ends = {}
-                            if 0 < decoded.GetSize() <= 16384:
-                                ends = {decoded.GetInstructionAtIndex(i).GetAddress().GetLoadAddress(target)
-                                        + decoded.GetInstructionAtIndex(i).GetByteSize(): i
-                                        for i in range(decoded.GetSize())}
-                            cached = (decoded, ends)
-                            if key is not None:
-                                decoded_functions[key] = cached
-                        decoded, ends = cached
-                        index = ends.get(pc)
-                        event.update(registers={name: reg(frame, name) for name in
-                            ('rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi', 'rbp', 'rsp', 'r8', 'r9', 'r10', 'r11', 'r12', 'r13', 'r14', 'r15', 'rflags')},
-                            frames=frames(thread), preceding_instruction=[] if index is None else instructions(decoded, index, index + 1),
-                            instruction_window=[] if index is None else instructions(decoded, max(0, index - 5), min(decoded.GetSize(), index + 3)))
+                        stop_file_pc=target.ResolveLoadAddress(pc).GetFileAddress(),
+                        registers={name: reg(frame, name) for name in
+                            ('rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi', 'rbp', 'rsp', 'r8', 'r9', 'r10', 'r11', 'r12', 'r13', 'r14', 'r15', 'rflags')})
                     row['writes'].append(event)
                     row['last_value'] = value
                     handled = True
@@ -348,7 +326,7 @@ def inspect(debugger):
                             initial = word(address)
                             report['word_watch'] = dict(address=address, initial_value=initial, last_value=initial,
                                 initial_owner=owner, writes=[], write_mode='on_modify',
-                                context_filter='0x10000 <= value < 2**44 and value % 16 == 0; all value changes retain values and PC',
+                                context='all value changes retain PCs and post-store general registers; decoding and writer-stack capture are separate',
                                 claim='value-changing stores only; equal-value stores may be unreported; one address across frame/storage reuse')
                             report['watch_admission'] = debugger_state()
                             assert all(row['succeeded'] for row in report['watch_admission'])
@@ -453,7 +431,7 @@ def inspect(debugger):
                                       for channel in ('lldb', 'gdb-remote')]
             report['failure_debugger_state'] = debugger_state()
             if process is not None and process.IsValid() and process.GetState() == lldb.eStateStopped:
-                report['failure_threads'] = [dict(thread=t.GetThreadID(), frames=frames(t),
+                report['failure_threads'] = [dict(thread=t.GetThreadID(), description=t.GetStopDescription(512), frames=frames(t),
                     stop_instructions=instructions(target.ReadInstructions(t.GetFrameAtIndex(0).GetPCAddress(), 4)))
                     for t in process if t.GetStopReason() not in (lldb.eStopReasonInvalid, lldb.eStopReasonNone)]
         except BaseException as diagnostic_error:
@@ -484,7 +462,7 @@ def seal():
         owner = next(nodes[i:i + 7] for i in range(0, len(nodes), 7) if nodes[i] in external)
         assert raw_graph['nodeClassNames'][owner[2]] == 'JSLexicalEnvironment'
         cell = int(owner[5], 16)
-        assert 0x10000 <= cell < 2**44 and cell % 16 == 0, 'owner falls outside the detailed-context filter'
+        assert cell > 0 and cell % 16 == 0
         edges = raw_graph['edges']
         assert all(edges[i + 1] != owner[0] for i in range(0, len(edges), 4))
         assert owner[0] not in raw_graph['roots'][::3]
@@ -505,7 +483,7 @@ def seal():
                     accepted=cell in span['accepted_roots'], physical_frames=owners))
         marks = [m for m in capture['marks'] if m['cell'] == cell]
         watched = capture['word_watch']
-        owner_writes = [row for row in watched['writes'] if row['after'] == cell]
+        owner_writes = [row for row in watched['writes'] if row['after'] == cell and row['before'] != cell]
         watch_join = dict(address=watched['address'], initial_value_matches=watched['initial_value'] == cell,
             gc32_return_value_matches=watched['gc32_return_value'] == cell,
             accepted_root_matches=any(m['accepted'] and m['address'] == watched['address'] for m in matches),
