@@ -510,6 +510,7 @@ mod c {
         pub(super) fn us_loop_free(loop_: *mut Loop);
         pub(super) safe fn us_quic_loop_flush_if_pending(loop_: &Loop);
         pub(super) safe fn us_nq_loop_drain(loop_: &Loop);
+        #[cfg(windows)]
         pub(super) safe fn us_loop_run(loop_: &Loop);
         #[cfg(windows)]
         pub(super) safe fn us_loop_pump(loop_: &Loop);

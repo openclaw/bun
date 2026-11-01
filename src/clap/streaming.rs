@@ -177,7 +177,7 @@ where
                 if let Some(unknown) = self.unknown_long_flags.as_deref_mut() {
                     unknown.push(clap::UnknownLongFlag {
                         name,
-                        is_from_bun_options: self.iter.last_is_from_bun_options(),
+                        is_from_bun_options: self.iter.last_is_from_options_env(),
                     });
                 }
 
@@ -1232,7 +1232,7 @@ mod tests {
             self.args.remain
         }
 
-        fn last_is_from_bun_options(&self) -> bool {
+        fn last_is_from_options_env(&self) -> bool {
             self.args.remain.len() >= self.typed_count
         }
     }

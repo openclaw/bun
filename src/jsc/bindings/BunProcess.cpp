@@ -75,6 +75,7 @@
 #include "ErrorCode.h"
 #include "GeneratedIpcHost.h"
 #include "GeneratedFileSink.h"
+#include "GeneratedNodeProcess.h"
 
 #include "napi_handle_scope.h"
 #include "napi_external.h"
@@ -206,7 +207,6 @@ extern "C" void Bun__ensureProcessIPCInitialized(JSGlobalObject*);
 extern "C" const char* Bun__githubURL;
 extern "C" const char* Bun__sqlite3_version();
 extern "C" const char* Bun__typescript_version();
-#include "GeneratedNodeProcess.h"
 
 extern "C" void Process__emitDisconnectEvent(Zig::GlobalObject* global);
 extern "C" void Process__emitErrorEvent(Zig::GlobalObject* global, EncodedJSValue value);

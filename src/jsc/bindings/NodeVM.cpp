@@ -1338,7 +1338,7 @@ bool NodeVMGlobalObject::defineOwnProperty(JSObject* cell, JSGlobalObject* globa
     auto scope = DECLARE_THROW_SCOPE(vm);
 
     auto* thisObject = uncheckedDowncast<NodeVMGlobalObject>(cell);
-    if (thisObject->isNotContextified() || !thisObject->m_sandbox) {
+    if (!thisObject->m_sandbox) {
         RELEASE_AND_RETURN(scope, Base::defineOwnProperty(cell, globalObject, propertyName, descriptor, shouldThrow));
     }
 
@@ -1572,7 +1572,7 @@ const ClassInfo NodeVMGlobalObject::s_info = { "NodeVMGlobalObject"_s, &Base::s_
 bool NodeVMGlobalObject::deleteProperty(JSCell* cell, JSGlobalObject* globalObject, PropertyName propertyName, JSC::DeletePropertySlot& slot)
 {
     auto* thisObject = uncheckedDowncast<NodeVMGlobalObject>(cell);
-    if (thisObject->isNotContextified() || !thisObject->m_sandbox) {
+    if (!thisObject->m_sandbox) {
         return Base::deleteProperty(cell, globalObject, propertyName, slot);
     }
 

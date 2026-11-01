@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Restore native compilation after the upstream sync by aligning injected-option parsing, event-loop declarations, generated process bindings, VM sandbox checks, and module-loader arguments with their current owners.
+
 - Restore native builds by removing unused UTF-16 path helpers reintroduced during the upstream merge.
 
 - Preserve raw stream failure values across shared completion, destruction, aggregation, pipeline, HTTP, web stream, socket, and TTY adapter contracts, and keep HTTP queue, fallback request, worker cleanup, and native TLS handle types aligned with their runtime owners.

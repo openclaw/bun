@@ -198,10 +198,10 @@ JSC::JSValue createNodeV8Binding(JSC::JSGlobalObject* globalObject)
     auto scope = DECLARE_THROW_SCOPE(vm);
     JSC::JSObject* object = JSC::constructEmptyObject(vm, globalObject->nullPrototypeObjectStructure());
     auto* magic = constructEmptyArray(globalObject, nullptr, bufferEnvelopeMagic.size());
-    RETURN_IF_EXCEPTION(scope, nullptr);
+    RETURN_IF_EXCEPTION(scope, {});
     for (unsigned i = 0; i < bufferEnvelopeMagic.size(); ++i) {
         magic->putDirectIndex(globalObject, i, jsNumber(bufferEnvelopeMagic[i]));
-        RETURN_IF_EXCEPTION(scope, nullptr);
+        RETURN_IF_EXCEPTION(scope, {});
     }
     object->putDirect(vm, Identifier::fromString(vm, "bufferEnvelopeMagic"_s), magic);
     object->putDirectNativeFunction(vm, globalObject, Identifier::fromString(vm, "serialize"_s), 2, functionSerializeForNode, ImplementationVisibility::Public, NoIntrinsic, 0);

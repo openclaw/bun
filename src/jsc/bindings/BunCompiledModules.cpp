@@ -760,7 +760,7 @@ static JSValue resolveSpecifier(JSGlobalObject* realm, JSObject* holder, JSValue
         auto scope = DECLARE_THROW_SCOPE(vm);
         JSValue from = holder->get(realm, WebCore::builtinNames(vm).filenamePublicName());
         RETURN_IF_EXCEPTION(scope, {});
-        JSValue resolved = JSValue::decode(Bun__resolveSync(realm, JSValue::encode(specifier), JSValue::encode(from), false, false));
+        JSValue resolved = JSValue::decode(Bun__resolveSync(realm, JSValue::encode(specifier), JSValue::encode(from), false, false, JSValue::encode(holder)));
         RETURN_IF_EXCEPTION(scope, {});
         if (!resolved.isString()) {
             throwException(realm, scope, resolved);
@@ -865,7 +865,7 @@ static JSValue createLoadError(JSGlobalObject* realm, const String& path)
     auto* globalObject = uncheckedDowncast<Zig::GlobalObject>(realm);
     ErrorableResolvedSource source;
     SetForScope isAsking(isAskingWhyFileFails, true);
-    Bun__transpileFile(globalObject->bunVM(), globalObject, &specifier, &specifier, nullptr, &source, false, true, BunLoaderTypeNone);
+    Bun__transpileFile(globalObject->bunVM(), globalObject, &specifier, &specifier, nullptr, &source, false, true, BunLoaderTypeNone, false);
     if (!source.success)
         return JSValue::decode(source.result.err);
     // The text of a JSON file goes through the parser of the engine next, as where the loader reads it. What that throws stays thrown.
