@@ -318,7 +318,7 @@ def inspect(debugger):
                     frame = thread.GetFrameAtIndex(0)
                     pc = frame.GetPC()
                     value = word(row['address'])
-                    event = dict(thread=thread.GetThreadID(), gc_count=report['gc_count'],
+                    event = dict(thread=thread.GetThreadID(), gc_count=report['gc_count'], stop_id=stop_id,
                         before=row['last_value'], after=value, stop_pc=pc,
                         registers={name: reg(frame, name) for name in
                             ('rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi', 'rbp', 'rsp', 'r8', 'r9', 'r10', 'r11', 'r12', 'r13', 'r14', 'r15', 'rflags')})
@@ -336,7 +336,7 @@ def inspect(debugger):
                     handled = True
                     if name == 'gc':
                         report['gc_count'] += 1
-                        if report['gc_count'] == 1:
+                        if report['gc_count'] == 30:
                             owner = module_frame(thread)
                             address = owner['sp']
                             error = lldb.SBError()
@@ -349,9 +349,9 @@ def inspect(debugger):
                             assert watch.GetWatchAddress() == address and watch.GetWatchSize() == 8
                             initial = word(address)
                             report['word_watch'] = dict(address=address, initial_value=initial, last_value=initial,
-                                initial_owner=owner, writes=[], write_mode='on_modify',
+                                initial_owner=owner, start_gc=report['gc_count'], writes=[], write_mode='on_modify',
                                 context='all value changes retain PCs and post-store general registers; decoding and writer-stack capture are separate',
-                                claim='value-changing stores only; equal-value stores may be unreported; one address across frame/storage reuse')
+                                claim='GC30 through GC32 only; earlier and equal-value writers and intended lifetime remain unknown')
                             report['watch_admission'] = debugger_state()
                             assert all(row['succeeded'] for row in report['watch_admission'])
                         if report['gc_count'] == 32:
@@ -397,7 +397,7 @@ def inspect(debugger):
                         assert end - begin <= 1024**2 and len(raw) + end - begin <= 4 * 1024**2
                         assert (end - begin) % 8 == 0
                         # Exact x64 type witness 41247026590: m_roots at 0, m_size at 8.
-                        row = dict(thread=tid, begin=begin, end=end, raw_offset=len(raw),
+                        row = dict(thread=tid, begin=begin, end=end, raw_offset=len(raw), stop_id=stop_id,
                                    roots=roots, count_before=word(roots + 8),
                                    threads=[dict(id=t.GetThreadID(), frames=frames(t)) for t in process])
                         raw.extend(memory(begin, end - begin))
@@ -559,14 +559,24 @@ def seal():
                         if 0 < frame['sp'] <= address < caller['sp'] < 2**64 - 1:
                             owners.append(dict(thread=thread['id'], frame=frame, caller=caller))
                 matches.append(dict(address=address, span_begin=span['begin'], span_end=span['end'],
+                    span_stop_id=span['stop_id'],
                     accepted=cell in span['accepted_roots'], physical_frames=owners))
         marks = [m for m in capture['marks'] if m['cell'] == cell]
         watched = capture['word_watch']
         owner_writes = [row for row in watched['writes'] if row['after'] == cell and row['before'] != cell]
-        watch_join = dict(address=watched['address'], initial_value_matches=watched['initial_value'] == cell,
+        accepted_scan_writes = []
+        for match in matches:
+            if not match['accepted'] or match['address'] != watched['address']:
+                continue
+            preceding = [row for row in watched['writes'] if row['stop_id'] < match['span_stop_id']]
+            last = preceding[-1] if preceding else None
+            accepted_scan_writes.append(dict(span_stop_id=match['span_stop_id'], last_value_change=last))
+        watch_join = dict(address=watched['address'], start_gc=watched['start_gc'],
+            initial_value_matches=watched['initial_value'] == cell,
             gc32_return_value_matches=watched['gc32_return_value'] == cell,
             accepted_root_matches=any(m['accepted'] and m['address'] == watched['address'] for m in matches),
             observed_writes_of_owner=owner_writes,
+            accepted_scan_writes=accepted_scan_writes,
             claim='observed value-changing stores only; equal-value/final writers and intended lifetime need separate proof before a repair')
         write('join.json', dict(owner_id=owner[0], owner_cell=owner[5], gc32_word_matches=matches,
             gc32_mark_events=marks, word_watch=watch_join, scanner_cause_proven=False, retaining_writer_proven=False,
@@ -579,6 +589,9 @@ def seal():
         assert any(m['accepted'] for m in matches) and any(m['new_mark'] for m in marks), 'root not established; no causal claim'
         assert watch_join['accepted_root_matches'] and watch_join['gc32_return_value_matches']
         assert owner_writes, 'owner value was not observed changing; earlier or equal-value writer remains unknown'
+        assert accepted_scan_writes and all(row['last_value_change'] is not None
+            and row['last_value_change']['after'] == cell and row['last_value_change']['before'] != cell
+            for row in accepted_scan_writes), 'last observed change before the accepted scan does not establish the owner value'
     finally:
         files = sorted(OUT.iterdir())
         assert len(files) <= 32 and all(p.is_file() and not p.is_symlink() for p in files)
