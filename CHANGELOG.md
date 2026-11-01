@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Avoid copying inactive TLS config payloads during Duplex cleanup so unreachable socket wrappers can be collected.
+
 - Add opt-in native TLS qualification to release dry runs, checking the exact artifact and source with a genuine Node.js reference and per-file JUnit results.
 
 - Preserve native socket ownership when nesting TLS, including pending writes, read backpressure, shutdown completion and buried HTTP/2 listeners. Keep generic Duplex write completions and queued TLS callbacks alive through reentrant teardown and garbage collection.
