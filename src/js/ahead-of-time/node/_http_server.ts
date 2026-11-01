@@ -2273,7 +2273,12 @@ function queueResponseSocketWrite(
   response: SocketQueuedResponse,
   ...[kind, inputChunk, encoding, callback]:
     | ["raw", $Node.HttpChunk, string | null | undefined, ($Node.HttpWriteCallback | null)?]
-    | ["write" | "end" | "flush" | "continue", $Node.HttpChunk | null | undefined, string | null | undefined, ($Node.HttpWriteCallback | null)?]
+    | [
+        "write" | "end" | "flush" | "continue",
+        $Node.HttpChunk | null | undefined,
+        string | null | undefined,
+        ($Node.HttpWriteCallback | null)?,
+      ]
 ) {
   let chunk = inputChunk;
   const headerState = response[headerStateSymbol];
@@ -2333,9 +2338,10 @@ function queueResponseSocketWrite(
     socket.on("drain", onResponseSocketDrain);
   }
   const responseCorked = kind === "write" && !!response[kCorked] && willBeChunked(response);
-  const operation: ResponseSocketOperation = kind === "raw"
-    ? { response, kind, chunk: inputChunk, encoding, length, bodyLength, strict, responseCorked }
-    : { response, kind, chunk, encoding, length, bodyLength, strict, responseCorked };
+  const operation: ResponseSocketOperation =
+    kind === "raw"
+      ? { response, kind, chunk: inputChunk, encoding, length, bodyLength, strict, responseCorked }
+      : { response, kind, chunk, encoding, length, bodyLength, strict, responseCorked };
   const result = socket[kWriteOperation](operation, callback);
   if (!result && kind === "write" && response._hasBody) response[kResponseQueueNeedDrain] = true;
   return kind === "write" && !response._hasBody ? true : result;

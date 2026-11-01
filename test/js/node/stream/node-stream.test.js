@@ -58,7 +58,12 @@ it("stream error aggregation preserves raw values and property access order", ()
     get message() {
       expect(this).toBe(outer);
       reads.push("message");
-      return { toString() { reads.push("coerce"); return "outer"; } };
+      return {
+        toString() {
+          reads.push("coerce");
+          return "outer";
+        },
+      };
     },
     get code() {
       expect(this).toBe(outer);

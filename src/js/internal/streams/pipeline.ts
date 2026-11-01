@@ -34,7 +34,8 @@ let addAbortListener: $BunModules["internal/abort_listener"]["addAbortListener"]
 
 type AnyIterable = Iterable<unknown> | AsyncIterable<unknown>;
 type PipelineCallback = (error?: unknown, value?: unknown) => void;
-type Then = ((onFulfilled: (value: unknown) => unknown, onRejected: (error: unknown) => unknown) => unknown) | undefined;
+type Then =
+  ((onFulfilled: (value: unknown) => unknown, onRejected: (error: unknown) => unknown) => unknown) | undefined;
 
 interface PipelineOptions {
   signal?: AbortSignal;
