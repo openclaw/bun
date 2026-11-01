@@ -4336,7 +4336,7 @@ function lastPipelinedResponse(socket: $Node.HttpSocket) {
 // in-flight one, abort them and their requests, like Node.js's socketOnClose
 // (abortIncoming). Runs from the native socket's close path and from the
 // http1 fallback's socket 'close' listener.
-function abortQueuedPipelinedResponses(socket: $Node.HttpSocket, error: Error = $ERR_STREAM_DESTROYED("write")) {
+function abortQueuedPipelinedResponses(socket: $Node.HttpSocket, error: unknown = $ERR_STREAM_DESTROYED("write")) {
   const pipelined = socket.$pipelinedResponses;
   const pipelinedLength = pipelined ? pipelined.length : 0;
   if (pipelinedLength) {

@@ -122,7 +122,7 @@ const http1ServerPipeline: {
     server: $Node.HttpSocketServer | null | undefined,
     socket: $Node.HttpSocket | null | undefined,
   ) => void;
-  abortQueuedPipelinedResponses?: (socket: $Node.HttpSocket, error?: Error) => void;
+  abortQueuedPipelinedResponses?: (socket: $Node.HttpSocket, error?: unknown) => void;
   lastPipelinedResponse?: (socket: $Node.HttpSocket) => $Node.PipelinedResponse | undefined;
   maybePauseFallbackReads?: (socket: $Node.HttpSocket) => void;
   resumeFallbackReadsOnDrain?: (socket: $Node.HttpSocket) => void;
