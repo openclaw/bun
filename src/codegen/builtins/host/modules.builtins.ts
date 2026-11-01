@@ -248,6 +248,19 @@ export default b.declarations(
     implementation: b.generic,
     mutability: "AlwaysLocked",
   }),
+  b.static("node:module.stripTypeScriptTypes", {
+    args: { code: b.any.optional, options: b.any.optional },
+    returns: b.string,
+    capability: "js",
+    throws: true,
+    uses: {
+      code: b.inspected,
+      options: [b.runs(b.named("sourceMap", "sourceUrl", "mode"))],
+    },
+    reads: ["ExternalState"],
+    writes: ["ExternalState"],
+    implementation: b.generic,
+  }),
   b.namespace("node:module.prototype", {
     require: {
       this: b.any,

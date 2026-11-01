@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Declare `module.stripTypeScriptTypes()` validation, option getters, and warning effects for AOT compilation without treating the input as executed source.
+
 - Preserve the separate native CommonJS module class and bind module utilities and once-listener wrappers in AOT programs, including listener getter and setter effects.
 
 - Describe fork module hooks, native timer and stdio callbacks, and VM test bindings for the upstream AOT generator, including arbitrary-source evaluation and the renamed CommonJS require implementation.
