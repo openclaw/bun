@@ -1769,19 +1769,19 @@ impl<'a> Resolver<'a> {
                 };
                 match retried {
                     ResultUnion::NotFound => {
-                match self.resolve_package_of_program_for_code_from_disk(import_path, kind) {
-                    Some(file_name) => ResultUnion::Success(Result {
-                        import_kind: kind,
-                        path_pair: PathPair {
-                            primary: Path::init(file_name),
-                            secondary: None,
-                        },
-                        module_type: options::ModuleType::Esm,
-                        flags: ResultFlags::IS_STANDALONE_MODULE,
-                        ..Default::default()
-                    }),
-                    None => ResultUnion::NotFound,
-                }
+                        match self.resolve_package_of_program_for_code_from_disk(import_path, kind) {
+                            Some(file_name) => ResultUnion::Success(Result {
+                                import_kind: kind,
+                                path_pair: PathPair {
+                                    primary: Path::init(file_name),
+                                    secondary: None,
+                                },
+                                module_type: options::ModuleType::Esm,
+                                flags: ResultFlags::IS_STANDALONE_MODULE,
+                                ..Default::default()
+                            }),
+                            None => ResultUnion::NotFound,
+                        }
                     }
                     result => result,
                 }
@@ -4307,6 +4307,7 @@ impl<'a> Resolver<'a> {
         kind: ast::ImportKind,
         package_json: &PackageJSON,
         package_subpath: &[u8],
+        context: PackageMapContext,
         out: &mut MatchResult,
     ) -> MatchStatus {
         let status = self.load_esm_resolution(
@@ -4315,6 +4316,7 @@ impl<'a> Resolver<'a> {
             kind,
             package_json,
             package_subpath,
+            context,
             out,
         );
         if !status.is_success() {
@@ -6474,13 +6476,13 @@ impl<'a> Resolver<'a> {
     }
 
     #[cold]
-    fn retry_runtime_plugin_miss(
+    fn retry_runtime_plugin_miss<'r>(
         &mut self,
         source_dir: &[u8],
-        import_path: &'static [u8],
+        import_path: &'r [u8],
         kind: ast::ImportKind,
         global_cache: GlobalCache,
-    ) -> ResultUnion {
+    ) -> ResultUnion<'r> {
         // Recheck plugin-created files only after the cached resolution misses.
         self.runtime_mutable_directories = true;
         let mut resolver = scopeguard::guard(self, |resolver| {

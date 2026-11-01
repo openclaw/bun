@@ -106,6 +106,7 @@ impl Resolver<'_> {
             glob.to_vec()
         };
         let resolution = ESModule {
+            validate_package_config: self.validate_package_config,
             conditions: &self.opts.conditions.import,
             debug_logs: None,
             stack_check: bun_core::StackCheck::init(),

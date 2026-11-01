@@ -1511,7 +1511,10 @@ pub struct Entry {
 impl Entry {
     fn names_condition(&self, condition: &[u8]) -> bool {
         match &self.data {
-            EntryData::Invalid | EntryData::Null | EntryData::String(_) => false,
+            EntryData::InvalidJson
+            | EntryData::Invalid(_)
+            | EntryData::Null
+            | EntryData::String(_) => false,
             EntryData::Array(items) => items.iter().any(|item| item.names_condition(condition)),
             EntryData::Map(map) => (map.list.iter())
                 .any(|entry| &*entry.key == condition || entry.value.names_condition(condition)),
@@ -1554,7 +1557,7 @@ pub(crate) fn split_at_star(text: &[u8]) -> Option<(&[u8], &[u8])> {
 impl Entry {
     fn for_each_text(&self, each: &mut dyn FnMut(&[u8])) {
         match &self.data {
-            EntryData::Invalid | EntryData::Null => {}
+            EntryData::InvalidJson | EntryData::Invalid(_) | EntryData::Null => {}
             EntryData::String(text) => each(text),
             EntryData::Array(entries) => entries.iter().for_each(|entry| entry.for_each_text(each)),
             EntryData::Map(map) => map

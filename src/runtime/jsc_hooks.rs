@@ -4936,7 +4936,9 @@ pub(crate) unsafe extern "C" fn Bun__transpileFile(
                     allow_promise,
                     is_commonjs_require,
                     force_loader,
-                    module_loader
+                    preserve_path_delimiters,
+                    module_loader,
+                    module_key
                 )
             },
             transpile_file::<false>,
@@ -4949,7 +4951,9 @@ pub(crate) unsafe extern "C" fn Bun__transpileFile(
             allow_promise,
             is_commonjs_require,
             force_loader,
-            module_loader
+            preserve_path_delimiters,
+            module_loader,
+            module_key
         )
     }
 }
@@ -4966,7 +4970,9 @@ unsafe fn transpile_file<const DATA_ONLY: bool>(
     allow_promise: bool,
     is_commonjs_require: bool,
     force_loader: u8,
+    preserve_path_delimiters: bool,
     module_loader: JSValue,
+    module_key: Option<&bun_core::String>,
 ) -> *mut c_void {
     use bun_jsc::resolved_source::Tag as ResolvedSourceTag;
 
@@ -5062,19 +5068,19 @@ unsafe fn transpile_file<const DATA_ONLY: bool>(
     }
 
     if !lr.path.is_data_url() && matches!(lr.path.name().ext, b".js" | b".ts") {
-            // SAFETY: the resolver belongs to this live VM on its JS thread.
-            if let Some(error) = unsafe {
-                (*jsc_vm)
-                    .transpiler
-                    .resolver
-                    .node_package_scope_error(lr.path.text)
-            } {
-                *ret =
-                    ErrorableResolvedSource::err(bun_jsc::ResolveMessage::from_node_module_error(
-                        global, &error, false, b"", b"",
-                    ));
-                return ptr::null_mut();
-            }
+        // SAFETY: the resolver belongs to this live VM on its JS thread.
+        if let Some(error) = unsafe {
+            (*jsc_vm)
+                .transpiler
+                .resolver
+                .node_package_scope_error(lr.path.text)
+        } {
+            *ret =
+                ErrorableResolvedSource::err(bun_jsc::ResolveMessage::from_node_module_error(
+                    global, &error, false, b"", b"",
+                ));
+            return ptr::null_mut();
+        }
     }
     let mut module_type = module_type_of(&lr.path, lr.package_json);
     let pkg_name: Option<&[u8]> = lr
