@@ -322,6 +322,17 @@ def inspect(debugger):
                         before=row['last_value'], after=value, stop_pc=pc,
                         registers={name: reg(frame, name) for name in
                             ('rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi', 'rbp', 'rsp', 'r8', 'r9', 'r10', 'r11', 'r12', 'r13', 'r14', 'r15', 'rflags')})
+                    if not row['writes']:
+                        writer_module = frame.GetModule()
+                        symbol = frame.GetSymbol()
+                        begin = symbol.GetStartAddress() if symbol.IsValid() else lldb.SBAddress()
+                        if not begin.IsValid() or not 0 <= pc - begin.GetLoadAddress(target) <= 4096:
+                            begin = frame.GetPCAddress()
+                        event['first_change_context'] = dict(
+                            module=writer_module.GetFileSpec().GetFilename(), uuid=writer_module.GetUUIDString(),
+                            file_pc=frame.GetPCAddress().GetFileAddress(), symbol=symbol.GetName(),
+                            instructions=instructions(target.ReadInstructions(begin, 64)), frames=frames(thread),
+                            claim='first observed value-changing writer only; no original-retainer or lifetime attribution')
                     row['writes'].append(event)
                     row['last_value'] = value
                     handled = True
