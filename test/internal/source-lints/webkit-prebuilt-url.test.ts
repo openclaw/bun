@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { resolveConfig, type Config, type PartialConfig, type Toolchain } from "../../../scripts/build/config.ts";
 import {
   webkit,
+  WEBKIT_MANIFEST,
   WEBKIT_VERSION,
   webkitArtifact,
   webkitTestFFIPath,
@@ -105,22 +106,30 @@ describe("WebKit artifact manifest", () => {
   test("missing variants permit graph construction but fail the dependency edge", () => {
     using dir = tempDir("webkit-unavailable", {});
     const cfg = resolveLinuxRelease({ buildType: "Debug", asan: true, aot: true, buildDir: String(dir) });
-    const source = webkit.source(cfg);
-    if (source.kind !== "unavailable") throw new Error("expected an unavailable debug artifact");
-    expect(source.destDir).toStartWith(String(dir));
-    const ninja = new Ninja({ buildDir: cfg.buildDir });
-    registerDepRules(ninja, cfg);
-    resolveDep(ninja, cfg, webkit, new Map());
-    const encoded = /^  message = (.*)$/m.exec(ninja.toString())![1]!;
-    expect(Buffer.from(encoded, "base64url").toString("utf8")).toBe(source.message);
-    const child = spawnSync(
-      bunExe(),
-      [fileURLToPath(new URL("../../../scripts/build/fetch-cli.ts", import.meta.url)), "unavailable", encoded],
-      { env: bunEnv, encoding: "utf8" },
-    );
-    expect(child.stderr).toContain("Missing SHA-256 for WebKit target bun-webkit-linux-amd64-debug-asan-aot.tar.gz");
-    expect(child.status).toBe(1);
-    expect(existsSync(source.destDir)).toBe(false);
+    const name = "bun-webkit-linux-amd64-debug-asan-aot.tar.gz";
+    const artifact = WEBKIT_MANIFEST.artifacts[name];
+    try {
+      delete WEBKIT_MANIFEST.artifacts[name];
+      const source = webkit.source(cfg);
+      if (source.kind !== "unavailable") throw new Error("expected an unavailable debug artifact");
+      expect(source.destDir).toStartWith(String(dir));
+      const ninja = new Ninja({ buildDir: cfg.buildDir });
+      registerDepRules(ninja, cfg);
+      resolveDep(ninja, cfg, webkit, new Map());
+      const encoded = /^  message = (.*)$/m.exec(ninja.toString())![1]!;
+      expect(Buffer.from(encoded, "base64url").toString("utf8")).toBe(source.message);
+      const child = spawnSync(
+        bunExe(),
+        [fileURLToPath(new URL("../../../scripts/build/fetch-cli.ts", import.meta.url)), "unavailable", encoded],
+        { env: bunEnv, encoding: "utf8" },
+      );
+      expect(child.stderr).toContain("Missing SHA-256 for WebKit target bun-webkit-linux-amd64-debug-asan-aot.tar.gz");
+      expect(child.status).toBe(1);
+      expect(existsSync(source.destDir)).toBe(false);
+    } finally {
+      if (artifact) WEBKIT_MANIFEST.artifacts[name] = artifact;
+      else delete WEBKIT_MANIFEST.artifacts[name];
+    }
   });
 
   test("the committed pin supplies the URL, digest, cache and testFFI path", () => {
