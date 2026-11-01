@@ -227,7 +227,7 @@ def inspect(debugger):
         assert len(selected) == 1 and selected[0]['fp'] - selected[0]['sp'] == 224
         return selected[0]
 
-    def point(name, address, mnemonic, operands=None, enabled=True, thread=None):
+    def point(name, address, mnemonic, operands=None):
         address = target.ResolveFileAddress(address) if isinstance(address, int) else address
         instructions = target.ReadInstructions(address, 1)
         assert instructions.GetSize() == 1
@@ -237,17 +237,10 @@ def inspect(debugger):
             assert instruction.GetOperands(target) == operands
         bp = target.BreakpointCreateBySBAddress(address)
         assert bp.GetNumLocations() == 1
-        bp.SetEnabled(enabled)
-        if thread is not None:
-            bp.SetThreadID(thread)
         points[bp.GetID()] = name
         return bp
 
     gc = point('gc', 0x10055a780, 'pushq', '%rbp')
-    scans = [point('span', a, 'pushq', '%rbp', False) for a in (0x103bcf0a0, 0x103bcf1d0)]
-    gather = point('gather', 0x103c368c0, 'pushq', '%rbp', False)
-    pre = point('mark-before', 0x103c4b37d, 'lock', enabled=False)
-    post = point('mark-after', 0x103c4b384, 'jb', enabled=False)
     report['physical_points'] = {str(k): v for k, v in points.items()}
     launch = lldb.SBLaunchInfo(['-e', (OUT / 'debugger-child.js').read_text()])
     launch.SetWorkingDirectory(str(SOURCE.resolve()))
@@ -371,15 +364,19 @@ def inspect(debugger):
                             bp.SetThreadID(tid)
                             assert bp.GetNumLocations() == 1
                             points[bp.GetID()] = 'gc-return'
-                            for b in scans + [gather, pre, post]:
-                                b.SetEnabled(True)
+                            # LLDB1700 stepped through disabled sites before GC32; create them only when needed.
+                            scans = [point('span', a, 'pushq', '%rbp') for a in (0x103bcf0a0, 0x103bcf1d0)]
+                            gather = point('gather', 0x103c368c0, 'pushq', '%rbp')
+                            pre = point('mark-before', 0x103c4b37d, 'lock')
+                            post = point('mark-after', 0x103c4b384, 'jb')
+                            report['physical_points'] = {str(k): v for k, v in points.items()}
                     elif name == 'gc-return':
                         assert active and not pending_spans and not pending_marks
                         report['gc32_completed'] = True
                         active = False
                         for b in scans + [gather, pre, post, gc]:
-                            b.SetEnabled(False)
-                        target.BreakpointDelete(ident)
+                            assert target.BreakpointDelete(b.GetID())
+                        assert target.BreakpointDelete(ident)
                         report['word_watch']['gc32_return_value'] = word(report['word_watch']['address'])
                         assert target.DeleteWatchpoint(watch.GetID())
                     elif name == 'gather':
