@@ -30,7 +30,18 @@ function socket<SSL extends boolean>(ssl: SSL) {
     internalFields: [
       "handlers",
       "data",
-      ...(ssl ? ["duplexOrigin", "duplexOnData", "duplexOnEnd", "duplexOnWritable", "duplexOnClose"] : []),
+      ...(ssl
+        ? [
+            "duplexOrigin",
+            "duplexOnData",
+            "duplexOnEnd",
+            "duplexOnWritable",
+            "duplexOnClose",
+            "duplexOnWrite",
+            "duplexWriteDispatch",
+            "duplexCloseDispatch",
+          ]
+        : []),
     ],
     proto: {
       alpnProtocol: { ...js, getter: b.any.returning("string", "boolean") },

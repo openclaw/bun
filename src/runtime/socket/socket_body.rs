@@ -936,7 +936,10 @@ impl<const SSL: bool> NewSocket<SSL> {
             this.buffered_data_for_node_net.get().len()
         );
         // is not writable if we have buffered data or if we are already detached
-        if this.buffered_data_for_node_net.get().len() > 0 || this.socket.get().is_detached() {
+        if this.buffered_data_for_node_net.get().len() > 0
+            || this.socket.get().is_detached()
+            || !this.transport_idle()
+        {
             return Ok(());
         }
 
@@ -2622,7 +2625,9 @@ impl<const SSL: bool> NewSocket<SSL> {
                         // node:net fails the write like Node's onWriteComplete;
                         // -1 stays the legacy closed/shutdown sentinel.
                         JSValue::js_number(f64::from(wrote))
-                    } else if usize::try_from(wrote.max(0)).expect("int cast") == total {
+                    } else if usize::try_from(wrote.max(0)).expect("int cast") == total
+                        && self.transport_idle()
+                    {
                         JSValue::TRUE
                     } else {
                         JSValue::FALSE
@@ -2655,7 +2660,10 @@ impl<const SSL: bool> NewSocket<SSL> {
                         let _ = self.internal_flush();
                     }
 
-                    JSValue::from(usize::try_from(wrote.max(0)).expect("int cast") == total)
+                    JSValue::from(
+                        usize::try_from(wrote.max(0)).expect("int cast") == total
+                            && self.transport_idle(),
+                    )
                 }
             };
         Ok(result)
@@ -3036,12 +3044,24 @@ impl<const SSL: bool> NewSocket<SSL> {
         false
     }
 
+    fn transport_idle(&self) -> bool {
+        match self.socket.get().socket {
+            uws::InternalSocket::UpgradedDuplex(pointer) => {
+                // SAFETY: duplex_socket installs the aligned, stable context.upgrade member.
+                // The attached tag keeps it live for this shared borrow until detach.
+                unsafe { &*pointer.cast::<UpgradedDuplex>() }.transport_idle()
+            }
+            _ => true,
+        }
+    }
+
     fn can_end_after_flush(&self) -> bool {
         let flags = self.flags.get();
         flags.contains(Flags::IS_ACTIVE)
             && flags.contains(Flags::END_AFTER_FLUSH)
             && !flags.contains(Flags::EMPTY_PACKET_PENDING)
             && self.buffered_data_for_node_net.get().len() == 0
+            && self.transport_idle()
     }
 
     /// Flushes the node:net buffered tail. Returns 0, or the positive errno of
@@ -4607,6 +4627,7 @@ pub(crate) fn upgrade_duplex_to_tls<'a>(
             global,
             tls_js_value,
             duplex,
+            context.id(),
             UpgradedDuplexHandlers {
                 // SAFETY: `c` is `ctx` below — the live `DuplexUpgradeContext` heap allocation.
                 on_open: |c: *mut ()| {

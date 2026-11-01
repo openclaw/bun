@@ -794,8 +794,19 @@ function endNT(self: $Node.Socket, socket: SocketHandle | null, callback: WriteC
   // https://github.com/nodejs/node/blob/614050b657e9757c1097aa85f92f2cb51149dc0d/lib/net.js#L500
   // A TLS wrap made since _final attached this socket's handle, or left the fd to the raw half of `socket`.
   const current = self._handle;
-  (!socket || current?.[kAdoptedTLSRaw] ? current : socket)?.shutdown();
-  callback();
+  const handle = !socket || current?.[kAdoptedTLSRaw] ? current : socket;
+  const transport = unadoptedTransport(self);
+  if (transport) {
+    const eos = require("internal/streams/end-of-stream");
+    const cleanup = eos(transport, { readable: false }, () => {
+      cleanup();
+      callback();
+    });
+    handle?.shutdown();
+  } else {
+    handle?.shutdown();
+    callback();
+  }
 }
 function emitCloseNT(self: $Node.Socket, hasError: boolean) {
   self.emit("close", hasError);

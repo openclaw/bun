@@ -2644,8 +2644,7 @@ describe("a TLS socket over a Duplex transport reports that transport's error", 
     expect(events).toEqual(["error:transport failed", "close destroyed=true"]);
   });
 
-  it("what a method or an accessor of the transport throws is reported", async () => {
-    // Out of process: a socket that has closed emits no 'error', so the throw is uncaught, as in node.
+  it("what a write method or accessor of the transport throws is reported", async () => {
     const script = `
       const tls = require("node:tls");
       const { Duplex } = require("node:stream");
@@ -2658,8 +2657,6 @@ describe("a TLS socket over a Duplex transport reports that transport's error", 
         const name = method + " " + kind;
         const fail = () => { throw new Error(name); };
         Object.defineProperty(transport, method, kind === "call" ? { value: fail } : { get: fail });
-        // Only a transport that is still open is ended.
-        transport.destroy = function () { return this; };
         const socket = tls.connect({ socket: transport, rejectUnauthorized: false });
         const events = [];
         const closed = Promise.withResolvers();
@@ -2670,14 +2667,11 @@ describe("a TLS socket over a Duplex transport reports that transport's error", 
         });
         if (when === "after the engine started") await new Promise(resolve => setImmediate(resolve));
         // The ClientHello is the write that fails, and that destroys the socket.
-        if (method === "end") socket.destroy();
         await closed.promise;
         console.log(name + ", " + when + ": " + events.join("|") + " uncaught:" + uncaught.splice(0).join("|"));
       }
 
       for (const kind of ["call", "getter"]) {
-        await run("end", kind, "before the engine starts");
-        await run("end", kind, "after the engine started");
         await run("write", kind, "after the engine started");
       }
     `;
@@ -2690,16 +2684,55 @@ describe("a TLS socket over a Duplex transport reports that transport's error", 
     const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
     expect({ stdout: stdout.trim().split("\n"), stderr, exitCode }).toEqual({
       stdout: [
-        "end call, before the engine starts: close:false uncaught:end call",
-        "end call, after the engine started: close:false uncaught:end call",
         "write call, after the engine started: error:write call|close:true uncaught:",
-        "end getter, before the engine starts: close:false uncaught:end getter",
-        "end getter, after the engine started: close:false uncaught:end getter",
         "write getter, after the engine started: error:write getter|close:true uncaught:",
       ],
       stderr: "",
       exitCode: 0,
     });
+  });
+});
+
+describe.each([
+  ["bun", bunExe()],
+  ["node", nodeExe()],
+])("destroy() over a Duplex transport (%s)", (_runtime, exe) => {
+  it.skipIf(!exe)("does not read or call the transport's end method", async () => {
+    // JSStreamSocket.doClose destroys; only doShutdown owns transport.end().
+    const script = `
+      const tls = require("node:tls");
+      const { Duplex } = require("node:stream");
+      const { once } = require("node:events");
+      const reports = [];
+      for (const started of [false, true]) {
+        let endReads = 0, endCalls = 0, finishes = 0;
+        const transport = new Duplex({ read() {}, write(chunk, encoding, callback) { callback(); } });
+        Object.defineProperty(transport, "end", {
+          get() {
+            endReads++;
+            return function () { endCalls++; throw new Error("destroy called end"); };
+          },
+        });
+        transport.on("finish", () => finishes++);
+        const socket = tls.connect({ socket: transport, rejectUnauthorized: false });
+        const closed = once(socket, "close");
+        if (started) await new Promise(resolve => setImmediate(resolve));
+        socket.destroy();
+        await closed;
+        await new Promise(resolve => setImmediate(resolve));
+        reports.push({ started, endReads, endCalls, finishes });
+        transport.destroy();
+      }
+      console.log(JSON.stringify(reports));
+    `;
+    await using proc = Bun.spawn({ cmd: [exe!, "-e", script], env: bunEnv, stdout: "pipe", stderr: "pipe" });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect(JSON.parse(stdout)).toEqual([
+      { started: false, endReads: 0, endCalls: 0, finishes: 0 },
+      { started: true, endReads: 0, endCalls: 0, finishes: 0 },
+    ]);
+    expect(stderr).toBe("");
+    expect(exitCode).toBe(0);
   });
 });
 
