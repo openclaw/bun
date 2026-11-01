@@ -566,11 +566,7 @@ IncomingMessage.prototype._read = incomingMessageRead;
 // It's possible that the socket will be destroyed, and removed from
 // any messages, before ever calling this.  In that case, just skip
 // it, since something else is destroying this connection anyway.
-const incomingMessageDestroy = function _destroy(
-  this: $Node.IncomingMessage,
-  err: unknown,
-  cb: $Node.ErrorCallback,
-) {
+const incomingMessageDestroy = function _destroy(this: $Node.IncomingMessage, err: unknown, cb: $Node.ErrorCallback) {
   const shouldEmitAborted = !this.readableEnded || !this.complete;
 
   if (shouldEmitAborted) {

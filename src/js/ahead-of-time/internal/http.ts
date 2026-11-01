@@ -179,19 +179,11 @@ export const enum NodeHTTPHeaderState {
   sent,
 }
 
-function emitErrorNextTickIfErrorListenerNT(
-  self: $Node.EventEmitter,
-  err: unknown,
-  cb: $Node.ErrorCallback,
-) {
+function emitErrorNextTickIfErrorListenerNT(self: $Node.EventEmitter, err: unknown, cb: $Node.ErrorCallback) {
   process.nextTick(emitErrorNextTickIfErrorListener, self, err, cb);
 }
 
-function emitErrorNextTickIfErrorListener(
-  self: $Node.EventEmitter,
-  err: unknown,
-  cb: $Node.ErrorCallback,
-) {
+function emitErrorNextTickIfErrorListener(self: $Node.EventEmitter, err: unknown, cb: $Node.ErrorCallback) {
   if ($isCallable(cb)) {
     // This is to keep backward compatible behavior.
     // An error is emitted only if there are listeners attached to the event.

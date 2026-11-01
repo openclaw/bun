@@ -1202,11 +1202,7 @@ function destroyRequestOnSocketNT(
   closeRequest(req);
 }
 
-function onSocketNT(
-  req: $Node.ClientRequest,
-  socket: $Node.HttpClientSocket | null | undefined,
-  err: unknown,
-) {
+function onSocketNT(req: $Node.ClientRequest, socket: $Node.HttpClientSocket | null | undefined, err: unknown) {
   if (req.destroyed || err) {
     req.destroyed = true;
 
@@ -1227,12 +1223,7 @@ function onSocketNT(
   }
 }
 
-function onSocketFinishedDestroy(
-  req: $Node.ClientRequest,
-  socket: $Node.HttpClientSocket,
-  err: unknown,
-  er?: unknown,
-) {
+function onSocketFinishedDestroy(req: $Node.ClientRequest, socket: $Node.HttpClientSocket, err: unknown, er?: unknown) {
   if (er != null && ReflectGet(ObjectConstructor(er), "code", er) === "ERR_STREAM_PREMATURE_CLOSE") {
     er = null;
   }
