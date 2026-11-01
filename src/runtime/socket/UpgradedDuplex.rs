@@ -243,12 +243,23 @@ impl UpgradedDuplex {
         bun_output::scoped_log!(UpgradedDuplex, "onClose");
         // SAFETY: see handler note above.
         let this = unsafe { &*this };
+        // Peer shutdown reaches SSL close before JS sees EOF and calls _final.
+        // Finish the lower writable side while its native owner is attached.
+        if !this.write_failed.get()
+            && !this.shutdown_queued.get()
+            && this
+                .wrapper_ref()
+                .is_some_and(|w| w.is_closed() && !w.flags.fatal_error())
+        {
+            this.pending_shutdown.set(true);
+        }
         // SSL close can re-enter shutdown() before it queues origin.end(),
         // or still own reciprocal close_notify ciphertext after peer shutdown.
         if !this.write_failed.get()
             && (this.pending_shutdown.get() || this.pending_writes.get() > 0)
         {
             this.pending_close.set(true);
+            this.drain_pending_shutdown();
             return;
         }
         this.finish_close();
