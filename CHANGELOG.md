@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Restore native builds by removing unused UTF-16 path helpers reintroduced during the upstream merge.
+
 - Preserve raw stream failure values across shared completion, destruction, aggregation, pipeline, HTTP, web stream, socket, and TTY adapter contracts, and keep HTTP queue, fallback request, worker cleanup, and native TLS handle types aligned with their runtime owners.
 
 - Restore extra child-process pipe connections after the upstream cache removal and reconcile internal stdio, worker, DNS, HTTP, and native-handle types with their runtime owners.
