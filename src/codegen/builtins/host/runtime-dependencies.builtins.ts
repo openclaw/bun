@@ -694,6 +694,11 @@ const nativeCalls = [
       { file: "src/runtime/ipc.rs", caller: "on_ack_nack", onBehalfOf: channelUsers },
       { file: "src/runtime/ipc_host.rs", caller: "do_send_err", times: 2, onBehalfOf: channelUsers },
       {
+        file: "src/runtime/socket/UpgradedDuplex.rs",
+        caller: "shutdown",
+        onBehalfOf: ["native:Bindgen:socket_body.bind.ts:upgradeDuplexToTLS"],
+      },
+      {
         file: "src/runtime/node/node_crypto_binding.rs",
         caller: "random_int",
         onBehalfOf: ["native:Bindgen:node_crypto_binding.bind.ts:crypto"],
