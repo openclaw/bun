@@ -24,11 +24,7 @@ jobs:
       max-parallel: 2
       matrix:
         include:
-          - { target: linux-x64, runner: ubuntu-24.04 }
-          - { target: linux-arm64, runner: ubuntu-24.04-arm }
           - { target: darwin-x64, runner: macos-15-intel }
-          - { target: darwin-arm64, runner: macos-15 }
-          - { target: windows-x64, runner: windows-2025 }
           - { target: windows-arm64, runner: windows-11-arm }
     steps:
       - name: Preserve canonical source bytes on every host
@@ -45,8 +41,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           path: source
-          ref: 8918ddaed89d97ae1605dbd1e1149121f2433d04
-          fetch-depth: 2
+          ref: 510fef558b464c58de1209298f638fa476d03eef
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:

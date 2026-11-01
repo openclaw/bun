@@ -1,4 +1,4 @@
-"""Qualify a test-only source delta on the exact retained native runtime artifacts."""
+"""Collect all canonical TLS suites on the two retained failing native targets."""
 import hashlib
 import json
 import os
@@ -15,17 +15,12 @@ import zipfile
 
 LIBRARY = runpy.run_path(str(Path(__file__).with_name('tls-cycle-checkpoint.py')), run_name='checkpoint_contract')
 COMMIT, ENGINE, FIXTURE = (LIBRARY[key] for key in ('COMMIT', 'ENGINE', 'FIXTURE'))
-TEST_SOURCE = '8918ddaed89d97ae1605dbd1e1149121f2433d04'
-FIXTURE_SHA = '5cca33c82b9120f350f8c51cfaba49109caaa4697272628b48e97a9221b0ec04'
+FIXTURE_SHA = LIBRARY['FIXTURE_SHA']
 ROOT = Path(os.environ['RUNNER_TEMP']) / 'tls-fixture-input'
 OUT = Path('tls-fixture-qualification')
 SOURCE = Path('source')
 SPECS = {
     'darwin-x64': (13057470428, 'signed-darwin-x64', 232201333, 'a4d8b786d7bb87d166f757e089ac1705f4ac0701504038ebbecd438c9d6e06d6'),
-    'darwin-arm64': (13057590237, 'signed-darwin-arm64', 216129450, 'a93fdf3cf995662876b87348f74c1135a62980910e7423a9750260cdde30080f'),
-    'linux-x64': (13056872046, 'build-linux-x64', 222954227, '7ef34a5999d54ec04afd44b8f85041bc33e78a54b8e5dec16c908920a49cb55d'),
-    'linux-arm64': (13056617461, 'build-linux-arm64', 222623871, 'c54dbe7ea29a336c76db1dd5ba491bbb117a6c211d938892c62f2f5e74251fcd'),
-    'windows-x64': (13056907950, 'test-only-windows', 596111335, '5c81e59c6e6ee0b1a21a9f03b61eda6ff8616d3a1fab631c7e1c1d4899a58bb6'),
     'windows-arm64': (13056907950, 'test-only-windows', 596111335, '5c81e59c6e6ee0b1a21a9f03b61eda6ff8616d3a1fab631c7e1c1d4899a58bb6'),
 }
 
@@ -36,7 +31,10 @@ def sha(path):
 
 
 def clean():
-    subprocess.run(['git', '-C', str(SOURCE), 'diff-index', '--quiet', 'HEAD', '--'], check=True)
+    result = subprocess.run(['git', '-C', str(SOURCE), 'diff-index', '--quiet', 'HEAD', '--'])
+    if result.returncode:
+        subprocess.run(['git', '-C', str(SOURCE), 'diff', '--name-status', 'HEAD', '--'], check=True)
+        result.check_returncode()
 
 
 def main(target):
@@ -46,15 +44,9 @@ def main(target):
     platform = 'win32' if platform == 'windows' else platform
     assert not any(os.environ.get(k) for k in ('GH_TOKEN', 'GITHUB_TOKEN', 'NODE_OPTIONS', 'BUN_OPTIONS'))
     head = subprocess.check_output(['git', '-C', str(SOURCE), 'rev-parse', 'HEAD'], text=True).strip()
-    assert head == TEST_SOURCE
-    assert subprocess.check_output(['git', '-C', str(SOURCE), 'show', '-s', '--format=%P', 'HEAD'], text=True).strip() == COMMIT
-    assert subprocess.check_output(['git', '-C', str(SOURCE), 'diff', '--name-only', COMMIT, 'HEAD'], text=True).splitlines() == [FIXTURE]
+    assert head == COMMIT
     clean()
-    original = subprocess.check_output(['git', '-C', str(SOURCE), 'show', COMMIT + ':' + FIXTURE])
-    assert hashlib.sha256(original).hexdigest() == LIBRARY['FIXTURE_SHA']
-    assert original.count(LIBRARY['ORIGINAL'].encode()) == 1
-    candidate = original.replace(LIBRARY['ORIGINAL'].encode(), LIBRARY['CANDIDATE'].encode(), 1)
-    assert (SOURCE / FIXTURE).read_bytes() == candidate and sha(SOURCE / FIXTURE) == FIXTURE_SHA
+    assert sha(SOURCE / FIXTURE) == FIXTURE_SHA
     owner = (SOURCE / 'scripts/openclaw-release/release.ts').read_text()
     block = re.search(r'export const tlsQualificationFiles = \[(.*?)\] as const;', owner, re.S)
     assert block
@@ -99,11 +91,12 @@ def main(target):
         signature = dict(required_by_release_contract=required, exit_code=result.returncode,
             stderr=result.stderr.decode().replace(str(exe), exe.name))
         assert not required or result.returncode == 0
-    receipt = dict(target=target, runtime_source=COMMIT, test_source=TEST_SOURCE, engine=ENGINE,
+    receipt = dict(target=target, runtime_source=COMMIT, test_source=COMMIT, engine=ENGINE,
         artifact_id=artifact, artifact_sha256=digest, product_zip_sha256=sha(product),
         executable_sha256=sha(exe), facts=facts, fixture_sha256=FIXTURE_SHA,
-        runtime_diff_from_product_source=[], sole_source_diff=FIXTURE, node_version='26.12.1',
-        signature=signature, suites=[], claim='unchanged runtime artifacts, exact test-only source correction; no release publication')
+        runtime_diff_from_product_source=[], source_diff_from_product_source=[], node_version='26.12.1',
+        signature=signature, suites=[], passed=False,
+        claim='unchanged source and runtime artifacts; all six suites recorded, failures retained; no release publication')
     deadline = time.monotonic() + 20 * 60
     try:
         for file in files:
@@ -124,9 +117,10 @@ def main(target):
             assert int(doc.get('skipped')) == skipped and int(doc.get('failures')) == failures
             row = dict(file=file, exit_code=result.returncode, tests=len(cases), skipped=skipped, failures=failures, errors=errors)
             receipt['suites'].append(row)
-            assert result.returncode == 0 and failures == errors == 0 and len(cases) > skipped, row
+            assert len(cases) > skipped, row
         assert sha(exe) == receipt['executable_sha256']
-        receipt['passed'] = True
+        receipt['passed'] = all(row['exit_code'] == row['failures'] == row['errors'] == 0 for row in receipt['suites'])
+        assert receipt['passed'], receipt['suites']
     finally:
         clean()
         assert sha(SOURCE / FIXTURE) == FIXTURE_SHA
