@@ -147,7 +147,7 @@ def prepare():
 
 def inspect(debugger):
     import lldb
-    debugger.SetAsync(True)
+    debugger.SetAsync(False)
     command = lldb.SBCommandReturnObject()
     debugger.GetCommandInterpreter().HandleCommand('settings set target.load-script-from-symbol-file false', command)
     assert command.Succeeded()
@@ -269,16 +269,13 @@ def inspect(debugger):
     assert launch.AddOpenFileAction(1, str((OUT / 'debugger.stdout').resolve()), False, True)
     assert launch.AddOpenFileAction(2, str((OUT / 'debugger.stderr').resolve()), False, True)
     launch.SetDetachOnError(False)
-    listener = lldb.SBListener('tls-cycle-root')
-    assert listener.IsValid()
-    launch.SetListener(listener)
-    assert launch.GetListener().IsValid()
     error = lldb.SBError()
     try:
         report['log_setup'] = [debugger_command(text) for text in
             ('log enable -h circular -b 4096 -s -T -p lldb process thread step break watch',
              'log enable -h circular -b 4096 -s -T -p gdb-remote packets')]
         assert all(row['succeeded'] for row in report['log_setup']), 'circular debugger logs unavailable'
+        # Cooperative deadline; observe() also bounds blocking debugger calls.
         deadline, stops, previous_stop = time.monotonic() + 240, 0, 0
         checkpoint('launch', full=True)
         process = target.Launch(launch, error)
@@ -288,23 +285,10 @@ def inspect(debugger):
         header = module.GetObjectFileHeaderAddress()
         report['image_header'] = dict(file=header.GetFileAddress(), load=header.GetLoadAddress(target))
         checkpoint('launched', full=True)
-        while True:
+        while process.GetState() not in (lldb.eStateExited, lldb.eStateCrashed, lldb.eStateDetached):
             assert time.monotonic() < deadline, 'debugger capture deadline'
-            checkpoint('wait-event')
-            event = lldb.SBEvent()
-            if not listener.WaitForEvent(1, event):
-                continue
-            if not lldb.SBProcess.EventIsProcessEvent(event):
-                continue
-            owner = lldb.SBProcess.GetProcessFromEvent(event)
-            assert owner.GetUniqueID() == process.GetUniqueID(), 'event belongs to another process'
-            state = lldb.SBProcess.GetStateFromEvent(event)
-            if state in (lldb.eStateExited, lldb.eStateCrashed, lldb.eStateDetached):
-                break
-            if state != lldb.eStateStopped or lldb.SBProcess.GetRestartedFromEvent(event):
-                continue
             checkpoint('inspect-stop')
-            assert process.GetState() == lldb.eStateStopped, 'stale stopped event'
+            assert process.GetState() == lldb.eStateStopped, 'synchronous debugger did not stop'
             stop_id = process.GetStopID()
             assert stop_id > previous_stop, 'duplicate debugger stop would corrupt GC numbering'
             previous_stop = stop_id
