@@ -54,7 +54,7 @@ function mockToolchain(): Toolchain {
 
 /** Shorthand: a Linux glibc x64 release target. linuxSysroot stubbed so the
  * cross-arch block in resolveConfig never throws on a non-x64-glibc host. */
-function resolveLinuxRelease(partial: PartialConfig = {}): Config {
+function resolveLinuxRelease(partial: PartialConfig = {}, generatorsOnly = false): Config {
   return resolveConfig(
     {
       os: "linux",
@@ -69,6 +69,7 @@ function resolveLinuxRelease(partial: PartialConfig = {}): Config {
       ...partial,
     },
     mockToolchain(),
+    generatorsOnly,
   );
 }
 
@@ -85,6 +86,22 @@ function fixture(name: string, digest = "a".repeat(64)): WebKitArtifactManifest 
 }
 
 describe("WebKit artifact manifest", () => {
+  test("generator-only setup selects the pinned source archive independently of the native ABI", () => {
+    const cfg = resolveLinuxRelease({ buildType: "Debug", asan: true, aot: true }, true);
+    const name = "bun-webkit-aot-sources.tar.gz";
+    const pin = fixture(name);
+    expect(webkitArtifact(cfg, pin)).toEqual(pin.artifacts[name]);
+    const provided = webkit.provides(cfg);
+    expect(provided.libs).toEqual([]);
+    expect(provided.includes).toEqual([]);
+    expect(provided.contentsDecideGraph).not.toBe(true);
+    expect(provided.files).toContain("Source/JavaScriptCore/aot/ir/AOTSchema.def");
+    expect(provided.files).toContain("Source/JavaScriptCore/aot/builtins/generated/AOTBuiltinEngineDeclarations.json");
+    expect(() => webkitArtifact(cfg, { version: WEBKIT_VERSION, artifacts: {} })).toThrow(
+      "Missing SHA-256 for WebKit target bun-webkit-aot-sources.tar.gz",
+    );
+  });
+
   test("missing variants permit graph construction but fail the dependency edge", () => {
     using dir = tempDir("webkit-unavailable", {});
     const cfg = resolveLinuxRelease({ buildType: "Debug", asan: true, aot: true, buildDir: String(dir) });

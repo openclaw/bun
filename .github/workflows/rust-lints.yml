@@ -119,6 +119,7 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
           llvm-version: ${{ env.LLVM_VERSION_MAJOR }}
           toolchain: ${{ env.RUSTUP_TOOLCHAIN }}
+          webkit-generators-only: "1"
 
       - name: cargo test
         # `lol_html` is a path dependency, not a workspace member (it carries

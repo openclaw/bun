@@ -117,6 +117,7 @@ function prebuiltSuffix(cfg: Config): string {
 }
 
 function prebuiltName(cfg: Config): string {
+  if (cfg.webkitGeneratorsOnly) return "bun-webkit-aot-sources.tar.gz";
   const os = cfg.windows ? "windows" : cfg.darwin ? "macos" : cfg.freebsd ? "freebsd" : "linux";
   const arch = cfg.arm64 ? "arm64" : "amd64";
   return `bun-webkit-${os}-${arch}${prebuiltSuffix(cfg)}.tar.gz`;
@@ -2065,11 +2066,11 @@ export const webkit: Dependency = {
         // Identity = version + suffix. Suffix ensures profile switches
         // (debug ↔ release, asan toggle) trigger re-download. Without it,
         // same version stamp would skip, leaving the wrong ABI on disk.
-        identity: `${cfg.webkitVersion}${prebuiltSuffix(cfg)}`,
+        identity: `${cfg.webkitVersion}${cfg.webkitGeneratorsOnly ? "-aot-sources" : prebuiltSuffix(cfg)}`,
         destDir: prebuiltDestDir(cfg),
       };
       // macOS: bundled ICU headers conflict with system ICU.
-      if (cfg.darwin) {
+      if (cfg.darwin && !cfg.webkitGeneratorsOnly) {
         src.rmAfterExtract = ["include/unicode"];
       }
       return src;
@@ -2084,6 +2085,10 @@ export const webkit: Dependency = {
 
   provides: cfg => {
     if (cfg.webkit === "prebuilt") {
+      const { schemaInputs, builtinTableInputs } = webkitEngineSources(cfg);
+      const files = [...schemaInputs, ...builtinTableInputs].map(file => relative(prebuiltDestDir(cfg), file));
+      // Source-only jobs never inspect native objects or make the archive a configure input.
+      if (cfg.webkitGeneratorsOnly) return { libs: [], includes: [], files };
       // Paths relative to prebuilt destDir — emitPrebuilt resolves them.
       //
       // bmalloc: some historical prebuilts rolled it into JSC. Current
@@ -2099,8 +2104,6 @@ export const webkit: Dependency = {
       // postExtract.
       if (!cfg.darwin) includes.push("include/wtf/unicode");
 
-      const { schemaInputs, builtinTableInputs } = webkitEngineSources(cfg);
-      const files = [...schemaInputs, ...builtinTableInputs].map(file => relative(prebuiltDestDir(cfg), file));
       if (prebuiltHasProgramObjects(cfg)) files.push(programObjects(cfg, "jsc"), programObjects(cfg, "testaot"));
       // `HARDENING` in lanes.mjs has grown, and the name of a tarball does not say which list it was compiled with.
       const symbols = [

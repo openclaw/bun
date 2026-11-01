@@ -277,6 +277,8 @@ export interface Config {
 
   // ─── Dependency modes ───
   webkit: WebKitMode;
+  /** CI's source-only engine archive; frozen in ConfigureInput for ninja regeneration. */
+  webkitGeneratorsOnly: boolean;
   /**
    * Deps built from a local checkout instead of the pinned tarball, keyed by
    * dep name → absolute source dir. Set via `--local-deps=name=path[,...]`;
@@ -1044,7 +1046,7 @@ export function resolveCodegenConfig(partial: PartialConfig, toolchain: JsToolch
   return { ...base, mode: "codegen", host, os, x64: arch === "x64" };
 }
 
-export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Config {
+export function resolveConfig(partial: PartialConfig, toolchain: Toolchain, webkitGeneratorsOnly = false): Config {
   assert(partial.mode !== "codegen", "mode=codegen resolves a CodegenConfig: resolveCodegenConfig()");
   const host = detectHost();
 
@@ -1212,6 +1214,7 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
   }
 
   // ─── Validation ───
+  assert(!webkitGeneratorsOnly || webkit === "prebuilt", "WebKit generators-only requires webkit=prebuilt");
   assert(!baseline || x64, "baseline=true requires arch=x64 (baseline disables AVX which is x64-only)");
   assert(
     !partial.relr || (linux && abi === "gnu"),
@@ -1541,6 +1544,7 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
     ci,
     buildkite,
     webkit,
+    webkitGeneratorsOnly,
     localDeps,
     packageManager,
     cwd,

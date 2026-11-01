@@ -112,7 +112,11 @@ async function main(): Promise<void> {
   // of being frozen at first-configure time.
   const input: ConfigureInput = args.configFile
     ? loadConfigFile(args.configFile)
-    : { profile: args.profile, overrides: args.overrides };
+    : {
+        profile: args.profile,
+        overrides: args.overrides,
+        webkitGeneratorsOnly: process.env.BUN_WEBKIT_GENERATORS_ONLY === "1",
+      };
 
   const ninjaArgv = (cfg: { buildDir: string }) => ["-C", cfg.buildDir, ...args.ninjaArgs, ...args.ninjaTargets];
   // GNU-style include-path vars (CPATH, C_INCLUDE_PATH, CPLUS_INCLUDE_PATH,
@@ -139,6 +143,20 @@ async function main(): Promise<void> {
     // in the middle of a build log.
     await (modeOf(input) === "codegen" ? reconfigureCodegen(input) : reconfigure(input));
     return;
+  }
+
+  if (input.webkitGeneratorsOnly) {
+    const targets = new Set(["codegen", "generated-types", "clone-lolhtml", "clone-rust-argon2"]);
+    if (
+      modeOf(input) !== "full" ||
+      args.execArgs.length > 0 ||
+      args.ninjaTargets.length === 0 ||
+      args.ninjaTargets.some(target => !targets.has(target))
+    ) {
+      throw new BuildError("WebKit generators-only cannot build or run native targets", {
+        hint: "Request codegen, generated-types, clone-lolhtml or clone-rust-argon2, or unset BUN_WEBKIT_GENERATORS_ONLY.",
+      });
+    }
   }
 
   // mode=codegen: the code generators and nothing else. No toolchain was looked for, and none of what the two

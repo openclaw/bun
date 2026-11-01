@@ -211,6 +211,8 @@ export interface ConfigureInput {
   profile?: string;
   /** Explicit CLI overrides layered on top of the profile. */
   overrides?: PartialConfig;
+  /** BUN_WEBKIT_GENERATORS_ONLY at the initial configure, replayed without consulting the environment. */
+  webkitGeneratorsOnly?: boolean;
 }
 
 /**
@@ -331,7 +333,7 @@ export function modeOf(input: ConfigureInput): Mode {
 export function configOf(input: ConfigureInput): { cfg: Config; toolchain: Toolchain } {
   const partial = partialOf(input);
   const toolchain = resolveToolchain(partial.os, partial.packageManager);
-  return { cfg: resolveConfig(partial, toolchain), toolchain };
+  return { cfg: resolveConfig(partial, toolchain, input.webkitGeneratorsOnly === true), toolchain };
 }
 
 /** configOf() for `mode: "codegen"`: looks for the JavaScript tools only. */
