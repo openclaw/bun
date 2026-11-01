@@ -27,6 +27,10 @@ export default b.declarations(
     ...nativeBindings("Cpp", "NodeVM.cpp", "Bun::createNodeVMBinding"),
   ),
   extendAll(["NodeVm"], "node:vm"),
+  extendAll(
+    ["InternalForTesting", "NodeVm", "RuntimeTranspiler", "Buffer", "RegExp", "BuiltinSourceText"],
+    ...nativeBindings("NewCppFunction", "NodeVMCompilationCache.cpp", "jsRunNodeVMSourceForTesting"),
+  ),
 
   extendAll(["DataFileLoaders"], "node:module._load"),
 

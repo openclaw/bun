@@ -19,7 +19,7 @@ import {
   webSocketHandlerCell,
   webSocketsCell,
 } from "./native-cells.ts";
-import { handedOver, mayAnswerWrapperKeptIn } from "./native-code.ts";
+import { handedOver, immediateTimer, mayAnswerWrapperKeptIn, scheduledTimer } from "./native-code.ts";
 
 type Contents = Readonly<Record<string, b.TableType>>;
 type UsesByOperand = Readonly<Record<string, readonly b.UseSpec[]>>;
@@ -29,29 +29,13 @@ const viewHeaps = ["TypedArrayStorage", "TypedArrayElements"];
 const longestDelayWithoutWarning = 2 ** 31 - 1;
 const widestString = 2 ** 32;
 
-// `_onTimeout` of the timer answers the callback.
-const scheduled = (times: b.CallbackTimes) => ({
-  callback: [
-    b.storedIn(b.nativeCell(timerCallbackCell)),
-    b.called({
-      afterwards: "TouchesOnlyWhatRowNames",
-      times,
-      args: [],
-      this: b.result,
-      spreadArgs: b.operand("passed"),
-      result: "Ignored",
-    }),
-  ],
-  passed: [b.storedIn(b.nativeCell(timerArgumentsCell))],
-});
-
 const timerAfterDelay = (times: b.CallbackTimes, delay: b.TableType, capability: b.Capability) =>
   ({
     args: { callback: b.callable, delay, passed: b.any.rest },
     returns: b.instance("Timeout").fresh,
     capability,
     throws: true,
-    uses: scheduled(times),
+    uses: scheduledTimer(times),
     reads: externalState,
     writes: externalState,
     implementation: b.hostCall,
@@ -1997,16 +1981,7 @@ export default b.declarations(
       },
     }),
   ),
-  b.fn("setImmediate", {
-    args: { callback: b.callable, passed: b.any.rest },
-    returns: b.instance("Immediate").fresh,
-    capability: "heap",
-    throws: true,
-    uses: scheduled("Later"),
-    reads: externalState,
-    writes: externalState,
-    implementation: b.hostCall,
-  }),
+  b.fn("setImmediate", immediateTimer),
   b.fn("clearTimeout", timerCancellation),
   b.fn("clearInterval", timerCancellation),
   b.fn("clearImmediate", timerCancellation),

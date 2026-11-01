@@ -26,6 +26,7 @@ export default b.declarations(
     "process.traceProcessWarnings",
   ]),
   marked("EvaluatesTextInGlobalScope", [
+    "%NativeFunctions%.NodeVMCompilationCacheCppJsRunNodeVMSourceForTesting",
     "%NodeVMBinding%.Script",
     "%NodeVMBinding%.Module",
     "%NodeVMBinding%.compileFunction",

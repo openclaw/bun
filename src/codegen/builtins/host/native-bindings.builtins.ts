@@ -135,6 +135,31 @@ export default b.declarations(
   ["Script", "Module"].flatMap(name => b.class(`${vmBinding}.${name}`, { hasPrototype: false })),
   answers("native:Cpp:NodeVM.cpp:Bun::createNodeVMBinding", b.builtin(vmBinding)),
 
+  b.static("native:Cpp:NodeVMCompilationCache.cpp:createNodeVMCompilationCacheStatsForTesting", {
+    getter: b.callable.fresh,
+    capability: "heap",
+    implementation: b.generic,
+    call: {
+      returns: b.object.fresh,
+      capability: "heap",
+      throws: true,
+      reads: externalState,
+      writes: externalState,
+      implementation: b.generic,
+    },
+  }),
+  b.static("native:Cpp:NodeVMCompilationCache.cpp:createNodeVMCompilationCachePolicyTest", {
+    getter: b.callable.fresh,
+    capability: "heap",
+    implementation: b.generic,
+    call: {
+      returns: b.object.fresh,
+      capability: "heap",
+      throws: true,
+      implementation: b.generic,
+    },
+  }),
+
   // Whether the process was started with --experimental-stream-iter.
   answers("native:Cpp:NodeModuleModule.cpp:createStreamIterEnabledFlag", b.bool),
 );

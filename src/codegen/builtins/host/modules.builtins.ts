@@ -218,6 +218,30 @@ export default b.declarations(
       implementation: b.generic,
     },
   }),
+  b.static("node:module.registerHooks", {
+    args: { hooks: b.any },
+    returns: b.object.fresh,
+    capability: "js",
+    throws: true,
+    uses: {
+      hooks: [
+        b.runs(b.named("resolve", "load")),
+        b.contentsStoredIn(b.nativeMemory),
+        ...["resolve", "load"].map(name =>
+          b.memberCalled([name], {
+            afterwards: "TouchesOnlyWhatRowNames",
+            times: "Later",
+            this: b.undefined,
+            args: [b.string, b.object, b.callable],
+            result: "Escapes",
+          }),
+        ),
+      ],
+    },
+    reads: ["ExternalState"],
+    writes: ["ExternalState"],
+    implementation: b.generic,
+  }),
   b.static("node:module.createRequire", {
     args: { filename: b.string.loose },
     returns: b.builtin("%ModuleRequire%"),

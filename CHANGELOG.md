@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Describe fork module hooks, native timer and stdio callbacks, and VM test bindings for the upstream AOT generator, including arbitrary-source evaluation and the renamed CommonJS require implementation.
+
 - Declare TLS completion and Worker environment dependencies for AOT code generation, and retain native `module.registerHooks()` dispatch through its declared module owner.
 
 - Honor Rust CI's generator-only WebKit setup with a checksum-pinned source archive and reject native build targets in that setup.

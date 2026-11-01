@@ -33,6 +33,7 @@ const moduleLoaders = [
 ];
 
 const textEvaluators = [
+  "native:NewCppFunction:NodeVMCompilationCache.cpp:jsRunNodeVMSourceForTesting",
   "%NodeVMBinding%.Module",
   "%NodeVMBinding%.Script",
   "%NodeVMBinding%.compileFunction",
@@ -45,6 +46,15 @@ const unseenCodeEntries = [...moduleLoaders, ...textEvaluators, ...heapEnumerato
 
 // A worker has a heap of its own and starts with an entry point of the build: the loader of its realm refuses everything else.
 const seenCodeEntries = [
+  "native:Cpp:NodeVMCompilationCache.cpp:createNodeVMCompilationCacheStatsForTesting",
+  "native:Cpp:NodeVMCompilationCache.cpp:createNodeVMCompilationCachePolicyTest",
+  "native:NewCppFunction:NodeVMCompilationCache.cpp:jsNodeVMSourceMetadataForTesting",
+  "native:NewCppFunction:NodeVMSourceBuffer.cpp:jsNodeVMSourceBufferStats",
+  "native:NewCppFunction:NodeVMSourceBuffer.cpp:jsNodeVMSourceBufferTest",
+  "native:NewCppFunction:BunProcess.cpp:jsFunctionShutdownStdio",
+  "native:NewCppFunction:NodeModuleModule.cpp:jsFunctionModuleHooksContainsModuleSyntax",
+  "native:NewCppFunction:ZigGlobalObject.cpp:Zig::functionNavigatorGetHardwareConcurrency",
+  "native:NewCppFunction:node/NodeTimers.cpp:functionSetImmediate",
   ...machineCodeLoaders,
   "%NodeVMBinding%.createContext",
   "%NodeVMBinding%.isContext",

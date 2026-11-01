@@ -1,6 +1,7 @@
 // The native functions that Bun's own modules make with $newCppFunction, each from the code of the function.
 import * as b from "bun-builtins-table";
 import { framesOfModuleGraphsCell, moduleGraphsCell } from "./native-cells.ts";
+import { immediateTimer } from "./native-code.ts";
 
 const cpp = (file: string, symbol: string): b.BuiltinPath => `native:NewCppFunction:${file}:${symbol}`;
 
@@ -321,6 +322,86 @@ export default b.declarations(
     uses: { filename: b.inspected },
     implementation: b.hostCall,
   }),
+  b.static(cpp("BunProcess.cpp", "jsFunctionShutdownStdio"), {
+    args: { fd: b.i32, callback: b.callable },
+    returns: b.undefined,
+    capability: "heap",
+    throws: true,
+    uses: {
+      fd: b.inspected,
+      callback: [
+        b.retained,
+        b.called({
+          afterwards: "TouchesOnlyWhatRowNames",
+          times: "Later",
+          this: b.undefined,
+          args: [],
+          result: "Ignored",
+        }),
+      ],
+    },
+    reads: externalState,
+    writes: externalState,
+    implementation: b.hostCall,
+  }),
+  b.static(cpp("NodeModuleModule.cpp", "jsFunctionModuleHooksContainsModuleSyntax"), {
+    ...operandCodeOnly,
+    args: { source: b.string.loose, throwOnSyntaxError: b.any.optional },
+    returns: b.bool,
+    uses: { throwOnSyntaxError: b.inspected },
+    implementation: b.hostCall,
+  }),
+  b.static(cpp("NodeVMCompilationCache.cpp", "jsNodeVMSourceMetadataForTesting"), {
+    returns: newArrayOf(b.union(b.f64, b.bool)),
+    capability: "heap",
+    throws: true,
+    reads: externalState,
+    implementation: b.hostCall,
+  }),
+  b.static(cpp("NodeVMCompilationCache.cpp", "jsRunNodeVMSourceForTesting"), {
+    args: {
+      source: b.string.loose,
+      tracking: b.any,
+      prevalent: b.any,
+      staticSource: b.any,
+      mode: b.any,
+    },
+    returns: b.any,
+    capability: "js",
+    throws: true,
+    readsStateBeforeConversions: true,
+    uses: {
+      source: [b.evaluatedAsText],
+      tracking: converted,
+      prevalent: converted,
+      staticSource: b.inspected,
+      mode: converted,
+    },
+    reads: externalState,
+    writes: externalState,
+    implementation: b.hostCall,
+  }),
+  b.static(cpp("NodeVMSourceBuffer.cpp", "jsNodeVMSourceBufferStats"), {
+    returns: b.object.fresh,
+    capability: "heap",
+    throws: true,
+    reads: externalState,
+    writes: externalState,
+    implementation: b.hostCall,
+  }),
+  b.static(cpp("NodeVMSourceBuffer.cpp", "jsNodeVMSourceBufferTest"), {
+    returns: b.object.fresh,
+    capability: "heap",
+    throws: true,
+    implementation: b.hostCall,
+  }),
+  b.static(cpp("ZigGlobalObject.cpp", "Zig::functionNavigatorGetHardwareConcurrency"), {
+    returns: b.f64,
+    capability: "none",
+    reads: externalState,
+    implementation: b.hostCall,
+  }),
+  b.static(cpp("node/NodeTimers.cpp", "functionSetImmediate"), immediateTimer),
   b.static(cpp("NodeTLS.cpp", "getBundledRootCertificates"), listsCertificates),
   b.static(cpp("NodeTLS.cpp", "getExtraCACertificates"), listsCertificates),
   b.static(cpp("NodeTLS.cpp", "getSystemCACertificates"), listsCertificates),
