@@ -70,10 +70,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          xcrun lldb --batch --no-lldbinit --no-use-colors \
-            -o 'settings set target.load-script-from-symbol-file false' \
-            -o 'script import runpy; runpy.run_path("controls/.github/openclaw/tls-cycle-root.py", run_name="__lldb__")' \
-            > tls-cycle-root/debugger.log 2>&1
+          python3 controls/.github/openclaw/tls-cycle-root.py observe
       - name: Join the snapshot and seal bounded evidence
         if: always()
         shell: bash

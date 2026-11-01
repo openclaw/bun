@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import runpy
 import shlex
+import signal
 import struct
 import subprocess
 import sys
@@ -33,7 +34,10 @@ def sha(path):
 
 
 def write(name, value):
-    (OUT / name).write_text(json.dumps(value, indent=2) + '\n')
+    path = OUT / name
+    partial = path.with_name(path.name + '.partial')
+    partial.write_text(json.dumps(value, indent=2) + '\n')
+    partial.replace(path)
 
 
 def environment():
@@ -143,7 +147,7 @@ def prepare():
 
 def inspect(debugger):
     import lldb
-    debugger.SetAsync(False)
+    debugger.SetAsync(True)
     command = lldb.SBCommandReturnObject()
     debugger.GetCommandInterpreter().HandleCommand('settings set target.load-script-from-symbol-file false', command)
     assert command.Succeeded()
@@ -174,9 +178,24 @@ def inspect(debugger):
         return [debugger_command(text) for text in
                 ('thread plan list -i -v all', 'breakpoint list -v', 'watchpoint list -v')]
 
+    last_saved = time.monotonic()
+
     def save():
+        nonlocal last_saved
+        partial = OUT / 'spans.bin.partial'
+        partial.write_bytes(raw)
+        partial.replace(OUT / 'spans.bin')
         write('capture.json', report)
-        (OUT / 'spans.bin').write_bytes(raw)
+        last_saved = time.monotonic()
+
+    def checkpoint(phase, full=False):
+        report['phase'] = phase
+        write('progress.json', dict(phase=phase, debugger_pid=os.getpid(),
+            inferior_pid=report.get('pid'), gc_count=report['gc_count'],
+            stop_id=report.get('last_stop', {}).get('id'),
+            writes=len(report.get('word_watch', {}).get('writes', []))))
+        if full or time.monotonic() - last_saved >= 5:
+            save()
 
     def memory(address, size):
         assert address > 0 and 0 <= size <= 4 * 1024**2
@@ -250,20 +269,42 @@ def inspect(debugger):
     assert launch.AddOpenFileAction(1, str((OUT / 'debugger.stdout').resolve()), False, True)
     assert launch.AddOpenFileAction(2, str((OUT / 'debugger.stderr').resolve()), False, True)
     launch.SetDetachOnError(False)
+    listener = lldb.SBListener('tls-cycle-root')
+    assert listener.IsValid()
+    launch.SetListener(listener)
+    assert launch.GetListener().IsValid()
     error = lldb.SBError()
     try:
         report['log_setup'] = [debugger_command(text) for text in
             ('log enable -h circular -b 4096 -s -T -p lldb process thread step break watch',
              'log enable -h circular -b 4096 -s -T -p gdb-remote packets')]
         assert all(row['succeeded'] for row in report['log_setup']), 'circular debugger logs unavailable'
+        deadline, stops, previous_stop = time.monotonic() + 240, 0, 0
+        checkpoint('launch', full=True)
         process = target.Launch(launch, error)
         assert error.Success() and process.IsValid(), str(error)
         report['inferior_launched'] = True
         report['pid'] = process.GetProcessID()
-        deadline, stops, previous_stop = time.monotonic() + 240, 0, 0
-        while process.GetState() not in (lldb.eStateExited, lldb.eStateCrashed, lldb.eStateDetached):
+        header = module.GetObjectFileHeaderAddress()
+        report['image_header'] = dict(file=header.GetFileAddress(), load=header.GetLoadAddress(target))
+        checkpoint('launched', full=True)
+        while True:
             assert time.monotonic() < deadline, 'debugger capture deadline'
-            assert process.GetState() == lldb.eStateStopped, 'synchronous debugger did not stop'
+            checkpoint('wait-event')
+            event = lldb.SBEvent()
+            if not listener.WaitForEvent(1, event):
+                continue
+            if not lldb.SBProcess.EventIsProcessEvent(event):
+                continue
+            owner = lldb.SBProcess.GetProcessFromEvent(event)
+            assert owner.GetUniqueID() == process.GetUniqueID(), 'event belongs to another process'
+            state = lldb.SBProcess.GetStateFromEvent(event)
+            if state in (lldb.eStateExited, lldb.eStateCrashed, lldb.eStateDetached):
+                break
+            if state != lldb.eStateStopped or lldb.SBProcess.GetRestartedFromEvent(event):
+                continue
+            checkpoint('inspect-stop')
+            assert process.GetState() == lldb.eStateStopped, 'stale stopped event'
             stop_id = process.GetStopID()
             assert stop_id > previous_stop, 'duplicate debugger stop would corrupt GC numbering'
             previous_stop = stop_id
@@ -295,7 +336,6 @@ def inspect(debugger):
                     value = word(row['address'])
                     event = dict(thread=thread.GetThreadID(), gc_count=report['gc_count'],
                         before=row['last_value'], after=value, stop_pc=pc,
-                        stop_file_pc=target.ResolveLoadAddress(pc).GetFileAddress(),
                         registers={name: reg(frame, name) for name in
                             ('rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi', 'rbp', 'rsp', 'r8', 'r9', 'r10', 'r11', 'r12', 'r13', 'r14', 'r15', 'rflags')})
                     row['writes'].append(event)
@@ -415,7 +455,9 @@ def inspect(debugger):
             if not handled and watch is not None:
                 report['last_stop']['watched_value'] = word(report['word_watch']['address'])
             assert handled, 'unexpected debugger stop'
+            checkpoint('resume')
             assert process.Continue().Success()
+        checkpoint('terminal', full=True)
         report['exit_status'] = process.GetExitStatus()
         report['terminal_state'] = lldb.SBDebugger.StateAsCString(process.GetState())
         assert report['gc32_completed'] and report['exit_status'] == 0
@@ -425,6 +467,7 @@ def inspect(debugger):
         report['error'] = dict(type=type(exc).__name__, message=str(exc)[:2000],
             frames=[dict(file=Path(f.filename).name, line=f.lineno, function=f.name)
                     for f in traceback.extract_tb(exc.__traceback__)])
+        checkpoint('failure', full=True)
         try:
             # Dump history before inspection commands overwrite the circular packet buffer.
             report['failure_logs'] = [debugger_command('log dump ' + channel)
@@ -439,15 +482,67 @@ def inspect(debugger):
                                                        message=str(diagnostic_error)[:2000])
         raise
     finally:
+        checkpoint('cleanup', full=True)
         if process is not None and process.IsValid() and process.GetState() not in (lldb.eStateExited, lldb.eStateDetached):
             report['task_process_killed'] = process.Kill().Success()
+        report['cleanup_completed'] = True
         save()
+
+
+def observe():
+    command = ['xcrun', 'lldb', '--batch', '--no-lldbinit', '--no-use-colors',
+        '-o', 'settings set target.load-script-from-symbol-file false',
+        '-o', 'script import runpy; runpy.run_path(' + repr(str(Path(__file__))) + ', run_name="__lldb__")']
+    receipt = dict(timed_out=False, inferior_cleanup='unproven')
+    with (OUT / 'debugger.log').open('xb') as log:
+        process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=log,
+                                   stderr=subprocess.STDOUT, start_new_session=True)
+        receipt['debugger_pid'] = process.pid
+        write('supervisor.json', receipt)
+        try:
+            process.wait(timeout=330)
+        except subprocess.TimeoutExpired:
+            receipt['timed_out'] = True
+        finally:
+            if process.poll() is None:
+                os.killpg(process.pid, signal.SIGTERM)
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    os.killpg(process.pid, signal.SIGKILL)
+                    process.wait(timeout=10)
+            receipt['exit_status'] = process.returncode
+            progress = json.loads((OUT / 'progress.json').read_text()) if (OUT / 'progress.json').is_file() else {}
+            pid = progress.get('inferior_pid')
+            if progress.get('debugger_pid') == process.pid and isinstance(pid, int) and pid > 1:
+                receipt['inferior_pid'] = pid
+                identity = subprocess.run(['ps', '-p', str(pid), '-o', 'comm='],
+                    text=True, capture_output=True, timeout=5, check=False)
+                if identity.returncode == 1 and not identity.stdout.strip():
+                    receipt['inferior_cleanup'] = 'absent'
+                elif identity.returncode == 0 and identity.stdout.strip() == str((ROOT / 'bun-profile').resolve()):
+                    # Only the admitted inferior created by this debugger can be killed here.
+                    os.kill(pid, signal.SIGKILL)
+                    limit = time.monotonic() + 5
+                    while time.monotonic() < limit:
+                        try:
+                            os.kill(pid, 0)
+                        except ProcessLookupError:
+                            receipt['inferior_cleanup'] = 'killed'
+                            break
+                        time.sleep(0.1)
+            write('supervisor.json', receipt)
+    assert not receipt['timed_out'], 'debugger supervisor deadline; checkpoint retained, result inconclusive'
+    assert receipt['exit_status'] == 0 and receipt['inferior_cleanup'] in ('absent', 'killed'), receipt
 
 
 def seal():
     try:
         receipt = json.loads((OUT / 'receipt.json').read_text())
         capture = json.loads((OUT / 'capture.json').read_text())
+        supervisor = json.loads((OUT / 'supervisor.json').read_text())
+        assert not supervisor['timed_out'] and supervisor['exit_status'] == 0
+        assert supervisor['inferior_cleanup'] in ('absent', 'killed') and capture['cleanup_completed']
         snapshot = OUT / 'snapshot.json'
         assert snapshot.is_file() and snapshot.stat().st_size <= 24 * 1024**2
         library = runpy.run_path(str(Path(__file__).with_name('tls-cycle-heap.py')))
@@ -512,4 +607,4 @@ if __name__ == '__lldb__':
     import lldb
     inspect(lldb.debugger)
 elif __name__ == '__main__':
-    {'prepare': prepare, 'seal': seal}[sys.argv[1]]()
+    {'prepare': prepare, 'observe': observe, 'seal': seal}[sys.argv[1]]()
