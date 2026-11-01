@@ -179,10 +179,11 @@ pub struct Imports {
     pub(crate) __promiseAll: Ref,
     pub(crate) __MEMO_CACHE_SENTINEL: Ref,
     pub(crate) __EARLY_RETURN_SENTINEL: Ref,
+    pub(crate) __rawTemplate: Ref,
 }
 
 impl Imports {
-    pub const ALL: [&'static [u8]; 28] = [
+    pub const ALL: [&'static [u8]; 29] = [
         b"__name",
         b"__require",
         b"__export",
@@ -211,12 +212,13 @@ impl Imports {
         b"__promiseAll",
         b"__MEMO_CACHE_SENTINEL",
         b"__EARLY_RETURN_SENTINEL",
+        b"__rawTemplate",
     ];
 
     /// Rust stable cannot sort in `const`; precomputed here and verified by
     /// the test in `tests` below.
     #[cfg(test)]
-    const ALL_SORTED: [&'static [u8]; 28] = [
+    const ALL_SORTED: [&'static [u8]; 29] = [
         b"$$typeof",
         b"__EARLY_RETURN_SENTINEL",
         b"__MEMO_CACHE_SENTINEL",
@@ -241,6 +243,7 @@ impl Imports {
         b"__privateWrapper",
         b"__promiseAll",
         b"__publicField",
+        b"__rawTemplate",
         b"__reExport",
         b"__require",
         b"__runInitializers",
@@ -249,13 +252,13 @@ impl Imports {
 
     /// When generating the list of runtime imports, we sort it for determinism.
     /// This is a lookup table so we don't need to resort the strings each time
-    pub const ALL_SORTED_INDEX: [usize; 28] = [
+    pub const ALL_SORTED_INDEX: [usize; 29] = [
         15, // __name
-        25, // __require
-        7,  // __export
-        24, // __reExport
-        9,  // __exportValue
-        8,  // __exportDefault
+        26, // __require
+        7, // __export
+        25, // __reExport
+        9, // __exportValue
+        8, // __exportDefault
         14, // __merge
         11, // __legacyDecorateClassTS
         12, // __legacyDecorateParamTS
@@ -267,17 +270,18 @@ impl Imports {
         20, // __privateSet
         21, // __privateWrapper
         19, // __privateMethod
-        6,  // __decoratorStart
-        5,  // __decoratorMetadata
-        26, // __runInitializers
-        4,  // __decorateElement
-        0,  // $$typeof
-        27, // __using
-        3,  // __callDispose
+        6, // __decoratorStart
+        5, // __decoratorMetadata
+        27, // __runInitializers
+        4, // __decorateElement
+        0, // $$typeof
+        28, // __using
+        3, // __callDispose
         10, // __jsonParse
         22, // __promiseAll
-        2,  // __MEMO_CACHE_SENTINEL
-        1,  // __EARLY_RETURN_SENTINEL
+        2, // __MEMO_CACHE_SENTINEL
+        1, // __EARLY_RETURN_SENTINEL
+        24, // __rawTemplate
     ];
 
     pub const NAME: &'static [u8] = b"bun:wrap";
@@ -314,6 +318,7 @@ impl Imports {
             25 => self.__promiseAll,
             26 => self.__MEMO_CACHE_SENTINEL,
             27 => self.__EARLY_RETURN_SENTINEL,
+            28 => self.__rawTemplate,
             _ => return None,
         };
         r.to_nullable()
@@ -350,6 +355,7 @@ impl Imports {
             25 => Some(&mut self.__promiseAll),
             26 => Some(&mut self.__MEMO_CACHE_SENTINEL),
             27 => Some(&mut self.__EARLY_RETURN_SENTINEL),
+            28 => Some(&mut self.__rawTemplate),
             _ => None,
         }
     }

@@ -279,13 +279,23 @@ export function createRequireCache(requireMap: RequireMap, owner?: JSCommonJSMod
   // An executable that `bun build --compile --aot` made never lists its own files, which run once: the cache holds the files that were loaded from outside of the executable, as in a bundled executable.
   const hidesFiles = $isHiddenFromRequireCache();
   const isHidden = (key: string | symbol) => hidesFiles && $isHiddenFromRequireCache(key);
+  // A test run that is compiled in place shows its files, as plain does.
+  const listsCompiledFiles = $requireCacheCompiledEntry() === true;
+  const isRequiredCompiledBuiltin = (key: string) =>
+    listsCompiledFiles && $requireCacheCompiledEntry(key, owner, true) === true;
   const hasKey = (key: string) =>
-    !isHidden(key) && (requireMap.$has(key) || (!isBuiltinKey(key) && $esmRegistryHasEvaluated(key, owner)));
+    !isHidden(key) &&
+    (requireMap.$has(key) ||
+      (isBuiltinKey(key) ? isRequiredCompiledBuiltin(key) : $esmRegistryHasEvaluated(key, owner)));
   var proxy = new Proxy(inner, {
     get(_target, key: string) {
       if (isHidden(key)) return undefined;
       const entry = requireMap.$get(key);
       if (entry) return entry;
+      if (listsCompiledFiles) {
+        const compiled = $requireCacheCompiledEntry(key, owner);
+        if (compiled) return compiled;
+      }
 
       if (!isBuiltinKey(key)) {
         const namespace = $esmNamespaceForCjs(key, owner);
@@ -310,6 +320,7 @@ export function createRequireCache(requireMap: RequireMap, owner?: JSCommonJSMod
 
     deleteProperty(_target, key: string) {
       if (isHidden(key)) return true;
+      $requireCacheDidDelete(key, owner);
       requireMap.$delete(key);
       $esmRegistryDelete(key, owner);
       $evictIsolationSourceProviderCache(key);
@@ -319,7 +330,7 @@ export function createRequireCache(requireMap: RequireMap, owner?: JSCommonJSMod
     ownKeys(_target) {
       var array = [...requireMap.$keys()];
       for (const key of $esmRegistryEvaluatedKeys(owner)) {
-        if (!isBuiltinKey(key) && !requireMap.$has(key)) {
+        if ((!isBuiltinKey(key) || isRequiredCompiledBuiltin(key)) && !requireMap.$has(key)) {
           $arrayPush(array, key);
         }
       }

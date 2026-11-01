@@ -146,15 +146,15 @@ async function main(): Promise<void> {
   }
 
   if (input.webkitGeneratorsOnly) {
-    const targets = new Set(["codegen", "generated-types", "clone-lolhtml", "clone-rust-argon2"]);
+    const targets = new Set(["codegen", "generated-types", "clone-zstd", "clone-lolhtml", "clone-rust-argon2"]);
     if (
       modeOf(input) !== "full" ||
       args.execArgs.length > 0 ||
-      args.ninjaTargets.length === 0 ||
+      (!args.configureOnly && args.ninjaTargets.length === 0) ||
       args.ninjaTargets.some(target => !targets.has(target))
     ) {
       throw new BuildError("WebKit generators-only cannot build or run native targets", {
-        hint: "Request codegen, generated-types, clone-lolhtml or clone-rust-argon2, or unset BUN_WEBKIT_GENERATORS_ONLY.",
+        hint: "Request codegen, generated-types, clone-zstd, clone-lolhtml or clone-rust-argon2, or unset BUN_WEBKIT_GENERATORS_ONLY.",
       });
     }
   }
@@ -476,6 +476,7 @@ const configFlags: { [K in keyof Required<PartialConfig>]: ConfigFlagKind<NonNul
   lockEnvironment: "boolean",
   guardedPages: "boolean",
   executeOnlyStart: "boolean",
+  compiledLibrary: "boolean",
   socketFaultInjection: "boolean",
   codeGenerationFromStrings: "boolean",
   webAssembly: "boolean",
@@ -690,7 +691,7 @@ Options:
                           Fields: asan, lto, relr, assertions, logs, baseline,
                                   canary, valgrind, hardened, requireMdwe,
                                   lockEnvironment, guardedPages,
-                                  executeOnlyStart,
+                                  executeOnlyStart, compiledLibrary,
                                   webkit (prebuilt|local),
                                   local-deps (name=path[,name=path] — build a
                                   vendored dep from a local checkout),

@@ -97,7 +97,11 @@ test.concurrent.each([
 });
 
 test.concurrent.each(
-  ["-e", "--eval", "--print"].flatMap(flag => [{ args: [flag, ""] }, { args: ["--no-warnings", flag, ""] }]),
+  ["-e", "--eval", "--print"].flatMap(flag =>
+    [[], ["--no-warnings"], ["--input-type=module"], ["--input-type=commonjs"]].map(prefix => ({
+      args: [...prefix, flag, ""],
+    })),
+  ),
 )("preserves Bun help for empty eval $args", async ({ args }) => {
   await using proc = Bun.spawn({
     cmd: [bunExe(), ...args],

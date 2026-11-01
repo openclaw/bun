@@ -1,5 +1,5 @@
 // What the compiler reads in place of src/js/node/https.ts, which `bun run` evaluates. The two do the same.
-// Written against that file with the SHA-256 260a0e045593e8dc1b20731108b34cd121e8a552222232eeb9e2646a35b91242.
+// Written against that file with the SHA-256 d4a2b2667ebcb1831e65f89ad9d4c17713a47f4d3d52a711e00402d9165ead13.
 // When that file changes, bring the change here and write the new hash: test/internal/second-texts-of-modules.test.ts.
 
 // Hardcoded module "node:https"
@@ -7,7 +7,7 @@
 // https://github.com/nodejs/node/blob/v26.3.0/lib/https.js
 const http = require("node:http");
 const { isIP } = require("internal/net/isIP");
-const { urlToHttpOptions } = require("internal/url");
+const { isURL, urlToHttpOptions } = require("internal/url");
 const { kEmptyObject, once } = require("internal/shared");
 const { validateObject } = require("internal/validators");
 const {
@@ -45,7 +45,7 @@ function request(...args: [input?: unknown, options?: unknown, cb?: unknown]) {
   if (typeof args[0] === "string") {
     const urlStr = ArrayPrototypeShift.$call(args);
     options = urlToHttpOptions(new URL(urlStr));
-  } else if (args[0] instanceof URL) {
+  } else if (isURL(args[0])) {
     options = urlToHttpOptions(ArrayPrototypeShift.$call(args));
   }
 

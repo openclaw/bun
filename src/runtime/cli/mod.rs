@@ -81,6 +81,10 @@ pub(crate) mod test {
     #[path = "Timings.rs"]
     pub(crate) mod timings;
 
+    /// `bun test --aot-memory-limit`, and what stands in for it.
+    #[path = "MemoryOfJob.rs"]
+    pub(crate) mod memory_of_job;
+
     /// `bun test --parallel`: process-pool coordinator/worker entry points.
     /// Thin façade re-exporting from `parallel::runner`.
     #[path = "ParallelRunner.rs"]
@@ -101,6 +105,10 @@ pub(crate) mod test {
         pub(crate) mod file_range;
         #[path = "Frame.rs"]
         pub(crate) mod frame;
+        #[path = "parts.rs"]
+        pub(crate) mod parts;
+        #[path = "Reservation.rs"]
+        pub(crate) mod reservation;
         #[path = "runner.rs"]
         pub(crate) mod runner;
         #[path = "Worker.rs"]
@@ -1357,6 +1365,7 @@ pub(crate) mod command {
 
         if tag == Tag::AutoCommand
             && ctx.positionals.is_empty()
+            && ctx.runtime_options.eval.script.is_none()
             && ctx.worker_eval_mode != bun_options_types::context::WorkerEvalMode::Auto
         {
             run_command::RunCommand::exec_stdin(ctx, false)?;

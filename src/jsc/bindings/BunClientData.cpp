@@ -38,6 +38,7 @@
 #if OS(WINDOWS)
 #include <process.h>
 #endif
+#include "IsolatedModuleCache.h"
 
 namespace WebCore {
 using namespace JSC;

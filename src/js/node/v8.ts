@@ -38,6 +38,8 @@ function queryObjects(ctor, options = kEmptyObject) {
   return summaries;
 }
 
+const setNewContextsHaveGC = $newCppFunction("NodeVM.cpp", "jsFunctionSetNewContextsHaveGC", 1);
+
 const DateNow = Date.now;
 const ObjectGetOwnPropertyDescriptor = Object.getOwnPropertyDescriptor;
 const Uint8ArrayCtor = Uint8Array;
@@ -291,6 +293,12 @@ function setFlagsFromString(flags) {
   // changes like node's does, and otherwise ignore them.
   versionTagFlags += ` ${flags}`;
   versionTag = undefined;
+
+  // Except this one: `vm.runInNewContext("gc")` right after it is how a program gets gc() without a command-line flag.
+  for (const flag of flags.replaceAll("_", "-").split(/\s+/)) {
+    if (flag === "--expose-gc") setNewContextsHaveGC(true);
+    else if (flag === "--no-expose-gc" || flag === "--noexpose-gc") setNewContextsHaveGC(false);
+  }
 }
 // Bun has no cppgc (Oilpan) C++ heap, so the statistics are always empty;
 // this matches node's shape with nothing allocated through cppgc.

@@ -451,6 +451,7 @@ impl UpgradedDuplex {
             &global.js_thread(context),
             callback,
             JSValue::from(status),
+            crate::timer::Clock::Real,
         )?;
         Ok(())
     }
@@ -466,7 +467,12 @@ impl UpgradedDuplex {
             std::ptr::from_ref(self).cast_mut().cast(),
         )?;
         let context = global.bun_vm().context_of(self.context);
-        crate::timer::All::set_immediate(&global.js_thread(context), callback, JSValue::UNDEFINED)?;
+        crate::timer::All::set_immediate(
+            &global.js_thread(context),
+            callback,
+            JSValue::UNDEFINED,
+            crate::timer::Clock::Real,
+        )?;
         Ok(())
     }
 
