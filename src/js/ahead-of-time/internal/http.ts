@@ -142,7 +142,7 @@ const http1ServerPipeline: {
   ) => void;
   createFallbackResponse?: (
     ResponseClass: $Node.ServerResponseConstructor,
-    req: $Node.IncomingMessage,
+    req: $Node.IncomingMessage & { socket: $Node.HttpSocket },
     handle: $Node.Http1ResponseHandle,
   ) => $Node.ServerResponse;
 } = {};
@@ -181,7 +181,7 @@ export const enum NodeHTTPHeaderState {
 
 function emitErrorNextTickIfErrorListenerNT(
   self: $Node.EventEmitter,
-  err: Error | null | undefined,
+  err: unknown,
   cb: $Node.ErrorCallback,
 ) {
   process.nextTick(emitErrorNextTickIfErrorListener, self, err, cb);
@@ -189,7 +189,7 @@ function emitErrorNextTickIfErrorListenerNT(
 
 function emitErrorNextTickIfErrorListener(
   self: $Node.EventEmitter,
-  err: Error | null | undefined,
+  err: unknown,
   cb: $Node.ErrorCallback,
 ) {
   if ($isCallable(cb)) {
@@ -501,7 +501,7 @@ declare global {
     type OutgoingHttpHeaders = Dictionary<[name: string, value: HttpHeaderValue]>;
     /** The forms in which `writeHead()` and its relatives take headers. */
     type HttpHeadersInit = Record<string, HttpHeaderValue> | string[] | [name: string, value: HttpHeaderValue][];
-    type HttpWriteCallback = (error?: Error | null) => void;
+    type HttpWriteCallback = ErrorCallback;
     type HttpChunk = string | Buffer | Uint8Array;
     /** What waits for a socket to drain. The native response calls it with the offset it has written up to. */
     type HttpDrainCallback = ((offset: number) => void) | HttpWriteCallback;
@@ -580,7 +580,7 @@ declare global {
     interface OutgoingMessage {
       [kOutHeaders]: OutgoingHttpHeaders | null;
       [kNeedDrain]: boolean;
-      [kErrored]: Error | null | undefined;
+      [kErrored]: unknown;
       [kHighWaterMark]: number;
       [kSocket]: HttpSocket | null;
       [kRejectNonStandardBodyWrites]: boolean | undefined;

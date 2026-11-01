@@ -82,6 +82,43 @@ it("stream error aggregation preserves raw values and property access order", ()
   expect(error.errors).toEqual([outer, inner, last]);
 });
 
+it("stream web adapters preserve raw failures and primitive code getter receivers", async () => {
+  await using proc = Bun.spawn({
+    cmd: [
+      bunExe(),
+      "-e",
+      `"use strict";
+       const assert = require("node:assert/strict");
+       const { Readable, Writable } = require("node:stream");
+       const failure = Symbol("adapter failure");
+       let codeReads = 0;
+       Object.defineProperty(Symbol.prototype, "code", {
+         configurable: true,
+         get() { assert.equal(this, failure); codeReads++; },
+       });
+       async function main() {
+         const readable = new Readable({ read() { this.destroy(failure); } });
+         const reader = Readable.toWeb(readable).getReader();
+         await reader.read().then(() => assert.fail("read succeeded"), error => assert.equal(error, failure));
+         await reader.closed.then(() => assert.fail("reader closed cleanly"), error => assert.equal(error, failure));
+         const writable = new Writable({ write(chunk, encoding, callback) { callback(failure); } });
+         const writer = Writable.toWeb(writable).getWriter();
+         const closed = writer.closed.then(() => assert.fail("writer closed cleanly"), error => assert.equal(error, failure));
+         await writer.write("x").then(() => assert.fail("write succeeded"), error => assert.equal(error, failure));
+         await closed;
+         assert.ok(codeReads >= 2);
+         delete Symbol.prototype.code;
+         console.log("raw-adapter-ok");
+       }
+       main().catch(error => { console.error(error); process.exitCode = 1; });`,
+    ],
+    env: bunEnv,
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect({ stdout, stderr, exitCode }).toEqual({ stdout: "raw-adapter-ok\n", stderr: "", exitCode: 0 });
+});
+
 describe("Readable", () => {
   it("should be able to be created without _construct method defined", done => {
     const readable = new Readable({

@@ -82,7 +82,7 @@ type BinaryType = "nodebuffer" | "arraybuffer" | "fragments" | "blob";
 type ReadyState = typeof CONNECTING | typeof OPEN | typeof CLOSING | typeof CLOSED;
 type Transport = typeof NATIVE_CLIENT | typeof NATIVE_SERVER | typeof STREAM;
 type Data = string | Buffer | ArrayBufferLike | Buffer[] | Blob;
-type SendCallback = (err?: Error | null) => void;
+type SendCallback = $Node.ErrorCallback;
 // A send(), ping() or pong() callback that waits, with the async context of its call. `callback` is unset once it ran.
 type WaitingCallback = { callback: SendCallback | undefined; asyncContext: unknown };
 // Null-prototype literals are written `{ __proto__: null as never }` because TypeScript treats `__proto__` as a key.
@@ -1550,7 +1550,7 @@ function waitingCallback(callback: SendCallback): WaitingCallback {
   return { callback, asyncContext: $getInternalField($asyncContext, 0) };
 }
 
-function runWaitingCallback(entry: WaitingCallback, err: Error | null | undefined): void {
+function runWaitingCallback(entry: WaitingCallback, err: unknown): void {
   const { callback, asyncContext } = entry;
   if (callback === undefined) return;
 

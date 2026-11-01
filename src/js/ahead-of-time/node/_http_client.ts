@@ -1,5 +1,5 @@
 // What the compiler reads in place of src/js/node/_http_client.ts, which `bun run` evaluates. The two do the same.
-// Written against that file with the SHA-256 9c93b772a6d52739dc53cfae4e0a4b02039cbd05e91b2001dc9932bb210d4699.
+// Written against that file with the SHA-256 06ab0ec44f548d84cf0f55e54d7a7aa5c2e36113f9d023fe04c416c0fa05642b.
 // When that file changes, bring the change here and write the new hash: test/internal/second-texts-of-modules.test.ts.
 
 // Hardcoded module "node:_http_client"
@@ -7,6 +7,8 @@
 // node:tls sockets and the llhttp HTTPParser binding, matching the upstream
 // implementation as closely as possible.
 // https://github.com/nodejs/node/blob/v26.3.0/lib/_http_client.js
+const ObjectConstructor: (value: unknown) => object = Object;
+const ReflectGet: (target: object, key: PropertyKey, receiver?: unknown) => unknown = Reflect.get;
 const { kEmptyObject, once, ConnResetException, hasObserver, startPerf, stopPerf } = require("internal/shared");
 const kClientRequestStatistics = Symbol("ClientRequestStatistics");
 const {
@@ -46,7 +48,7 @@ const onClientRequestStartChannel = dc.channel("http.client.request.start");
 const onClientRequestErrorChannel = dc.channel("http.client.request.error");
 const onClientResponseFinishChannel = dc.channel("http.client.response.finish");
 
-function emitErrorEvent(request: $Node.ClientRequest, error: Error) {
+function emitErrorEvent(request: $Node.ClientRequest, error: unknown) {
   if (onClientRequestErrorChannel.hasSubscribers) {
     onClientRequestErrorChannel.publish({
       request,
@@ -1184,14 +1186,14 @@ ClientRequest.prototype.onSocket = function onSocket(
 function destroyRequestOnSocketNT(
   req: $Node.ClientRequest,
   socket: $Node.HttpClientSocket | null | undefined,
-  err: Error | null | undefined,
+  err: unknown,
 ) {
   if (!req.aborted && !err) {
     err = new ConnResetException("socket hang up");
   }
   // ERR_PROXY_TUNNEL is handled by the proxying logic.
   // Skip if the error was already emitted by the early socketErrorListener.
-  if (err && err.code !== "ERR_PROXY_TUNNEL" && !socket?._hadError) {
+  if (err && ReflectGet(ObjectConstructor(err), "code", err) !== "ERR_PROXY_TUNNEL" && !socket?._hadError) {
     emitErrorEvent(req, err);
   }
   // The request is dead with no parser: close the trace span on the paths
@@ -1203,7 +1205,7 @@ function destroyRequestOnSocketNT(
 function onSocketNT(
   req: $Node.ClientRequest,
   socket: $Node.HttpClientSocket | null | undefined,
-  err: Error | null | undefined,
+  err: unknown,
 ) {
   if (req.destroyed || err) {
     req.destroyed = true;
@@ -1228,10 +1230,10 @@ function onSocketNT(
 function onSocketFinishedDestroy(
   req: $Node.ClientRequest,
   socket: $Node.HttpClientSocket,
-  err: Error | null | undefined,
-  er?: Error | null,
+  err: unknown,
+  er?: unknown,
 ) {
-  if (er?.code === "ERR_STREAM_PREMATURE_CLOSE") {
+  if (er != null && ReflectGet(ObjectConstructor(er), "code", er) === "ERR_STREAM_PREMATURE_CLOSE") {
     er = null;
   }
   destroyRequestOnSocketNT(req, socket, er || err);

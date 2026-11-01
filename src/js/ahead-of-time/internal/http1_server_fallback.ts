@@ -20,7 +20,7 @@ function rethrowUncaught(err: unknown) {
 }
 
 // Node fails the write callbacks that a destroyed socket still holds before it emits 'close' (Writable's errorBuffer).
-function failPendingWriteCallbacks(res: $Node.ServerResponse, err: Error) {
+function failPendingWriteCallbacks(res: $Node.ServerResponse, err: unknown) {
   const callbacks = res[kPendingCallbacks];
   if (callbacks === undefined) return;
   res[kPendingCallbacks] = [];
@@ -246,7 +246,7 @@ function createHttp1FallbackResponseHandle(
   }
 
   // A failed write or a destroyed socket leaves 'finish' to the socket's 'close': streams fail writes inside destroy(), or just before it.
-  function onEndWritten(err?: Error | null) {
+  function onEndWritten(err?: unknown) {
     if (!err && !socket.destroyed) flushed();
   }
 

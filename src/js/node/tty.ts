@@ -25,7 +25,7 @@ const { validateInteger } = require("internal/validators");
 const kRawModeState = Symbol("rawModeState");
 
 type Environment = Record<string, string | undefined>;
-type DoneCallback = (error?: Error | null) => void;
+type DoneCallback = $Node.ErrorCallback;
 
 declare global {
   namespace $Node {
@@ -147,7 +147,7 @@ const prototypeOfReadStream = {
       return this;
     };
 
-    Prototype._destroy = function (this: $Node.TTYReadStream, err: Error | null, cb: DoneCallback) {
+    Prototype._destroy = function (this: $Node.TTYReadStream, err: unknown, cb: DoneCallback) {
       if (isStdio(this.fd)) return cb(err);
       require("internal/fs/streams").ReadStream.prototype._destroy.$call(this, err, cb);
     };
@@ -183,7 +183,7 @@ Object.defineProperty(WriteStream, "prototype", {
     const Prototype = Object.create(require("internal/fs/streams").WriteStream.prototype);
     Object.defineProperty(WriteStream, "prototype", { value: Prototype });
 
-    WriteStream.prototype._destroy = function (this: $Node.TTYWriteStream, err: Error | null, cb: DoneCallback) {
+    WriteStream.prototype._destroy = function (this: $Node.TTYWriteStream, err: unknown, cb: DoneCallback) {
       // Ending a FileSink never closes the stream's fd, so only a stream without one has to skip the close.
       if (isStdio(this.fd) && !this[require("internal/fs/streams").kWriteStreamFastPath]) {
         this.fd = null;

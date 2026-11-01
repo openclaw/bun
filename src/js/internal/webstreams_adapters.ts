@@ -28,7 +28,10 @@ const ArrayPrototypeFilter = Array.prototype.filter;
 const ArrayPrototypeMap = Array.prototype.map;
 const ObjectEntries = Object.entries;
 const ObjectDefineProperty = Object.defineProperty;
-const StringPrototypeStartsWith = String.prototype.startsWith;
+const ObjectConstructor: (value: unknown) => object = Object;
+const ReflectGet: (target: object, key: PropertyKey, receiver?: unknown) => unknown = Reflect.get;
+const StringPrototypeStartsWith: (this: unknown, searchString: string, position?: number) => boolean =
+  String.prototype.startsWith;
 const PromiseWithResolvers = Promise.withResolvers.bind(Promise);
 const PromiseResolve = Promise.$resolve.bind(Promise);
 const PromisePrototypeThen = $Promise.prototype.$then;
@@ -79,7 +82,7 @@ class ReadableFromWeb extends Readable {
     this.push(null);
   }
 
-  #handleError(reader: DefaultReader | undefined, error: Error) {
+  #handleError(reader: DefaultReader | undefined, error: unknown) {
     if (reader) {
       this.#reader = undefined;
       try {
@@ -122,7 +125,7 @@ class ReadableFromWeb extends Readable {
     );
   }
 
-  _destroy(error: Error | null, callback: $Node.ErrorCallback) {
+  _destroy(error: unknown, callback: $Node.ErrorCallback) {
     if (!this.#closed) {
       this.#closed = true;
       // As in Node, a cancel() that rejects doesn't error the Readable.
@@ -153,7 +156,7 @@ class ReadableFromWeb extends Readable {
 const encoder = new TextEncoder();
 
 // Collect all negative (error) ZLIB codes and Z_NEED_DICT
-const ZLIB_FAILURES: Set<string | undefined> = new SafeSet([
+const ZLIB_FAILURES: Set<unknown> = new SafeSet([
   ...ArrayPrototypeFilter.$call(
     ArrayPrototypeMap.$call(ObjectEntries(constants_zlib), ({ 0: code, 1: value }) => (value < 0 ? code : null)),
     Boolean,
@@ -161,8 +164,8 @@ const ZLIB_FAILURES: Set<string | undefined> = new SafeSet([
   "Z_NEED_DICT",
 ]);
 
-function handleKnownInternalErrors(cause: Error | null | undefined): Error | null | undefined {
-  const causeCode = cause?.code;
+function handleKnownInternalErrors(cause: unknown): unknown {
+  const causeCode = cause == null ? undefined : ReflectGet(ObjectConstructor(cause), "code", cause);
   switch (true) {
     case causeCode === "ERR_STREAM_PREMATURE_CLOSE": {
       return $makeAbortError(undefined, { cause });
@@ -348,7 +351,7 @@ function newStreamWritableFromWritableStream(
     signal,
 
     writev(chunks, callback) {
-      function done(error?: Error | null) {
+      function done(error?: unknown) {
         try {
           callback(error);
         } catch (error) {
@@ -357,7 +360,7 @@ function newStreamWritableFromWritableStream(
           // thrown we don't want those to cause an unhandled
           // rejection. Let's just escape the promise and
           // handle it separately.
-          process.nextTick(() => destroyer(writable, error as Error));
+          process.nextTick(() => destroyer(writable, error));
         }
       }
 
@@ -390,11 +393,11 @@ function newStreamWritableFromWritableStream(
         }
       }
 
-      function done(error?: Error | null) {
+      function done(error?: unknown) {
         try {
           callback(error);
         } catch (error) {
-          destroyer(writable, error as Error);
+          destroyer(writable, error);
         }
       }
 
@@ -436,7 +439,7 @@ function newStreamWritableFromWritableStream(
     },
 
     final(callback) {
-      function done(error?: Error | null) {
+      function done(error?: unknown) {
         try {
           callback(error);
         } catch (error) {
@@ -445,7 +448,7 @@ function newStreamWritableFromWritableStream(
           // thrown we don't want those to cause an unhandled
           // rejection. Let's just escape the promise and
           // handle it separately.
-          process.nextTick(() => destroyer(writable, error as Error));
+          process.nextTick(() => destroyer(writable, error));
         }
       }
 
@@ -732,7 +735,7 @@ function newStreamDuplexFromReadableWritablePair(
     signal,
 
     writev(chunks, callback) {
-      function done(error?: Error | null) {
+      function done(error?: unknown) {
         try {
           callback(error);
         } catch (error) {
@@ -741,7 +744,7 @@ function newStreamDuplexFromReadableWritablePair(
           // thrown we don't want those to cause an unhandled
           // rejection. Let's just escape the promise and
           // handle it separately.
-          process.nextTick(() => destroyer(duplex, error as Error));
+          process.nextTick(() => destroyer(duplex, error));
         }
       }
 
@@ -774,11 +777,11 @@ function newStreamDuplexFromReadableWritablePair(
         }
       }
 
-      function done(error?: Error | null) {
+      function done(error?: unknown) {
         try {
           callback(error);
         } catch (error) {
-          destroyer(duplex, error as Error);
+          destroyer(duplex, error);
         }
       }
 
@@ -792,7 +795,7 @@ function newStreamDuplexFromReadableWritablePair(
     },
 
     final(callback) {
-      function done(error?: Error | null) {
+      function done(error?: unknown) {
         try {
           callback(error);
         } catch (error) {
@@ -801,7 +804,7 @@ function newStreamDuplexFromReadableWritablePair(
           // thrown we don't want those to cause an unhandled
           // rejection. Let's just escape the promise and
           // handle it separately.
-          process.nextTick(() => destroyer(duplex, error as Error));
+          process.nextTick(() => destroyer(duplex, error));
         }
       }
 

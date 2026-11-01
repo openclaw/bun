@@ -3,6 +3,8 @@
 // node:tls sockets and the llhttp HTTPParser binding, matching the upstream
 // implementation as closely as possible.
 // https://github.com/nodejs/node/blob/v26.3.0/lib/_http_client.js
+const ObjectConstructor: (value: unknown) => object = Object;
+const ReflectGet: (target: object, key: PropertyKey, receiver?: unknown) => unknown = Reflect.get;
 const { kEmptyObject, once, ConnResetException, hasObserver, startPerf, stopPerf } = require("internal/shared");
 const kClientRequestStatistics = Symbol("ClientRequestStatistics");
 const {
@@ -1069,7 +1071,7 @@ function destroyRequestOnSocketNT(req, socket, err) {
   }
   // ERR_PROXY_TUNNEL is handled by the proxying logic.
   // Skip if the error was already emitted by the early socketErrorListener.
-  if (err && err.code !== "ERR_PROXY_TUNNEL" && !socket?._hadError) {
+  if (err && ReflectGet(ObjectConstructor(err), "code", err) !== "ERR_PROXY_TUNNEL" && !socket?._hadError) {
     emitErrorEvent(req, err);
   }
   // The request is dead with no parser: close the trace span on the paths
@@ -1100,7 +1102,7 @@ function onSocketNT(req, socket, err) {
 }
 
 function onSocketFinishedDestroy(req, socket, err, er) {
-  if (er?.code === "ERR_STREAM_PREMATURE_CLOSE") {
+  if (er != null && ReflectGet(ObjectConstructor(er), "code", er) === "ERR_STREAM_PREMATURE_CLOSE") {
     er = null;
   }
   destroyRequestOnSocketNT(req, socket, er || err);

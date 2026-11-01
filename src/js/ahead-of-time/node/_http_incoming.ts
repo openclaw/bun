@@ -1,5 +1,5 @@
 // What the compiler reads in place of src/js/node/_http_incoming.ts, which `bun run` evaluates. The two do the same.
-// Written against that file with the SHA-256 28181b2c5a22f824a8caebb17a1f5a3d65525df1d060b79b1a452932b3f20a1f.
+// Written against that file with the SHA-256 93bdad23783fe791adeb47431977ba52154e3b04f360dc3575aa5f6f3e535562.
 // When that file changes, bring the change here and write the new hash: test/internal/second-texts-of-modules.test.ts.
 
 // Hardcoded module "node:_http_incoming"
@@ -7,6 +7,8 @@
 // native Bun.serve-based node:http server can construct IncomingMessage
 // instances directly from its native handle (the `kHandle` constructor form).
 // https://github.com/nodejs/node/blob/v26.3.0/lib/_http_incoming.js
+const ObjectConstructor: (value: unknown) => object = Object;
+const ReflectGet: (target: object, key: PropertyKey, receiver?: unknown) => unknown = Reflect.get;
 const Readable = require("internal/streams/readable");
 // callback-style stream.finished (returns a cleanup function)
 const finished = require("internal/streams/end-of-stream");
@@ -566,7 +568,7 @@ IncomingMessage.prototype._read = incomingMessageRead;
 // it, since something else is destroying this connection anyway.
 const incomingMessageDestroy = function _destroy(
   this: $Node.IncomingMessage,
-  err: Error | null,
+  err: unknown,
   cb: $Node.ErrorCallback,
 ) {
   const shouldEmitAborted = !this.readableEnded || !this.complete;
@@ -618,11 +620,11 @@ IncomingMessage.prototype._destroy = incomingMessageDestroy;
 function onFinishedAfterDestroy(
   this: $Node.IncomingMessage,
   state: { cleanup: undefined | (() => void) },
-  err: Error | null,
+  err: unknown,
   cb: $Node.ErrorCallback,
-  e?: Error | null,
+  e?: unknown,
 ) {
-  if (e?.code === "ERR_STREAM_PREMATURE_CLOSE") {
+  if (e != null && ReflectGet(ObjectConstructor(e), "code", e) === "ERR_STREAM_PREMATURE_CLOSE") {
     e = null;
   }
   state.cleanup!();
@@ -1576,7 +1578,7 @@ http.requestRoad.queueDump = queueDump;
 http.requestRoad.mayDumpInPlace = mayDumpInPlace;
 http.requestRoad.beginDump = beginDump;
 
-function onError(self: $Node.IncomingMessage, error: Error | null | undefined, cb: $Node.ErrorCallback) {
+function onError(self: $Node.IncomingMessage, error: unknown, cb: $Node.ErrorCallback) {
   // This is to keep backward compatible behavior.
   // An error is emitted only if there are listeners attached to the event.
   if (self.listenerCount("error") === 0) {

@@ -524,7 +524,7 @@ OutgoingMessage.prototype.uncork = function uncork(this: $Node.OutgoingMessage) 
   this[kChunkedLength] = 0;
 };
 
-function runChunkCallbacks(callbacks: $Node.HttpWriteCallback[], err?: Error | null) {
+function runChunkCallbacks(callbacks: $Node.HttpWriteCallback[], err?: unknown) {
   for (const callback of callbacks) {
     callback(err);
   }

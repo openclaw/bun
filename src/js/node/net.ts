@@ -61,7 +61,7 @@ type NativeSocketError = Error & { errno?: number };
 type NativeConnectError = Error & { errno: number };
 type ConnectException = InstanceType<typeof ExceptionWithHostPort> & { localAddress?: string; localPort?: number };
 type SystemError = Error & { errno?: number; syscall?: string };
-type WriteCallback = (error?: Error | null) => void;
+type WriteCallback = $Node.ErrorCallback;
 type Chunk = string | Uint8Array;
 
 // $toClass installs Socket's Duplex prototype at runtime, which the constructor's
@@ -1157,9 +1157,9 @@ function onSocketEnd(this: $Node.Socket) {
 // is overly vague, and makes it seem like the user's code is to blame.
 function writeAfterFIN(
   this: $Node.Socket,
-  chunk: string | Uint8Array,
+  chunk: unknown,
   encoding?: string | null | WriteCallback,
-  cb?: WriteCallback,
+  cb?: WriteCallback | null,
 ) {
   if (!this.writableEnded) {
     return Duplex.prototype.write.$call(this, chunk, encoding as string | null | undefined, cb);
@@ -3013,7 +3013,7 @@ Socket.prototype.end = function end(this: $Node.Socket, data?, encoding?, callba
   return Duplex.prototype.end.$call(this, data, encoding, callback);
 };
 
-Socket.prototype._destroy = function _destroy(this: $Node.Socket, err: Error | null, callback: WriteCallback) {
+Socket.prototype._destroy = function _destroy(this: $Node.Socket, err: unknown, callback: WriteCallback) {
   $debug("Socket.prototype._destroy");
 
   this.connecting = false;

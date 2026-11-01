@@ -4373,7 +4373,7 @@ function closeAfterLastSendableResponse(socket: $Node.HttpSocket) {
   }
 }
 
-function failQueuedPipelinedWriteCallbacks(queued: PipelinedQueuedState | undefined, error: Error) {
+function failQueuedPipelinedWriteCallbacks(queued: PipelinedQueuedState | undefined, error: unknown) {
   const ops = queued?.ops;
   const length = ops?.length ?? 0;
   if (length === 0) return;
@@ -6553,7 +6553,7 @@ function allowWritesToContinue(this: $Node.ServerResponse) {
   flushWriteAccountingNT(this);
 }
 
-function failPendingWriteCallbacks(res: $Node.ServerResponse, error: Error | null | undefined) {
+function failPendingWriteCallbacks(res: $Node.ServerResponse, error: unknown) {
   const callbacks = res[kPendingCallbacks];
   const length = callbacks?.length ?? 0;
   if (length === 0) return;
