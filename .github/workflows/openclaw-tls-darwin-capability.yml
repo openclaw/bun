@@ -1,0 +1,69 @@
+name: OpenClaw TLS Darwin debugger capability
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/openclaw-tls-darwin-capability.yml
+      - .github/openclaw/tls-darwin-capability.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: openclaw-tls-darwin-capability-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  inspect:
+    runs-on: macos-15-intel
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: controls
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          sparse-checkout: |
+            .github/openclaw
+            .github/workflows
+      - name: Download the exact consumed signed artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          input="$RUNNER_TEMP/tls-darwin-input"
+          mkdir "$input"
+          gh api repos/openclaw/bun/actions/runs/41238111110 > "$input/run.json"
+          gh api repos/openclaw/bun/actions/artifacts/13057470428 > "$input/metadata.json"
+          curl --location --fail --silent --show-error --proto '=https' --proto-redir '=https' \
+            --max-time 300 --max-filesize 232201333 \
+            -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/openclaw/bun/actions/artifacts/13057470428/zip \
+            --output "$input/artifact.zip"
+      - name: Admit matched Mach-O and dSYM identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir tls-darwin-proof
+          cp controls/.github/openclaw/tls-darwin-capability.py tls-darwin-proof/controller.py
+          cp controls/.github/workflows/openclaw-tls-darwin-capability.yml tls-darwin-proof/workflow.yml
+          python3 controls/.github/openclaw/tls-darwin-capability.py prepare
+      - name: Inventory static debugger types and physical scanner functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcrun lldb --batch --no-lldbinit --no-use-colors \
+            -o 'settings set target.load-script-from-symbol-file false' \
+            -o 'script import runpy; runpy.run_path("controls/.github/openclaw/tls-darwin-capability.py", run_name="__lldb__")' \
+            > tls-darwin-proof/debugger.log 2>&1
+          python3 controls/.github/openclaw/tls-darwin-capability.py seal
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: tls-darwin-debugger-capability
+          path: tls-darwin-proof/
+          if-no-files-found: error
+          retention-days: 7

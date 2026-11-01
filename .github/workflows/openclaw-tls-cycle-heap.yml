@@ -1,0 +1,76 @@
+name: OpenClaw TLS cycle production heap snapshot
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/openclaw-tls-cycle-heap.yml
+      - .github/openclaw/tls-cycle-heap.py
+      - .github/openclaw/tls-cycle-heap-test.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: openclaw-tls-cycle-heap-${{ github.head_ref || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    runs-on: macos-15-intel
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: controls
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          sparse-checkout: |
+            .github/openclaw
+            .github/workflows
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: source
+          ref: 510fef558b464c58de1209298f638fa476d03eef
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "26.12.1"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.14.8"
+      - name: Download the exact consumed Darwin artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          input="$RUNNER_TEMP/tls-darwin-input"
+          mkdir "$input"
+          gh api repos/openclaw/bun/actions/runs/41238111110 > "$input/run.json"
+          gh api repos/openclaw/bun/actions/artifacts/13057470428 > "$input/metadata.json"
+          curl --location --fail --silent --show-error --proto '=https' --proto-redir '=https' \
+            --max-time 300 --max-filesize 232201333 \
+            -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/openclaw/bun/actions/artifacts/13057470428/zip \
+            --output "$input/artifact.zip"
+      - name: Reproduce the original failure and capture a separate snapshot collection
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir tls-cycle-heap
+          cp controls/.github/workflows/openclaw-tls-cycle-heap.yml tls-cycle-heap/workflow.yml
+          cp controls/.github/openclaw/tls-cycle-heap.py tls-cycle-heap/controller.py
+          cp controls/.github/openclaw/tls-cycle-heap-test.py tls-cycle-heap/graph-test.py
+          cp controls/.github/openclaw/tls-cycle-checkpoint.py tls-cycle-heap/checkpoint.py
+          cp controls/.github/openclaw/tls-darwin-capability.py tls-cycle-heap/archive.py
+          python3 controls/.github/openclaw/tls-cycle-heap-test.py
+          python3 controls/.github/openclaw/tls-cycle-heap.py
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: tls-cycle-production-heap
+          path: tls-cycle-heap/
+          if-no-files-found: error
+          retention-days: 7

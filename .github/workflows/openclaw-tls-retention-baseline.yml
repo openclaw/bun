@@ -1,0 +1,124 @@
+name: OpenClaw TLS retention baseline
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/openclaw-tls-retention-baseline.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: openclaw-tls-retention-baseline-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  baseline:
+    name: Baseline ${{ matrix.target }} dropped cycle
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: darwin-x64
+            runner: macos-15-intel
+            asset: "679970945"
+          - target: windows-x64
+            runner: windows-2025
+            asset: "679971471"
+          - target: windows-arm64
+            runner: windows-11-arm
+            asset: "679971443"
+    env:
+      TARGET: ${{ matrix.target }}
+      ASSET_ID: ${{ matrix.asset }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 454a78a4d3b0202ecdbedf7dd051fc84ffc59e9e
+          persist-credentials: false
+
+      - name: Download published baseline
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir diagnostics
+          gh api repos/openclaw/bun/releases/assets/679971474 \
+            -H 'Accept: application/octet-stream' > diagnostics/manifest.json
+          gh api "repos/openclaw/bun/releases/assets/$ASSET_ID" \
+            -H 'Accept: application/octet-stream' > baseline.zip
+
+      - name: Verify baseline and run the exact dropped-cycle case
+        shell: bash
+        run: |
+          set -euo pipefail
+          python=python3
+          command -v python3 >/dev/null || python=python
+          "$python" - <<'PY'
+          import hashlib, json, os, subprocess, sys, zipfile
+          from pathlib import Path
+          from xml.etree import ElementTree
+
+          def sha256(path):
+              digest = hashlib.sha256()
+              with path.open("rb") as file:
+                  for chunk in iter(lambda: file.read(1024 * 1024), b""):
+                      digest.update(chunk)
+              return digest.hexdigest()
+
+          report = Path("diagnostics").resolve()
+          manifest_path = report / "manifest.json"
+          assert sha256(manifest_path) == "8c3a9d87f37832fa07173635af52d53b813e29470afa4afdb49a83033fed039e"
+          manifest = json.loads(manifest_path.read_text())
+          commit = "191755ec115ece3dd642eba3cb0143cecb5e5d7a"
+          webkit = "b82bc917e99110b61c3a21202d6def7457aa194c"
+          assert manifest["bun"]["commit"] == commit
+          assert manifest["webkit"]["version"] == webkit
+          matches = [asset for asset in manifest["assets"] if asset["target"] == os.environ["TARGET"]]
+          assert len(matches) == 1
+          asset = matches[0]
+          archive = Path("baseline.zip")
+          assert sha256(archive) == asset["sha256"]
+          with zipfile.ZipFile(archive) as bundle:
+              bundle.extractall("baseline")
+          exe = (Path("baseline") / asset["executable"]["path"]).resolve()
+          assert sha256(exe) == asset["executable"]["sha256"]
+          exe.chmod(exe.stat().st_mode | 0o111)
+          identity = subprocess.run([str(exe), "-e", "console.log(JSON.stringify({commit:Bun.revision,webkit:process.versions.webkit,platform:process.platform,arch:process.arch}))"],
+              text=True, capture_output=True, check=True)
+          facts = json.loads(identity.stdout)
+          (report / "identity.json").write_text(json.dumps(facts, indent=2) + "\n")
+          platform, arch = os.environ["TARGET"].split("-")
+          assert facts == {"commit": commit, "webkit": webkit,
+              "platform": "win32" if platform == "windows" else platform, "arch": arch}, facts
+          fixture = Path("test/js/bun/net/socket-retention.test.ts")
+          assert sha256(fixture) == "d4c04a72b89bc7d33c292a16a57c38f5da540815dc2e141adfd58c1bd9973af2"
+          name = "TLS Duplex cycles collect after startup while a retained origin keeps its wrapper alive"
+          with (report / "stdout.txt").open("w") as stdout, (report / "stderr.txt").open("w") as stderr:
+              result = subprocess.run([str(exe), "test", str(fixture), "--test-name-pattern", "^" + name + "$",
+                  "--reporter=junit", "--reporter-outfile=" + str(report / "result.xml")], stdout=stdout, stderr=stderr)
+          tree = ElementTree.parse(report / "result.xml")
+          selected = [case for case in tree.iter("testcase") if case.get("name") == name]
+          assert len(selected) == 1 and selected[0].find("skipped") is None, "selected case did not execute"
+          case = selected[0]
+          outcome = {"exitCode": result.returncode, "name": name,
+              "failure": case.find("failure") is not None, "error": case.find("error") is not None}
+          (report / "outcome.json").write_text(json.dumps(outcome, indent=2) + "\n")
+          print(json.dumps(outcome))
+          if result.returncode == 0:
+              assert not outcome["failure"] and not outcome["error"], outcome
+          sys.exit(result.returncode)
+          PY
+
+      - name: Retain baseline evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: tls-retention-baseline-${{ matrix.target }}
+          path: diagnostics
+          if-no-files-found: error
+          retention-days: 7
