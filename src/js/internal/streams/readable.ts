@@ -659,7 +659,7 @@ function read(this: $Node.Readable, state: ReadableState, n: number) {
     try {
       this._read(state.highWaterMark);
     } catch (err) {
-      errorOrDestroy(this, err as Error);
+      errorOrDestroy(this, err);
     }
     state[kState] &= ~Flag.Sync;
 
@@ -954,7 +954,7 @@ Readable.prototype.pipe = function (this: $Node.Readable, destination: $Node.Str
         pause();
       }
     } catch (err) {
-      dest.destroy!(err as Error);
+      dest.destroy!(err);
     }
   }
 
@@ -1415,7 +1415,7 @@ async function* createAsyncIterator(stream: $Node.Readable, options?: $Node.Read
 
   stream.on("readable", next);
 
-  let error: any;
+  let error: unknown;
   const cleanup = eos(stream, { writable: false }, err => {
     error = err ? aggregateTwoErrors(error, err) : null;
     callback();
@@ -1436,7 +1436,7 @@ async function* createAsyncIterator(stream: $Node.Readable, options?: $Node.Read
       }
     }
   } catch (err: unknown) {
-    error = aggregateTwoErrors(error, err as any);
+    error = aggregateTwoErrors(error, err);
     throw error;
   } finally {
     if ((error || options?.destroyOnReturn !== false) && (error === undefined || destroysItself(stream))) {

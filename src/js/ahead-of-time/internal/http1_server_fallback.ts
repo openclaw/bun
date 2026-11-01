@@ -67,6 +67,13 @@ interface Http1FallbackResponseHead {
   keepAliveTimeoutSecs: number;
 }
 
+function bindRequestSocket(
+  request: $Node.IncomingMessage,
+  socket: $Node.HttpSocket,
+): asserts request is $Node.IncomingMessage & { socket: $Node.HttpSocket } {
+  request.socket = socket;
+}
+
 function createHttp1FallbackResponseHandle(
   socket: $Node.HttpSocket,
   shouldKeepAlive: boolean,
@@ -502,7 +509,7 @@ function connectionListenerHTTP1(
 
     req = new IncomingMessageClass(socket);
     req![kHeaderSource] = null;
-    req!.socket = socket;
+    bindRequestSocket(req!, socket);
     req!.httpVersionMajor = versionMajor;
     req!.httpVersionMinor = versionMinor;
     req!.httpVersion = `${versionMajor}.${versionMinor}`;

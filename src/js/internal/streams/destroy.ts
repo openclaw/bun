@@ -25,13 +25,16 @@ const enum Flag {
 
 const { nextTick: originalNextTick, enqueueTick1 } = require("internal/process/next_tick_queue");
 const ProcessNextTick = process.nextTick;
+const ObjectConstructor: (value: unknown) => object = Object;
+const ReflectGet: (target: object, key: PropertyKey, receiver?: unknown) => unknown = Reflect.get;
 
 const kDestroy = Symbol("kDestroy");
 const kConstruct = Symbol("kConstruct");
 
 declare global {
   namespace $Node {
-    type ErrorCallback = (error?: Error | null) => void;
+    /** Stream hooks forward thrown values without normalizing them into `Error` objects. */
+    type ErrorCallback = (error?: unknown) => void;
 
     interface StreamOptions extends EventEmitterOptions {
       highWaterMark?: number | null;
@@ -40,7 +43,7 @@ declare global {
       autoDestroy?: boolean;
       defaultEncoding?: string | null;
       signal?: AbortSignal;
-      destroy?(this: StreamWithState, error: Error | null, callback: ErrorCallback): void;
+      destroy?(this: StreamWithState, error: unknown, callback: ErrorCallback): void;
       construct?(this: StreamWithState, callback: ErrorCallback): void;
     }
 
@@ -52,24 +55,24 @@ declare global {
       readable?: boolean;
       writable?: boolean;
       allowHalfOpen?: boolean;
-      destroy(error?: Error | null, callback?: ErrorCallback): this;
-      _destroy(error: Error | null, callback: ErrorCallback): void;
+      destroy(error?: unknown, callback?: ErrorCallback): this;
+      _destroy(error: unknown, callback: ErrorCallback): void;
       _undestroy(): void;
       _construct?(callback: ErrorCallback): void;
       get destroyed(): boolean;
       set destroyed(value: boolean);
       get closed(): boolean;
-      get errored(): Error | null;
+      get errored(): unknown;
       [Symbol.asyncDispose](): Promise<void>;
     }
   }
 }
 
-function checkError(err: Error | null | undefined, w: WritableState | undefined, r: ReadableState | undefined): void {
+function checkError(err: unknown, w: WritableState | undefined, r: ReadableState | undefined): void {
   if (err) {
     ("unlikely");
     // Avoid V8 leak, https://github.com/nodejs/node/pull/34103#issuecomment-652002364
-    err.stack; // oxlint-disable-line bun/no-unused-expressions
+    ReflectGet(ObjectConstructor(err), "stack", err);
 
     if (w && (w[kState] & Flag.Errored) === 0) {
       w[kErroredValue] = err;
@@ -84,7 +87,7 @@ function checkError(err: Error | null | undefined, w: WritableState | undefined,
 
 // Backwards compat. cb() is undocumented and unused in core but
 // unfortunately might be used by modules.
-const destroy = function destroy(this: $Node.StreamWithState, err?: Error | null, cb?: $Node.ErrorCallback) {
+const destroy = function destroy(this: $Node.StreamWithState, err?: unknown, cb?: $Node.ErrorCallback) {
   const r: ReadableState | undefined = this._readableState;
   const w: WritableState | undefined = this._writableState;
   // With duplex streams we use the writable side for state.
@@ -112,8 +115,8 @@ const destroy = function destroy(this: $Node.StreamWithState, err?: Error | null
   // If still constructing then defer calling _destroy.
   if ((s[kState] & Flag.Constructed) === 0) {
     ("unlikely");
-    this.once(kDestroy, function (this: $Node.StreamWithState, er: Error | null | undefined) {
-      _destroy(this, aggregateTwoErrors(er!, err!), cb);
+    this.once(kDestroy, function (this: $Node.StreamWithState, er: unknown) {
+      _destroy(this, aggregateTwoErrors(er, err), cb);
     });
   } else {
     _destroy(this, err, cb);
@@ -124,10 +127,10 @@ const destroy = function destroy(this: $Node.StreamWithState, err?: Error | null
 
 streamState.internals.destroyMethods = { destroy, closeAfterThrow };
 
-function _destroy(self: $Node.StreamWithState, err: Error | null | undefined, cb: $Node.ErrorCallback | undefined) {
+function _destroy(self: $Node.StreamWithState, err: unknown, cb: $Node.ErrorCallback | undefined) {
   let called = false;
 
-  function onDestroy(err?: Error | null) {
+  function onDestroy(err?: unknown) {
     if (called) {
       return;
     }
@@ -163,18 +166,18 @@ function _destroy(self: $Node.StreamWithState, err: Error | null | undefined, cb
   try {
     self._destroy(err || null, onDestroy);
   } catch (err) {
-    onDestroy(err as Error);
+    onDestroy(err);
   }
 }
 
 function closeAfterThrow(self: $Node.StreamWithState, r: ReadableState, err: unknown) {
-  checkError(err as Error, undefined, r);
+  checkError(err, undefined, r);
   r[kState] |= Flag.Closed;
   if (err) ProcessNextTick(emitErrorCloseNT, self, err);
   else ProcessNextTick(emitCloseNT, self);
 }
 
-function emitErrorCloseNT(self: $Node.StreamWithState, err: Error) {
+function emitErrorCloseNT(self: $Node.StreamWithState, err: unknown) {
   emitErrorNT(self, err);
   emitCloseNT(self);
 }
@@ -195,7 +198,7 @@ function emitCloseNT(self: $Node.StreamWithState) {
   }
 }
 
-function emitErrorNT(self: $Node.AnyStream, err: Error) {
+function emitErrorNT(self: $Node.AnyStream, err: unknown) {
   const r = self._readableState;
   const w = self._writableState;
 
@@ -260,7 +263,7 @@ function undestroy(this: $Node.StreamWithState) {
   }
 }
 
-function errorOrDestroy(stream: $Node.AnyStream, err: Error | null | undefined, sync?: boolean) {
+function errorOrDestroy(stream: $Node.AnyStream, err: unknown, sync?: boolean) {
   // We have tests that rely on errors being emitted
   // in the same tick, so changing this is semver major.
   // For now when you opt-in to autoDestroy we allow
@@ -299,7 +302,7 @@ function errorOrDestroy(stream: $Node.AnyStream, err: Error | null | undefined, 
     stream.destroy!(err);
   } else if (err) {
     // Avoid V8 leak, https://github.com/nodejs/node/pull/34103#issuecomment-652002364
-    err.stack; // oxlint-disable-line bun/no-unused-expressions
+    ReflectGet(ObjectConstructor(err), "stack", err);
 
     if (w && (flagsOf(w) & Flag.Errored) === 0) {
       w.errored = err;
@@ -343,7 +346,7 @@ function construct(stream: $Node.StreamWithState, cb: () => void) {
 function constructNT(stream: $Node.StreamWithState) {
   let called = false;
 
-  function onConstruct(err?: Error | null) {
+  function onConstruct(err?: unknown) {
     if (called) {
       errorOrDestroy(stream, err ?? $ERR_MULTIPLE_CALLBACK());
       return;
@@ -387,13 +390,13 @@ function emitCloseLegacy(stream: $Node.EventEmitter) {
   stream.emit("close");
 }
 
-function emitErrorCloseLegacy(stream: $Node.EventEmitter, err: Error) {
+function emitErrorCloseLegacy(stream: $Node.EventEmitter, err: unknown) {
   stream.emit("error", err);
   ProcessNextTick(emitCloseLegacy, stream);
 }
 
 // Normalize destroy for legacy.
-function destroyer(stream: $Node.AnyStream | null | undefined, err?: Error | null) {
+function destroyer(stream: $Node.AnyStream | null | undefined, err?: unknown) {
   if (!stream || isDestroyed(stream)) {
     return;
   }

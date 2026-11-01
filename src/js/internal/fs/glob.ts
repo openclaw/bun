@@ -1011,7 +1011,7 @@ function globSync(pattern: string | string[], options?: GlobOptions) {
 
 // Keep the last matcher per platform: POSIX backslashes are literal characters.
 const patternCache: [Minimatch | undefined, Minimatch | undefined] = [undefined, undefined];
-function matchGlobPattern(path, pattern, windows) {
+function matchGlobPattern(path: string, pattern: string, windows: boolean) {
   validateString(path, "path");
   validateString(pattern, "pattern");
   const index = windows ? 1 : 0;

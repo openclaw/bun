@@ -2643,7 +2643,7 @@ function getNodeHTTPTLSServerSocketPrototype() {
     const { TLSSocket } = require("node:tls");
     // Keep the native HTTP socket's I/O methods while exposing the TLS socket identity.
     NodeHTTPTLSServerSocketPrototype = Object.create(TLSSocket.prototype, {
-      ...Object.getOwnPropertyDescriptors(NodeHTTPServerSocket.prototype),
+      ...Object.getOwnPropertyDescriptors(getNodeHTTPServerSocket().prototype),
       ...Object.getOwnPropertyDescriptors({
         constructor: TLSSocket,
         getPeerCertificate(detailed) {

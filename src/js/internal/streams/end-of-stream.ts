@@ -62,7 +62,7 @@ const nop = () => {};
 function bindAsyncResource(fn: $Node.ErrorCallback, type: string): $Node.ErrorCallback {
   AsyncResource ??= require("node:async_hooks").AsyncResource;
   const resource = new AsyncResource(type);
-  return function (this: unknown, ...args: [error?: Error | null]) {
+  return function (this: unknown, ...args: [error?: unknown]) {
     return resource.runInAsyncScope(fn, this, ...args);
   };
 }
@@ -79,7 +79,7 @@ function hasAsyncContext() {
 /**
  * Returns the current stream error tracked by eos(), if any.
  */
-function getEosErrored(stream: $Node.AnyStream): Error | null {
+function getEosErrored(stream: $Node.AnyStream): unknown {
   const errored =
     !IS_COMPILED_AHEAD_OF_TIME || $isProxyObject(stream)
       ? isWritableErrored(stream) || isReadableErrored(stream)
@@ -185,9 +185,9 @@ function eos(stream: $Node.AnyStream | ReadableStream | WritableStream, options,
   /**
    * undefined: to be determined
    * null: no error
-   * Error: an error occurred
+   * any other value: the stream's failure value
    */
-  let immediateResult: Error | null | undefined;
+  let immediateResult: unknown;
   if (repeatsReads ? isClosed(stream) : isNodeStreamClosed(stream)) {
     immediateResult = getEosOnCloseError(stream, readable, readableFinished, writable, writableFinished);
   } else if (
@@ -301,7 +301,7 @@ function eos(stream: $Node.AnyStream | ReadableStream | WritableStream, options,
     }
   };
 
-  const onerror = (err: Error) => {
+  const onerror = (err: unknown) => {
     callback!.$call(stream, err);
   };
 
@@ -410,7 +410,7 @@ function eosWeb(stream: ReadableStream | WritableStream, options: EosOptions, ca
       });
     }
   }
-  const resolverFn = (...args: [error?: Error | null]) => {
+  const resolverFn = (...args: [error?: unknown]) => {
     if (!isAborted) {
       process.nextTick(() => callback.$apply(stream, args));
     }

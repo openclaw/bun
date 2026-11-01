@@ -55,6 +55,7 @@ const kVerifyError: typeof netSymbols.kVerifyError = netSymbols.kVerifyError;
 const { addServerAbortSignalOption } = require("internal/net/server_abort_signal");
 
 type SocketHandle = $Node.SocketHandle<$Node.Socket | ConnectData>;
+type NativeTLSHandle = SocketHandle & $Bindgen.TLSSocket;
 type ListenerHandle = $Node.ListenerHandle;
 type NativeSocketError = Error & { errno?: number };
 type NativeConnectError = Error & { errno: number };
@@ -623,7 +624,7 @@ const addServerName = $bindgen("Listener.bind.ts", "addServerName") as (
 const upgradeDuplexToTLS: (
   duplex: $Node.Duplex,
   options: $Node.TLSUpgradeOptions<$Node.Socket | ConnectData>,
-) => [handle: SocketHandle, events: [(chunk: Chunk) => void, () => void, () => void, () => void]] = $bindgen(
+) => [handle: NativeTLSHandle, events: [(chunk: Chunk) => void, () => void, () => void, () => void]] = $bindgen(
   "socket_body.bind.ts",
   "upgradeDuplexToTLS",
 );
@@ -648,13 +649,13 @@ const hasNativeSocketListeners: (socket: SocketHandle | null) => boolean = $bind
   "hasNativeSocketListeners",
 );
 const attachNativeTLSTransport: (
-  socket: SocketHandle,
+  socket: $Bindgen.TLSSocket,
   transport: SocketHandle | null,
   previousWrites: boolean,
   initialData: Chunk | undefined,
   token: NativeTLSTransportToken,
 ) => boolean = $bindgen("socket_body.bind.ts", "attachNativeTLSTransport");
-const nativeTLSPreviousWritesDone: (socket: SocketHandle) => void = $bindgen(
+const nativeTLSPreviousWritesDone: (socket: $Bindgen.TLSSocket) => void = $bindgen(
   "socket_body.bind.ts",
   "nativeTLSPreviousWritesDone",
 );

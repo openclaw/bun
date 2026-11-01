@@ -60,6 +60,13 @@ async function capture() {
 }
 
 const { worker, references, before, code, errorMessage, removed } = await capture();
+let prototypeEventCalls = 0;
+const onPrototypeEvent = () => prototypeEventCalls++;
+worker.on("__proto__", onPrototypeEvent);
+assert.equal(worker.listenerCount("__proto__"), 1);
+worker.emit("__proto__");
+assert.equal(prototypeEventCalls, 1);
+worker.removeListener("__proto__", onPrototypeEvent);
 const control = new WeakRef({});
 for (let pass = 0; pass < 8; pass++) {
   await setImmediate();

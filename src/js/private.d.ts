@@ -6,6 +6,10 @@
  */
 declare function $bundleError(...message: any[]): never;
 
+interface AggregateErrorConstructor {
+  new (errors: Iterable<unknown>, message?: unknown, options?: ErrorOptions): AggregateError;
+}
+
 declare module "bun" {
   interface FileSink {
     _getFd(): number | null | undefined;

@@ -8,6 +8,75 @@ import { text } from "node:stream/consumers";
 import { finished as finishedP } from "node:stream/promises";
 import { join } from "path";
 
+it("stream completion preserves thrown values and primitive stack getter receivers", async () => {
+  await using proc = Bun.spawn({
+    cmd: [
+      bunExe(),
+      "-e",
+      `"use strict";
+       const assert = require("node:assert/strict");
+       const { Writable, finished } = require("node:stream");
+       const failure = Symbol("write failure");
+       let stackReads = 0;
+       Object.defineProperty(Symbol.prototype, "stack", {
+         configurable: true,
+         get() { assert.equal(this, failure); stackReads++; },
+       });
+       const events = [];
+       const stream = new Writable({ write(chunk, encoding, callback) { callback(failure); } });
+       const completion = new Promise(resolve => finished(stream, resolve));
+       const closed = new Promise(resolve => stream.on("close", () => { events.push("close"); resolve(); }));
+       stream.on("error", error => { assert.equal(error, failure); events.push("error"); });
+       stream.write("x", error => { assert.equal(error, failure); events.push("write"); });
+       Promise.all([completion, closed]).then(([error]) => {
+         assert.equal(error, failure);
+         assert.equal(stream.errored, failure);
+         assert.deepEqual(events, ["write", "error", "close"]);
+         assert.ok(stackReads > 0);
+         delete Symbol.prototype.stack;
+         console.log("raw-failure-ok");
+       });`,
+    ],
+    env: bunEnv,
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect({ stdout, stderr, exitCode }).toEqual({ stdout: "raw-failure-ok\n", stderr: "", exitCode: 0 });
+});
+
+it("stream error aggregation preserves raw values and property access order", () => {
+  const { aggregateTwoErrors } = exposedInternals["internal/errors"];
+  const inner = Symbol("inner");
+  const code = Symbol("code");
+  const reads = [];
+  const outer = {
+    get errors() {
+      expect(this).toBe(outer);
+      reads.push("errors");
+      return undefined;
+    },
+    get message() {
+      expect(this).toBe(outer);
+      reads.push("message");
+      return { toString() { reads.push("coerce"); return "outer"; } };
+    },
+    get code() {
+      expect(this).toBe(outer);
+      reads.push("code");
+      return code;
+    },
+  };
+  const error = aggregateTwoErrors(inner, outer);
+  expect(error).toBeInstanceOf(AggregateError);
+  expect(error.errors).toEqual([outer, inner]);
+  expect(error.message).toBe("outer");
+  expect(error.code).toBe(code);
+  expect(reads).toEqual(["errors", "message", "coerce", "code"]);
+  const last = Symbol("last");
+  expect(aggregateTwoErrors(last, error)).toBe(error);
+  expect(error.errors).toEqual([outer, inner, last]);
+});
+
 describe("Readable", () => {
   it("should be able to be created without _construct method defined", done => {
     const readable = new Readable({

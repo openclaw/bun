@@ -1,5 +1,5 @@
 // What the compiler reads in place of src/js/node/_http_server.ts, which `bun run` evaluates. The two do the same.
-// Written against that file with the SHA-256 e28bcaf420a58013d7a094617c7e8c713081d2a9fe3d533ada6b5b103911c80a.
+// Written against that file with the SHA-256 bde935a2897ee44cf8c97537622e08bf928f1227661f6256e5941a8027078134.
 // When that file changes, bring the change here and write the new hash: test/internal/second-texts-of-modules.test.ts.
 
 // Hardcoded module "node:_http_server"
@@ -749,10 +749,6 @@ declare global {
     }
 
     type PipelinedResponse = ServerResponse | PipelinedTurn;
-
-    interface IncomingMessage {
-      [kFallbackResponseHandle]?: Http1ResponseHandle;
-    }
 
     interface ServerResponseOptions extends OutgoingMessageOptions {
       [kUpgradeResponse]?: boolean;
@@ -1551,11 +1547,7 @@ Server.prototype[kRealListen] = function (
       if (isPipelined) {
         socket.$pipelinedResponses?.pop();
         queuePipelinedResponse(socket, http_res, !!isAncientHTTP);
-      }
-      if (!is_upgrade) {
-        publishRequestStart(http_req, http_res, socket, server);
-      }
-      if (isPipelined) {
+        if (!is_upgrade) publishRequestStart(http_req, http_res, socket, server);
         // A previous response on this connection has not finished yet: like
         // Node.js, this response is queued (res.socket === null) and its
         // writes are buffered until the in-flight response finishes and the
@@ -1581,6 +1573,7 @@ Server.prototype[kRealListen] = function (
           pausePipelineReads(socket);
         }
       } else if (!is_upgrade) {
+        publishRequestStart(http_req, http_res, socket, server);
         // Node.js's connectionListener registers socketOnClose, which frees
         // the parser - even a manually emitted 'close' stops parsing of any
         // pipelined requests still in the buffer.
@@ -2225,16 +2218,19 @@ function onReadableStreamEnd() {}
 function clearUpgradeIncoming(socket: $Node.HttpServerSocket) {
   socket[kUpgradeIncoming] = undefined;
 }
-interface ResponseSocketOperation {
+interface ResponseSocketOperationDetails {
   response: $Node.ServerResponse;
-  kind: "raw" | "write" | "end" | "flush" | "continue";
-  chunk: $Node.HttpChunk | null | undefined;
   encoding: string | null | undefined;
   length: number;
   bodyLength: number;
   strict: number | undefined;
   responseCorked: boolean;
 }
+type ResponseSocketOperation = ResponseSocketOperationDetails &
+  (
+    | { kind: "raw"; chunk: $Node.HttpChunk }
+    | { kind: "write" | "end" | "flush" | "continue"; chunk: $Node.HttpChunk | null | undefined }
+  );
 interface ResponseSocketHeaders {
   flat: string[];
   autoHeaders: number;
@@ -2275,11 +2271,11 @@ function onResponseSocketDrain(this: $Node.HttpServerSocket) {
 
 function queueResponseSocketWrite(
   response: SocketQueuedResponse,
-  kind: ResponseSocketOperation["kind"],
-  chunk: $Node.HttpChunk | null | undefined,
-  encoding: string | null | undefined,
-  callback?: $Node.HttpWriteCallback | null,
+  ...[kind, inputChunk, encoding, callback]:
+    | ["raw", $Node.HttpChunk, string | null | undefined, ($Node.HttpWriteCallback | null)?]
+    | ["write" | "end" | "flush" | "continue", $Node.HttpChunk | null | undefined, string | null | undefined, ($Node.HttpWriteCallback | null)?]
 ) {
+  let chunk = inputChunk;
   const headerState = response[headerStateSymbol];
   let strict;
   let length = 0;
@@ -2337,16 +2333,9 @@ function queueResponseSocketWrite(
     socket.on("drain", onResponseSocketDrain);
   }
   const responseCorked = kind === "write" && !!response[kCorked] && willBeChunked(response);
-  const operation: ResponseSocketOperation = {
-    response,
-    kind,
-    chunk,
-    encoding,
-    length,
-    bodyLength,
-    strict,
-    responseCorked,
-  };
+  const operation: ResponseSocketOperation = kind === "raw"
+    ? { response, kind, chunk: inputChunk, encoding, length, bodyLength, strict, responseCorked }
+    : { response, kind, chunk, encoding, length, bodyLength, strict, responseCorked };
   const result = socket[kWriteOperation](operation, callback);
   if (!result && kind === "write" && response._hasBody) response[kResponseQueueNeedDrain] = true;
   return kind === "write" && !response._hasBody ? true : result;
@@ -3383,7 +3372,7 @@ function getNodeHTTPTLSServerSocketPrototype() {
     const { TLSSocket } = require("node:tls");
     // Keep the native HTTP socket's I/O methods while exposing the TLS socket identity.
     NodeHTTPTLSServerSocketPrototype = Object.create(TLSSocket.prototype, {
-      ...Object.getOwnPropertyDescriptors(NodeHTTPServerSocket.prototype),
+      ...Object.getOwnPropertyDescriptors(getNodeHTTPServerSocket().prototype),
       ...Object.getOwnPropertyDescriptors({
         constructor: TLSSocket,
         getPeerCertificate(detailed) {
@@ -3577,9 +3566,19 @@ const {
   removeListener: eventEmitterRemoveListener,
 } = shared.originals.eventEmitter!;
 
+type FallbackResponseRequest = $Node.IncomingMessage & {
+  socket: $Node.HttpSocket;
+  [kFallbackResponseHandle]?: $Node.Http1ResponseHandle;
+};
+type ResponseRequest = $Node.IncomingMessage &
+  (
+    | { [kFallbackResponseHandle]?: undefined }
+    | { [kFallbackResponseHandle]: $Node.Http1ResponseHandle; socket: $Node.HttpSocket }
+  );
+
 function ServerResponse(
   this: $Node.ServerResponse,
-  req: $Node.IncomingMessage,
+  req: ResponseRequest,
   options?: $Node.ServerResponseOptions | typeof kHandle,
   nativeHandle?: $Node.NodeHTTPResponse,
   nativeSocket?: $Node.HttpServerSocket,
@@ -3730,7 +3729,7 @@ $toClass(ServerResponse, "ServerResponse", OutgoingMessage);
 // Only what `new ServerResponse()` makes has an exchange. An instance of a class below, and an object that ServerResponse is called on, keeps all of its state on itself.
 function initializeStoreByStore(
   res: $Node.ServerResponse,
-  req: $Node.IncomingMessage,
+  req: ResponseRequest,
   options: $Node.ServerResponseOptions | undefined,
 ): void {
   OutgoingMessage.$call(res, options);
@@ -4043,16 +4042,24 @@ function publishResponseCreated(request: $Node.IncomingMessage, response: $Node.
   }
 }
 
+function bindFallbackResponseHandle(
+  request: FallbackResponseRequest,
+  handle: $Node.Http1ResponseHandle,
+): asserts request is FallbackResponseRequest & { [kFallbackResponseHandle]: $Node.Http1ResponseHandle } {
+  request[kFallbackResponseHandle] = handle;
+}
+
 function createFallbackResponse(
   ResponseClass: $Node.ServerResponseConstructor,
-  request: $Node.IncomingMessage,
+  request: $Node.IncomingMessage & { socket: $Node.HttpSocket },
   handle: $Node.Http1ResponseHandle,
 ) {
-  request[kFallbackResponseHandle] = handle;
+  const unmarkedRequest: FallbackResponseRequest = request;
+  bindFallbackResponseHandle(request, handle);
   try {
     return new ResponseClass(request);
   } finally {
-    request[kFallbackResponseHandle] = undefined;
+    unmarkedRequest[kFallbackResponseHandle] = undefined;
   }
 }
 

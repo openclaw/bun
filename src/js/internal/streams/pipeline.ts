@@ -24,6 +24,8 @@ const { isReadableState } = require("internal/streams/state");
 
 const SymbolAsyncIterator: typeof Symbol.asyncIterator = Symbol.asyncIterator;
 const ArrayIsArray = Array.isArray;
+const ObjectConstructor: (value: unknown) => object = Object;
+const ReflectGet: (target: object, key: PropertyKey, receiver?: unknown) => unknown = Reflect.get;
 const SymbolDispose: typeof Symbol.dispose = Symbol.dispose;
 
 let PassThrough: $BunModules["internal/streams/passthrough"] | undefined;
@@ -31,8 +33,8 @@ let Readable: $BunModules["internal/streams/readable"] | undefined;
 let addAbortListener: $BunModules["internal/abort_listener"]["addAbortListener"] | undefined;
 
 type AnyIterable = Iterable<unknown> | AsyncIterable<unknown>;
-type PipelineCallback = (error?: Error | null, value?: unknown) => void;
-type Then = ((onFulfilled: (value: unknown) => unknown, onRejected: (error: Error) => unknown) => unknown) | undefined;
+type PipelineCallback = (error?: unknown, value?: unknown) => void;
+type Then = ((onFulfilled: (value: unknown) => unknown, onRejected: (error: unknown) => unknown) => unknown) | undefined;
 
 interface PipelineOptions {
   signal?: AbortSignal;
@@ -50,7 +52,7 @@ function destroyer(stream: $Node.AnyStream, reading: boolean, writing: boolean) 
   });
 
   return {
-    destroy: (err?: Error | null) => {
+    destroy: (err?: unknown) => {
       if (finished) return;
       finished = true;
       destroyImpl.destroyer(stream, err || $ERR_STREAM_DESTROYED("pipe"));
@@ -88,10 +90,10 @@ async function pumpToNode(
   finish: $Node.ErrorCallback,
   { end }: { end: boolean },
 ) {
-  let error: Error | undefined;
+  let error: unknown;
   let onresolve: (() => void) | null = null;
 
-  const resume = (err?: Error | null) => {
+  const resume = (err?: unknown) => {
     if (err) {
       error = err;
     }
@@ -139,7 +141,7 @@ async function pumpToNode(
 
     finish();
   } catch (err) {
-    finish(error !== err ? aggregateTwoErrors(error, err as Error) : (err as Error));
+    finish(error !== err ? aggregateTwoErrors(error, err) : err);
   } finally {
     cleanup();
     writable.off("drain", resume);
@@ -173,9 +175,9 @@ async function pumpToWeb(
   } catch (err) {
     try {
       await writer.abort(err);
-      finish(err as Error);
+      finish(err);
     } catch (err) {
-      finish(err as Error);
+      finish(err);
     }
   }
 }
@@ -221,22 +223,27 @@ function pipelineImpl(streams, callback: PipelineCallback, opts?: PipelineOption
     disposable = addAbortListener(outerSignal, abort);
   }
 
-  let error: Error | null | undefined;
+  let error: unknown;
   let value: unknown;
-  const destroys: ((err?: Error | null) => void)[] = [];
+  const destroys: ((err?: unknown) => void)[] = [];
 
   let finishCount = 0;
 
-  function finish(err?: Error | null) {
+  function finish(err?: unknown) {
     finishImpl(err, --finishCount === 0);
   }
 
-  function finishOnlyHandleError(err?: Error | null) {
+  function finishOnlyHandleError(err?: unknown) {
     finishImpl(err, false);
   }
 
-  function finishImpl(err?: Error | null, final?: boolean) {
-    if (err && (!error || error.code === "ERR_STREAM_PREMATURE_CLOSE" || error.name === "AbortError")) {
+  function finishImpl(err?: unknown, final?: boolean) {
+    if (
+      err &&
+      (!error ||
+        ReflectGet(ObjectConstructor(error), "code", error) === "ERR_STREAM_PREMATURE_CLOSE" ||
+        ReflectGet(ObjectConstructor(error), "name", error) === "AbortError")
+    ) {
       error = err;
     }
 
@@ -284,8 +291,12 @@ function pipelineImpl(streams, callback: PipelineCallback, opts?: PipelineOption
       }
 
       // Catch stream errors that occur after pipe/pump has completed.
-      function onError(err: Error | null | undefined) {
-        if (err && err.name !== "AbortError" && err.code !== "ERR_STREAM_PREMATURE_CLOSE") {
+      function onError(err: unknown) {
+        if (
+          err &&
+          ReflectGet(ObjectConstructor(err), "name", err) !== "AbortError" &&
+          ReflectGet(ObjectConstructor(err), "code", err) !== "ERR_STREAM_PREMATURE_CLOSE"
+        ) {
           finishOnlyHandleError(err);
         }
       }
@@ -468,7 +479,7 @@ function pipe(
     const rState = src._readableState as $Node.ReadableState | $Node.ForeignState | undefined;
     if (
       err &&
-      err.code === "ERR_STREAM_PREMATURE_CLOSE" &&
+      ReflectGet(ObjectConstructor(err), "code", err) === "ERR_STREAM_PREMATURE_CLOSE" &&
       (isReadableState(rState)
         ? rState.ended && !rState.errored && !rState.errorEmitted
         : rState?.ended && !rState.errored && !rState.errorEmitted)

@@ -58,7 +58,7 @@ export default function compose(...streams) {
   let onclose: $Node.ErrorCallback | null | undefined;
   let d: $Node.Duplex;
 
-  function onfinished(err?: Error | null) {
+  function onfinished(err?: unknown) {
     const cb = onclose;
     onclose = null;
 
@@ -120,7 +120,7 @@ export default function compose(...streams) {
           writer.write(chunk).catch(() => {});
           callback();
         } catch (err) {
-          callback(err as Error);
+          callback(err);
         }
       };
 
@@ -130,7 +130,7 @@ export default function compose(...streams) {
           writer.close().catch(() => {});
           onfinish = callback;
         } catch (err) {
-          callback(err as Error);
+          callback(err);
         }
       };
     }

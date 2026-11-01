@@ -28,6 +28,8 @@ const kWriteOperation: typeof streamUtils.kWriteOperation = streamUtils.kWriteOp
 
 const { queueTick1, queueTick2 } = require("internal/process/next_tick_queue");
 const ObjectDefineProperties = Object.defineProperties;
+const ObjectConstructor: (value: unknown) => object = Object;
+const ReflectGet: (target: object, key: PropertyKey, receiver?: unknown) => unknown = Reflect.get;
 const ArrayPrototypeSlice = Array.prototype.slice;
 const ObjectDefineProperty = Object.defineProperty;
 const SymbolHasInstance = Symbol.hasInstance;
@@ -415,7 +417,7 @@ function doWrite(
   state[kState] &= ~Flag.Sync;
 }
 
-function onwriteError(stream: $Node.Writable, state: WritableState, er, cb: WriteCallback): void {
+function onwriteError(stream: $Node.Writable, state: WritableState, er: unknown, cb: WriteCallback): void {
   --state.pendingcb!;
 
   cb(er);
@@ -428,7 +430,7 @@ function onwriteError(stream: $Node.Writable, state: WritableState, er, cb: Writ
   errorOrDestroy(stream, er);
 }
 
-function onwrite(stream: $Node.Writable, er): void {
+function onwrite(stream: $Node.Writable, er: unknown): void {
   const state = stream._writableState;
 
   if ((state[kState] & Flag.ExpectWriteCb) === 0) {
@@ -446,7 +448,7 @@ function onwrite(stream: $Node.Writable, er): void {
 
   if (er) {
     // Avoid V8 leak, https://github.com/nodejs/node/pull/34103#issuecomment-652002364
-    er.stack; // oxlint-disable-line bun/no-unused-expressions
+    ReflectGet(ObjectConstructor(er), "stack", er);
 
     if ((state[kState] & Flag.Errored) === 0) {
       state[kErroredValue] = er;
@@ -967,7 +969,7 @@ ObjectDefineProperties(Writable.prototype, accessors);
 internals.writableAccessors = accessors;
 
 const destroy = destroyImpl.destroy;
-Writable.prototype.destroy = function (this: $Node.Writable, err?: Error | null, cb?: WriteCallback) {
+Writable.prototype.destroy = function (this: $Node.Writable, err?: unknown, cb?: WriteCallback) {
   const state: WritableState = this._writableState;
 
   // Invoke pending callbacks.
@@ -980,7 +982,7 @@ Writable.prototype.destroy = function (this: $Node.Writable, err?: Error | null,
 };
 
 Writable.prototype._undestroy = destroyImpl.undestroy;
-Writable.prototype._destroy = function (this: $Node.Writable, err: Error | null, cb: WriteCallback) {
+Writable.prototype._destroy = function (this: $Node.Writable, err: unknown, cb: WriteCallback) {
   cb(err);
 };
 
@@ -1004,7 +1006,9 @@ Writable.prototype[SymbolAsyncDispose] = function (this: $Node.Writable) {
     this.destroy(error);
   }
   return new Promise((resolve, reject) =>
-    eos(this, err => (err && err.name !== "AbortError" ? reject(err) : resolve(null))),
+    eos(this, err =>
+      err && ReflectGet(ObjectConstructor(err), "name", err) !== "AbortError" ? reject(err) : resolve(null),
+    ),
   );
 };
 

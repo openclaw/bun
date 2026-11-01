@@ -110,13 +110,13 @@ interface Internals {
     | {
         destroy: (
           this: $Node.StreamWithState,
-          error?: Error | null,
+          error?: unknown,
           callback?: $Node.ErrorCallback,
         ) => $Node.StreamWithState;
         closeAfterThrow: (stream: $Node.StreamWithState, state: ReadableState, error: unknown) => void;
       }
     | undefined;
-  onwrite: ((stream: $Node.Writable, er?: Error | null) => void) | undefined;
+  onwrite: ((stream: $Node.Writable, er?: unknown) => void) | undefined;
   /** `true`, `false`, or the error of a write after the end. */
   writeToWritable:
     | ((
@@ -228,7 +228,7 @@ interface ReadableState {
   awaitDrainWriters: $Node.AnyStream | Set<$Node.AnyStream> | null;
   /** `false`: the readable side of a Duplex that was disabled upon construction, or through the deprecated setter. */
   readable?: boolean;
-  [kErroredValue]?: any;
+  [kErroredValue]?: unknown;
   [kDefaultEncodingValue]?: any;
   [kDecoderValue]?: import("node:string_decoder").StringDecoder;
   [kEncodingValue]?: any;
@@ -271,7 +271,7 @@ interface ReadableState {
   set readingMore(value: unknown);
   get dataEmitted(): boolean;
   set dataEmitted(value: unknown);
-  get errored(): any;
+  get errored(): unknown;
   set errored(value: unknown);
   get defaultEncoding(): any;
   set defaultEncoding(value: unknown);
@@ -523,7 +523,7 @@ interface WritableState {
   pendingcb?: number;
   [kDefaultEncodingValue]?: any;
   [kBufferedValue]: (BufferedWrite | null)[] | null;
-  [kErroredValue]?: any;
+  [kErroredValue]?: unknown;
   [kOnFinishedValue]?: WriteCallback[] | null;
   [kWriteCbValue]?: WriteCallback | null;
   [kAfterWriteTickInfoValue]?: AfterWriteTickInfo | null;
@@ -569,7 +569,7 @@ interface WritableState {
   set allBuffers(value: unknown);
   get allNoop(): boolean;
   set allNoop(value: unknown);
-  get errored(): any;
+  get errored(): unknown;
   set errored(value: unknown);
   get writable(): boolean | undefined;
   set writable(value: unknown);

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve raw stream failure values across shared completion, destruction, aggregation, and pipeline contracts, and keep HTTP queue, fallback request, worker cleanup, and native TLS handle types aligned with their runtime owners.
+
 - Restore extra child-process pipe connections after the upstream cache removal and reconcile internal stdio, worker, DNS, HTTP, and native-handle types with their runtime owners.
 
 - Keep the Windows environment getter type compatible with built-in function code generation after the upstream sync.

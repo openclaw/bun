@@ -41,7 +41,7 @@ class Duplexify extends Duplex {
   }
 }
 
-type Then = ((onFulfilled: (value: unknown) => unknown, onRejected: (error: Error) => unknown) => unknown) | undefined;
+type Then = ((onFulfilled: (value: unknown) => unknown, onRejected: (error: unknown) => unknown) => unknown) | undefined;
 
 function duplexify(body, name?: string): $Node.Duplex {
   if (isDuplexNodeStream(body)) {
@@ -201,7 +201,7 @@ interface AsyncGenWrite {
   __proto__?: null;
   chunk?: unknown;
   done: boolean;
-  cb: (err?: Error | null) => void;
+  cb: (err?: unknown) => void;
 }
 
 function fromAsyncGen(
@@ -244,7 +244,7 @@ function fromAsyncGen(
       resolve = null;
       _resolve!({ done: true, cb });
     },
-    destroy(err: Error | null, cb: $Node.ErrorCallback) {
+    destroy(err: unknown, cb: $Node.ErrorCallback) {
       ac.abort(err);
 
       // If the source async iterator is waiting for the next write/final
@@ -277,7 +277,7 @@ function _duplexify(pair: { readable?: $Node.Readable | false; writable?: $Node.
   let onclose: $Node.ErrorCallback | null | undefined;
   let d: Duplexify;
 
-  function onfinished(err?: Error | null) {
+  function onfinished(err?: unknown) {
     const cb = onclose;
     onclose = null;
 

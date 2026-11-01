@@ -2077,11 +2077,11 @@ function abortChildProcess(child: ChildProcess, killSignal: string | number | un
 
 // Node's Control from lib/internal/child_process.js.
 class Control extends EventEmitter {
-  #handle: $Bindgen.Subprocess;
+  #handle: $Bindgen.Subprocess | null;
   #refs = 0;
   #refExplicitlySet = false;
 
-  constructor(handle: $Bindgen.Subprocess) {
+  constructor(handle: $Bindgen.Subprocess | null) {
     super();
     this.#handle = handle;
   }

@@ -76,7 +76,7 @@ function from<T extends $Node.Readable>(
     });
   };
 
-  async function close(error: Error | null | undefined) {
+  async function close(error: unknown) {
     const hadError = error !== undefined && error !== null;
     const hasThrow = typeof iterator.throw === "function";
     if (hadError && hasThrow) {
@@ -120,7 +120,7 @@ function from<T extends $Node.Readable>(
 
         reading = false;
       } catch (err) {
-        readable.destroy(err as Error);
+        readable.destroy(err);
       }
       break;
     }
@@ -144,7 +144,7 @@ function from<T extends $Node.Readable>(
 
       reading = false;
     } catch (err) {
-      readable.destroy(err as Error);
+      readable.destroy(err);
     }
   }
 
@@ -171,7 +171,7 @@ function from<T extends $Node.Readable>(
 
         reading = false;
       } catch (err) {
-        readable.destroy(err as Error);
+        readable.destroy(err);
       }
       break;
     }
@@ -198,7 +198,7 @@ function from<T extends $Node.Readable>(
 
         reading = false;
       } catch (err) {
-        readable.destroy(err as Error);
+        readable.destroy(err);
       }
       break;
     }

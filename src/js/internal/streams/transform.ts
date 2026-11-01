@@ -61,7 +61,7 @@ const kCallback = Symbol("kCallback");
 
 declare global {
   namespace $Node {
-    type TransformCallback = (error?: Error | null, data?: unknown) => void;
+    type TransformCallback = (error?: unknown, data?: unknown) => void;
 
     interface TransformOptions extends DuplexOptions {
       transform?(this: Transform, chunk: unknown, encoding: string, callback: TransformCallback): void;

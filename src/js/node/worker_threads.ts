@@ -14,6 +14,7 @@ type WebWorker = InstanceType<typeof globalThis.Worker> & {
 const EventEmitter = require("node:events");
 const AsyncContextFrame = require("internal/async_context_frame");
 const { SafeMap } = require("internal/primordials");
+const ObjectCreate = Object.create;
 const { throwNotImplemented } = require("internal/shared");
 const {
   validateString,
@@ -1356,7 +1357,10 @@ class Worker extends EventEmitter {
               }
             }
             // Like removeAllListeners(), discard listeners added by removal callbacks.
-            this._events = { __proto__: null, newListener: this.#refHook, removeListener: this.#unrefHook };
+            const events: $Node.Events = ObjectCreate(null);
+            events.newListener = this.#refHook;
+            events.removeListener = this.#unrefHook;
+            this._events = events;
             this._eventsCount = 2;
           }
         }

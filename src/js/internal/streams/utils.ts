@@ -52,18 +52,18 @@ declare global {
       readableObjectMode?: boolean;
       readableDidRead?: boolean;
       readableAborted?: boolean;
-      readableErrored?: Error | null;
+      readableErrored?: unknown;
       writable?: boolean;
       writableObjectMode?: boolean;
       writableEnded?: boolean;
       writableFinished?: boolean;
       writableNeedDrain?: boolean;
       _isStdio?: boolean;
-      writableErrored?: Error | null;
+      writableErrored?: unknown;
       destroyed?: boolean;
       closed?: boolean;
-      errored?: Error | null;
-      destroy?(error?: Error | null): unknown;
+      errored?: unknown;
+      destroy?(error?: unknown): unknown;
       close?(): unknown;
       // node:http
       aborted?: boolean;

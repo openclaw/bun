@@ -7,7 +7,7 @@ type FileHandleInternals = NonNullable<typeof fileHandles.internals>;
 type FileHandle = $Node.FileHandle;
 type FileSink = $Node.FileSink;
 type FD = number;
-type ErrorCallback = (error?: Error | null) => void;
+type ErrorCallback = $Node.ErrorCallback;
 
 /** `node:fs`, the `fs` option of a stream, or the operations of a `FileHandle`. */
 interface StreamFs {
@@ -374,7 +374,7 @@ function streamConstruct(this: FileStream, callback: ErrorCallback) {
         orgEmit.$apply(this, args);
       } else if (args[0] === "error") {
         this.emit = orgEmit;
-        callback(args[1] as Error);
+        callback(args[1]);
       } else {
         orgEmit.$apply(this, args);
       }
@@ -450,7 +450,7 @@ readStreamPrototype._read = function (this: $Node.ReadStream, n: number) {
   });
 };
 
-readStreamPrototype._destroy = function (this: $Node.ReadStream, err: Error | null, cb: ErrorCallback) {
+readStreamPrototype._destroy = function (this: $Node.ReadStream, err: unknown, cb: ErrorCallback) {
   // Usually for async IO it is safe to close a file descriptor
   // even when there are pending operations. However, due to platform
   // differences file IO is implemented using synchronous operations
@@ -458,7 +458,7 @@ readStreamPrototype._destroy = function (this: $Node.ReadStream, err: Error | nu
   // to close while used in a pending read or write operation. Wait for
   // any pending IO (kIsPerformingIO) to complete (kIoDone).
   if (this[kIsPerformingIO]) {
-    this.once(kIoDone, (er: Error | null) => close(this, err || er, cb));
+    this.once(kIoDone, (er: unknown) => close(this, err || er, cb));
   } else {
     close(this, err, cb);
   }
@@ -476,7 +476,7 @@ Object.defineProperty(readStreamPrototype, "pending", {
   configurable: true,
 });
 
-function close(stream: FileStream, err: Error | null | undefined, cb: ErrorCallback) {
+function close(stream: FileStream, err: unknown, cb: ErrorCallback) {
   const fastPath = stream[kWriteStreamFastPath];
   if (fastPath && fastPath !== true) {
     stream.fd = null;
@@ -504,7 +504,7 @@ function close(stream: FileStream, err: Error | null | undefined, cb: ErrorCallb
   }
 }
 
-function closeAfterSync(stream: FileStream, err: Error | null | undefined, cb: ErrorCallback) {
+function closeAfterSync(stream: FileStream, err: unknown, cb: ErrorCallback) {
   stream[kFs].close!(stream.fd!, er => {
     cb(er || err);
   });
@@ -749,7 +749,7 @@ function _write(this: $Node.WriteStream, data: Buffer, encoding: string, cb: Err
 }
 writeStreamPrototype._write = _write;
 
-function writeToFileSink(stream: $Node.WriteStream, data: Buffer, cb: (err?: unknown) => void) {
+function writeToFileSink(stream: $Node.WriteStream, data: Buffer, cb: ErrorCallback) {
   let result;
   try {
     let fileSink = stream[kWriteStreamFastPath];
@@ -795,7 +795,7 @@ function finalFast(this: $Node.WriteStream, cb: ErrorCallback) {
       return;
     }
   } catch (err) {
-    cb(err as Error);
+    cb(err);
     return;
   }
   cb(null);
@@ -832,7 +832,7 @@ writeStreamPrototype._writev = function (this: $Node.WriteStream, data: $Node.Ch
   }
 };
 
-writeStreamPrototype._destroy = function (this: $Node.WriteStream, err: Error | null, cb: ErrorCallback) {
+writeStreamPrototype._destroy = function (this: $Node.WriteStream, err: unknown, cb: ErrorCallback) {
   // Usually for async IO it is safe to close a file descriptor
   // even when there are pending operations. However, due to platform
   // differences file IO is implemented using synchronous operations
@@ -840,7 +840,7 @@ writeStreamPrototype._destroy = function (this: $Node.WriteStream, err: Error | 
   // to close while used in a pending read or write operation. Wait for
   // any pending IO (kIsPerformingIO) to complete (kIoDone).
   if (this[kIsPerformingIO]) {
-    this.once(kIoDone, (er: Error | null) => close(this, err || er, cb));
+    this.once(kIoDone, (er: unknown) => close(this, err || er, cb));
   } else {
     close(this, err, cb);
   }
@@ -907,7 +907,7 @@ function writableFromFileSink(fileSink: FileSink) {
   return w;
 }
 
-function destroyFileSink(this: $Node.WriteStream, err: Error | null, cb: (err?: Error | null) => void) {
+function destroyFileSink(this: $Node.WriteStream, err: unknown, cb: ErrorCallback) {
   if (this.writableFinished || !$bindgen("FileSink.bind.ts", "cancel")(this[kWriteStreamFastPath])) {
     close(this, err, cb);
     return;
