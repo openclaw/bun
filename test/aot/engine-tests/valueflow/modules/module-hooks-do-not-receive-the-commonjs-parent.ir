@@ -4,7 +4,7 @@
 # CHECK: unreached f2
 # RUN(ESCAPED): valueflow-why escaped-builtin=ModuleObject
 # ESCAPED: held: those of 0 of 1 modules
-# RUN(COMPILE): valueflow-why escaped-builtin=NodeModulePrototype_compile
+# RUN(COMPILE): valueflow-why escaped-builtin=ModuleObject_compile
 # COMPILE: not held
 
 variable g0 name="exports" module=m0 declared={type=anything} initialization=Undefined
