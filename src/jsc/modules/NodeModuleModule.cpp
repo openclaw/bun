@@ -18,7 +18,6 @@
 
 #include <JavaScriptCore/JSCInlines.h>
 #include <JavaScriptCore/ParserError.h>
-#include <JavaScriptCore/PropertyDescriptor.h>
 #include <JavaScriptCore/ErrorInstance.h>
 #include <JavaScriptCore/VM.h>
 #include <JavaScriptCore/JSString.h>
@@ -58,6 +57,9 @@ JSC_DECLARE_HOST_FUNCTION(jsFunctionNodeModuleModuleConstructor);
 JSC_DECLARE_HOST_FUNCTION(jsFunctionResolveFileName);
 JSC_DECLARE_HOST_FUNCTION(jsFunctionResolveLookupPaths);
 JSC_DECLARE_HOST_FUNCTION(jsFunctionWrap);
+
+JSC_DECLARE_CUSTOM_GETTER(getterRequireFunction);
+JSC_DECLARE_CUSTOM_SETTER(setterRequireFunction);
 
 // This is a list of builtin module names that do not have the node prefix. It
 // also includes Bun's builtin modules, as well as Bun's thirdparty overrides.
@@ -649,10 +651,6 @@ JSC_DEFINE_CUSTOM_SETTER(setterRequireFunction,
         JSC::PropertyName propertyName))
 {
     auto scope = DECLARE_THROW_SCOPE(globalObject->vm());
-    if (auto* module = jsDynamicCast<JSCommonJSModule*>(JSValue::decode(thisValue))) {
-        PropertyDescriptor descriptor(JSValue::decode(value), 0);
-        RELEASE_AND_RETURN(scope, module->methodTable()->defineOwnProperty(module, globalObject, propertyName, descriptor, false));
-    }
     Bun::willChangeRequireOverride(globalObject, JSC::AOT::RequireOverride::RequireFunction, true);
     RETURN_IF_EXCEPTION(scope, false);
     globalObject->putDirect(globalObject->vm(),

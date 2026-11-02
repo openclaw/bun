@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep inherited CommonJS require overrides local, including nonextensible and primitive receivers.
+
 - Preserve customization-hook resolution and arbitrary hook answers in compiled require calls, including computed requests and deregistration.
 
 - Share the existing prototype require function with newly constructed CommonJS modules, including relative loading and prototype overrides.

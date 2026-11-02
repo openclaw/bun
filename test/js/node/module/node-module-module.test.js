@@ -1363,6 +1363,18 @@ console.log("survived", require("./late.js"));`,
         assert.equal(Module.prototype.require, original);
         assert.equal(new Module("other").require, original);
         delete instance.require;
+        for (const prototype of [instance, Module.prototype]) {
+          const inherited = Object.create(prototype);
+          inherited.require = () => "inherited override";
+          assert.equal(inherited.require(), "inherited override");
+          assert.equal(Module.prototype.require, original);
+          assert.equal(new Module("other").require, original);
+          const sealed = Object.preventExtensions(Object.create(prototype));
+          assert.equal(Reflect.set(sealed, "require", () => "sealed override"), false);
+          assert.equal(Module.prototype.require, original);
+        }
+        assert.equal(Reflect.set(Module.prototype, "require", () => "primitive override", 42), false);
+        assert.equal(Module.prototype.require, original);
         Module.prototype.require = function(id) {
           assert.equal(this, instance);
           return original.call(this, id);
