@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep imported module namespaces non-extensible while preserving separate require(esm) markers and live bindings after the upstream sync.
+
 - Remove obsolete missing-script handling reintroduced by the upstream sync while preserving Node-compatible stdin and REPL dispatch.
 
 - Keep heap-limit and negative CA flags covered by the exhaustive runtime startup requirement table after the upstream sync.
