@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve the runtime-transpiler trimming guard for module-hook source overrides.
+
 - Keep imported module namespaces non-extensible while preserving separate require(esm) markers and live bindings after the upstream sync.
 
 - Remove obsolete missing-script handling reintroduced by the upstream sync while preserving Node-compatible stdin and REPL dispatch.

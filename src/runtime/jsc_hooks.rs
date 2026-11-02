@@ -5592,7 +5592,10 @@ pub(crate) extern "Rust" fn __bun_transpile_module_hook_result(
     let loader = force_loader_from_api_u8(loader)
         .unwrap_or(Loader::Js)
         .to_api();
-    Bun__transpileVirtualModule(
+    bun_removable_features::call_removable!(
+        RuntimeTranspiler,
+        Abort,
+        Bun__transpileVirtualModule,
         global,
         specifier,
         specifier,
