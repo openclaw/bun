@@ -1044,17 +1044,17 @@ JSValue fetchCommonJSModuleNonBuiltin(
             return cached;
         JSC::callRemovable<Bun::Feature::RuntimeTranspiler, JSC::RemovedFeatureStub::Abort, Bun__transpileVirtualModule>(globalObject, specifier, referrer, &pluginContents->string, pluginContents->loader, 0, res);
     } else {
-    if (Bun::isDataOrBlobURL(specifierWtfString)) [[unlikely]] {
-        THROW_AND_RETURN_IF_CODE_GENERATION_FROM_STRINGS_IS_STRICT(globalObject, scope, {});
-    }
-    {
-        if constexpr (isExtension) {
-            if (ModuleHookFetchScope::rejectConflict(globalObject, loader, specifierWtfString, ScriptFetchParameters::Type::JavaScript, true))
-                return {};
+        if (Bun::isDataOrBlobURL(specifierWtfString)) [[unlikely]] {
+            THROW_AND_RETURN_IF_CODE_GENERATION_FROM_STRINGS_IS_STRICT(globalObject, scope, {});
         }
-        ModuleHookFetchScope hookFetch(globalObject, loader, specifierWtfString, ScriptFetchParameters::Type::JavaScript, Bun__hasModuleHooks(bunVM));
-        Bun__transpileFile(bunVM, globalObject, specifier, referrer, typeAttribute, res, false, !isExtension, forceLoaderType, preservePathDelimiters);
-    }
+        {
+            if constexpr (isExtension) {
+                if (ModuleHookFetchScope::rejectConflict(globalObject, loader, specifierWtfString, ScriptFetchParameters::Type::JavaScript, true))
+                    return {};
+            }
+            ModuleHookFetchScope hookFetch(globalObject, loader, specifierWtfString, ScriptFetchParameters::Type::JavaScript, Bun__hasModuleHooks(bunVM));
+            Bun__transpileFile(bunVM, globalObject, specifier, referrer, typeAttribute, res, false, !isExtension, forceLoaderType, preservePathDelimiters);
+        }
     }
     if (res->success && res->result.value.isCommonJSModule) {
         if constexpr (isExtension) {

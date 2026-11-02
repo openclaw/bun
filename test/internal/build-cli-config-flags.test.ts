@@ -56,17 +56,14 @@ test.concurrent.each([
   { args: ["--target=bun"] },
   { args: ["--target=codegen", "--target=jsc"] },
   { args: ["test", "file.test.ts"] },
-])(
-  "generator-only setup rejects native or default execution: %j",
-  async ({ args }) => {
-    await using proc = Bun.spawn({
-      cmd: [bunExe(), buildScript, ...args],
-      env: { ...bunEnv, BUN_WEBKIT_GENERATORS_ONLY: "1" },
-      stdout: "ignore",
-      stderr: "pipe",
-    });
-    const [stderr, exitCode] = await Promise.all([proc.stderr.text(), proc.exited]);
-    expect(stderr).toContain("WebKit generators-only cannot build or run native targets");
-    expect(exitCode).toBe(1);
-  },
-);
+])("generator-only setup rejects native or default execution: %j", async ({ args }) => {
+  await using proc = Bun.spawn({
+    cmd: [bunExe(), buildScript, ...args],
+    env: { ...bunEnv, BUN_WEBKIT_GENERATORS_ONLY: "1" },
+    stdout: "ignore",
+    stderr: "pipe",
+  });
+  const [stderr, exitCode] = await Promise.all([proc.stderr.text(), proc.exited]);
+  expect(stderr).toContain("WebKit generators-only cannot build or run native targets");
+  expect(exitCode).toBe(1);
+});

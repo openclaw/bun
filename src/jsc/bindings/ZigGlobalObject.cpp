@@ -4616,10 +4616,10 @@ JSC::JSPromise* GlobalObject::moduleLoaderFetch(JSGlobalObject* globalObject,
                 entry->setStatus(JSC::ModuleRegistryEntry::Status::Fetching);
                 entry->ensureFetchPromise(globalObject)->pipeFrom(vm, promise);
                 if (scope.exception()) [[unlikely]]
-                return didThrow();
+                    return didThrow();
                 entry->ensureModulePromise(globalObject);
                 if (scope.exception()) [[unlikely]]
-                return didThrow();
+                    return didThrow();
             }
         }
         if (hookFetch.isActive() && (!graph || !graph->disposed()) && promise->status() == JSC::JSPromise::Status::Fulfilled) {
@@ -4630,7 +4630,7 @@ JSC::JSPromise* GlobalObject::moduleLoaderFetch(JSGlobalObject* globalObject,
                 auto type = parameters ? parameters->type() : ScriptFetchParameters::Type::JavaScript;
                 loader->provideFetch(globalObject, Identifier::fromString(vm, moduleKey), type, code);
                 if (scope.exception()) [[unlikely]]
-                return didThrow();
+                    return didThrow();
             }
         }
         // JSC doesn't add a registry entry for the module passed to import() until this settles.
