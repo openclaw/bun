@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep compiled CommonJS `require.main` lazy to avoid recursive module creation when initializing require functions.
+
 - Keep Shell process-exit callbacks removable without affecting child-process completion in compiled programs that use the shell.
 
 - Preserve outer and nested strict-mode directives during runtime transpilation and invalidate previously cached output.

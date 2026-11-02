@@ -582,7 +582,8 @@ static void putRequireProperties(Zig::GlobalObject* globalObject, JSFunction* re
     auto scope = DECLARE_THROW_SCOPE(vm);
     auto& names = WebCore::builtinNames(vm);
     for (auto name : { names.mainPublicName(), Identifier::fromString(vm, "extensions"_s), Identifier::fromString(vm, "cache"_s) }) {
-        if (name == names.mainPublicName() && requirer->moduleGraph())
+        // Reading the compiled main module while creating its require function re-enters module creation.
+        if (name == names.mainPublicName() && (requirer->moduleGraph() || Bun::hasCompiledModules()))
             continue;
         auto value = requireFunction->get(globalObject, name);
         RETURN_IF_EXCEPTION(scope, );

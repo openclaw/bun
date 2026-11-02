@@ -1,6 +1,9 @@
 import { expect } from "bun:test";
-import { bunEnv, bunExe, tempDir } from "harness";
+import { bunEnv, bunExe, isWindows, tempDir } from "harness";
+import { join } from "node:path";
+import { canTrim } from "../bundler/compile-trim-features";
 import { run } from "./harness/run";
+import { withoutDebugInformation } from "./harness/without-debug-information";
 import { test } from "./supported";
 
 const nameOf = `const nameOf = m => (m && m.filename ? require("node:path").basename(m.filename) : String(m));`;
@@ -123,3 +126,32 @@ test.each([
   },
   240_000,
 );
+
+test.skipIf(!canTrim).concurrent.each([
+  { name: "whole", flags: [] },
+  { name: "trimmed", flags: ["--trim"] },
+])("compiled CommonJS require functions keep the main module lazy: $name", async ({ flags }) => {
+  using dir = tempDir("aot-lazy-require-main", {
+    "entry.cjs": `const helper = module.require("./helper.cjs");
+const created = require("node:module").createRequire(__filename);
+console.log(require.main === module, helper.main() === module, created.main === module, created.main === created.main, Object.hasOwn(created, "main"));`,
+    "helper.cjs": `exports.main = () => require.main;`,
+  });
+  const executable = join(String(dir), isWindows ? "program.exe" : "program");
+  const built = await run(
+    [
+      bunExe(),
+      "build",
+      "--compile",
+      ...withoutDebugInformation,
+      "--aot",
+      ...flags,
+      "entry.cjs",
+      "--outfile",
+      executable,
+    ],
+    String(dir),
+  );
+  expect({ stderr: built.stderr, exitCode: built.exitCode }).toEqual({ stderr: expect.any(String), exitCode: 0 });
+  expect(await run([executable])).toEqual({ stdout: "true true true true false\n", stderr: "", exitCode: 0 });
+});
