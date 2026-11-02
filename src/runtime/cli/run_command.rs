@@ -3312,20 +3312,6 @@ impl RunCommand {
     #[inline(never)]
     #[cfg_attr(
         any(target_os = "linux", target_os = "android"),
-        unsafe(link_section = ".text.unlikely.exec_as_if_node_missing_script")
-    )]
-    fn exec_as_if_node_missing_script() -> ! {
-        Output::err_generic(
-            "Missing script to execute. Pass --interactive to start the Node.js-compatible REPL.",
-            (),
-        );
-        Global::exit(1);
-    }
-
-    #[cold]
-    #[inline(never)]
-    #[cfg_attr(
-        any(target_os = "linux", target_os = "android"),
         unsafe(link_section = ".text.unlikely.exec_as_if_node_boot_failed")
     )]
     fn exec_as_if_node_boot_failed(ctx: &mut ContextData, basename: &[u8], err: crate::Error) -> ! {

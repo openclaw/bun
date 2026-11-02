@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Remove obsolete missing-script handling reintroduced by the upstream sync while preserving Node-compatible stdin and REPL dispatch.
+
 - Keep heap-limit and negative CA flags covered by the exhaustive runtime startup requirement table after the upstream sync.
 
 - Use live sink accessors for FileSink cancellation and stdio teardown after the upstream sync.
