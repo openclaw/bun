@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve outer and nested strict-mode directives during runtime transpilation and invalidate previously cached output.
+
 - Preserve the runtime-transpiler trimming guard for module-hook source overrides.
 
 - Keep imported module namespaces non-extensible while preserving separate require(esm) markers and live bindings after the upstream sync.
