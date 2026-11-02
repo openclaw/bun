@@ -141,6 +141,7 @@ pub(super) struct Plan {
     is_ready_for_loader_functions: bool,
     /// A test run in which a file stores `Module._resolveFilename` or `Module.prototype.require`: plain Bun asks them at every `require`.
     asks_loader_functions: bool,
+    may_register_customization_hooks: bool,
     /// A `require` of a file may run before the loader has come to a CommonJS file, and code names a way between module objects: whether one did says which file has the id ".".
     is_first_require_seen: bool,
     is_namespace_seen: Vec<bool>,
@@ -196,6 +197,7 @@ impl Plan {
             lets_process_out_of_sight: false,
             is_ready_for_loader_functions: false,
             asks_loader_functions: false,
+            may_register_customization_hooks: false,
             is_first_require_seen: false,
             is_namespace_seen: vec![false; order.numbers.len()],
             is_marker_stored: vec![false; order.numbers.len()],
@@ -886,6 +888,14 @@ impl ModuleGraph {
 
     pub fn asks_loader_functions(&self) -> bool {
         self.plan.asks_loader_functions
+    }
+
+    pub fn may_register_customization_hooks(&self) -> bool {
+        self.plan.may_register_customization_hooks
+    }
+
+    pub fn set_may_register_customization_hooks(&mut self, may_register: bool) {
+        self.plan.may_register_customization_hooks = may_register;
     }
 
     pub fn set_asks_loader_functions(&mut self, asks: bool) {

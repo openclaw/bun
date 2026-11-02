@@ -50,6 +50,7 @@ export default b.declarations(
   ]),
   marked("IsResolverThatLoaderCalls", ["node:module._resolveFilename"]),
   marked("IsRequireThatLoaderCalls", ["node:module.prototype.require"]),
+  marked("RegistersModuleHooks", ["node:module.registerHooks"]),
   marked("IsSpy", [
     "bun:test.spyOn",
     "bun:test.jest.spyOn",

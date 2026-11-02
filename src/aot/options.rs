@@ -91,6 +91,8 @@ pub struct LoadOptions {
     pub stores_path_of_main_module: bool,
     /// An earlier compile of the same program stored into `Module._resolveFilename` or `Module.prototype.require`, by the word of the engine: the loader hands what stands there the module object of a file that asks it at run time.
     pub stores_loader_functions: bool,
+    /// The program may register customization hooks, by the word of the engine.
+    pub may_register_customization_hooks: bool,
     /// An earlier compile of the same program read them, by the word of the engine, where a module object goes where the front end does not follow it.
     pub ways_read_out_of_sight: WaysBetweenModuleObjects,
     /// An earlier compile of the same program followed them because a file names them, and nobody reads them of a module object, by the word of the engine.
@@ -262,6 +264,7 @@ impl LoadOptions {
             reads_main_module_without_its_name: false,
             stores_path_of_main_module: false,
             stores_loader_functions: false,
+            may_register_customization_hooks: false,
             ways_read_out_of_sight: WaysBetweenModuleObjects::default(),
             ways_named_that_nobody_reads: WaysBetweenModuleObjects::default(),
             replaced_exports: Vec::new(),

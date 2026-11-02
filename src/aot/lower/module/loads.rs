@@ -127,6 +127,12 @@ fn create_plan(site: Option<Site>, yields_value: impl FnOnce() -> bool) -> Optio
 }
 
 impl FileLowering<'_, '_, '_, '_> {
+    fn may_register_customization_hooks(&self) -> bool {
+        let modules = self.inputs.modules;
+        modules.may_register_customization_hooks()
+            && modules.is_code_of_program(ModuleRef::File(self.file))
+    }
+
     fn classify_callee(&self, callee: ExprId) -> CalleeKnowledge {
         let callee = self.skip_type_syntax(callee);
         let Some(Resolved::Builtin(callee_path)) = self.builtins.of_expr(callee) else {
@@ -415,6 +421,16 @@ impl FunctionLowering<'_, '_, '_, '_, '_> {
             queries.files().by_path.get(queries.atom_bytes(path))
         });
         let site = analysis.import_sites[site];
+        if self.file.may_register_customization_hooks()
+            && matches!(
+                site.kind,
+                ImportSiteKind::Require(_)
+                    | ImportSiteKind::ImportMetaRequire(_)
+                    | ImportSiteKind::RequireResolve(_)
+            )
+        {
+            return None;
+        }
         if has_spread_argument(hir, arguments) {
             return None;
         }
@@ -572,6 +588,9 @@ impl FunctionLowering<'_, '_, '_, '_, '_> {
         call: ExprId,
         id: CallId,
     ) -> Option<ValueId> {
+        if self.file.may_register_customization_hooks() {
+            return None;
+        }
         let hir = self.file.hir;
         let arguments = hir[id].args;
         let is_plain_call = matches!(hir[id].chain, Chain::No) && arguments.len() == 1;
@@ -623,6 +642,14 @@ impl FunctionLowering<'_, '_, '_, '_, '_> {
         chain_exit: Option<BlockId>,
     ) -> Option<ValueId> {
         let hir = self.file.hir;
+        if self.file.may_register_customization_hooks()
+            && !matches!(
+                self.file.classify_callee(hir[id].callee),
+                CalleeKnowledge::Expected(BuiltinId::ProcessGetBuiltinModule)
+            )
+        {
+            return None;
+        }
         let argument = hir.ids(hir[id].args).next()?;
         let source = parsed_source(self.file.queries.files(), self.file.file)?;
         let named = modules_named_in(source.named_modules(), argument).iter();
@@ -670,6 +697,13 @@ impl FunctionLowering<'_, '_, '_, '_, '_> {
         let site = analysis.import_sites[analysis.import_site_index(kind)?];
         let modules = self.file.inputs.modules;
         let own_file = self.file.file;
+        if self.file.may_register_customization_hooks()
+            && let ImportSpecifier::Constant(written) = site.specifier
+        {
+            let name = self.emit_name_as_given(written, None);
+            let referrer = self.file.module_id();
+            return Some(self.builder.require_dynamic(name, referrer));
+        }
         let bound = self.file.bound;
         let name = bound.declared_symbol(Decl::ImportEquals(declaration));
         let site = AnsweredSite {

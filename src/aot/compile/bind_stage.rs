@@ -71,6 +71,7 @@ fn finish_modules(graph: &mut ModuleGraph, reached: &ReachedModules) {
     graph.set_ways_followed_for_their_names(reached.ways_followed_for_their_names);
     graph.set_lets_process_out_of_sight(reached.lets_process_out_of_sight);
     graph.set_is_ready_for_loader_functions(reached.is_ready_for_loader_functions);
+    graph.set_may_register_customization_hooks(reached.may_register_customization_hooks);
     graph.leave_out_inner_modules(&reached.left_out_inner_modules);
     graph.set_files_brought_by_calls(reached.brought_by_calls.clone());
     graph.limit_requests(|referrer, request| reached.keeps_request(referrer, request));
@@ -272,9 +273,17 @@ impl Build<'_> {
                         .reads_main_module_without_its_name,
                     stores_path_of_main_module: self.options.load.stores_path_of_main_module,
                     stores_loader_functions: self.options.load.stores_loader_functions,
+                    may_register_customization_hooks: self
+                        .options
+                        .load
+                        .may_register_customization_hooks,
                     asks_loader_functions_once_stored: self.options.load.runs_tests,
                     ways_read_out_of_sight: self.options.load.ways_read_out_of_sight,
-                    any_file_is_named_at_run_time: code_on_disk_names_files
+                    any_file_is_named_at_run_time: self
+                        .options
+                        .load
+                        .may_register_customization_hooks
+                        || code_on_disk_names_files
                         || (!self.options.aot.host_runs_files_from_disk
                             && (self.options.aot.loads_code_from_disk
                                 || self.options.load.runs_tests)),

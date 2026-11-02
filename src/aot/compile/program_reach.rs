@@ -51,6 +51,7 @@ pub(crate) struct ProgramReachInput<'a, 's> {
     pub stores_path_of_main_module: bool,
     /// `LoadOptions::stores_loader_functions`
     pub stores_loader_functions: bool,
+    pub may_register_customization_hooks: bool,
     /// `LoadOptions::runs_tests`: there a `require` of a constant name asks the loader functions that the program has stored, which may answer with any file.
     pub asks_loader_functions_once_stored: bool,
     /// `LoadOptions::ways_read_out_of_sight`
@@ -130,6 +131,7 @@ enum Interest {
     // Another piece of the enum whose piece the region is.
     Piece(u32),
     StoreOfLoaderFunction,
+    MayRegisterCustomizationHooks,
     RequestThatLoaderFunctionsAnswer,
 }
 
@@ -138,6 +140,27 @@ fn is_loader_function(builtin: BuiltinId) -> bool {
         table::canonical_id(builtin),
         BuiltinId::NodeModule_resolveFilename | BuiltinId::NodeModulePrototypeRequire
     )
+}
+
+fn is_module_hooks_registration(builtin: Option<BuiltinId>) -> bool {
+    builtin.map(table::canonical_id) == Some(BuiltinId::NodeModuleRegisterHooks)
+}
+
+fn builtin_of_import_binding(files: &Files<'_>, binding: ImportBinding) -> Option<BuiltinId> {
+    match binding {
+        ImportBinding::Builtin(builtin)
+        | ImportBinding::CapturedBuiltin {
+            member: builtin, ..
+        } => Some(builtin),
+        ImportBinding::BuiltinMember { holder, name } => {
+            let name = table::find_name(files.atoms.bytes(name))?;
+            match table::member(table::canonical_id(holder), name) {
+                MemberLookup::Found(member) => Some(member),
+                MemberLookup::Unknown | MemberLookup::Absent => None,
+            }
+        }
+        _ => None,
+    }
 }
 
 // What of a unit that is not reached the program does without.
@@ -1750,6 +1773,21 @@ impl<'a, 's> FileScan<'a, 's> {
         if let Some(builtin) = source.builtins.builtin_of_expression(written) {
             return Some(builtin);
         }
+        let binding = match hir[written].kind {
+            ExprKind::Ident(_) => match self.bound.binding(written) {
+                Binding::Symbol(symbol) => Some(self.input.graph.import_binding(self.file, symbol)),
+                _ => None,
+            },
+            ExprKind::Dot { .. } | ExprKind::Index { .. } => {
+                self.input.graph.member_binding(self.file, written)
+            }
+            _ => None,
+        };
+        if let Some(builtin) =
+            binding.and_then(|binding| builtin_of_import_binding(self.input.files, binding))
+        {
+            return Some(builtin);
+        }
         let held = self.skip_variables(written, seen);
         if let Some(builtin) = source.builtins.builtin_of_expression(held) {
             return Some(builtin);
@@ -1767,6 +1805,32 @@ impl<'a, 's> FileScan<'a, 's> {
         match table::member(holder, name) {
             MemberLookup::Found(member) => Some(member),
             MemberLookup::Unknown | MemberLookup::Absent => None,
+        }
+    }
+
+    fn add_uses_of_customization_hooks(&mut self) {
+        if self.input.may_register_customization_hooks {
+            return;
+        }
+        let Some(source) = parsed_source(self.input.files, self.file) else {
+            return;
+        };
+        let decisions = &self.input.files.analysis(self.file).decisions;
+        for expression in self.expressions() {
+            if decisions.is_dead_expr(expression) || self.bound.is_in_type_query(expression) {
+                continue;
+            }
+            if is_module_hooks_registration(self.find_builtin_behind(
+                source,
+                expression,
+                &mut SmallVec::new(),
+            )) && !self.is_folded_away(expression)
+            {
+                self.add_interest(
+                    self.hir[expression].pos,
+                    Interest::MayRegisterCustomizationHooks,
+                );
+            }
         }
     }
 
@@ -1851,6 +1915,7 @@ impl<'a, 's> FileScan<'a, 's> {
         self.add_loads_by_unknown_names();
         self.add_module_objects();
         self.add_stores_of_loader_functions();
+        self.add_uses_of_customization_hooks();
         self.add_requests_that_loader_functions_answer();
         self.drop_repeated_interests();
         self.units.this_positions = ThisPositions::of(self.hir);
@@ -1950,6 +2015,7 @@ struct Walk<'a, 's> {
     // `process` goes where nothing follows it, under an entry point that has a module object.
     lets_process_out_of_sight: bool,
     stores_loader_functions: bool,
+    may_register_customization_hooks: bool,
     files_asking_loader_functions: Vec<FileId>,
     // The files that only test their own `module.parent`. There is one to find where the files that require them have objects.
     tests_own_parent: FxHashSet<ModuleRef>,
@@ -2105,6 +2171,7 @@ impl<'a, 's> Walk<'a, 's> {
             takes_entries_out_of_cache: false,
             lets_process_out_of_sight: false,
             stores_loader_functions: input.stores_loader_functions,
+            may_register_customization_hooks: input.may_register_customization_hooks,
             files_asking_loader_functions: Vec::new(),
             tests_own_parent: FxHashSet::default(),
             files_naming_ways: Vec::new(),
@@ -2474,7 +2541,10 @@ impl<'a, 's> Walk<'a, 's> {
 
     fn reach_new_binding(&mut self, defined: Sym) -> bool {
         let Sym { file, id } = defined;
-        match self.input.graph.import_binding(file, id) {
+        let binding = self.input.graph.import_binding(file, id);
+        self.may_register_customization_hooks |=
+            is_module_hooks_registration(builtin_of_import_binding(self.input.files, binding));
+        match binding {
             // The import statement fills a variable of the file, which is what an export of the name shows.
             ImportBinding::Local
             | ImportBinding::Builtin(_)
@@ -3062,6 +3132,9 @@ impl<'a, 's> Walk<'a, 's> {
             Interest::Require { referrer, target } => {
                 self.required.insert((referrer, target));
                 self.evaluate(target);
+                if self.input.may_register_customization_hooks {
+                    self.hand_on_files_found_by_name(file, None);
+                }
             }
             Interest::Request(module) => {
                 if !self.is_request_waiting(file, module) {
@@ -3119,6 +3192,9 @@ impl<'a, 's> Walk<'a, 's> {
             }
             Interest::ModuleObject(owner, object_use) => {
                 self.reach_module_object(file, owner, object_use);
+            }
+            Interest::MayRegisterCustomizationHooks => {
+                self.may_register_customization_hooks = true;
             }
             Interest::StoreOfLoaderFunction => {
                 self.stores_loader_functions = true;
@@ -3574,6 +3650,7 @@ pub(crate) struct ReachedModules {
     // `process` goes where nothing follows it, and nothing has been kept for whoever reads `mainModule` there.
     pub lets_process_out_of_sight: bool,
     pub stores_loader_functions: bool,
+    pub may_register_customization_hooks: bool,
     pub is_ready_for_loader_functions: bool,
     // Modules that are written inside a file and that nothing calls.
     pub left_out_inner_modules: Vec<ModuleRef>,
@@ -3669,14 +3746,23 @@ pub(crate) fn find_left_out_code(
 ) -> (LeftOutCode, ReachedModules) {
     let found =
         find_left_out_code_with_ways_named(input, ways_named_that_nobody_reads, in_parallel);
-    if found.1.is_ready_for_loader_functions || !found.1.stores_loader_functions {
+    let needs_loader_functions = !input.stores_loader_functions
+        && !found.1.is_ready_for_loader_functions
+        && found.1.stores_loader_functions;
+    let needs_customization_hooks =
+        !input.may_register_customization_hooks && found.1.may_register_customization_hooks;
+    if !needs_loader_functions && !needs_customization_hooks {
         return found;
     }
     let input = ProgramReachInput {
-        stores_loader_functions: true,
+        stores_loader_functions: input.stores_loader_functions || needs_loader_functions,
+        may_register_customization_hooks: input.may_register_customization_hooks
+            || needs_customization_hooks,
+        any_file_is_named_at_run_time: input.any_file_is_named_at_run_time
+            || needs_customization_hooks,
         ..*input
     };
-    find_left_out_code_with_ways_named(&input, ways_named_that_nobody_reads, in_parallel)
+    find_left_out_code(&input, ways_named_that_nobody_reads, in_parallel)
 }
 
 fn find_left_out_code_with_ways_named(
@@ -3795,6 +3881,7 @@ fn find_left_out_code_following(
         .collect();
     reached_modules.required = take(&mut walk.required);
     reached_modules.stores_loader_functions = walk.stores_loader_functions;
+    reached_modules.may_register_customization_hooks = walk.may_register_customization_hooks;
     reached_modules.is_ready_for_loader_functions = walk.is_ready_for_loader_functions();
     let leads_on = walk.find_ways_that_lead_on_out_of_sight();
     reached_modules.naming_ways = take(&mut walk.files_naming_ways);

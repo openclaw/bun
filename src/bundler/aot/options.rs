@@ -296,6 +296,7 @@ fn load_options(input: &OptionsInput<'_, '_, '_>) -> LoadOptions {
         reads_main_module_without_its_name: input.aot.runs_tests,
         stores_path_of_main_module: false,
         stores_loader_functions: replaced.stores_loader_functions,
+        may_register_customization_hooks: false,
         // Bun's own code reads `parent` of objects that nobody knows, and a program that other programs import from hands its module
         // objects out. So with all of that code the engine always finds this, a front end and a flow analysis later.
         ways_read_out_of_sight: WaysBetweenModuleObjects {

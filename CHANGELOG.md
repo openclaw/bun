@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve customization-hook resolution and arbitrary hook answers in compiled require calls, including computed requests and deregistration.
+
 - Share the existing prototype require function with newly constructed CommonJS modules, including relative loading and prototype overrides.
 
 - Keep compiled CommonJS `require.main` lazy to avoid recursive module creation when initializing require functions.

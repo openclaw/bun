@@ -61,6 +61,22 @@ describe("compile/aot/types of node's classes", () => {
           const path = createRequire(import.meta.url)("node:path");
           hooks.deregister();
           console.log(resolved, path.basename("/a/b"));
+          const redirected = registerHooks({
+            resolve(specifier, context, next) {
+              return next(specifier === "node:path" ? "node:util" : specifier, context);
+            },
+          });
+          const require = createRequire(import.meta.url);
+          const staticAnswer = require("node:path");
+          const name = process.argv[2] === "path" ? "node:path" : "node:os";
+          const computedAnswer = require(name);
+          console.log(typeof staticAnswer.isDeepStrictEqual, typeof staticAnswer.basename);
+          console.log(typeof computedAnswer.isDeepStrictEqual, typeof computedAnswer.basename);
+          console.log(require.resolve("node:path"), require.resolve(name));
+          import required = require("node:path");
+          console.log(Object.hasOwn(required, "isDeepStrictEqual"));
+          redirected.deregister();
+          console.log(typeof require("node:path").basename, require.resolve("node:path"));
           console.log(stripTypeScriptTypes("const value: number = 42;").includes(": number"));
           let heard = 0;
           process.once("beforeExit", function(this: typeof process, value) {
@@ -76,13 +92,61 @@ describe("compile/aot/types of node's classes", () => {
       const folder = String(dir);
       const executable = join(folder, isWindows ? "app.exe" : "app");
       built(await spawned([bunExe(), ...compileCommand, "main.ts", "--outfile", executable], folder, bunEnv));
-      const ran = await spawned([executable], folder, bunEnv);
+      const ran = await spawned([executable, "path"], folder, bunEnv);
       expect({ stdout: ran.stdout, exitCode: ran.exitCode, signal: ran.signal }).toEqual({
-        stdout: "aot-module 0 function\ntrue b\nfalse\n42 0\n",
+        stdout:
+          "aot-module 0 function\ntrue b\nfunction undefined\nfunction undefined\nnode:util node:util\ntrue\nfunction node:path\nfalse\n42 0\n",
         exitCode: 0,
         signal: null,
       });
       expect(ran.stderr).not.toMatch(/^error\b/m);
+    }));
+
+  test("customization hooks reached through aliases or computed calls retain redirected exports", () =>
+    slot(async () => {
+      for (const mode of ["aliased", "computed"]) {
+        using dir = tempDir("aot-module-hooks-" + mode, {
+          "registration.ts": 'export { registerHooks as install } from "node:module";',
+          "replacement.ts": 'export function extra() { return "replacement"; }',
+          "original.ts": 'export const value = "original";',
+          "main.ts": `
+            ${mode === "aliased" ? 'import { install } from "./registration.ts";' : 'import Module from "node:module";'}
+            import { createRequire } from "node:module";
+            import "./replacement.ts";
+            const require = createRequire(import.meta.url);
+            let asked = 0;
+            const hooks = ${mode === "aliased" ? "install" : "Module[process.argv[2]]"}({
+              resolve(specifier, context, next) {
+                if (specifier === "./original.ts") {
+                  asked++;
+                  return next("./replacement.ts", context);
+                }
+                return next(specifier, context);
+              },
+            });
+            console.log(require("./original.ts").extra());
+            require("./original.ts");
+            console.log(asked);
+            hooks.deregister();
+            console.log(require("./original.ts").value);
+          `,
+        });
+        const folder = String(dir);
+        const executable = join(folder, isWindows ? "app.exe" : "app");
+        built(await spawned([bunExe(), ...compileCommand, "main.ts", "--outfile", executable], folder, bunEnv));
+        for (const command of [
+          [bunExe(), "main.ts", "registerHooks"],
+          [executable, "registerHooks"],
+        ]) {
+          const ran = await spawned(command, folder, bunEnv);
+          expect({ stdout: ran.stdout, stderr: ran.stderr, exitCode: ran.exitCode, signal: ran.signal }).toEqual({
+            stdout: "replacement\n2\noriginal\n",
+            stderr: "",
+            exitCode: 0,
+            signal: null,
+          });
+        }
+      }
     }));
 
   test(

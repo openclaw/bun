@@ -144,6 +144,7 @@ pub struct Compilation {
     stores_path_of_main_module: bool,
     /// A program stores into `Module._resolveFilename` or `Module.prototype.require`, by the word of the engine.
     stores_loader_functions: bool,
+    may_register_customization_hooks: bool,
     /// A program reads them, by the word of the engine, and lets a module object go where the front end has not followed them.
     ways_read_out_of_sight: WaysBetweenModuleObjects,
     /// No program reads them, by the word of the engine, and the front end has followed them because a file names them.
@@ -456,6 +457,7 @@ struct FrontEndOutput {
     has_commonjs_entry_point: bool,
     lets_process_out_of_sight: bool,
     is_ready_for_loader_functions: bool,
+    may_register_customization_hooks: bool,
     ways_not_followed_out_of_sight: WaysBetweenModuleObjects,
     ways_followed_for_their_names: WaysBetweenModuleObjects,
     /// Of a build that runs tests.
@@ -850,6 +852,16 @@ fn stores_path_of_main_module(found: &FlowFindings<'_>) -> bool {
         })
 }
 
+fn may_register_customization_hooks(found: &FlowFindings<'_>) -> bool {
+    has_followed_nothing(found)
+        || found.builtins_used.iter().any(|record| {
+            (record.uses.contains(BuiltinUse::CALLED)
+                || record.uses.contains(BuiltinUse::CONSTRUCTED))
+                && builtin_of(record.builtin).map(table::canonical_id)
+                    == Some(BuiltinId::NodeModuleRegisterHooks)
+        })
+}
+
 fn stores_loader_functions(found: &FlowFindings<'_>) -> bool {
     has_followed_nothing(found)
         || found.builtins_used.iter().any(|record| {
@@ -981,6 +993,7 @@ fn find_load_options_with_what_engine_found(
         compiled.reads_main_module_without_its_name,
         compiled.stores_path_of_main_module,
         compiled.stores_loader_functions,
+        compiled.may_register_customization_hooks,
         compiled.ways_read_out_of_sight,
         compiled.ways_named_that_nobody_reads,
         &compiled.replaced_exports,
@@ -996,6 +1009,7 @@ fn find_load_options_with(
     reads_main_module_without_its_name: bool,
     stores_path_of_main_module: bool,
     stores_loader_functions: bool,
+    may_register_customization_hooks: bool,
     ways_read_out_of_sight: WaysBetweenModuleObjects,
     ways_named_that_nobody_reads: WaysBetweenModuleObjects,
     replaced_exports: &[ReplacedExport],
@@ -1030,6 +1044,13 @@ fn find_load_options_with(
     {
         let load = load.get_or_insert_with(|| options.load.clone());
         load.stores_loader_functions = true;
+    }
+    if may_register_customization_hooks
+        && !options.load.may_register_customization_hooks
+        && !options.aot.checks_only
+    {
+        let load = load.get_or_insert_with(|| options.load.clone());
+        load.may_register_customization_hooks = true;
     }
     let known = &options.load.replaced_exports;
     if (replaced_exports.iter()).any(|export| known.binary_search(export).is_err())
@@ -1146,6 +1167,10 @@ fn log_why_build_starts_over(before: &LoadOptions, after: &LoadOptions) {
                 load.stores_path_of_main_module,
             ),
             ("stores loader functions", load.stores_loader_functions),
+            (
+                "registers customization hooks",
+                load.may_register_customization_hooks,
+            ),
             (
                 "reads children out of sight",
                 load.ways_read_out_of_sight.children,
@@ -1338,6 +1363,7 @@ fn with_what_test_build_learned<'a>(options: &Options<'a>) -> Option<Options<'a>
     load.reads_main_module_without_its_name |= learned.reads_main_module_without_its_name;
     load.stores_path_of_main_module |= learned.stores_path_of_main_module;
     load.stores_loader_functions |= learned.stores_loader_functions;
+    load.may_register_customization_hooks |= learned.may_register_customization_hooks;
     load.ways_read_out_of_sight
         .add(learned.ways_read_out_of_sight);
     load.ways_named_that_nobody_reads
@@ -1853,6 +1879,7 @@ fn add_program(first: &mut Compilation, program: Compilation) {
     first.reads_main_module_without_its_name |= program.reads_main_module_without_its_name;
     first.stores_path_of_main_module |= program.stores_path_of_main_module;
     first.stores_loader_functions |= program.stores_loader_functions;
+    first.may_register_customization_hooks |= program.may_register_customization_hooks;
     (first.ways_read_out_of_sight).add(program.ways_read_out_of_sight);
     (first.ways_named_that_nobody_reads).add(program.ways_named_that_nobody_reads);
     first.replaced_exports.extend(program.replaced_exports);
@@ -1972,6 +1999,7 @@ fn compile_program_at_each_entry_point(
                             program.reads_main_module_without_its_name = false;
                             program.stores_path_of_main_module = false;
                             program.stores_loader_functions = false;
+                            program.may_register_customization_hooks = false;
                             program.ways_read_out_of_sight = WaysBetweenModuleObjects::default();
                             program.ways_named_that_nobody_reads =
                                 WaysBetweenModuleObjects::default();
@@ -2226,6 +2254,7 @@ fn compile_programs<'a>(
         let lacks_main_module = output.lacks_main_module();
         let lets_process_out_of_sight = output.lets_process_out_of_sight;
         let is_ready_for_loader_functions = output.is_ready_for_loader_functions;
+        let hooks_are_known = output.may_register_customization_hooks;
         let ways_not_followed = output.ways_not_followed_out_of_sight;
         let ways_followed = output.ways_followed_for_their_names;
         let exported_variables = &output.exported_variables;
@@ -2245,6 +2274,7 @@ fn compile_programs<'a>(
                 reads_main_module,
                 stores_path_of_main_module(found),
                 !is_ready_for_loader_functions && stores_loader_functions(found),
+                !hooks_are_known && may_register_customization_hooks(found),
                 ways,
                 nobody_reads,
                 &exported_variables.find_replaced(found),
@@ -2326,6 +2356,8 @@ fn compile_programs<'a>(
             let reads_main_module_without_its_name = output.lacks_main_module()
                 && reads_main_module(&engine.flow_findings(), output.lets_process_out_of_sight);
             let stores_path_of_main_module = stores_path_of_main_module(&engine.flow_findings());
+            let may_register_customization_hooks = !output.may_register_customization_hooks
+                && may_register_customization_hooks(&engine.flow_findings());
             let stores_loader_functions = !output.is_ready_for_loader_functions
                 && stores_loader_functions(&engine.flow_findings());
             let ways_read_out_of_sight = find_ways_read_out_of_sight(
@@ -2350,6 +2382,7 @@ fn compile_programs<'a>(
                 reads_main_module_without_its_name,
                 stores_path_of_main_module,
                 stores_loader_functions,
+                may_register_customization_hooks,
                 ways_read_out_of_sight,
                 ways_named_that_nobody_reads,
                 engine,
