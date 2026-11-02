@@ -6200,14 +6200,21 @@ impl VirtualMachine {
                     let is_bare = bun_resolver::is_package_path(&answer_utf8)
                         && ModuleLoader::on_load_namespace_and_path(&answer_utf8)
                             .is_some_and(|(namespace, _)| namespace.is_empty());
+                    let probe_filelike = ModuleLoader::has_extension_or_namespace(&answer_utf8);
                     drop(answer_utf8);
                     let is_own = is_bare
                         && (answer.eql(specifier)
-                            || match run_on_resolve(global, &answer, source, mode.import_kind())? {
-                                None => false,
-                                Some(Ok(_)) => true,
-                                Some(Err(error)) => return Ok(Some(Err(error))),
-                            });
+                            || (probe_filelike
+                                && match run_on_resolve(
+                                    global,
+                                    &answer,
+                                    source,
+                                    mode.import_kind(),
+                                )? {
+                                    None => false,
+                                    Some(Ok(_)) => true,
+                                    Some(Err(error)) => return Ok(Some(Err(error))),
+                                }));
                     let global_cache = if is_own {
                         bun_resolver::GlobalCache::disable
                     } else {
@@ -8996,10 +9003,12 @@ fn run_on_resolve(
     let vm = global.bun_vm();
     // "virtual:thing" is offered as "thing" in namespace "virtual", then as "virtual:thing" in namespace "file".
     let asks_namespace = in_another_namespace && !namespace.is_empty();
-    // Without an extension, skip builtins and anything a callback resolves, or a catch-all filter would recurse forever.
+    // Node hook defaults may replace bare builtins; nested extensionless resolves still skip callbacks.
     let asks_file_namespace = in_file_namespace
         && !specifier.is_empty()
-        && ((namespace.is_empty() && ModuleLoader::has_extension_or_namespace(&specifier))
+        && ((namespace.is_empty()
+            && (ModuleLoader::has_extension_or_namespace(&specifier)
+                || (vm.module_hooks_skip && !vm.is_in_on_resolve.get())))
             || !(vm.is_in_on_resolve.get() || ModuleLoader::bun_aliases_get(&specifier).is_some()))
         // If an `onLoad` in namespace "virtual" matches "thing", "virtual:thing" is already a module key.
         && !(namespace.len() > 1 && global.has_on_load(&specifier)?);

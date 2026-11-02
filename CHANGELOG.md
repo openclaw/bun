@@ -16,6 +16,14 @@
 
 - Keep imported module namespaces non-extensible while preserving separate require(esm) markers and live bindings after the upstream sync.
 
+- Resolve macOS paths through the canonical full-path owner while preserving hard-link names, POSIX locks, and path errors when file descriptors are exhausted.
+
+- Preserve compiled namespace defaults when CommonJS forwards them, while retaining raw native-module mock exports.
+
+- Preserve plugin replacements of bare builtin names during Node hook default resolution while keeping ordinary builtin and recursive-resolution guards.
+
+- Preserve `lstat` ENOTDIR errors with `throwIfNoEntry: false` while retaining `stat` no-entry behavior.
+
 - Remove obsolete missing-script handling reintroduced by the upstream sync while preserving Node-compatible stdin and REPL dispatch.
 
 - Keep heap-limit and negative CA flags covered by the exhaustive runtime startup requirement table after the upstream sync.

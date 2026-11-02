@@ -93,6 +93,7 @@
 #include "GeneratedJest.h"
 #include "WebCoreJSBuiltins.h"
 #if ENABLE(AOT)
+#include <JavaScriptCore/AOTModuleHost.h>
 #include <JavaScriptCore/AOTPropertyWalk.h>
 #endif
 
@@ -1278,7 +1279,11 @@ void populateESMExports(
     if (auto* exports = result.getObject()) {
         bool hasESModuleMarker = false;
         // A native namespace forwarded by CJS keeps its default binding inside that namespace.
-        if (!ignoreESModuleAnnotation && !dynamicDowncast<JSModuleNamespaceObject>(exports)) {
+        bool isModuleNamespace = !!dynamicDowncast<JSModuleNamespaceObject>(exports);
+#if ENABLE(AOT)
+        isModuleNamespace |= AOT::isModuleNamespace(exports);
+#endif
+        if (!ignoreESModuleAnnotation && !isModuleNamespace) {
             PropertySlot slot(exports, PropertySlot::InternalMethodType::VMInquiry, &vm);
             auto has = exports->getPropertySlot(globalObject, esModuleMarker, slot);
             RETURN_IF_EXCEPTION(scope, );

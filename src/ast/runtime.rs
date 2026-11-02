@@ -255,10 +255,10 @@ impl Imports {
     pub const ALL_SORTED_INDEX: [usize; 29] = [
         15, // __name
         26, // __require
-        7, // __export
+        7,  // __export
         25, // __reExport
-        9, // __exportValue
-        8, // __exportDefault
+        9,  // __exportValue
+        8,  // __exportDefault
         14, // __merge
         11, // __legacyDecorateClassTS
         12, // __legacyDecorateParamTS
@@ -270,17 +270,17 @@ impl Imports {
         20, // __privateSet
         21, // __privateWrapper
         19, // __privateMethod
-        6, // __decoratorStart
-        5, // __decoratorMetadata
+        6,  // __decoratorStart
+        5,  // __decoratorMetadata
         27, // __runInitializers
-        4, // __decorateElement
-        0, // $$typeof
+        4,  // __decorateElement
+        0,  // $$typeof
         28, // __using
-        3, // __callDispose
+        3,  // __callDispose
         10, // __jsonParse
         22, // __promiseAll
-        2, // __MEMO_CACHE_SENTINEL
-        1, // __EARLY_RETURN_SENTINEL
+        2,  // __MEMO_CACHE_SENTINEL
+        1,  // __EARLY_RETURN_SENTINEL
         24, // __rawTemplate
     ];
 

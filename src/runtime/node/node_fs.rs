@@ -479,7 +479,10 @@ fn stat_failure(err: sys::Error, path: &[u8], args: &args::Stat) -> Maybe<StatOr
             return Ok(stats);
         }
     }
-    if matches!(err.get_errno(), E::ENOENT | E::ENOTDIR) && !args.throw_if_no_entry {
+    if !args.throw_if_no_entry
+        && (err.get_errno() == E::ENOENT
+            || (err.get_errno() == E::ENOTDIR && err.syscall.name() == "stat"))
+    {
         return Ok(StatOrNotFound::NotFound);
     }
     Err(err.with_path(written))

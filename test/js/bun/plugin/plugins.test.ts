@@ -2824,7 +2824,7 @@ describe.concurrent("onResolve is called for a specifier with no extension and n
         expect.stringMatching(/^file:.*\/not-there\.js$/),
         "onResolve /not/there",
         expect.stringMatching(/^file:\/\/\/(\w:\/)?not\/there$/),
-        expect.stringMatching(/^onResolve (\w:)?[\\/]not[\\/]there\.js$/),
+        expect.stringMatching(/^onResolve file:\/\/\/(\w:\/)?not\/there\.js$/),
         expect.stringMatching(/^file:\/\/\/(\w:\/)?not\/there\.js$/),
       ],
       stderr: "",
@@ -3298,20 +3298,20 @@ describe.concurrent("`contents` from a plugin is loaded like a file with the sam
       "js",
       `export const a = 1; export default { b: 2 };`,
       { a: 1, default: { b: 2 } },
-      { a: 1, default: { b: 2 } },
+      { __esModule: true, a: 1, default: { b: 2 } },
     ],
     "a CommonJS module": [
       "js",
       "js",
       `module.exports = { a: 1, b: { c: 2 } };`,
-      { ...object, default: object },
+      { ...object, default: object, "module.exports": object },
       object,
     ],
     "a CommonJS module that exports a function": [
       "js",
       "cjs",
       `module.exports = function f() {}; module.exports.x = 1;`,
-      { default: "function f", length: 0, name: "f", prototype: {}, x: 1 },
+      { default: "function f", "module.exports": "function f", length: 0, name: "f", prototype: {}, x: 1 },
       "function f",
     ],
     "JSX": [
@@ -3319,20 +3319,20 @@ describe.concurrent("`contents` from a plugin is loaded like a file with the sam
       "jsx",
       `/** @jsxRuntime classic */ /** @jsx h */ const h = tag => tag; export default <div />;`,
       { default: "div" },
-      { default: "div" },
+      { __esModule: true, default: "div" },
     ],
     "TypeScript": [
       "ts",
       "ts",
       `export const a: number = 1; export default { b: 2 } as object;`,
       { a: 1, default: { b: 2 } },
-      { a: 1, default: { b: 2 } },
+      { __esModule: true, a: 1, default: { b: 2 } },
     ],
     "TypeScript that is CommonJS": [
       "ts",
       "cts",
       `const a: number = 1; module.exports = { a };`,
-      { a: 1, default: { a: 1 } },
+      { a: 1, default: { a: 1 }, "module.exports": { a: 1 } },
       { a: 1 },
     ],
     "TSX": [
@@ -3340,7 +3340,7 @@ describe.concurrent("`contents` from a plugin is loaded like a file with the sam
       "tsx",
       `/** @jsxRuntime classic */ /** @jsx h */ const h = (tag: string) => tag; export default <div />;`,
       { default: "div" },
-      { default: "div" },
+      { __esModule: true, default: "div" },
     ],
     "a JSON object": [
       "json",
@@ -3384,13 +3384,13 @@ describe.concurrent("`contents` from a plugin is loaded like a file with the sam
       { a: { b: { "@c": "2", "#text": "t" } }, default: { a: { b: { "@c": "2", "#text": "t" } } } },
       { a: { b: { "@c": "2", "#text": "t" } } },
     ],
-    "text": ["text", "txt", `hello\nwörld`, { default: "hello\nwörld" }, { default: "hello\nwörld" }],
+    "text": ["text", "txt", `hello\nwörld`, { default: "hello\nwörld" }, { __esModule: true, default: "hello\nwörld" }],
     "Markdown": [
       "md",
       "md",
       `# hi\n\ntext`,
       { default: "<h1>hi</h1>\n<p>text</p>\n" },
-      { default: "<h1>hi</h1>\n<p>text</p>\n" },
+      { __esModule: true, default: "<h1>hi</h1>\n<p>text</p>\n" },
     ],
     "CSS": ["css", "css", `.a { color: red }`, { __esModule: true, default: {} }, {}],
   };
@@ -3616,7 +3616,10 @@ describe.concurrent("`contents` from a plugin is loaded like a file with the sam
     `;
     const { stdout, stderr, exitCode } = await run({ "entry.ts": entry }, ["entry.ts"]);
     const namespace = { ...object, default: { ...object, default: 3 } };
-    const each = { json: [namespace, namespace], cjs: [object, { ...object, default: object }, true] };
+    const each = {
+      json: [namespace, { __esModule: true, ...namespace }],
+      cjs: [object, { ...object, default: object, "module.exports": object }, true],
+    };
     expect({ loaded: JSON.parse(stdout || "null"), stderr, exitCode }).toEqual({
       loaded: { file: each, ".virtual": each },
       stderr: "",
@@ -3684,7 +3687,7 @@ describe.concurrent("`contents` from a plugin is loaded like a file with the sam
           { v: 1 },
           { default: { v: 2 }, v: 2 },
           { v: 3 },
-          { default: { v: 3 }, v: 3 },
+          { default: { v: 3 }, "module.exports": { v: 3 }, v: 3 },
         ]) + "\n",
       stderr: "",
       exitCode: 0,
