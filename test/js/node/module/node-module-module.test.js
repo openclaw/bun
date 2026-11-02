@@ -68,9 +68,9 @@ describe.concurrent("registerHooks Node 24 parity", () => {
     // Known divergence: Bun's single import/require registry reuses a completed record.
     // Node runs load again for require() and can return distinct CommonJS-request source ("outer").
     ["record-identity-completed-handoff", '{"values":["one","one"],"loads":1}'],
-    // Known JSC divergence: hostLoadImportedModule repeats pending cycle edges before loadedModules is populated.
-    ["static-cycle-import", '{"answer":42,"leafResolves":2}'],
-    ["static-cycle-require", '{"answer":42,"leafResolves":2}'],
+    // A pending static cycle edge is resolved once by its referrer.
+    ["static-cycle-import", '{"answer":42,"leafResolves":1}'],
+    ["static-cycle-require", '{"answer":42,"leafResolves":1}'],
     // Known JSC divergence: hostLoadImportedModule chooses the registry type before host resolution.
     [
       "attributes-static-returned-identity",
