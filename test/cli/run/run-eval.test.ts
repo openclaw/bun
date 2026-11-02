@@ -150,13 +150,13 @@ test.concurrent.each([
   {
     label: "top-level strict directive",
     source:
-      '"use strict"; const receiver = Symbol("receiver"); const get = function() { return this; }; const target = Object.defineProperty({}, "value", { get }); console.log(JSON.stringify([(function() { return this; })() === undefined, get.call(receiver) === receiver, Reflect.get(target, "value", receiver) === receiver]));',
+      '"use strict"; module.exports; const receiver = Symbol("receiver"); const get = function() { return this; }; const target = Object.defineProperty({}, "value", { get }); console.log(JSON.stringify([(function() { return this; })() === undefined, get.call(receiver) === receiver, Reflect.get(target, "value", receiver) === receiver]));',
     expected: "[true,true,true]",
   },
   {
     label: "nested strict directive in sloppy code",
     source:
-      'const receiver = Symbol("receiver"); const get = function() { "use strict"; return this; }; const target = Object.defineProperty({}, "value", { get }); console.log(JSON.stringify([(function() { return this; })() === globalThis, get.call(receiver) === receiver, Reflect.get(target, "value", receiver) === receiver]));',
+      'module.exports; const receiver = Symbol("receiver"); const get = function() { "use strict"; return this; }; const target = Object.defineProperty({}, "value", { get }); console.log(JSON.stringify([(function() { return this; })() === globalThis, get.call(receiver) === receiver, Reflect.get(target, "value", receiver) === receiver]));',
     expected: "[true,true,true]",
   },
 ])("eval preserves $label semantics", async ({ source, expected }) => {
