@@ -9105,13 +9105,12 @@ fn run_on_resolve(
         break 'brk bun_core::String::static_("file");
     };
 
-    let decoded_file_path = if user_namespace.eq_ascii(b"file")
-        && file_path.starts_with_ascii(b"file://")
-    {
-        bun_url::path_from_file_url(&file_path)
-    } else {
-        bun_core::String::DEAD
-    };
+    let decoded_file_path =
+        if user_namespace.eq_ascii(b"file") && file_path.starts_with_ascii(b"file://") {
+            bun_url::path_from_file_url(&file_path)
+        } else {
+            bun_core::String::DEAD
+        };
     let key = if !user_namespace.eq_ascii(b"file") {
         bun_core::String::create_format(format_args!("{}:{}", user_namespace, file_path))
     } else {

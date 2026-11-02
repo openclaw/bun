@@ -95,6 +95,7 @@ const loadCode = [
   ["--eval", "-e 1"],
   ["--print", "--print 1"],
   ["--print", "-p 1"],
+  ["--input-type", "--input-type=module"],
   ["--hot", "--hot"],
   ["--watch", "--watch"],
 ];
@@ -265,6 +266,7 @@ describe.concurrent("the build", () => {
   test.each([
     ["--preload ./before.ts", "--preload"],
     ["-e 1", "--eval"],
+    ["--input-type=module", "--input-type"],
   ])("--aot alone rejects --compile-exec-argv=%j", async (execArgv, option) => {
     const { stderr, exitCode } = await build("rejected", ["--aot", "--compile-exec-argv=" + execArgv]);
     expect(stderr).toContain(

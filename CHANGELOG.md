@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve filesystem access success values, owned runtime option strings, and AOT input-type admission through the upstream CLI and binding interfaces.
+
 - Restore Worker stack-limit access and reusable path-buffer byte conversion after the upstream sync.
 
 - Keep runtime plugin namespace dispatch aligned with borrowed string bindings after the upstream sync.

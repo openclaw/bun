@@ -500,7 +500,7 @@ fn access_in_graph(
             sys::Error::from_code(E::EACCES, sys::Tag::access).with_path(path)
         ));
     }
-    Some(Ok(Null))
+    Some(Ok(()))
 }
 
 /// `readFile` of what `graph` holds at `path`; `None` if it holds nothing there.
@@ -5131,7 +5131,7 @@ impl NodeFS {
             args.path.slice_z(&mut self.sync_error_buf)
         };
         match Syscall::access(path, args.mode.as_int()) {
-            Ok(_) => Ok(Null),
+            Ok(_) => Ok(()),
             Err(err) => {
                 if !graph_may_answer_for(p) {
                     return Err(err.with_path(p));
@@ -5145,7 +5145,7 @@ impl NodeFS {
                     && (mode & sys::posix::W_OK) == 0
                     && is_source_path(p)
                 {
-                    return Ok(Null);
+                    return Ok(());
                 }
                 Err(err.with_path(p))
             }

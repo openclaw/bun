@@ -471,7 +471,7 @@ fn build_worker_argv(
         }
         if !cpu_prof.dir.is_empty() {
             argv.push(lit(b"--cpu-prof-dir\0"));
-            argv.push(dupe_z(cpu_prof.dir));
+            argv.push(dupe_z(&cpu_prof.dir));
         }
         argv.push(print_z(format_args!(
             "--cpu-prof-interval={}",
