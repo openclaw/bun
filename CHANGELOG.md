@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep `require(esm)` from creating extensible namespaces while preserving live exports and require markers.
+
 - Resolve macOS paths through the canonical full-path owner while preserving hard-link names, POSIX locks, and path errors when file descriptors are exhausted.
 
 - Preserve compiled namespace defaults when CommonJS forwards them, while retaining raw native-module mock exports.

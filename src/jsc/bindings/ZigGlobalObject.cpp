@@ -1082,7 +1082,7 @@ JSC_DEFINE_HOST_FUNCTION(functionEsmNamespaceForCjs, (JSC::JSGlobalObject * glob
         RETURN_IF_EXCEPTION(scope, {});
         return JSValue::encode(compiled ? compiled : jsUndefined());
     }
-    auto* ns = record->getModuleNamespace(globalObject, false);
+    auto* ns = record->getModuleNamespace(globalObject);
     RETURN_IF_EXCEPTION(scope, {});
     auto* required = ns->createNamespaceForRequire(globalObject);
     RETURN_IF_EXCEPTION(scope, {});
@@ -1243,7 +1243,7 @@ JSC_DEFINE_HOST_FUNCTION(functionEsmLoadSync, (JSC::JSGlobalObject * lexicalGlob
             // A mock answers for a module of native code that compiled code has imported: the entry is the image's, and so is its namespace object.
             if (Bun::isRecordOfCompiledModule(entry->record())) [[unlikely]]
                 RELEASE_AND_RETURN(scope, JSValue::encode(entry->record()->moduleNamespaceObject(globalObject)));
-            auto* ns = entry->record()->getModuleNamespace(globalObject, false);
+            auto* ns = entry->record()->getModuleNamespace(globalObject);
             RETURN_IF_EXCEPTION(scope, {});
             auto* required = ns->createNamespaceForRequire(globalObject);
             RETURN_IF_EXCEPTION(scope, {});
@@ -1327,7 +1327,7 @@ JSC_DEFINE_HOST_FUNCTION(functionEsmLoadSync, (JSC::JSGlobalObject * lexicalGlob
 
     if (Bun::isRecordOfCompiledModule(record)) [[unlikely]]
         RELEASE_AND_RETURN(scope, JSValue::encode(record->moduleNamespaceObject(globalObject)));
-    auto* ns = record->getModuleNamespace(globalObject, false);
+    auto* ns = record->getModuleNamespace(globalObject);
     RETURN_IF_EXCEPTION(scope, {});
     Bun::evictModulesThatHaveLoaded(globalObject);
     RETURN_IF_EXCEPTION(scope, {});
