@@ -101,7 +101,11 @@ it("stream web adapters preserve raw failures and primitive code getter receiver
          const reader = Readable.toWeb(readable).getReader();
          await reader.read().then(() => assert.fail("read succeeded"), error => assert.equal(error, failure));
          await reader.closed.then(() => assert.fail("reader closed cleanly"), error => assert.equal(error, failure));
-         const writable = new Writable({ write(chunk, encoding, callback) { callback(failure); } });
+         // Keep the write pending until the adapter observes its failure.
+         const writable = new Writable({
+           highWaterMark: 1,
+           write(chunk, encoding, callback) { queueMicrotask(() => callback(failure)); },
+         });
          const writer = Writable.toWeb(writable).getWriter();
          const closed = writer.closed.then(() => assert.fail("writer closed cleanly"), error => assert.equal(error, failure));
          await writer.write("x").then(() => assert.fail("write succeeded"), error => assert.equal(error, failure));
