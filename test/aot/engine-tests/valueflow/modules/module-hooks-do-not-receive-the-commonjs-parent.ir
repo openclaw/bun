@@ -1,0 +1,36 @@
+# module.exports = function hidden() {}; globalThis.kept = function (name, parent) { return parent.exports() }; registerHooks({ _compile: undefined }); require.resolve("asked")
+# Hooks receive URLs and a context object, not the CommonJS parent. Naming _compile on an ordinary object does not expose the parent's compiler.
+# RUN: valueflow-solve unreached
+# CHECK: unreached f2
+# RUN(ESCAPED): valueflow-why escaped-builtin=ModuleObject
+# ESCAPED: held: those of 0 of 1 modules
+# RUN(COMPILE): valueflow-why escaped-builtin=NodeModulePrototype_compile
+# COMPILE: not held
+
+variable g0 name="exports" module=m0 declared={type=anything} initialization=Undefined
+module m0 path="/app/main.cjs" displayPath="main.cjs" kind=CommonJs flags=[KeepsError] exportRule=CommonJs requireResult=ModuleExports body=f0 exportsVariable=g0
+entry module=m0
+layout L0 kind=Record name="options"
+function f0 name="main" module=m0 kind=CommonJsModule thisType={type=anything} results=[{type=anything}] {
+    v0 = NewClosure function=f2
+    PutModuleVariable v0 variable=g0
+    v2 = Builtin builtin=GlobalThis
+    v3 = NewClosure function=f1
+    PropSet v2, v3 key="kept" mode=Strict
+    v5 = Builtin builtin=NodeModuleRegisterHooks
+    v6 = NewObject layout=L0 fields=[]
+    v7 = Undefined
+    PropSet v6, v7 key="_compile" mode=Strict
+    v9 = Call v5, -, v6
+    v10 = String string="asked"
+    v11 = ResolveDynamic v10 referrer=m0
+    Return
+}
+function f1 name="resolve" module=m0 parameters=[{type=anything}, {type=anything}] results=[{type=anything}] {
+    v2 = PropGet v1 key="exports"
+    v3 = Call v2
+    Return v3
+}
+function f2 name="hidden" module=m0 results=[{type=anything}] {
+    Return
+}
