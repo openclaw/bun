@@ -3071,7 +3071,13 @@ mod posix_impl {
             match get_full_path(path, buf).map(|resolved| resolved.len()) {
                 Ok(len) => Ok(&buf.0[..len]),
                 // Darwin realpath resolves file/ and file/.., unlike the kernel's full-path lookup.
-                Err(err) if err.get_errno() == E::ENOTDIR => realpath(path, buf),
+                Err(err) if err.get_errno() == E::ENOTDIR => match realpath(path, buf) {
+                    Err(fallback) if matches!(fallback.get_errno(), E::EMFILE | E::ENFILE) => {
+                        // libc may open a descriptor for getcwd(); retain the kernel's path error.
+                        Err(err)
+                    }
+                    result => result,
+                },
                 Err(err) => Err(err),
             }
         }
