@@ -460,7 +460,9 @@ pub(crate) fn namespace_and_path(specifier: &[u8]) -> (&[u8], &[u8]) {
 }
 
 pub(crate) fn on_load_namespace_and_path(key: &[u8]) -> Option<(&[u8], &[u8])> {
-    has_extension_or_namespace(key).then(|| namespace_and_path(key))
+    (has_extension_or_namespace(key)
+        || (!bun_paths::is_absolute(key) && !key.starts_with(b"./") && !key.starts_with(b"../")))
+    .then(|| namespace_and_path(key))
 }
 
 /// C++ entry point: length of `key`'s `onLoad` namespace (0 for `file`), or -1 if no `onLoad` runs for it.
@@ -506,6 +508,5 @@ pub(crate) fn has_extension_or_namespace(specifier: &[u8]) -> bool {
         }
     }
     !bun_paths::is_absolute(specifier)
-        && (bun_core::strings::index_of_char_usize(specifier, b':').is_some()
-            || (!specifier.starts_with(b"./") && !specifier.starts_with(b"../")))
+        && bun_core::strings::index_of_char_usize(specifier, b':').is_some()
 }

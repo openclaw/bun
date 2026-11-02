@@ -6200,14 +6200,21 @@ impl VirtualMachine {
                     let is_bare = bun_resolver::is_package_path(&answer_utf8)
                         && ModuleLoader::on_load_namespace_and_path(&answer_utf8)
                             .is_some_and(|(namespace, _)| namespace.is_empty());
+                    let probe_filelike = ModuleLoader::has_extension_or_namespace(&answer_utf8);
                     drop(answer_utf8);
                     let is_own = is_bare
                         && (answer.eql(specifier)
-                            || match run_on_resolve(global, &answer, source, mode.import_kind())? {
-                                None => false,
-                                Some(Ok(_)) => true,
-                                Some(Err(error)) => return Ok(Some(Err(error))),
-                            });
+                            || (probe_filelike
+                                && match run_on_resolve(
+                                    global,
+                                    &answer,
+                                    source,
+                                    mode.import_kind(),
+                                )? {
+                                    None => false,
+                                    Some(Ok(_)) => true,
+                                    Some(Err(error)) => return Ok(Some(Err(error))),
+                                }));
                     let global_cache = if is_own {
                         bun_resolver::GlobalCache::disable
                     } else {

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Resolve macOS paths through the canonical full-path owner while preserving hard-link names and POSIX locks.
+
+- Preserve compiled namespace defaults when CommonJS forwards them, while retaining raw native-module mock exports.
+
+- Keep bare plugin loading separate from filelike resolver probes so builtin and recursive resolutions retain their guards.
+
+- Preserve `lstat` ENOTDIR errors with `throwIfNoEntry: false` while retaining `stat` no-entry behavior.
+
 - Remove obsolete missing-script handling reintroduced by the upstream sync while preserving Node-compatible stdin and REPL dispatch.
 
 - Keep heap-limit and negative CA flags covered by the exhaustive runtime startup requirement table after the upstream sync.
