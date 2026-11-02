@@ -108,11 +108,11 @@ pub(crate) fn expect_stdio_teardown(cx: &mut JsScope<'_>, value: JsLocal<'_>) ->
 
     #[cfg(not(windows))]
     {
-        let Some(ptr) = JSSink::from_js(value.to_js()) else {
+        let Some(ptr) = JSSink::sink_from_js(value.to_js()) else {
             return Err(global.throw(format_args!("expected a FileSink")));
         };
         // SAFETY: the live JS wrapper owns this sink; the probe keeps it alive through teardown.
-        let sink = unsafe { RefPtr::init_ref(core::ptr::addr_of_mut!((*ptr).sink)) };
+        let sink = unsafe { RefPtr::init_ref(ptr.as_ptr()) };
         assert!(sink.flush_on_abort.get(), "expected isolated stdio");
         assert!(sink.writer.get().is_backed_up(), "expected EAGAIN");
         assert!(sink.writer.get().has_pending_data());
@@ -285,11 +285,11 @@ impl FileSink {
 
 pub(crate) fn cancel(cx: &mut JsScope<'_>, value: JsLocal<'_>) -> JsResult<JSValue> {
     let global = cx.global();
-    let Some(ptr) = JSSink::from_js(value.to_js()) else {
+    let Some(ptr) = JSSink::sink_from_js(value.to_js()) else {
         return Err(global.throw(format_args!("expected a FileSink")));
     };
     // SAFETY: the live wrapper owns the sink; hold a ref across writer.close() re-entry.
-    let sink = unsafe { RefPtr::init_ref(core::ptr::addr_of_mut!((*ptr).sink)) };
+    let sink = unsafe { RefPtr::init_ref(ptr.as_ptr()) };
     // Acknowledged short writes can still need the graceful close path to flush.
     if sink.pending.get().state != streams::PendingState::Pending {
         return Ok(JSValue::FALSE);

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Use live sink accessors for FileSink cancellation and stdio teardown after the upstream sync.
+
 - Preserve filesystem access success values, owned runtime option strings, and AOT input-type admission through the upstream CLI and binding interfaces.
 
 - Restore Worker stack-limit access and reusable path-buffer byte conversion after the upstream sync.
