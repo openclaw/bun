@@ -63,7 +63,7 @@ describe("compile/aot/types of node's classes", () => {
           console.log(resolved, path.basename("/a/b"));
           console.log(stripTypeScriptTypes("const value: number = 42;").includes(": number"));
           let heard = 0;
-          process.once("beforeExit", function(value) {
+          process.once("beforeExit", function(this: typeof process, value) {
             if (this !== process) throw new Error("wrong once receiver");
             heard += value;
           });

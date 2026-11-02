@@ -51,9 +51,14 @@ test.concurrent("every spelling of a field is accepted", async () => {
   expect(exitCode).toBe(0);
 });
 
-test.concurrent.each([[], ["--target=bun"], ["--target=codegen", "--target=jsc"], ["test", "file.test.ts"]])(
+test.concurrent.each([
+  { args: [] },
+  { args: ["--target=bun"] },
+  { args: ["--target=codegen", "--target=jsc"] },
+  { args: ["test", "file.test.ts"] },
+])(
   "generator-only setup rejects native or default execution: %j",
-  async args => {
+  async ({ args }) => {
     await using proc = Bun.spawn({
       cmd: [bunExe(), buildScript, ...args],
       env: { ...bunEnv, BUN_WEBKIT_GENERATORS_ONLY: "1" },
