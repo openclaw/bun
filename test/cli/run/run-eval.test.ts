@@ -108,6 +108,30 @@ for (const flag of ["-e", "--print"]) {
   });
 }
 
+test.concurrent.each([
+  {
+    label: "top-level strict directive",
+    source:
+      '"use strict"; const receiver = Symbol("receiver"); const get = function() { return this; }; const target = Object.defineProperty({}, "value", { get }); console.log(JSON.stringify([(function() { return this; })() === undefined, get.call(receiver) === receiver, Reflect.get(target, "value", receiver) === receiver]));',
+  },
+  {
+    label: "nested strict directive in sloppy code",
+    source:
+      'const receiver = Symbol("receiver"); const get = function() { "use strict"; return this; }; const target = Object.defineProperty({}, "value", { get }); console.log(JSON.stringify([(function() { return this; })() === globalThis, get.call(receiver) === receiver, Reflect.get(target, "value", receiver) === receiver]));',
+  },
+])("eval preserves $label semantics", async ({ source }) => {
+  await using proc = Bun.spawn({
+    cmd: [bunExe(), "-e", source],
+    env: bunEnv,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect(stdout).toBe("[true,true,true]\n");
+  expect(stderr).toBe("");
+  expect(exitCode).toBe(0);
+});
+
 describe("--print for cjs/esm", () => {
   test("eval result between esm imports", async () => {
     let cwd = tmpdirSync();
