@@ -349,7 +349,7 @@ impl PathBuf {
                 .large
                 .get_or_insert_with(bun_core::boxed_zeroed::<[u16; 16 * MAX_PATH_BYTES]>)
         };
-        bytemuck::cast_slice_mut(tier)
+        bun_core::cast_slice_mut(tier)
     }
 }
 

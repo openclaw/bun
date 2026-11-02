@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Restore Worker stack-limit access and reusable path-buffer byte conversion after the upstream sync.
+
 - Keep runtime plugin namespace dispatch aligned with borrowed string bindings after the upstream sync.
 
 - Preserve package-map diagnostics, plugin miss retries, and module-hook identities through the upstream resolver and AOT transpiler interfaces.

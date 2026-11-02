@@ -836,7 +836,7 @@ impl WebWorker {
         let owned = OwnedByThread(start);
         let spawn = std::thread::Builder::new()
             .stack_size({
-                let bytes = WebWorker__stackSize(proxy);
+                let bytes = WebWorker__stackSize(self.messaging_proxy);
                 // Keep native initialization and exception handling headroom; JSC enforces the requested script stack.
                 bytes.max(bun_threading::thread_pool::DEFAULT_THREAD_STACK_SIZE as usize)
             })
