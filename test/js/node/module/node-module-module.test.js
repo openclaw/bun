@@ -1344,6 +1344,48 @@ console.log("survived", require("./late.js"));`,
     expect(m.exports).toEqual({});
   });
 
+  test("new Module() inherits the shared require function", async () => {
+    using dir = tempDir("new-module-require", {
+      "dep.cjs": "module.exports = { value: 42 };",
+      "main.cjs": `
+        const assert = require("node:assert/strict");
+        const Module = require("node:module");
+        const path = require("node:path");
+        const instance = new Module("unevaluated");
+        instance.filename = __filename;
+        const original = Module.prototype.require;
+        assert.equal(instance.require, original);
+        assert.equal(instance.require.resolve, undefined);
+        assert.equal(instance.require("node:path"), path);
+        assert.deepEqual(instance.require("./dep.cjs"), { value: 42 });
+        instance.require = () => "instance override";
+        assert.equal(instance.require("node:path"), "instance override");
+        assert.equal(Module.prototype.require, original);
+        assert.equal(new Module("other").require, original);
+        delete instance.require;
+        Module.prototype.require = function(id) {
+          assert.equal(this, instance);
+          return original.call(this, id);
+        };
+        try {
+          assert.equal(instance.require("node:path"), path);
+        } finally {
+          Module.prototype.require = original;
+        }
+        console.log("new-module-require-ok");
+      `,
+    });
+    await using proc = Bun.spawn({
+      cmd: [bunExe(), "main.cjs"],
+      cwd: String(dir),
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect({ stdout, stderr, exitCode }).toEqual({ stdout: "new-module-require-ok\n", stderr: "", exitCode: 0 });
+  });
+
   test("_nodeModulePaths() works", () => {
     const root = path.resolve("/");
     expect(() => {
