@@ -6,7 +6,7 @@
 
 - Preserve compiled namespace defaults when CommonJS forwards them, while retaining raw native-module mock exports.
 
-- Keep bare plugin loading separate from filelike resolver probes so builtin and recursive resolutions retain their guards.
+- Preserve plugin replacements of bare builtin names during Node hook default resolution while keeping ordinary builtin and recursive-resolution guards.
 
 - Preserve `lstat` ENOTDIR errors with `throwIfNoEntry: false` while retaining `stat` no-entry behavior.
 
