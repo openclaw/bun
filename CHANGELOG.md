@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep heap-limit and negative CA flags covered by the exhaustive runtime startup requirement table after the upstream sync.
+
 - Use live sink accessors for FileSink cancellation and stdio teardown after the upstream sync.
 
 - Preserve filesystem access success values, owned runtime option strings, and AOT input-type admission through the upstream CLI and binding interfaces.
