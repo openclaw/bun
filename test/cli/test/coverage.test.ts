@@ -180,7 +180,7 @@ test("coverage leaves out the modules generated for ?worker, ?init and ?inline, 
 });
 
 // Windows doesn't allow `?` in a file name.
-test.skipIf(isWindows)("a file with ? in its name is not left out of coverage: it cannot be loaded", async () => {
+test.skipIf(isWindows)("percent-encoded file names with ? are included in coverage", async () => {
   using dir = tempDir("cov", {
     "bunfig.toml": `[test]\ncoverageSkipTestFiles = true\n`,
     "named.ts": `export const file = "named.ts";`,
@@ -214,13 +214,14 @@ test.skipIf(isWindows)("a file with ? in its name is not left out of coverage: i
   ).toEqual({
     "./named.ts?x": "named.ts",
     "./only?init.ts": "ERR_MODULE_NOT_FOUND",
-    "./only%3Finit.ts": "ERR_MODULE_NOT_FOUND",
-    "file:only%3Finit.ts": "ERR_MODULE_NOT_FOUND",
+    "./only%3Finit.ts": "only?init.ts",
+    "file:only%3Finit.ts": "only?init.ts",
     glob: ["./named.ts"],
     worker: "function",
   });
   expect(readFileSync(path.join(String(dir), "coverage", "lcov.info"), "utf-8").match(/^SF:.*$/gm)).toEqual([
     "SF:named.ts",
+    "SF:only?init.ts",
   ]);
   expect(exitCode).toBe(0);
 });
