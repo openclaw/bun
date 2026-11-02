@@ -204,7 +204,9 @@ bun_spawn::link_impl_ProcessExit! {
     Shell for ShellSubprocess => |this| {
         // Forwarded raw, not autoref'd: the callee may free `*this`.
         on_process_exit(_process, status, _rusage) =>
-            ShellSubprocess::on_process_exit(this, &status),
+            bun_removable_features::removable_body!(Shell, Abort, {
+                ShellSubprocess::on_process_exit(this, &status)
+            }),
     }
 }
 

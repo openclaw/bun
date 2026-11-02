@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep Shell process-exit callbacks removable without affecting child-process completion in compiled programs that use the shell.
+
 - Preserve outer and nested strict-mode directives during runtime transpilation and invalidate previously cached output.
 
 - Preserve the runtime-transpiler trimming guard for module-hook source overrides.
