@@ -5075,10 +5075,9 @@ unsafe fn transpile_file<const DATA_ONLY: bool>(
                 .resolver
                 .node_package_scope_error(lr.path.text)
         } {
-            *ret =
-                ErrorableResolvedSource::err(bun_jsc::ResolveMessage::from_node_module_error(
-                    global, &error, false, b"", b"",
-                ));
+            *ret = ErrorableResolvedSource::err(bun_jsc::ResolveMessage::from_node_module_error(
+                global, &error, false, b"", b"",
+            ));
             return ptr::null_mut();
         }
     }

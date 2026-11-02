@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep runtime plugin namespace dispatch aligned with borrowed string bindings after the upstream sync.
+
 - Preserve package-map diagnostics, plugin miss retries, and module-hook identities through the upstream resolver and AOT transpiler interfaces.
 
 - Restore native compilation after the upstream sync by aligning injected-option parsing, event-loop declarations, generated process bindings, VM sandbox checks, and module-loader arguments with their current owners.

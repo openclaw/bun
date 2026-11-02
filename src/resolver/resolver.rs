@@ -1769,7 +1769,8 @@ impl<'a> Resolver<'a> {
                 };
                 match retried {
                     ResultUnion::NotFound => {
-                        match self.resolve_package_of_program_for_code_from_disk(import_path, kind) {
+                        match self.resolve_package_of_program_for_code_from_disk(import_path, kind)
+                        {
                             Some(file_name) => ResultUnion::Success(Result {
                                 import_kind: kind,
                                 path_pair: PathPair {

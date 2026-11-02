@@ -9035,7 +9035,7 @@ fn run_on_resolve(
     }
     if answer.is_none() && asks_file_namespace {
         answer = global.run_on_resolve_plugins(
-            &bun_core::String::EMPTY,
+            &bun_core::StringView::EMPTY,
             &bun_core::StringView::borrow_utf8(if specifier.starts_with(b"file://") {
                 &specifier
             } else if namespace.is_empty() {
