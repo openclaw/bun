@@ -13,7 +13,7 @@ switch (process.argv[2]) {
   case "real-stderr": { source().pipe(process.stderr); after(process.stderr, "\nstderr"); break; }
   case "stdout-read-first": { const d = process.stdout; const o = sink(); source().pipe(o); source().pipe(d); after(d, "\nstdout"); after(o, "other"); break; }
   case "replaced-by-value-before-any-read": { const d = sink(); Object.defineProperty(process, "stdout", { value: d, configurable: true, writable: true }); source().pipe(d); after(d, "replacement"); break; }
-  case "replaced-by-value-after-a-read": { const real = process.stdout; const d = sink(); Object.defineProperty(process, "stdout", { value: d, configurable: true, writable: true }); source().pipe(d); source().pipe(real); after(d, "replacement"); after(real, "\noriginal"); break; }
+  case "replaced-by-value-after-a-read": { const real = process.stdout; const d = sink(); Object.defineProperty(process, "stdout", { value: d, configurable: true, writable: true }); real.once("finish", () => { say(`replacement: ended ${d.writableEnded}`); say("original: finished true"); }); source().pipe(d); source().pipe(real); break; }
   case "replaced-by-getter": { const d = sink(); let reads = 0; Object.defineProperty(process, "stderr", { get() { reads++; return d; }, configurable: true }); source().pipe(d); setTimeout(() => say(`replacement: ended ${d.writableEnded}, getter ran ${reads > 0}`), 20); break; }
   case "replaced-by-assignment": { const d = sink(); process.stdout = d; source().pipe(d); setTimeout(() => say(`replacement: ended ${d.writableEnded}, holds it ${process.stdout === d}`), 20); break; }
   case "deleted": { delete process.stdout; const d = sink(); source().pipe(d); after(d, "other"); break; }

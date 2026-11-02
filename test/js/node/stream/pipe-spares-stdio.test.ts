@@ -13,7 +13,7 @@ const cases: Record<string, string> = {
   "real-stderr": "ab\nstderr: ended false\n",
   "stdout-read-first": "ab\nstdout: ended false\nother: ended true\n",
   "replaced-by-value-before-any-read": "replacement: ended false\n",
-  "replaced-by-value-after-a-read": "abreplacement: ended false\n\noriginal: ended true\n",
+  "replaced-by-value-after-a-read": "abreplacement: ended false\noriginal: finished true\n",
   "replaced-by-getter": "replacement: ended false, getter ran true\n",
   "replaced-by-assignment": "replacement: ended false, holds it true\n",
   "deleted": "other: ended true\n",
