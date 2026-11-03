@@ -134,6 +134,7 @@ pub(super) fn bind_imports(
         known_members: KnownMembers::new(input),
         platform: input.platform,
         unlocked: input.replaced_builtins,
+        may_register_customization_hooks: input.may_register_customization_hooks,
         scans,
         modules,
         tables,
@@ -235,6 +236,7 @@ pub(super) struct BindContext<'a, 's> {
     platform: Platforms,
     /// `LoadOptions::replaced_builtins`
     unlocked: &'a [u32],
+    pub(super) may_register_customization_hooks: bool,
     scans: &'a Scans,
     pub(super) modules: &'a ModuleSet,
     tables: &'a ExportTables,

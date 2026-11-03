@@ -357,6 +357,7 @@ fn with_loaded_bind_input<R>(
             external_packages: &[],
             replaced_exports: &[],
             replaced_builtins: &[],
+            may_register_customization_hooks: false,
             runs_in_place: false,
             working_directory: b"",
             ignores_declared_side_effects: false,

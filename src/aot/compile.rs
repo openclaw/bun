@@ -457,6 +457,7 @@ struct FrontEndOutput {
     has_commonjs_entry_point: bool,
     lets_process_out_of_sight: bool,
     is_ready_for_loader_functions: bool,
+    /// Binding already accounted for customization hooks; newly discovered hooks still require a load restart.
     may_register_customization_hooks: bool,
     ways_not_followed_out_of_sight: WaysBetweenModuleObjects,
     ways_followed_for_their_names: WaysBetweenModuleObjects,

@@ -96,6 +96,8 @@ pub struct BindInput<'a, 's> {
     pub replaced_exports: &'a [ReplacedExport],
     /// `LoadOptions::replaced_builtins`
     pub replaced_builtins: &'a [u32],
+    /// `LoadOptions::may_register_customization_hooks`
+    pub may_register_customization_hooks: bool,
     /// `AotOptions::runs_in_place`: the program answers as `bun run`, not as `bun build --compile`, where the two differ.
     pub runs_in_place: bool,
     /// `CodeOptions::working_directory`

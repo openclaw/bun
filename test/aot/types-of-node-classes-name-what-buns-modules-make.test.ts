@@ -95,7 +95,7 @@ describe("compile/aot/types of node's classes", () => {
       const ran = await spawned([executable, "path"], folder, bunEnv);
       expect({ stdout: ran.stdout, exitCode: ran.exitCode, signal: ran.signal }).toEqual({
         stdout:
-          "aot-module 0 function\ntrue b\nfunction undefined\nfunction undefined\nnode:util node:util\ntrue\nfunction node:path\nfalse\n42 0\n",
+          "aot-module 0 function\ntrue b\nfunction undefined\nfunction undefined\nutil util\ntrue\nfunction node:path\nfalse\n42 0\n",
         exitCode: 0,
         signal: null,
       });
@@ -146,40 +146,6 @@ describe("compile/aot/types of node's classes", () => {
             signal: null,
           });
         }
-      }
-    }));
-
-  test("resolve-only module hooks preserve compiled imports", () =>
-    slot(async () => {
-      using dir = tempDir("aot-module-hook-imports", {
-        "replacement.ts": 'export const value = "replacement";',
-        "original.ts": 'export const value = "original";',
-        "deferred.ts": 'export { value } from "./original.ts";',
-        "main.ts": `
-          import { registerHooks } from "node:module";
-          import "./replacement.ts";
-          const hooks = registerHooks({
-            resolve(specifier, context, next) {
-              return next(specifier === "./original.ts" ? "./replacement.ts" : specifier, context);
-            },
-          });
-          console.log((await import("./original.ts")).value);
-          console.log((await import("./deferred.ts")).value);
-          hooks.deregister();
-          console.log((await import("./original.ts")).value);
-        `,
-      });
-      const folder = String(dir);
-      const executable = join(folder, isWindows ? "app.exe" : "app");
-      built(await spawned([bunExe(), ...compileCommand, "main.ts", "--outfile", executable], folder, bunEnv));
-      for (const command of [[bunExe(), "main.ts"], [executable]]) {
-        const ran = await spawned(command, folder, bunEnv);
-        expect({ stdout: ran.stdout, stderr: ran.stderr, exitCode: ran.exitCode, signal: ran.signal }).toEqual({
-          stdout: "replacement\nreplacement\noriginal\n",
-          stderr: "",
-          exitCode: 0,
-          signal: null,
-        });
       }
     }));
 

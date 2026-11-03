@@ -450,6 +450,15 @@ impl FileBinder<'_, '_> {
             ),
             _ => (StandsFor::Exports(target), View::Exports(target)),
         };
+        // A customization hook can answer with another module, so its properties are read from that answer.
+        if self.context.may_register_customization_hooks
+            && self
+                .context
+                .order
+                .is_code_of_program(ModuleRef::File(self.file))
+        {
+            return self.look_at(answer);
+        }
         // A file taken out of `require.cache` loads again: the answer is another object, not these variables.
         if self.context.evicted.contains(target) && self.context.order.is_code_of_program(target) {
             return self.look_at(answer);

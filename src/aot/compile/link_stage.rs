@@ -282,7 +282,7 @@ impl Build<'_> {
             ways_followed_for_their_names: application_graph.ways_followed_for_their_names(),
             lets_process_out_of_sight: application_graph.lets_process_out_of_sight(),
             is_ready_for_loader_functions: application_graph.is_ready_for_loader_functions(),
-            may_register_customization_hooks: application_graph.may_register_customization_hooks(),
+            may_register_customization_hooks: self.options.load.may_register_customization_hooks,
             exported_variables: ExportedVariables::collect(&program, &files_of_modules),
             writes_preload,
             holds_source_paths: (loaded.projects.iter())

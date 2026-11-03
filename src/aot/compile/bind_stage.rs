@@ -164,6 +164,7 @@ impl Build<'_> {
             external_packages,
             replaced_exports,
             replaced_builtins: &self.options.load.replaced_builtins,
+            may_register_customization_hooks: self.options.load.may_register_customization_hooks,
             runs_in_place: self.options.aot.runs_in_place,
             working_directory: &self.options.code.working_directory,
             ignores_declared_side_effects: self.options.code.ignores_declared_side_effects,
