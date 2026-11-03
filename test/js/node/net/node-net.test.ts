@@ -532,15 +532,18 @@ describe("net.Socket write", () => {
     socket.on("error", err => console.error(err));
 
     async function run() {
-      return new Promise((resolve, reject) => {
-        socket.once("connect", (...args) => {
+      // Reconnecting is only supported after close, not the end callback.
+      const closed = once(socket, "close");
+      const written = new Promise<void>((resolve, reject) => {
+        socket.once("connect", () => {
           socket.write("script\n", err => {
             if (err) return reject(err);
-            socket.end(() => setTimeout(resolve, 3));
+            socket.end(resolve);
           });
         });
         socket.connect(port, "127.0.0.1");
       });
+      await Promise.all([closed, written]);
     }
 
     for (let i = 0; i < 10; i++) {
