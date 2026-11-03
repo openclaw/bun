@@ -1085,7 +1085,7 @@ static JSC::JSValue callCustomizationHooksExport(Zig::GlobalObject* globalObject
     auto& vm = JSC::getVM(globalObject);
     auto scope = DECLARE_THROW_SCOPE(vm);
     JSValue mod = BUN_REQUIRE_INTERNAL_MODULE(globalObject, InternalModulesCustomizationHooks, "node:module.registerHooks",
-        "runResolveHooksBun"_s, "runLoadHooksBun"_s, "getResolvedImportAttributes"_s, "discardResolvedContext"_s, "getResolvedBuiltin"_s);
+        "runResolveHooksBun"_s, "runLoadHooksBun"_s, "canLoadCompiledModule"_s, "getResolvedImportAttributes"_s, "discardResolvedContext"_s, "getResolvedBuiltin"_s);
     RETURN_IF_EXCEPTION(scope, {});
     JSObject* modObject = mod.getObject();
     if (!modObject) [[unlikely]]
@@ -1098,6 +1098,21 @@ static JSC::JSValue callCustomizationHooksExport(Zig::GlobalObject* globalObject
     JSValue result = JSC::call(globalObject, fn, callData, JSC::jsUndefined(), args);
     RETURN_IF_EXCEPTION(scope, {});
     return result;
+}
+
+bool moduleHooksAllowCompiledModule(Zig::GlobalObject* globalObject, const String& path, bool isCommonJSRequire)
+{
+    if (!Bun__hasModuleHooks(globalObject->bunVM()))
+        return true;
+    auto& vm = globalObject->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    MarkedArgumentBuffer args;
+    args.append(jsString(vm, path));
+    args.append(jsBoolean(isCommonJSRequire));
+    ASSERT(!args.hasOverflowed());
+    JSValue result = callCustomizationHooksExport(globalObject, "canLoadCompiledModule"_s, args);
+    RETURN_IF_EXCEPTION(scope, false);
+    return result.isTrue();
 }
 
 // Runs the `module.registerHooks()` resolve hook chain. Returns a string (the

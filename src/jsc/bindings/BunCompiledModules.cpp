@@ -12,6 +12,7 @@
 #include "JSCommonJSExtensions.h"
 #include "JSCommonJSModule.h"
 #include "ModuleLoader.h"
+#include "NodeModuleHooks.h"
 #include "PathInlines.h"
 #include "ScriptExecutionContext.h"
 #include "WebCoreJSBuiltins.h"
@@ -322,7 +323,7 @@ JSPromise* compiledModuleSource(Zig::GlobalObject* globalObject, const String& k
 {
     // `import data from "./data.json" with { type: "json" }` in a statement that the loader links, and in a compiled file: one module, so one object.
     auto module = attributes ? findModuleWithAttributes(globalObject, key, *attributes) : compiledModuleForRequest(globalObject, key, false, AOT::LoadByName::Import);
-    if (!module)
+    if (!module || !moduleHooksAllowCompiledModule(globalObject, key, false))
         return nullptr;
     auto& vm = getVM(globalObject);
     auto scope = DECLARE_THROW_SCOPE(vm);
@@ -343,7 +344,7 @@ JSPromise* compiledModuleSource(Zig::GlobalObject* globalObject, const String& k
 JSPromise* importCompiledModule(Zig::GlobalObject* globalObject, const String& key, const ScriptFetchParameters* attributes, int64_t referrerAsyncOrder)
 {
     auto module = attributes ? findModuleWithAttributes(globalObject, key, *attributes) : compiledModuleForRequest(globalObject, key, false, AOT::LoadByName::Import);
-    if (!module)
+    if (!module || !moduleHooksAllowCompiledModule(globalObject, key, false))
         return nullptr;
     return AOT::importModule(globalObject, *module, referrerAsyncOrder < 0 ? std::nullopt : std::optional(referrerAsyncOrder));
 }
@@ -378,7 +379,7 @@ bool requireCompiledModule(Zig::GlobalObject* globalObject, JSCommonJSModule* ta
     auto module = compiledModuleForRequest(globalObject, path, hasImportAttributes, AOT::LoadByName::Require);
     if (module && isReadAsCodeByRequire(globalObject, *module, path))
         module = compiledModuleForRequest(globalObject, makeString(path, "?ts"_s), hasImportAttributes, AOT::LoadByName::Require);
-    if (!module)
+    if (!module || !moduleHooksAllowCompiledModule(globalObject, path, true))
         return false;
     auto& vm = getVM(globalObject);
     auto scope = DECLARE_THROW_SCOPE(vm);

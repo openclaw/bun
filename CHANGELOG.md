@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Load compiled modules after resolution-only hook redirects while preserving source overrides and import attributes.
+
 - Keep inherited CommonJS require overrides local, including nonextensible and primitive receivers.
 
 - Preserve customization-hook resolution and arbitrary hook answers in compiled require calls, including computed requests and deregistration.

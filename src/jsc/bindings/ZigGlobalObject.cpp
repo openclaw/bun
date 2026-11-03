@@ -4299,7 +4299,7 @@ static JSPromise* importResolvedModule(Zig::GlobalObject* globalObject, JSModule
 {
     auto& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
-    if (Bun::hasCompiledModules() && !Bun__hasModuleHooks(globalObject->bunVM()) && !Bun::moduleGraphOfLoader(globalObject, loader)) [[unlikely]] {
+    if (Bun::hasCompiledModules() && !Bun::moduleGraphOfLoader(globalObject, loader)) [[unlikely]] {
         Bun::willRequire(globalObject, moduleNameValue, JSC::AOT::LoadByName::Import);
         if (scope.exception()) [[unlikely]]
             return JSC::JSPromise::rejectedPromiseWithCaughtException(globalObject, scope);
@@ -4492,7 +4492,7 @@ JSC::JSPromise* GlobalObject::moduleLoaderFetch(JSGlobalObject* globalObject,
         return rejectedInternalPromise(globalObject, createTypeError(globalObject, "To load Node-API modules, use require() or process.dlopen instead of import."_s));
     }
 
-    if (Bun::hasCompiledModules() && !Bun__hasModuleHooks(zigGlobalObject->bunVM()) && !Bun::moduleGraphOfLoader(globalObject, loader)) [[unlikely]] {
+    if (Bun::hasCompiledModules() && !Bun::moduleGraphOfLoader(globalObject, loader)) [[unlikely]] {
         // The loader keeps parameters of the type alone for an import() without attributes, and fetches with them where a require() takes over a load in flight.
         bool hasImportAttributes = parameters && (parameters->type() != ScriptFetchParameters::Type::JavaScript || !parameters->attributes().isEmpty());
         JSC::AOT::AskerOfModule asker(globalObject, referrer);

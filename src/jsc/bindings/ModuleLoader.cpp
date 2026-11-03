@@ -920,7 +920,7 @@ JSValue fetchCommonJSModule(
     JSC::JSModuleLoader* loader = Bun::moduleLoaderOf(globalObject, scope, target->moduleGraph());
     RETURN_IF_EXCEPTION(scope, {});
 
-    if (Bun::hasCompiledModules() && !Bun__hasModuleHooks(globalObject->bunVM()) && !target->moduleGraph()) [[unlikely]] {
+    if (Bun::hasCompiledModules() && !target->moduleGraph()) [[unlikely]] {
         String pathOfAsker = referrer ? referrer->toWTFString(BunString::ZeroCopy) : String();
         JSC::AOT::AskerOfModule asker(globalObject, pathOfAsker);
         bool hasRun = requireCompiledModule(globalObject, target, specifierWtfString, !!typeAttribute);
