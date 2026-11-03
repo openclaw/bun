@@ -110,12 +110,18 @@ describe("compile/aot/types of node's classes", () => {
           "replacement.ts": 'export function extra() { return "replacement"; }',
           "original.ts": 'export const value = "original";',
           "main.ts": `
-            ${mode === "aliased" ? 'import { install } from "./registration.ts";' : 'import Module from "node:module";'}
+            ${
+              mode === "aliased"
+                ? 'import { install } from "./registration.ts";'
+                : `import Module from "node:module";
+            const method = process.argv[2];
+            if (method !== "registerHooks") throw new Error("expected registerHooks");`
+            }
             import { createRequire } from "node:module";
             import "./replacement.ts";
             const require = createRequire(import.meta.url);
             let asked = 0;
-            const hooks = ${mode === "aliased" ? "install" : "Module[process.argv[2]]"}({
+            const hooks = ${mode === "aliased" ? "install" : "Module[method]"}({
               resolve(specifier, context, next) {
                 if (specifier === "./original.ts") {
                   asked++;
