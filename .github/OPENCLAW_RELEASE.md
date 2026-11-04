@@ -65,6 +65,28 @@ The opted-in smoke job has a 30-minute limit and its test step a 20-minute limit
 Normal smoke jobs retain their 15-minute limit. These dry runs do not publish
 artifacts or establish sanitizer coverage for release builds.
 
+## Downstream consumer qualification
+
+Runs containing `linux-x64` qualify the primary release ZIP in two independent
+GitHub-hosted jobs before publication. Both use the same-run `release` artifact,
+check its manifest source/run identity and archive/executable checksums, and
+verify the executable's full Bun and WebKit revisions before and after testing.
+Profile archives are not consumer inputs.
+
+The frozen OpenClaw and Birdclaw revisions and their Node versions live in
+`scripts/openclaw-release/consumers.py` and the workflow matrix. OpenClaw builds
+and packages its source, exercises all ten Bun-only smoke steps including a real
+browser, and runs its two Bun SQLite boundaries. Birdclaw runs its checks,
+unchanged coverage thresholds, build, synthetic CLI/HTTP/database fixture and
+installed-package Bun/Node smoke. Only Birdclaw's package-smoke revision
+expectation is temporarily projected onto the candidate, then restored.
+
+Consumer jobs have read-only permissions, no signing environment, and private
+HOME/cache/state directories. Their dependency and product processes receive an
+explicit environment without Actions or GitHub credentials. Receipts and logs
+are uploaded as `consumer-openclaw` and `consumer-birdclaw`; a failed or skipped
+consumer blocks publication. These jobs do not update downstream pins or deploy.
+
 ## Tag scheme
 
 ```text
@@ -407,6 +429,7 @@ consumer's responsibility; a green build does not authorize a restart.
 
 ```sh
 bun test test/internal/source-lints/openclaw-release.test.ts
+python3 scripts/openclaw-release/consumers.test.py
 actionlint .github/workflows/openclaw-release.yml
 shellcheck scripts/openclaw-release/sign-macos.sh
 ```

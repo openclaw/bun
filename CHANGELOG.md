@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Require the primary Linux x64 release archive to pass frozen OpenClaw and Birdclaw consumer checks before publication, with matching source, engine, and executable hashes.
+
 - Load compiled modules after resolution-only hook redirects and read properties from the redirected require answer, while preserving source overrides and import attributes.
 
 - Keep inherited CommonJS require overrides local, including nonextensible and primitive receivers.
