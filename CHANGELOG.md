@@ -2,6 +2,80 @@
 
 ## Unreleased
 
+- Keep fork repairs in sync CI coverage, and run changed AOT fixtures, including shared inputs and package fixtures, through their actual compiler and program owners.
+
+- Avoid looking up the executable path when a compiled program has no executable-relative source root.
+
+- Keep AOT customization-hook declarations compatible with the pinned engine's member-call schema.
+
+- Pin the qualified immutable WebKit release `7bf742934b5a72aefaac2dcd993e20d6b0e388c5`, including all 21 native archives and the AOT generator sources with published checksums.
+
+- Require the primary Linux x64 release archive to pass frozen OpenClaw and Birdclaw consumer checks before publication, with matching source, engine, and executable hashes and Birdclaw's normal mocked coverage lookups.
+
+- Load compiled modules after resolution-only hook redirects and read properties from the redirected require answer, while preserving source overrides and import attributes.
+
+- Keep inherited CommonJS require overrides local, including nonextensible and primitive receivers.
+
+- Preserve customization-hook resolution and arbitrary hook answers in compiled require calls, including computed requests and deregistration.
+
+- Share the existing prototype require function with newly constructed CommonJS modules, including relative loading and prototype overrides.
+
+- Keep compiled CommonJS `require.main` lazy to avoid recursive module creation when initializing require functions.
+
+- Keep Shell process-exit callbacks removable without affecting child-process completion in compiled programs that use the shell.
+
+- Preserve outer and nested strict-mode directives during runtime transpilation and invalidate previously cached output.
+
+- Preserve the runtime-transpiler trimming guard for module-hook source overrides.
+
+- Keep imported module namespaces non-extensible while preserving separate require(esm) markers and live bindings after the upstream sync.
+
+- Resolve macOS paths through the canonical full-path owner while preserving hard-link names, POSIX locks, and path errors when file descriptors are exhausted.
+
+- Preserve compiled namespace defaults when CommonJS forwards them, while retaining raw native-module mock exports.
+
+- Preserve plugin replacements of bare builtin names during Node hook default resolution while keeping ordinary builtin and recursive-resolution guards.
+
+- Preserve `lstat` ENOTDIR errors with `throwIfNoEntry: false` while retaining `stat` no-entry behavior.
+
+- Remove obsolete missing-script handling reintroduced by the upstream sync while preserving Node-compatible stdin and REPL dispatch.
+
+- Keep heap-limit and negative CA flags covered by the exhaustive runtime startup requirement table after the upstream sync.
+
+- Use live sink accessors for FileSink cancellation and stdio teardown after the upstream sync.
+
+- Preserve filesystem access success values, owned runtime option strings, and AOT input-type admission through the upstream CLI and binding interfaces.
+
+- Restore Worker stack-limit access and reusable path-buffer byte conversion after the upstream sync.
+
+- Keep runtime plugin namespace dispatch aligned with borrowed string bindings after the upstream sync.
+
+- Preserve package-map diagnostics, plugin miss retries, and module-hook identities through the upstream resolver and AOT transpiler interfaces.
+
+- Restore native compilation after the upstream sync by aligning injected-option parsing, event-loop declarations, generated process bindings, VM sandbox checks, and module-loader arguments with their current owners.
+
+- Restore native builds by removing unused UTF-16 path helpers reintroduced during the upstream merge.
+
+- Preserve raw stream failure values across shared completion, destruction, aggregation, pipeline, HTTP, web stream, socket, and TTY adapter contracts, and keep HTTP queue, fallback request, worker cleanup, and native TLS handle types aligned with their runtime owners.
+
+- Restore extra child-process pipe connections after the upstream cache removal and reconcile internal stdio, worker, DNS, HTTP, and native-handle types with their runtime owners.
+
+- Keep the Windows environment getter type compatible with built-in function code generation after the upstream sync.
+
+- Declare `module.stripTypeScriptTypes()` validation, option getters, and warning effects for AOT compilation without treating the input as executed source.
+
+- Preserve the separate native CommonJS module class and bind module utilities and once-listener wrappers in AOT programs, including listener getter and setter effects.
+
+- Describe fork module hooks, native timer and stdio callbacks, and VM test bindings for the upstream AOT generator, including arbitrary-source evaluation and the renamed CommonJS require implementation.
+
+- Declare TLS completion and Worker environment dependencies for AOT code generation, and retain native `module.registerHooks()` dispatch through its declared module owner.
+
+- Honor Rust CI's generator-only WebKit setup with a checksum-pinned source archive and reject native build targets in that setup.
+
+- Preserve `node:sqlite` query diagnostics through upstream module loading and AOT hook classification, keep databases open when a subscriber disposes them, publish constructor aliases and statement disposal types, and support custom SQLite libraries without tracing.
+
+- Accept hardened GNU builds whose fortified memory copies inline, while retaining stack-protector and checked-formatting import checks.
+
 - Avoid copying inactive TLS config payloads during Duplex cleanup so unreachable socket wrappers can be collected.
 
 - Add opt-in native TLS qualification to release dry runs, checking the exact artifact and source with a genuine Node.js reference and per-file JUnit results.

@@ -8,6 +8,121 @@ import { text } from "node:stream/consumers";
 import { finished as finishedP } from "node:stream/promises";
 import { join } from "path";
 
+it("stream completion preserves thrown values and primitive stack getter receivers", async () => {
+  await using proc = Bun.spawn({
+    cmd: [
+      bunExe(),
+      "-e",
+      `"use strict";
+       const assert = require("node:assert/strict");
+       const { Writable, finished } = require("node:stream");
+       const failure = Symbol("write failure");
+       let stackReads = 0;
+       Object.defineProperty(Symbol.prototype, "stack", {
+         configurable: true,
+         get() { assert.equal(this, failure); stackReads++; },
+       });
+       const events = [];
+       const stream = new Writable({ write(chunk, encoding, callback) { callback(failure); } });
+       const completion = new Promise(resolve => finished(stream, resolve));
+       const closed = new Promise(resolve => stream.on("close", () => { events.push("close"); resolve(); }));
+       stream.on("error", error => { assert.equal(error, failure); events.push("error"); });
+       stream.write("x", error => { assert.equal(error, failure); events.push("write"); });
+       Promise.all([completion, closed]).then(([error]) => {
+         assert.equal(error, failure);
+         assert.equal(stream.errored, failure);
+         assert.deepEqual(events, ["write", "error", "close"]);
+         assert.ok(stackReads > 0);
+         delete Symbol.prototype.stack;
+         console.log("raw-failure-ok");
+       });`,
+    ],
+    env: bunEnv,
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect({ stdout, stderr, exitCode }).toEqual({ stdout: "raw-failure-ok\n", stderr: "", exitCode: 0 });
+});
+
+it("stream error aggregation preserves raw values and property access order", () => {
+  const { aggregateTwoErrors } = exposedInternals["internal/errors"];
+  const inner = Symbol("inner");
+  const code = Symbol("code");
+  const reads = [];
+  const outer = {
+    get errors() {
+      expect(this).toBe(outer);
+      reads.push("errors");
+      return undefined;
+    },
+    get message() {
+      expect(this).toBe(outer);
+      reads.push("message");
+      return {
+        toString() {
+          reads.push("coerce");
+          return "outer";
+        },
+      };
+    },
+    get code() {
+      expect(this).toBe(outer);
+      reads.push("code");
+      return code;
+    },
+  };
+  const error = aggregateTwoErrors(inner, outer);
+  expect(error).toBeInstanceOf(AggregateError);
+  expect(error.errors).toEqual([outer, inner]);
+  expect(error.message).toBe("outer");
+  expect(error.code).toBe(code);
+  expect(reads).toEqual(["errors", "message", "coerce", "code"]);
+  const last = Symbol("last");
+  expect(aggregateTwoErrors(last, error)).toBe(error);
+  expect(error.errors).toEqual([outer, inner, last]);
+});
+
+it("stream web adapters preserve raw failures and primitive code getter receivers", async () => {
+  await using proc = Bun.spawn({
+    cmd: [
+      bunExe(),
+      "-e",
+      `"use strict";
+       const assert = require("node:assert/strict");
+       const { Readable, Writable } = require("node:stream");
+       const failure = Symbol("adapter failure");
+       let codeReads = 0;
+       Object.defineProperty(Symbol.prototype, "code", {
+         configurable: true,
+         get() { assert.equal(this, failure); codeReads++; },
+       });
+       async function main() {
+         const readable = new Readable({ read() { this.destroy(failure); } });
+         const reader = Readable.toWeb(readable).getReader();
+         await reader.read().then(() => assert.fail("read succeeded"), error => assert.equal(error, failure));
+         await reader.closed.then(() => assert.fail("reader closed cleanly"), error => assert.equal(error, failure));
+         // Keep the write pending until the adapter observes its failure.
+         const writable = new Writable({
+           highWaterMark: 1,
+           write(chunk, encoding, callback) { queueMicrotask(() => callback(failure)); },
+         });
+         const writer = Writable.toWeb(writable).getWriter();
+         const closed = writer.closed.then(() => assert.fail("writer closed cleanly"), error => assert.equal(error, failure));
+         await writer.write("x").then(() => assert.fail("write succeeded"), error => assert.equal(error, failure));
+         await closed;
+         assert.ok(codeReads >= 2);
+         delete Symbol.prototype.code;
+         console.log("raw-adapter-ok");
+       }
+       main().catch(error => { console.error(error); process.exitCode = 1; });`,
+    ],
+    env: bunEnv,
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect({ stdout, stderr, exitCode }).toEqual({ stdout: "raw-adapter-ok\n", stderr: "", exitCode: 0 });
+});
+
 describe("Readable", () => {
   it("should be able to be created without _construct method defined", done => {
     const readable = new Readable({
@@ -1983,6 +2098,31 @@ it("internal FixedQueue backing list is not holey (test-fixed-queue.js)", () => 
   let holes = 0;
   for (let i = 0; i < list.length; i++) if (!(i in list)) holes++;
   expect(holes).toBe(0);
+});
+
+it("stream/consumers do not read Blob and TextDecoder from globalThis", async () => {
+  await using proc = Bun.spawn({
+    cmd: [
+      bunExe(),
+      "-e",
+      `globalThis.Blob = globalThis.TextDecoder = class {};
+       const consumers = require("node:stream/consumers");
+       const from = () => require("node:stream").Readable.from([Buffer.from("12")]);
+       Promise.all([
+         consumers.arrayBuffer(from()).then(arrayBuffer => arrayBuffer.byteLength),
+         consumers.blob(from()).then(blob => blob.text()),
+         consumers.buffer(from()).then(buffer => buffer.toString()),
+         consumers.json(from()),
+         consumers.text(from()),
+       ]).then(results => console.log(JSON.stringify(results)));`,
+    ],
+    env: bunEnv,
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect(stderr).toBe("");
+  expect(JSON.parse(stdout)).toEqual([2, "12", "12", 12, "12"]);
+  expect(exitCode).toBe(0);
 });
 
 it("Readable.fromWeb's native source accepts pull(view) without the flags array", async () => {

@@ -4,6 +4,7 @@ use std::io::Write as _;
 
 use crate::api::bun_process::Status;
 use crate::api::bun_process::sync as spawn_sync;
+use bun_archive::{Archiver, archiver};
 use bun_clap as clap;
 use bun_core::Progress::{Node as ProgressNode, Progress};
 use bun_core::{Global, Output, pretty_error, pretty_errorln};
@@ -11,7 +12,6 @@ use bun_core::{MutableString, strings};
 use bun_dotenv as DotEnv;
 use bun_http as HTTP;
 use bun_js_printer as JSPrinter;
-use bun_libarchive::{Archiver, archiver};
 use bun_parsers::json as JSON;
 use bun_paths::{OSPathSlice, PathBuffer};
 use bun_resolver::fs;
@@ -113,16 +113,6 @@ impl ProgressBuf {
         } else {
             ProgressBuf::print(format_args!("{}", Output::pretty_fmt::<false>(args)))
         }
-    }
-}
-
-/// A raw pointer, so that it does not hold an exclusive borrow for the whole body of `exec`.
-struct RefreshOnDrop(*mut Progress);
-
-impl Drop for RefreshOnDrop {
-    fn drop(&mut self) {
-        // SAFETY: `exec` declares its `Progress` before this guard, so it is still alive.
-        unsafe { (*self.0).refresh() };
     }
 }
 
@@ -375,8 +365,8 @@ impl CreateCommand {
             return CreateListExamplesCommand::exec(&ctx);
         }
 
-        // SAFETY: `fs::FileSystem::init` returns a process-global singleton pointer.
-        let filesystem: &mut fs::FileSystem = unsafe { &mut *fs::FileSystem::init(None)? };
+        fs::FileSystem::init(None)?;
+        let filesystem = fs::FileSystem::get();
         // Process-lifetime: every mini event loop (the tasks', a Windows spawn's) keeps a pointer to it.
         let env_loader: &'static mut DotEnv::Loader = Box::leak(Box::new(DotEnv::Loader::init()));
         DotEnv::set_instance(std::ptr::from_mut::<DotEnv::Loader>(env_loader));
@@ -405,19 +395,17 @@ impl CreateCommand {
         } else {
             "Loading"
         };
-        let node: *mut ProgressNode = progress.start(
+        progress.start(
             ProgressBuf::print(format_args!("{} {}", verb, bstr::BStr::new(template)))?,
             0,
         );
-        // SAFETY: `node` is `&mut progress.root`; both live for all of `exec`, and are used independently.
-        let node: &mut ProgressNode = unsafe { &mut *node };
 
         // alacritty is fast
         if env_loader.map.get(b"ALACRITTY_LOG").is_some() {
             progress.refresh_rate_ns = (bun_core::time::NS_PER_MS * 8) as u64;
         }
 
-        let _refresh_on_exit = RefreshOnDrop(&raw mut progress);
+        let mut progress = scopeguard::guard(&mut progress, |progress| progress.refresh());
 
         let mut package_json_contents: MutableString = MutableString::default();
         let mut package_json_file: Option<bun_sys::File> = None;
@@ -441,15 +429,20 @@ impl CreateCommand {
 
         match example_tag {
             ExampleTag::JslikeFile => {
-                return run_on_entry_point(ctx, create_options.overwrite, template, node);
+                return run_on_entry_point(
+                    ctx,
+                    create_options.overwrite,
+                    template,
+                    &mut progress.root,
+                );
             }
             ExampleTag::GithubRepository | ExampleTag::Official => {
                 let tarball_bytes: MutableString = match example_tag {
                     ExampleTag::Official => {
-                        match Example::fetch(&ctx, env_loader, template, &mut progress, node) {
+                        match Example::fetch(&ctx, env_loader, template, &mut progress) {
                             Ok(b) => b,
                             Err(err) => {
-                                node.end();
+                                progress.root.end();
                                 progress.refresh();
 
                                 if !matches!(
@@ -474,11 +467,10 @@ impl CreateCommand {
                         }
                     }
                     ExampleTag::GithubRepository => {
-                        match Example::fetch_from_github(env_loader, template, &mut progress, node)
-                        {
+                        match Example::fetch_from_github(env_loader, template, &mut progress) {
                             Ok(b) => b,
                             Err(err) => {
-                                node.end();
+                                progress.root.end();
                                 progress.refresh();
 
                                 if matches!(
@@ -520,12 +512,12 @@ impl CreateCommand {
                     _ => unreachable!(),
                 };
 
-                node.name = ProgressBuf::print(format_args!(
+                progress.root.name = ProgressBuf::print(format_args!(
                     "Decompressing {}",
                     bstr::BStr::new(template)
                 ))?;
-                node.set_completed_items(0);
-                node.set_estimated_total_items(0);
+                progress.root.set_completed_items(0);
+                progress.root.set_estimated_total_items(0);
 
                 progress.refresh();
 
@@ -537,10 +529,10 @@ impl CreateCommand {
                 gunzip.read_all(true)?;
                 drop(gunzip);
 
-                node.name =
+                progress.root.name =
                     ProgressBuf::print(format_args!("Extracting {}", bstr::BStr::new(template)))?;
-                node.set_completed_items(0);
-                node.set_estimated_total_items(0);
+                progress.root.set_completed_items(0);
+                progress.root.set_estimated_total_items(0);
 
                 progress.refresh();
 
@@ -561,8 +553,8 @@ impl CreateCommand {
                     struct OverwriteListAppender {
                         buf: Vec<u8>,
                     }
-                    impl bun_libarchive::ArchiveAppender for OverwriteListAppender {
-                        fn append(&mut self, path: &[u8]) -> Result<&[u8], bun_libarchive::Error> {
+                    impl bun_archive::ArchiveAppender for OverwriteListAppender {
+                        fn append(&mut self, path: &[u8]) -> Result<&[u8], bun_archive::Error> {
                             self.buf.clear();
                             self.buf.extend_from_slice(path);
                             Ok(&self.buf)
@@ -588,7 +580,7 @@ impl CreateCommand {
                     }
 
                     if !create_options.overwrite && archive_context.overwrite_list.count() > 0 {
-                        node.end();
+                        progress.root.end();
                         progress.refresh();
                         exit_with_conflicts(
                             destination,
@@ -612,7 +604,7 @@ impl CreateCommand {
                     let plucker = &archive_context.pluckers[0];
 
                     if plucker.found && plucker.fd.is_valid() {
-                        node.name = b"Updating package.json";
+                        progress.root.name = b"Updating package.json";
                         progress.refresh();
 
                         package_json_contents = plucker.contents.clone()?;
@@ -621,14 +613,14 @@ impl CreateCommand {
                 }
             }
             ExampleTag::LocalFolder => {
-                node.name = b"Copying files";
+                progress.root.name = b"Copying files";
                 progress.refresh();
 
                 let abs_template_path = crate::cli::cli_dupe(filesystem.abs(&[template]));
                 let template_dir = match bun_sys::Dir::open(abs_template_path) {
                     Ok(d) => d,
                     Err(err) => {
-                        node.end();
+                        progress.root.end();
                         progress.refresh();
 
                         pretty_errorln!(
@@ -641,7 +633,7 @@ impl CreateCommand {
                 };
 
                 if destination_is_inside_template(&template_dir, abs_template_path, destination) {
-                    node.end();
+                    progress.root.end();
                     progress.refresh();
 
                     pretty_errorln!(
@@ -658,7 +650,7 @@ impl CreateCommand {
                     create_options.overwrite,
                 )?;
                 if !conflicts.is_empty() {
-                    node.end();
+                    progress.root.end();
                     progress.refresh();
                     exit_with_conflicts(destination, conflicts.iter().map(Vec::as_slice));
                 }
@@ -666,7 +658,7 @@ impl CreateCommand {
                 let destination_dir = match bun_sys::Fd::cwd().make_open_path(destination) {
                     Ok(d) => d,
                     Err(err) => {
-                        node.end();
+                        progress.root.end();
                         progress.refresh();
 
                         pretty_errorln!(
@@ -713,7 +705,6 @@ impl CreateCommand {
                 file_copier_copy(
                     &destination_dir,
                     &mut walker_,
-                    node,
                     &mut progress,
                     #[cfg(windows)]
                     (destination_len + 1),
@@ -745,7 +736,7 @@ impl CreateCommand {
                                 let stat = match pkg.stat() {
                                     Ok(s) => s,
                                     Err(err) => {
-                                        node.end();
+                                        progress.root.end();
                                         progress.refresh();
 
                                         package_json_file = None;
@@ -762,7 +753,7 @@ impl CreateCommand {
                                     || stat.st_size == 0
                                 {
                                     package_json_file = None;
-                                    node.end();
+                                    progress.root.end();
                                     progress.refresh();
                                     break 'read_package_json;
                                 }
@@ -784,7 +775,7 @@ impl CreateCommand {
                             pkg.pread_all(package_json_contents.list.as_mut_slice(), 0)
                         {
                             package_json_file = None;
-                            node.end();
+                            progress.root.end();
                             progress.refresh();
 
                             pretty_errorln!(
@@ -804,7 +795,7 @@ impl CreateCommand {
             }
         }
 
-        node.end();
+        progress.root.end();
         progress.refresh();
 
         let mut preinstall_tasks: Vec<&[u8]> = Vec::new();
@@ -1261,8 +1252,8 @@ impl CreateCommand {
 
     pub(crate) fn extract_info() -> crate::Result<ExtractedInfo> {
         let example_tag;
-        // SAFETY: process-lifetime singleton; init returns *mut.
-        let filesystem = unsafe { &*fs::FileSystem::init(None)? };
+        fs::FileSystem::init(None)?;
+        let filesystem = fs::FileSystem::get();
 
         let create_options = CreateOptions::parse()?;
         let positionals = &create_options.positionals;
@@ -1380,7 +1371,6 @@ pub(crate) struct ExtractedInfo {
 fn file_copier_copy(
     destination_dir_: &bun_sys::Dir,
     walker: &mut bun_sys::walker_skippable::Walker,
-    node_: &mut ProgressNode,
     progress_: &mut Progress,
     #[cfg(windows)] dst_base_len: usize,
     #[cfg(windows)] dst_buf: &mut bun_paths::WPathBuffer,
@@ -1417,10 +1407,8 @@ fn file_copier_copy(
                     }
                 }
                 bun_sys::FileKind::File => {
-                    // A raw pointer, so that the guard holds no unique borrow across `node_.end()` below.
-                    let node_ptr: *mut ProgressNode = node_;
-                    // SAFETY: `node_` outlives this match arm; single-threaded progress access.
-                    scopeguard::defer! { unsafe { (*node_ptr).complete_one() } }
+                    let mut progress_ =
+                        scopeguard::guard(&mut *progress_, |progress| progress.root.complete_one());
                     // SAFETY: `src`/`dst` are NUL-terminated wide strings.
                     if unsafe { bun_sys::windows::CopyFileW(src.as_ptr(), dst.as_ptr(), 0) }
                         == bun_sys::windows::FALSE
@@ -1444,7 +1432,7 @@ fn file_copier_copy(
                                 bun_core::fmt::fmt_os_path(entry.path, Default::default())
                             ),
                         );
-                        node_.end();
+                        progress_.root.end();
                         progress_.refresh();
                         Global::crash();
                     }
@@ -1476,13 +1464,11 @@ fn file_copier_copy(
                 open_outfile()
             }) {
                 Ok(f) => f,
-                Err(err) => exit_copy_failed(err, entry.path.as_bytes(), node_, progress_),
+                Err(err) => exit_copy_failed(err, entry.path.as_bytes(), progress_),
             };
             let _close_out = bun_sys::CloseOnDrop::new(outfile);
-            // A raw pointer, so that the guard holds no unique borrow across `node_.end()` below.
-            let node_ptr: *mut ProgressNode = node_;
-            // SAFETY: `node_` outlives this loop body; single-threaded progress access.
-            scopeguard::defer! { unsafe { (*node_ptr).complete_one() } }
+            let mut progress_ =
+                scopeguard::guard(&mut *progress_, |progress| progress.root.complete_one());
 
             let infile = bun_sys::openat(entry.dir, entry.basename, bun_sys::O::RDONLY, 0)?;
             let _close_in = bun_sys::CloseOnDrop::new(infile);
@@ -1493,7 +1479,7 @@ fn file_copier_copy(
             }
 
             if let Err(err) = CopyFile::copy_file(infile, outfile) {
-                exit_copy_failed(err, entry.path.as_bytes(), node_, progress_);
+                exit_copy_failed(err, entry.path.as_bytes(), &mut progress_);
             }
         }
     }
@@ -1502,13 +1488,8 @@ fn file_copier_copy(
 
 #[cfg(not(windows))]
 #[cold]
-fn exit_copy_failed(
-    err: bun_sys::Error,
-    path: &[u8],
-    node: &mut ProgressNode,
-    progress: &mut Progress,
-) -> ! {
-    node.end();
+fn exit_copy_failed(err: bun_sys::Error, path: &[u8], progress: &mut Progress) -> ! {
+    progress.root.end();
     progress.refresh();
     Output::err(
         err,
@@ -1576,8 +1557,7 @@ impl ExampleTag {
     }
 }
 
-// Single-threaded CLI scratch state. Static, so that a `URL<'static>` can borrow from the `*_BUF`s.
-static URL_: bun_core::RacyCell<Option<URL<'static>>> = bun_core::RacyCell::new(None);
+// Single-threaded CLI scratch state.
 static GITHUB_REPOSITORY_URL_BUF: bun_core::RacyCell<[u8; 1024]> =
     bun_core::RacyCell::new([0u8; 1024]);
 static NPM_REGISTRY_URL_BUF: bun_core::RacyCell<[u8; 1024]> = bun_core::RacyCell::new([0u8; 1024]);
@@ -1614,7 +1594,7 @@ impl Example {
         ctx: &Command::Context,
         mut node: Option<&mut ProgressNode>,
         env_loader: &mut DotEnv::Loader,
-        filesystem: &mut fs::FileSystem,
+        filesystem: &fs::FileSystem,
     ) -> crate::Result<Vec<Example>> {
         let mut examples = Example::fetch_all(ctx, env_loader, node.as_deref_mut())?;
         if let Some(node_) = node {
@@ -1668,7 +1648,6 @@ impl Example {
         env_loader: &mut DotEnv::Loader,
         name: &[u8],
         refresher: &mut Progress,
-        progress: &mut ProgressNode,
     ) -> crate::Result<MutableString> {
         let owner_i = strings::index_of_char_usize(name, b'/').unwrap();
         let owner = &name[0..owner_i];
@@ -1678,7 +1657,7 @@ impl Example {
             repository = &repository[0..i];
         }
 
-        progress.name = ProgressBuf::pretty(format_args!(
+        refresher.root.name = ProgressBuf::pretty(format_args!(
             "<d>[github] <b>GET<r> <blue>{}/{}<r>",
             bstr::BStr::new(owner),
             bstr::BStr::new(repository),
@@ -1751,7 +1730,7 @@ impl Example {
             HTTP::ProxySettings::from_env(env_loader),
             HTTP::FetchRedirect::Follow,
         ));
-        async_http.client.progress_node = Some(core::ptr::NonNull::from(&mut *progress));
+        async_http.client.progress_node = Some(core::ptr::NonNull::from(&mut refresher.root));
         async_http.client.flags.reject_unauthorized = env_loader.get_tls_reject_unauthorized();
 
         let response = async_http.send_sync(&mut mutable)?;
@@ -1767,7 +1746,7 @@ impl Example {
 
         let content_type: &[u8] = response.header(b"content-type").unwrap_or(b"");
         if content_type != b"application/x-gzip" {
-            progress.end();
+            refresher.root.end();
             refresher.refresh();
 
             if !content_type.is_empty() {
@@ -1784,7 +1763,7 @@ impl Example {
         }
 
         if mutable.list.is_empty() {
-            progress.end();
+            refresher.root.end();
             refresher.refresh();
 
             bun_core::pretty_errorln!(
@@ -1801,9 +1780,8 @@ impl Example {
         env_loader: &mut DotEnv::Loader,
         name: &[u8],
         refresher: &mut Progress,
-        progress: &mut ProgressNode,
     ) -> crate::Result<MutableString> {
-        progress.name = b"Fetching package.json";
+        refresher.root.name = b"Fetching package.json";
         refresher.refresh();
 
         // SAFETY: single-threaded CLI access to static buffer.
@@ -1821,20 +1799,14 @@ impl Example {
             let written = cap - cursor.len();
             &url_buf[..written]
         });
-        // SAFETY: `api_url` borrows from the process-global `NPM_REGISTRY_URL_BUF`; single-threaded CLI.
-        unsafe {
-            *URL_.get() = Some(api_url.erase_lifetime());
-        }
 
-        // SAFETY: single-threaded CLI access to static URL_ (set just above)
         let mut http_proxy: Option<URL<'static>> = env_loader
-            .get_http_proxy_for(unsafe { (*URL_.get()).as_ref().unwrap() })
+            .get_http_proxy_for(&api_url)
             .map(|u| URL::parse_single_reader(crate::cli::cli_dupe(u.href)));
 
         let mut async_http = HTTP::AsyncHTTP::init_sync(
             HTTP::Method::GET,
-            // SAFETY: single-threaded CLI access to static URL_ (set just above)
-            unsafe { (*URL_.get()).clone() }.unwrap(),
+            api_url,
             Default::default(),
             b"",
             b"",
@@ -1842,7 +1814,7 @@ impl Example {
             HTTP::ProxySettings::from_env(env_loader),
             HTTP::FetchRedirect::Follow,
         );
-        async_http.client.progress_node = Some(core::ptr::NonNull::from(&mut *progress));
+        async_http.client.progress_node = Some(core::ptr::NonNull::from(&mut refresher.root));
         async_http.client.flags.reject_unauthorized = env_loader.get_tls_reject_unauthorized();
 
         let mut response = async_http.send_sync(&mut mutable)?;
@@ -1856,7 +1828,7 @@ impl Example {
             _ => return Err(crate::Error::HTTPError),
         }
 
-        progress.name = b"Parsing package.json";
+        refresher.root.name = b"Parsing package.json";
         refresher.refresh();
         bun_ast::initialize_store();
         let source = bun_ast::Source::init_path_string(b"package.json", mutable.list.as_slice());
@@ -1866,7 +1838,7 @@ impl Example {
         let expr = match JSON::parse_utf8(&source, log, bump) {
             Ok(e) => e,
             Err(err) => {
-                progress.end();
+                refresher.root.end();
                 refresher.refresh();
 
                 if log.errors > 0 {
@@ -1879,7 +1851,7 @@ impl Example {
         };
 
         if log.errors > 0 {
-            progress.end();
+            refresher.root.end();
             refresher.refresh();
 
             let _ = log.print(std::ptr::from_mut(Output::error_writer()));
@@ -1892,7 +1864,7 @@ impl Example {
         {
             crate::cli::cli_dupe(s)
         } else {
-            progress.end();
+            refresher.root.end();
             refresher.refresh();
 
             bun_core::pretty_errorln!(
@@ -1901,7 +1873,7 @@ impl Example {
             Global::exit(1);
         };
 
-        progress.name = b"Downloading tarball";
+        refresher.root.name = b"Downloading tarball";
         refresher.refresh();
 
         // The tarball url was copied out of it.
@@ -1923,7 +1895,7 @@ impl Example {
             HTTP::ProxySettings::from_env(env_loader),
             HTTP::FetchRedirect::Follow,
         );
-        async_http.client.progress_node = Some(core::ptr::NonNull::from(&mut *progress));
+        async_http.client.progress_node = Some(core::ptr::NonNull::from(&mut refresher.root));
         async_http.client.flags.reject_unauthorized = env_loader.get_tls_reject_unauthorized();
 
         refresher.maybe_refresh();
@@ -1933,7 +1905,7 @@ impl Example {
         refresher.maybe_refresh();
 
         if response.status_code() != 200 {
-            progress.end();
+            refresher.root.end();
             refresher.refresh();
             bun_core::pretty_errorln!(
                 "Error fetching tarball: <r><red>{}<r>",
@@ -2066,8 +2038,8 @@ struct CreateListExamplesCommand;
 
 impl CreateListExamplesCommand {
     fn exec(ctx: &Command::Context) -> crate::Result<()> {
-        // SAFETY: FileSystem::init returns the process-global singleton; valid for 'static.
-        let filesystem = unsafe { &mut *fs::FileSystem::init(None)? };
+        fs::FileSystem::init(None)?;
+        let filesystem = fs::FileSystem::get();
         let mut env_loader = DotEnv::Loader::init();
 
         env_loader.load_process()?;
@@ -2076,14 +2048,12 @@ impl CreateListExamplesCommand {
             supports_ansi_escape_codes: Output::enable_ansi_colors_stderr(),
             ..Default::default()
         };
-        // A raw pointer, so that `progress.refresh()` can borrow `progress` again.
-        let node: *mut ProgressNode = progress.start(b"Fetching manifest", 0);
+        progress.start(b"Fetching manifest", 0);
         progress.refresh();
 
-        // SAFETY: `node` points into `progress`, which outlives this call; single-threaded.
         let examples = Example::fetch_all_local_and_remote(
             ctx,
-            Some(unsafe { &mut *node }),
+            Some(&mut progress.root),
             &mut env_loader,
             filesystem,
         )?;

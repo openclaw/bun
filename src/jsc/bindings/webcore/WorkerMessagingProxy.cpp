@@ -46,6 +46,7 @@
 #include <JavaScriptCore/PropertyNameArray.h>
 #include <wtf/HashSet.h>
 #include <wtf/ThreadSafeRefCounted.h>
+#include <JavaScriptCore/OwedOutOfMemoryError.h>
 #include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
@@ -846,6 +847,45 @@ void WorkerMessagingProxy::postErrorToWorkerObject(Zig::GlobalObject& workerGlob
             postMessageErrorToWorkerObject(String { message }, errorCodeOf(workerGlobalObject, error));
         return;
     }
+}
+
+void WorkerMessagingProxy::postOutOfMemoryErrorToWorkerObject()
+{
+    ScriptExecutionContext::postTaskTo(m_loaderContextIdentifier, m_loaderLoopKind, [protectedThis = Ref { *this }](ScriptExecutionContext& context) {
+        RefPtr workerObject = protectedThis->m_workerObject;
+        if (!workerObject)
+            return;
+        String limit = JSC::describeLimitOfMarkedBlockCage();
+        ErrorEvent::Init init;
+        switch (protectedThis->m_options.kind) {
+        case WorkerOptions::Kind::Web:
+            init.message = makeString("RangeError: Out of memory: "_s, limit);
+            break;
+        case WorkerOptions::Kind::Node:
+            init.error = JSC::createOutOfMemoryError(context.globalObject(), limit);
+            break;
+        }
+        workerObject->dispatchEvent(ErrorEvent::create(eventNames().errorEvent, init, EventIsTrusted::Yes));
+    });
+}
+
+void WorkerMessagingProxy::postFailedToStartErrorToWorkerObject()
+{
+    ScriptExecutionContext::postTaskTo(m_loaderContextIdentifier, m_loaderLoopKind, [protectedThis = Ref { *this }](ScriptExecutionContext& context) {
+        RefPtr workerObject = protectedThis->m_workerObject;
+        if (!workerObject)
+            return;
+        ErrorEvent::Init init;
+        switch (protectedThis->m_options.kind) {
+        case WorkerOptions::Kind::Web:
+            init.message = "TypeError: Failed to spawn worker thread"_s;
+            break;
+        case WorkerOptions::Kind::Node:
+            init.error = JSC::createTypeError(context.globalObject(), "Failed to spawn worker thread"_s);
+            break;
+        }
+        workerObject->dispatchEvent(ErrorEvent::create(eventNames().errorEvent, init, EventIsTrusted::Yes));
+    });
 }
 
 void WorkerMessagingProxy::workerGlobalScopeDestroyed(int32_t exitCode, bool stoppedByParent)

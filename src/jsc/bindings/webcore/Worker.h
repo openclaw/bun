@@ -103,6 +103,7 @@ private:
 JSC::JSValue createNodeWorkerThreadsBinding(Zig::GlobalObject* globalObject);
 // Shared by the in-worker `resourceLimits` export and the worker.resourceLimits getter (JSWorker.cpp).
 JSC::JSObject* createResourceLimitsObject(JSC::JSGlobalObject*, const WorkerResourceLimits&);
+JSC::JSValue createNodeWorkerConstructor(Zig::GlobalObject* globalObject);
 
 JSC_DECLARE_HOST_FUNCTION(jsFunctionPostMessage);
 

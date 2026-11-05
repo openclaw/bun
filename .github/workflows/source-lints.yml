@@ -17,7 +17,7 @@ on:
       - "src/**/*.cpp"
       - "src/**/*.bind.ts"
       - "src/codegen/**"
-      - "src/js/builtins.d.ts"
+      - "src/js/**/*.ts"
       - "src/jsc/bindings/**"
       - "packages/bun-types/redis.d.ts"
       - "scripts/build/**"
@@ -25,6 +25,8 @@ on:
       - "scripts/agent.ts"
       - "scripts/buildkite.ts"
       - ".buildkite/ci.ts"
+      - ".buildkite/scripts/upload-release.sh"
+      - "packages/bun-release/src/platform.ts"
       - "rust-toolchain.toml"
       - "bun.lock"
       - "test/bun.lock"
@@ -32,7 +34,11 @@ on:
       - "test/tsconfig.json"
       - "test/_util/**"
       - "test/internal/source-lints/**"
+      - "test/aot/**"
+      - ".gitignore"
+      - ".prettierignore"
       - ".github/workflows/*.yml"
+      - ".github/scripts/sync-upstream.test.cjs"
       - ".github/actions/setup-bun/**"
   pull_request:
     paths:
@@ -41,7 +47,7 @@ on:
       - "src/**/*.cpp"
       - "src/**/*.bind.ts"
       - "src/codegen/**"
-      - "src/js/builtins.d.ts"
+      - "src/js/**/*.ts"
       - "src/jsc/bindings/**"
       - "packages/bun-types/redis.d.ts"
       - "scripts/build/**"
@@ -49,6 +55,8 @@ on:
       - "scripts/agent.ts"
       - "scripts/buildkite.ts"
       - ".buildkite/ci.ts"
+      - ".buildkite/scripts/upload-release.sh"
+      - "packages/bun-release/src/platform.ts"
       - "rust-toolchain.toml"
       - "bun.lock"
       - "test/bun.lock"
@@ -56,7 +64,11 @@ on:
       - "test/tsconfig.json"
       - "test/_util/**"
       - "test/internal/source-lints/**"
+      - "test/aot/**"
+      - ".gitignore"
+      - ".prettierignore"
       - ".github/workflows/*.yml"
+      - ".github/scripts/sync-upstream.test.cjs"
       - ".github/actions/setup-bun/**"
   merge_group:
 
@@ -85,3 +97,5 @@ jobs:
       # bare checkout is sufficient.
       - name: Run source lints
         run: bun test test/internal/source-lints/
+      - name: Test upstream sync automation
+        run: node --test .github/scripts/sync-upstream.test.cjs

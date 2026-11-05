@@ -24,6 +24,7 @@
 #if LAZY_LOAD_SQLITE
 #include "lazy_sqlite3.h"
 #define LAZY_SQLITE_HAS_LOAD_EXTENSION() (lazy_sqlite3_load_extension != nullptr)
+#define LAZY_SQLITE_HAS_TRACE_V2() (lazy_sqlite3_trace_v2 != nullptr)
 #else
 #ifndef SQLITE_ENABLE_SESSION
 #define SQLITE_ENABLE_SESSION 1
@@ -39,6 +40,7 @@ static_assert(BUN_SQLITE_BUNDLED_VERSION_NUMBER == SQLITE_VERSION_NUMBER,
     "update BUN_SQLITE_BUNDLED_VERSION to match sqlite3_local.h");
 static constexpr bool lazy_sqlite3_has_session = true;
 #define LAZY_SQLITE_HAS_LOAD_EXTENSION() true
+#define LAZY_SQLITE_HAS_TRACE_V2() true
 #endif
 
 #include "NodeSqlite.h"
@@ -106,28 +108,33 @@ extern "C" void Bun__sqliteCheckpointForTermination(sqlite3*);
 // Database.setCustomSQLite(), and callers who read it before the first
 // open see the version the runtime actually uses (not the bundled
 // constant, which on macOS isn't linked into the binary at all).
+#if LAZY_LOAD_SQLITE && !OS(WINDOWS)
+static const char* probeSqliteVersion()
+{
+    void* h = dlopen(sqlite3_lib_path, RTLD_LAZY | RTLD_LOCAL);
+    if (!h) return nullptr;
+    auto fn = reinterpret_cast<const char* (*)()>(dlsym(h, "sqlite3_libversion"));
+    const char* out = nullptr;
+    if (fn) {
+        static char buf[24];
+        const char* v = fn();
+        size_t n = v ? strnlen(v, sizeof(buf) - 1) : 0;
+        memcpy(buf, v, n);
+        buf[n] = '\0';
+        out = buf;
+    }
+    dlclose(h);
+    return out;
+}
+#endif
+
 extern "C" const char* Bun__sqlite3_version()
 {
 #if LAZY_LOAD_SQLITE
     if (sqlite3_handle && lazy_sqlite3_libversion)
         return lazy_sqlite3_libversion();
 #if !OS(WINDOWS)
-    static const char* probed = []() -> const char* {
-        void* h = dlopen(sqlite3_lib_path, RTLD_LAZY | RTLD_LOCAL);
-        if (!h) return nullptr;
-        auto fn = reinterpret_cast<const char* (*)()>(dlsym(h, "sqlite3_libversion"));
-        const char* out = nullptr;
-        if (fn) {
-            static char buf[24];
-            const char* v = fn();
-            size_t n = v ? strnlen(v, sizeof(buf) - 1) : 0;
-            memcpy(buf, v, n);
-            buf[n] = '\0';
-            out = buf;
-        }
-        dlclose(h);
-        return out;
-    }();
+    static const char* probed = JSC::callRemovable<Bun::Feature::ProcessInformation, JSC::RemovedFeatureStub::ReturnDefault, probeSqliteVersion>();
     if (probed) return probed;
 #endif
 #endif
@@ -323,7 +330,7 @@ static inline JSValue sqliteToJS(JSGlobalObject* globalObject, Source source, bo
     case SQLITE_INTEGER: {
         int64_t v = source.int64();
         if (useBigInts)
-            RELEASE_AND_RETURN(scope, JSBigInt::makeHeapBigIntOrBigInt32(globalObject, v));
+            RELEASE_AND_RETURN(scope, JSBigInt::createFrom(globalObject, v));
         if (v > JSC::maxSafeInteger() || v < -JSC::maxSafeInteger()) {
             Bun::throwError(globalObject, scope, ErrorCode::ERR_OUT_OF_RANGE,
                 makeString("Value is too large to be represented as a JavaScript number: "_s, v));
@@ -374,7 +381,7 @@ static SqliteFromJS sqliteFromJS(JSGlobalObject* globalObject, ThrowScope& scope
     } else if (value.isBigInt()) {
         // toBigInt64 truncates; detect loss by round-tripping.
         int64_t v = JSBigInt::toBigInt64(value);
-        JSValue roundTrip = JSBigInt::makeHeapBigIntOrBigInt32(globalObject, v);
+        JSValue roundTrip = JSBigInt::createFrom(globalObject, v);
         RETURN_IF_EXCEPTION(scope, SqliteFromJS::Done);
         if (JSBigInt::compare(value, roundTrip) != JSBigInt::ComparisonResult::Equal)
             return SqliteFromJS::BigIntTooLarge;
@@ -557,6 +564,9 @@ static void unregisterOpenDatabase(JSDatabaseSync* db)
 
 void JSDatabaseSync::setQueryPublisher(JSObject* publisher)
 {
+    // SQLITE_OMIT_TRACE libraries still support ordinary database operations.
+    if (!LAZY_SQLITE_HAS_TRACE_V2())
+        return;
     if (publisher)
         m_queryPublisher.set(vm(), this, publisher);
     else
@@ -644,7 +654,8 @@ void JSDatabaseSync::closeInternal(bool mayCallScript)
 {
     if (!m_db) return;
     m_deferredClose = std::exchange(m_db, nullptr);
-    sqlite3_trace_v2(m_deferredClose, 0, nullptr, nullptr);
+    if (LAZY_SQLITE_HAS_TRACE_V2())
+        sqlite3_trace_v2(m_deferredClose, 0, nullptr, nullptr);
     m_queryPublisher.clear();
     if (!isBusy())
         finishDeferredClose(mayCallScript);
@@ -810,6 +821,9 @@ bool JSDatabaseSync::open(JSGlobalObject* globalObject, ThrowScope& scope)
 
     auto utf8 = tryUTF8(globalObject, scope, m_location);
     RETURN_IF_EXCEPTION(scope, false);
+    auto* global = defaultGlobalObject(globalObject);
+    JSValue queryState = BUN_REQUIRE_INTERNAL_MODULE(global, InternalSqlite, "node:sqlite", "publisher"_s);
+    RETURN_IF_EXCEPTION(scope, false);
     sqlite3* db = nullptr;
     int r = sqlite3_open_v2(utf8.legacyCStringPointer(), &db, flags, nullptr);
     if (r != SQLITE_OK) {
@@ -882,9 +896,6 @@ bool JSDatabaseSync::open(JSGlobalObject* globalObject, ThrowScope& scope)
         }
     }
 
-    auto* global = defaultGlobalObject(globalObject);
-    JSValue queryState = global->internalModuleRegistry()->requireId(globalObject, vm, InternalModuleRegistry::InternalSqlite);
-    RETURN_IF_EXCEPTION(scope, false);
     setQueryPublisher(queryState.getObject()->getDirect(vm, Identifier::fromString(vm, "publisher"_s)).getObject());
     return true;
 }
@@ -964,7 +975,7 @@ JSC_DEFINE_HOST_FUNCTION(jsDatabaseSyncDispose, (JSGlobalObject * globalObject, 
     JSDatabaseSync* self = dynamicDowncast<JSDatabaseSync>(callFrame->thisValue());
     if (self && self->isOpen()) {
         if (self->isInQueryCallback())
-            return throwNodeState(globalObject, scope, "database cannot be closed while in a callback"_s);
+            return JSValue::encode(jsUndefined());
         self->closeInternal();
         CHECK_UDF_EXCEPTION(scope);
     }
@@ -2461,9 +2472,9 @@ static EncodedJSValue statementStepRun(VM& vm, JSGlobalObject* globalObject, Thr
     sqlite3_int64 changes = sqlite3_changes64(db);
     sqlite3_int64 rowid = sqlite3_last_insert_rowid(db);
     if (self->useBigInts()) {
-        Bun::putDirectNamed(vm, result, "changes"_s, JSBigInt::makeHeapBigIntOrBigInt32(globalObject, static_cast<int64_t>(changes)));
+        Bun::putDirectNamed(vm, result, "changes"_s, JSBigInt::createFrom(globalObject, static_cast<int64_t>(changes)));
         RETURN_IF_EXCEPTION(scope, {});
-        Bun::putDirectNamed(vm, result, "lastInsertRowid"_s, JSBigInt::makeHeapBigIntOrBigInt32(globalObject, static_cast<int64_t>(rowid)));
+        Bun::putDirectNamed(vm, result, "lastInsertRowid"_s, JSBigInt::createFrom(globalObject, static_cast<int64_t>(rowid)));
         RETURN_IF_EXCEPTION(scope, {});
     } else {
         Bun::putDirectNamed(vm, result, "changes"_s, jsNumber(static_cast<double>(changes)));

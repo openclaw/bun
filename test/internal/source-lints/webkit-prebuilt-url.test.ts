@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { resolveConfig, type Config, type PartialConfig, type Toolchain } from "../../../scripts/build/config.ts";
 import {
   webkit,
+  WEBKIT_MANIFEST,
   WEBKIT_VERSION,
   webkitArtifact,
   webkitTestFFIPath,
@@ -26,7 +27,6 @@ function mockToolchain(): Toolchain {
     clangVersion: "23.1.1",
     clangResourceDir: "/fake/llvm/lib/clang/23",
     ar: "/fake/llvm/bin/llvm-ar",
-    ranlib: "/fake/llvm/bin/llvm-ranlib",
     ld: "/fake/llvm/bin/ld.lld",
     ld64Lld: "/fake/llvm/bin/ld64.lld",
     rustLlvmVersion: "23.1.1",
@@ -49,14 +49,13 @@ function mockToolchain(): Toolchain {
     rustupHome: undefined,
     msvcLinker: undefined,
     rc: undefined,
-    mt: undefined,
     nasm: undefined,
   };
 }
 
 /** Shorthand: a Linux glibc x64 release target. linuxSysroot stubbed so the
  * cross-arch block in resolveConfig never throws on a non-x64-glibc host. */
-function resolveLinuxRelease(partial: PartialConfig = {}): Config {
+function resolveLinuxRelease(partial: PartialConfig = {}, generatorsOnly = false): Config {
   return resolveConfig(
     {
       os: "linux",
@@ -64,12 +63,14 @@ function resolveLinuxRelease(partial: PartialConfig = {}): Config {
       abi: "gnu",
       buildType: "Release",
       lto: false,
+      aot: false,
       baseline: false,
       linuxSysroot: "/fake/linux-sysroot",
       winsysroot: "/fake/windows-sysroot",
       ...partial,
     },
     mockToolchain(),
+    generatorsOnly,
   );
 }
 
@@ -86,25 +87,49 @@ function fixture(name: string, digest = "a".repeat(64)): WebKitArtifactManifest 
 }
 
 describe("WebKit artifact manifest", () => {
+  test("generator-only setup selects the pinned source archive independently of the native ABI", () => {
+    const cfg = resolveLinuxRelease({ buildType: "Debug", asan: true, aot: true }, true);
+    const name = "bun-webkit-aot-sources.tar.gz";
+    const pin = fixture(name);
+    expect(webkitArtifact(cfg, pin)).toEqual(pin.artifacts[name]);
+    const provided = webkit.provides(cfg);
+    expect(provided.libs).toEqual([]);
+    expect(provided.includes).toEqual([]);
+    expect(provided.contentsDecideGraph).not.toBe(true);
+    expect(provided.files).toContain("Source/JavaScriptCore/aot/ir/AOTSchema.def");
+    expect(provided.files).toContain("Source/JavaScriptCore/aot/builtins/generated/AOTBuiltinEngineDeclarations.json");
+    expect(() => webkitArtifact(cfg, { version: WEBKIT_VERSION, artifacts: {} })).toThrow(
+      "Missing SHA-256 for WebKit target bun-webkit-aot-sources.tar.gz",
+    );
+  });
+
   test("missing variants permit graph construction but fail the dependency edge", () => {
     using dir = tempDir("webkit-unavailable", {});
-    const cfg = resolveLinuxRelease({ buildType: "Debug", asan: true, buildDir: String(dir) });
-    const source = webkit.source(cfg);
-    if (source.kind !== "unavailable") throw new Error("expected an unavailable debug artifact");
-    expect(source.destDir).toStartWith(String(dir));
-    const ninja = new Ninja({ buildDir: cfg.buildDir });
-    registerDepRules(ninja, cfg);
-    resolveDep(ninja, cfg, webkit, new Map());
-    const encoded = /^  message = (.*)$/m.exec(ninja.toString())![1]!;
-    expect(Buffer.from(encoded, "base64url").toString("utf8")).toBe(source.message);
-    const child = spawnSync(
-      bunExe(),
-      [fileURLToPath(new URL("../../../scripts/build/fetch-cli.ts", import.meta.url)), "unavailable", encoded],
-      { env: bunEnv, encoding: "utf8" },
-    );
-    expect(child.stderr).toContain("Missing SHA-256 for WebKit target bun-webkit-linux-amd64-debug-asan.tar.gz");
-    expect(child.status).toBe(1);
-    expect(existsSync(source.destDir)).toBe(false);
+    const cfg = resolveLinuxRelease({ buildType: "Debug", asan: true, aot: true, buildDir: String(dir) });
+    const name = "bun-webkit-linux-amd64-debug-asan-aot.tar.gz";
+    const artifact = WEBKIT_MANIFEST.artifacts[name];
+    try {
+      delete WEBKIT_MANIFEST.artifacts[name];
+      const source = webkit.source(cfg);
+      if (source.kind !== "unavailable") throw new Error("expected an unavailable debug artifact");
+      expect(source.destDir).toStartWith(String(dir));
+      const ninja = new Ninja({ buildDir: cfg.buildDir });
+      registerDepRules(ninja, cfg);
+      resolveDep(ninja, cfg, webkit, new Map());
+      const encoded = /^  message = (.*)$/m.exec(ninja.toString())![1]!;
+      expect(Buffer.from(encoded, "base64url").toString("utf8")).toBe(source.message);
+      const child = spawnSync(
+        bunExe(),
+        [fileURLToPath(new URL("../../../scripts/build/fetch-cli.ts", import.meta.url)), "unavailable", encoded],
+        { env: bunEnv, encoding: "utf8" },
+      );
+      expect(child.stderr).toContain("Missing SHA-256 for WebKit target bun-webkit-linux-amd64-debug-asan-aot.tar.gz");
+      expect(child.status).toBe(1);
+      expect(existsSync(source.destDir)).toBe(false);
+    } finally {
+      if (artifact) WEBKIT_MANIFEST.artifacts[name] = artifact;
+      else delete WEBKIT_MANIFEST.artifacts[name];
+    }
   });
 
   test("the committed pin supplies the URL, digest, cache and testFFI path", () => {
@@ -129,10 +154,12 @@ describe("WebKit artifact manifest", () => {
 
   test.each([
     [{}, "linux-amd64"],
+    [{ aot: true }, "linux-amd64-aot"],
+    [{ aot: true, lto: true }, "linux-amd64-lto-aot"],
     [{ lto: true }, "linux-amd64-lto"],
-    [{ buildType: "Debug", asan: false }, "linux-amd64-debug"],
-    [{ buildType: "Debug", asan: true }, "linux-amd64-debug-asan"],
-    [{ asan: true }, "linux-amd64-asan"],
+    [{ buildType: "Debug", asan: false, aot: true }, "linux-amd64-debug-aot"],
+    [{ buildType: "Debug", asan: true, aot: true }, "linux-amd64-debug-asan-aot"],
+    [{ asan: true, aot: true }, "linux-amd64-asan-aot"],
     [{ abi: "musl" }, "linux-amd64-musl"],
     [{ arch: "aarch64" }, "linux-arm64"],
     [{ os: "darwin", arch: "aarch64" }, "macos-arm64"],

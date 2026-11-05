@@ -10,6 +10,21 @@ import { DatabaseSync, Session, StatementSync, backup, constants } from "node:sq
 import { pathToFileURL } from "node:url";
 
 describe("sqlite.db.query", () => {
+  test("database disposal inside a subscriber leaves the connection open", () => {
+    using db = new DatabaseSync(":memory:");
+    const queries = channel("sqlite.db.query");
+    const results: unknown[] = [];
+    const handler = () => results.push(db[Symbol.dispose](), db.isOpen);
+    queries.subscribe(handler);
+    try {
+      expect(db.prepare("SELECT 42 AS answer").get()).toEqual({ answer: 42 });
+      expect(results).toEqual([undefined, true]);
+    } finally {
+      queries.unsubscribe(handler);
+    }
+    expect(db.prepare("SELECT 1 AS alive").get()).toEqual({ alive: 1 });
+  });
+
   test("rejects closing parked write statements inside an authorizer callback", () => {
     for (const method of ["close", Symbol.dispose] as const) {
       using db = new DatabaseSync(":memory:");
@@ -224,10 +239,6 @@ describe("sqlite.db.query", () => {
 });
 
 declare module "node:sqlite" {
-  interface StatementSync {
-    close(): void;
-    [Symbol.dispose](): void;
-  }
   class Session {
     private constructor();
   }
@@ -788,6 +799,23 @@ describe("DatabaseSync", () => {
     expect(s2.run([99] as any)).toEqual({ changes: 1, lastInsertRowid: 1 });
     expect(db.prepare("SELECT x FROM t").all()).toEqual([{ x: null }]);
     db.close();
+  });
+
+  test.each([
+    ["a Proxy", () => new Proxy({ first: "one", second: "two" }, {})],
+    ["import.meta.env", () => import.meta.env as Record<string, string>],
+  ])("binds the named parameters of an object that lists its properties itself: %s", (_, object) => {
+    const env = process.env;
+    process.env = { first: "one", second: "two" };
+    const db = new DatabaseSync(":memory:");
+    try {
+      const statement = db.prepare("SELECT $first AS first, $second AS second");
+      statement.setAllowUnknownNamedParameters(true);
+      expect({ ...statement.get(object()) }).toEqual({ first: "one", second: "two" });
+    } finally {
+      db.close();
+      process.env = env;
+    }
   });
 
   test("named parameters come from the object's own [[OwnPropertyKeys]] (Proxy, String object)", () => {

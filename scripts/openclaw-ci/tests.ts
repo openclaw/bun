@@ -1,5 +1,5 @@
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, statfsSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statfsSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, resolve } from "node:path";
 
@@ -76,6 +76,9 @@ export const windowsSmoke = [
   "test/js/bun/plugin/plugins.test.ts",
   "test/js/bun/resolve/import-meta-resolve.test.mjs",
   "test/js/bun/resolve/import-meta.test.js",
+  "test/js/node/worker_threads/terminate-in-a-message-listener-of-a-worker-that-ends-by-itself.test.ts",
+  "test/js/node/worker_threads/what-a-worker-wrote-before-it-exits-is-read.test.ts",
+  "test/js/node/worker_threads/worker-stdout-own-functions.test.ts",
 ];
 
 const webkitSensitive = [
@@ -123,6 +126,14 @@ export function isTest(path: string): boolean {
   return path.startsWith("test/") && /(?:\.test|\.spec)\.[cm]?[jt]sx?$/.test(path);
 }
 
+function isEngineIr(path: string): boolean {
+  return path.startsWith("test/aot/engine-tests/") && path.endsWith(".ir");
+}
+
+function isParallelProgram(path: string): boolean {
+  return path.startsWith("test/aot/parallel/") && /\.[cm]?[jt]sx?$/.test(path) && !/\.d\.[cm]?ts$/.test(path);
+}
+
 export function selectTests(changed: string[], tracked: string[], nightly: boolean, platform = "linux"): string[] {
   if (platform !== "linux" && platform !== "darwin" && platform !== "windows")
     throw new Error(`Unsupported CI platform: ${platform}`);
@@ -132,9 +143,58 @@ export function selectTests(changed: string[], tracked: string[], nightly: boole
     ...(nightly ? broader : []),
   ]);
   const tests = tracked.filter(isTest);
+  // Match the upstream runner's hidden-path and multi-file program discovery.
+  const parallelFiles = tracked.filter(
+    path =>
+      isParallelProgram(path) &&
+      !/node_modules|node.js/.test(dirname(path)) &&
+      !path.split("/").some(part => part.startsWith(".")),
+  );
+  const mainsByDirectory = new Map<string, string>();
+  for (const path of parallelFiles.filter(path => /^main\.[^.]+$/.test(basename(path)))) {
+    const dir = dirname(path);
+    if (!mainsByDirectory.has(dir)) mainsByDirectory.set(dir, path);
+    else {
+      // Node's Unix scandir sorts names; Bun's native directory order can differ.
+      const main = readdirSync(dir, { withFileTypes: true })
+        .filter(
+          entry => entry.isFile() && /^main\.[^.]+$/.test(entry.name) && isParallelProgram(`${dir}/${entry.name}`),
+        )
+        .map(entry => entry.name)
+        .sort()[0];
+      if (!main) throw new Error(`No runnable AOT main in ${dir}`);
+      mainsByDirectory.set(dir, `${dir}/${main}`);
+    }
+  }
+  const parallelMain = (path: string) => {
+    let main: string | undefined;
+    for (let dir = dirname(path); dir.startsWith("test/aot/parallel"); dir = dirname(dir)) {
+      main = mainsByDirectory.get(dir) ?? main;
+    }
+    return main;
+  };
+  const parallelOwners = parallelFiles.filter(path => {
+    const main = parallelMain(path);
+    return !main || main === path;
+  });
   for (const path of changed) {
     if (path === "scripts/build/deps/webkit.ts" || path === "scripts/build/deps/webkit-artifacts.json") {
       [...smoke, ...broader, ...webkitSensitive].forEach(test => selected.add(test));
+    } else if (isEngineIr(path)) {
+      if (available.has(path)) selected.add(path);
+    } else if (path.startsWith("test/aot/parallel/")) {
+      const main = parallelMain(path);
+      if (main) selected.add(main);
+      else if (parallelOwners.includes(path)) selected.add(path);
+      else {
+        for (let dir = dirname(path); dir.startsWith("test/aot/parallel"); dir = dirname(dir)) {
+          const owners = parallelOwners.filter(owner => owner.startsWith(dir + "/"));
+          if (owners.length) {
+            owners.forEach(owner => selected.add(owner));
+            break;
+          }
+        }
+      }
     } else if (isTest(path)) {
       if (available.has(path)) selected.add(path);
     } else if (path.startsWith("test/")) {
@@ -181,7 +241,24 @@ function upstreamParents(base: string, head: string): string[] {
   const parents = new Set<string>();
   // rev-list visits the newest first-parent merge first, independent of commit timestamps.
   for (const merge of (merges[0] ?? "").trim().split("\n").filter(Boolean)) {
-    for (const parent of merge.split(" ").slice(2)) {
+    const [commit, , ...incoming] = merge.split(" ");
+    const message = git("show", "-s", "--format=%B", commit!)[0] ?? "";
+    const markers = message.split("\n").filter(line => line.startsWith("Bun-Upstream:"));
+    let imported: string[];
+    if (markers.length) {
+      const parent = /^Bun-Upstream: ([0-9a-f]{40})$/.exec(markers[0]!)?.[1];
+      if (markers.length !== 1 || !parent || !incoming.includes(parent))
+        throw new Error(`Invalid Bun-Upstream parent in merge ${commit}`);
+      imported = [parent];
+    } else {
+      // Earlier manual imports named the actual incoming parent in their subject.
+      const prefix = /^chore\(sync\): merge upstream Bun (?:at|through) ([0-9a-f]{10,40})$/.exec(
+        message.split("\n")[0]!,
+      )?.[1];
+      imported = prefix ? incoming.filter(parent => parent.startsWith(prefix)) : [];
+      if (imported.length !== 1) continue;
+    }
+    for (const parent of imported) {
       const result = spawnSync("git", ["merge-base", "--is-ancestor", parent, base], { encoding: "utf8" });
       if (result.status === 1) parents.add(parent);
       else if (result.status !== 0) throw new Error(result.stderr || "git merge-base failed");
@@ -257,13 +334,13 @@ function reportDiskUsage(stage: "before" | "after") {
 
 export function assertSelectedTestResults(
   selected: readonly string[],
-  results: readonly { testPath: string; ok: boolean }[],
+  results: readonly { testPath: string; ok: boolean; status: string }[],
   platform: string = process.platform,
 ): void {
   // The runner reports native paths; selections come from Git with forward slashes.
   const passed = new Set(
     results
-      .filter(result => result.ok)
+      .filter(result => result.ok && result.status === "pass")
       .map(result => (platform === "win32" ? result.testPath.replaceAll("\\", "/") : result.testPath)),
   );
   for (const test of selected) {
@@ -305,10 +382,54 @@ if (import.meta.main) {
         `Changed files: ${changed.length}. Fork-delta files: ${forkDelta.length}. Selected tests: ${selected.length}.\n\n`,
     );
     summary(`## Selected tests (${selected.length})\n\n${selected.map(test => `- \`${test}\``).join("\n")}\n`);
+  } else if (command === "prepare-engine-tests") {
+    const selected: string[] = JSON.parse(readFileSync(selectionPath, "utf8"));
+    if (selected.some(isEngineIr)) {
+      const result = spawnSync("bun", ["run", "build:release", "--lto=off", "--target=engine-test-programs"], {
+        stdio: "inherit",
+      });
+      if (result.error) throw result.error;
+      if (result.status !== 0) process.exit(result.status ?? 1);
+    }
   } else if (command === "test") {
     const selected: string[] = JSON.parse(readFileSync(selectionPath, "utf8"));
     if (!selected.length) throw new Error("Refusing an empty test selection");
     reportDiskUsage("before");
+    const engineIr = selected.filter(isEngineIr);
+    if (engineIr.length) {
+      const result = spawnSync(resolve(dirname(process.execPath), "testaot"), ["run", ...engineIr, "--show-output"], {
+        encoding: "utf8",
+        maxBuffer: 16 * 1024 * 1024,
+      });
+      writeFileSync(
+        "build/openclaw-ci/engine-ir.json",
+        JSON.stringify(
+          {
+            revision: Bun.revision,
+            webkit: process.versions.webkit,
+            selected: engineIr,
+            exitCode: result.status,
+            signal: result.signal,
+            error: result.error?.message,
+            stdout: result.stdout,
+            stderr: result.stderr,
+          },
+          null,
+          2,
+        ) + "\n",
+      );
+      if (result.stdout) process.stdout.write(result.stdout);
+      if (result.stderr) process.stderr.write(result.stderr);
+      if (result.error) throw result.error;
+      if (result.status !== 0) process.exit(result.status ?? 1);
+      const lines = result.stdout.trimEnd().split(/\r?\n/);
+      if (
+        result.signal ||
+        lines.some(line => line.startsWith("FAIL ")) ||
+        lines.at(-1) !== `${engineIr.length} passed, 0 failed, 0 todo`
+      )
+        throw new Error("Selected engine IR tests did not all pass; inspect engine-ir.json");
+    }
     // Fresh processes preserve the original owner's GC sequence and expose late frees.
     let ownerExitFailed = false;
     if (process.platform === "win32" && process.arch === "arm64") {
@@ -350,7 +471,7 @@ if (import.meta.main) {
         "--retries=0",
         "--results-json",
         resultsPath,
-        ...selected.flatMap(test => ["--include", test.replace(/^test\//, "")]),
+        ...selected.filter(test => !isEngineIr(test)).flatMap(test => ["--include", test.replace(/^test\//, "")]),
       ],
       { stdio: "inherit" },
     );
@@ -385,18 +506,20 @@ if (import.meta.main) {
     if (ownerExitFailed) throw new Error("Owner-exit stress exceeded the Windows ARM64 limit");
     if (result.error) throw result.error;
     if (result.status !== 0) process.exit(result.status ?? 1);
-    const results: { testPath: string; ok: boolean }[] = JSON.parse(readFileSync(resultsPath, "utf8"));
+    const results: { testPath: string; ok: boolean; status: string }[] = JSON.parse(readFileSync(resultsPath, "utf8"));
+    results.push(...engineIr.map(testPath => ({ testPath, ok: true, status: "pass" })));
+    writeFileSync(resultsPath, JSON.stringify(results, null, 2) + "\n");
     assertSelectedTestResults(selected, results);
     if (direct?.error) throw direct.error;
     if (direct && direct.status !== 0) process.exit(direct.status ?? 1);
   } else if (command === "summary") {
     summary(`## Result\n\nBuild: **${process.env.BUILD_OUTCOME}**. Tests: **${process.env.TEST_OUTCOME}**.\n`);
     if (existsSync(resultsPath)) {
-      const results: { testPath: string; status: string; duration: number }[] = JSON.parse(
+      const results: { testPath: string; status: string; duration?: number }[] = JSON.parse(
         readFileSync(resultsPath, "utf8"),
       );
       summary(
-        `| File | Result | Seconds |\n| --- | --- | --- |\n${results.map(result => `| ${result.testPath} | ${result.status} | ${(result.duration / 1000).toFixed(1)} |`).join("\n")}\n`,
+        `| File | Result | Seconds |\n| --- | --- | --- |\n${results.map(result => `| ${result.testPath} | ${result.status} | ${result.duration === undefined ? "—" : (result.duration / 1000).toFixed(1)} |`).join("\n")}\n`,
       );
     } else {
       const message = "No completed test report. Inspect the failed setup/build step or the test deadline in the log.";
@@ -404,6 +527,6 @@ if (import.meta.main) {
       if (process.env.TEST_OUTCOME === "success") throw new Error(message);
     }
   } else {
-    throw new Error("Usage: tests.ts select|select-windows|test|summary");
+    throw new Error("Usage: tests.ts select|select-windows|prepare-engine-tests|test|summary");
   }
 }

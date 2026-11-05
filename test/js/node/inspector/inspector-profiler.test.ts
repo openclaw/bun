@@ -49,11 +49,8 @@ console.log('ok');
 
 const heapSnapshotCleanupFixture = `
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { Session } from 'node:inspector/promises';
 import { Session as CallbackSession } from 'node:inspector';
-import path from 'node:path';
-import { writeHeapSnapshot } from 'node:v8';
 const mode = process.argv[1];
 const url = await new Promise((resolve, reject) => {
   process.once('message', resolve);
@@ -92,26 +89,31 @@ try {
   });
   actor.connect();
   if (mode.endsWith('-enabled')) await actor.post('HeapProfiler.enable');
-  globalThis.snapshotCleanupMarker = 'inspector-snapshot-cleanup-marker';
-  const snapshot = JSON.parse(readFileSync(writeHeapSnapshot(path.join(process.cwd(), 'capture.heapsnapshot')), 'utf8'));
-  const fields = snapshot.snapshot.meta.node_fields;
-  const stride = fields.length;
-  const nameIndex = fields.indexOf('name');
-  const idIndex = fields.indexOf('id');
-  const typeIndex = fields.indexOf('type');
-  const stringType = snapshot.snapshot.meta.node_types[typeIndex].indexOf('string');
+  class InspectorSnapshotCleanupMarker {
+    marker = 'inspector-snapshot-cleanup-marker';
+  }
+  globalThis.snapshotCleanupMarker = new InspectorSnapshotCleanupMarker();
+  // Snapshot exports clear native metadata; the inspector owns a live snapshot.
+  const captured = await post('Heap.snapshot');
+  assert.equal(captured.error, undefined, JSON.stringify(captured));
+  const snapshot = JSON.parse(captured.result.snapshotData);
+  assert.equal(snapshot.version, 3);
+  assert.equal(snapshot.type, 'Inspector');
+  const classIndex = snapshot.nodeClassNames.indexOf('InspectorSnapshotCleanupMarker');
+  assert(classIndex >= 0, 'snapshot did not contain the marker class');
   let heapObjectId;
-  for (let offset = 0; offset < snapshot.nodes.length; offset += stride) {
-    if (snapshot.nodes[offset + typeIndex] === stringType && snapshot.strings[snapshot.nodes[offset + nameIndex]] === globalThis.snapshotCleanupMarker) {
-      // BunV8HeapSnapshotBuilder reserves IDs 1 and 2 for synthetic roots.
-      heapObjectId = snapshot.nodes[offset + idIndex] - 2;
+  // Inspector v3 nodes contain [id, size, class-name index, flags].
+  for (let offset = 0; offset < snapshot.nodes.length; offset += 4) {
+    if (snapshot.nodes[offset + 2] === classIndex) {
+      heapObjectId = snapshot.nodes[offset];
       break;
     }
   }
   assert(Number.isInteger(heapObjectId) && heapObjectId > 0, 'snapshot did not contain the marker');
   const before = await post('Heap.getPreview', { heapObjectId });
   assert.equal(before.error, undefined, JSON.stringify(before));
-  assert.equal(before.result.string, globalThis.snapshotCleanupMarker);
+  assert.equal(before.result.preview.type, 'object');
+  assert.equal(before.result.preview.properties.find(({ name }) => name === 'marker')?.value, globalThis.snapshotCleanupMarker.marker);
   if (mode.startsWith('disconnect')) {
     actor.disconnect();
   } else if (mode === 'disable-callback') {
@@ -131,7 +133,7 @@ try {
     message: 'No heap snapshot',
     data: [{ code: -32000, message: 'No heap snapshot' }],
   });
-  assert.equal(globalThis.snapshotCleanupMarker, 'inspector-snapshot-cleanup-marker');
+  assert.equal(globalThis.snapshotCleanupMarker.marker, 'inspector-snapshot-cleanup-marker');
   console.log(JSON.stringify({ mode, trackedBefore: true, snapshotCleared: true, observerConnected: socket.readyState === WebSocket.OPEN }));
 } finally {
   actor.disconnect();

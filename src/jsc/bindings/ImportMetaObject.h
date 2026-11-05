@@ -13,7 +13,6 @@ extern "C" JSC_DECLARE_HOST_FUNCTION(functionImportMeta__resolveSyncPrivate);
 extern "C" JSC::EncodedJSValue Bun__resolveSync(JSC::JSGlobalObject* global, JSC::EncodedJSValue specifier, JSC::EncodedJSValue from, bool is_esm, bool isUserRequireResolve, JSC::EncodedJSValue parent);
 extern "C" JSC::EncodedJSValue Bun__resolveSyncWithPaths(JSC::JSGlobalObject* global, JSC::EncodedJSValue specifier, JSC::EncodedJSValue from, bool is_esm, bool isUserRequireResolve, const BunString* paths, size_t paths_len, JSC::EncodedJSValue parent);
 extern "C" JSC::EncodedJSValue Bun__resolveSyncWithSourceIfExists(JSC::JSGlobalObject* global, JSC::EncodedJSValue specifier, BunString* from, bool is_esm);
-extern "C" JSC::EncodedJSValue Bun__resolveSyncWithStrings(JSC::JSGlobalObject* global, BunString* specifier, BunString* from, bool is_esm);
 extern "C" JSC::EncodedJSValue Bun__validateImportMetaPackageConfig(JSC::JSGlobalObject* global, const BunString* path);
 
 namespace Bun {
@@ -24,6 +23,8 @@ namespace Zig {
 
 using namespace JSC;
 using namespace WebCore;
+
+JSC_DECLARE_HOST_FUNCTION(functionImportMeta__resolve);
 
 class ImportMetaObject final : public JSC::JSDestructibleObject {
 public:

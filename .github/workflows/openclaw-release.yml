@@ -79,7 +79,9 @@ jobs:
           bun-version: "1.4.4"
       - name: Test pipeline
         working-directory: pipeline
-        run: bun test test/internal/source-lints/openclaw-release.test.ts
+        run: |
+          bun test test/internal/source-lints/openclaw-release.test.ts
+          python3 scripts/openclaw-release/consumers.test.py
       - name: Plan
         id: plan
         env:
@@ -536,10 +538,65 @@ jobs:
           retention-days: 30
           compression-level: 0
 
+  consumers:
+    name: Consumer ${{ matrix.consumer }}
+    needs: [plan, manifest]
+    if: ${{ !cancelled() && needs.manifest.result == 'success' && contains(fromJSON(needs.plan.outputs.matrix).*.target, 'linux-x64') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - consumer: openclaw
+            commit: 7c26e8cccd19b74c3443fb3f0ed6fbf9d7d410a3
+            node: "24.22.1"
+          - consumer: birdclaw
+            commit: 59c9ee27f39238654efc93ff7862b27ad474c044
+            node: "26.12.1"
+    steps:
+      - name: Checkout pipeline
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: pipeline
+          persist-credentials: false
+      - name: Checkout frozen consumer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: openclaw/${{ matrix.consumer }}
+          ref: ${{ matrix.commit }}
+          path: consumer
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release
+          path: release
+      - name: Qualify the shipping executable
+        env:
+          CONSUMER: ${{ matrix.consumer }}
+          EXPECTED_COMMIT: ${{ needs.plan.outputs.commit }}
+          EXPECTED_WEBKIT: ${{ needs.plan.outputs.webkit }}
+          EXPECTED_RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python3 pipeline/scripts/openclaw-release/consumers.py "$CONSUMER" release consumer "$RUNNER_TEMP/consumer-proof"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: consumer-${{ matrix.consumer }}
+          path: |
+            ${{ runner.temp }}/consumer-proof/report.json
+            ${{ runner.temp }}/consumer-proof/*.log
+            ${{ runner.temp }}/consumer-proof/sqlite.json
+            ${{ runner.temp }}/consumer-proof/smoke/
+          if-no-files-found: error
+          retention-days: 14
+
   publish:
     name: Publish
-    needs: [plan, manifest]
-    if: ${{ !cancelled() && needs.manifest.result == 'success' && needs.plan.outputs.publish == 'true' }}
+    needs: [plan, manifest, consumers]
+    if: ${{ !cancelled() && needs.manifest.result == 'success' && needs.consumers.result == 'success' && needs.plan.outputs.publish == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:

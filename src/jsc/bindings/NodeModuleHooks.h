@@ -22,6 +22,7 @@ extern "C" JSC::EncodedJSValue Bun__runModuleResolveHooks(Zig::GlobalObject*, co
 extern "C" void Bun__discardModuleResolveContext(Zig::GlobalObject*, const BunString*);
 
 namespace Bun {
+bool moduleHooksAllowCompiledModule(Zig::GlobalObject*, const String&, bool isCommonJSRequire);
 RefPtr<JSC::ScriptFetchParameters> moduleHooksFetchParameters(Zig::GlobalObject*, const BunString*, RefPtr<JSC::ScriptFetchParameters>);
 void validateModuleHooksStaticAttributes(Zig::GlobalObject*, const BunString*);
 

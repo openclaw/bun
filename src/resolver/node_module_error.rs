@@ -160,7 +160,7 @@ impl NodeModuleError {
                 }
                 NodeModuleErrorKind::InvalidPackageConfigStructure => {
                     let url =
-                        bun_url::file_url_from_string(&bun_core::String::from_bytes(referrer));
+                        bun_url::file_url_from_string(&bun_core::StringView::from_bytes(referrer));
                     let url = url.to_utf8();
                     let _ = write!(text, " while importing {}", BStr::new(url.slice()));
                 }

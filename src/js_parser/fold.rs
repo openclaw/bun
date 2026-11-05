@@ -635,7 +635,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                                 p.source.path.text
                             } else {
                                 // Inline import.meta.url as file:// URL
-                                let bunstr = bun_core::String::from_bytes(p.source.path.text);
+                                let bunstr = bun_core::StringView::from_bytes(p.source.path.text);
                                 p.arena.alloc_slice_copy(
                                     format!("{}", bun_url::file_url_from_string(&bunstr))
                                         .as_bytes(),

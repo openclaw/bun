@@ -52,7 +52,7 @@ test("PR and nightly smoke lists exist and nightly includes every PR smoke file"
 test("both Windows architectures use the complete Windows compatibility selection", () => {
   expect(selectTests([], tracked, false, "windows")).toEqual([...windowsSmoke].sort());
   expect(selectTests([], tracked, true, "windows")).toEqual([...windowsSmoke].sort());
-  expect(windowsSmoke).toHaveLength(39);
+  expect(windowsSmoke).toHaveLength(42);
   for (const file of tracked.filter(file => file.startsWith("test/js/node/worker_threads/") && isTest(file))) {
     expect(windowsSmoke).toContain(file);
   }
@@ -69,7 +69,7 @@ test.each(["linux", "darwin", "windows"])("fork printer and Dirent regressions a
 
 test("native Windows result paths prove coverage without admitting failed or missing tests", () => {
   const selected = ["test/js/node/fs/fs.test.ts", "test/js/node/process/process.test.js"];
-  const results = selected.map(testPath => ({ testPath: testPath.replaceAll("/", "\\"), ok: true }));
+  const results = selected.map(testPath => ({ testPath: testPath.replaceAll("/", "\\"), ok: true, status: "pass" }));
   expect(() => assertSelectedTestResults(selected, results, "win32")).not.toThrow();
   expect(() => assertSelectedTestResults(selected, results.slice(1), "win32")).toThrow(selected[0]);
   expect(() => assertSelectedTestResults(selected, [{ ...results[0]!, ok: false }, results[1]!], "win32")).toThrow(
@@ -80,7 +80,7 @@ test("native Windows result paths prove coverage without admitting failed or mis
   expect(() =>
     assertSelectedTestResults(
       selected,
-      selected.map(testPath => ({ testPath, ok: true })),
+      selected.map(testPath => ({ testPath, ok: true, status: "pass" })),
       "linux",
     ),
   ).not.toThrow();
@@ -143,6 +143,75 @@ test("fixture changes select the nearest directory's tests, without unrelated su
   const unrelated = "test/js/unrelated/other.test.ts";
   const selection = selectTests(["test/js/custom/fixtures/input.json"], [...tracked, owner, unrelated], false);
   expect(selection).toEqual([...smoke, owner].sort());
+});
+
+test("AOT fixtures select their execution owners instead of unrelated root tests", () => {
+  const ir = "test/aot/engine-tests/valueflow/modules/module-hooks-do-not-receive-the-commonjs-parent.ir";
+  const parallel = "test/aot/parallel/closed-world/files-that-load-as-host-objects-by-name.cjs";
+  const changedTest = "test/aot/the-main-module-of-a-test-run.test.ts";
+  expect(selectTests([ir, parallel, changedTest], tracked, false)).toEqual(
+    [...smoke, ir, parallel, changedTest].sort(),
+  );
+  expect(
+    selectTests(
+      [ir],
+      tracked.filter(path => path !== ir),
+      false,
+    ),
+  ).toEqual([...smoke].sort());
+  const main = "test/aot/parallel/custom/program/main.ts";
+  const helper = "test/aot/parallel/custom/program/data.json";
+  const declaration = "test/aot/parallel/custom/declaration.d.ts";
+  expect(selectTests([helper, declaration], [...tracked, main, declaration], false)).toEqual([...smoke, main].sort());
+});
+
+test("an expectation-skipped AOT program does not prove selected coverage", () => {
+  const testPath = "test/aot/parallel/closed-world/files-that-load-as-host-objects-by-name.cjs";
+  expect(() => assertSelectedTestResults([testPath], [{ testPath, ok: true, status: "skip" }])).toThrow(testPath);
+  expect(() => assertSelectedTestResults([testPath], [{ testPath, ok: true, status: "pass" }])).not.toThrow();
+});
+
+const wasmOwners = ["imports-and-tables", "bounds-checked-memory", "many-memories", "partly-interpreted-module"].map(
+  name => `test/aot/parallel/webassembly/${name}/main.ts`,
+);
+const packageFixture =
+  "test/aot/parallel/workers/one-name-in-the-root-and-in-the-build-folder/node_modules/pkg/index.js";
+const packageOwner = "test/aot/parallel/workers/one-name-in-the-root-and-in-the-build-folder/app/main.ts";
+const sharedDeclaration = "test/aot/parallel/webassembly/wasm-files.d.ts";
+const parallelConfig = "test/aot/parallel/tsconfig.json";
+const standaloneProgram = "test/aot/parallel/closed-world/files-that-load-as-host-objects-by-name.cjs";
+const runnableOwners = [...wasmOwners, packageOwner, standaloneProgram];
+
+test.each([
+  [sharedDeclaration, wasmOwners],
+  [packageFixture, [packageOwner]],
+  [parallelConfig, runnableOwners],
+] as const)("AOT shared fixture selects runnable owners: %s", (path, owners) => {
+  const inventory = [...smoke, ...runnableOwners, sharedDeclaration, packageFixture, parallelConfig];
+  expect(selectTests([path], inventory, false)).toEqual([...smoke, ...owners].sort());
+});
+
+test("shared AOT inputs retain the Node runner's first sibling main exactly once", () => {
+  const dir = "test/aot/parallel/packages/exports-conditions/main-and-module-x-default";
+  const names: string[] = JSON.parse(
+    execFileSync(
+      "node",
+      [
+        "-p",
+        `JSON.stringify(require("node:fs").readdirSync(process.argv[1]).filter(name => ["main.mjs", "main.ts"].includes(name)))`,
+        dir,
+      ],
+      { encoding: "utf8" },
+    ),
+  );
+  expect(names).toHaveLength(2);
+  const mains = names.map(name => `${dir}/${name}`);
+  const expected = [...smoke, mains[0]!].sort();
+  for (const entries of [mains, [...mains].reverse()]) {
+    const inventory = [...smoke, ...entries];
+    expect(selectTests([parallelConfig], inventory, false)).toEqual(expected);
+    expect(selectTests([mains[1]!], inventory, false)).toEqual(expected);
+  }
 });
 
 test("JS and native Node modules select their adjacent tests", () => {
@@ -220,7 +289,7 @@ test("CLI diff selects owners at both ends of a moved fixture", () => {
   expect(output).toContain(`Changed files: 2. Fork-delta files: 2. Selected tests: ${selected.length}.`);
 });
 
-test.each([false, true])("sync CLI retains resolutions and ignores a later fork-main merge: %s", mergeMain => {
+test.each(["none", "main", "repair", "invalid"])("sync coverage after fork merge: %s", laterMerge => {
   const pure = "test/js/custom/upstream.test.ts";
   const resolved = "test/js/custom/resolved.test.ts";
   using dir = tempDir(
@@ -263,8 +332,14 @@ test.each([false, true])("sync CLI retains resolutions and ignores a later fork-
   expect(merge.status).toBe(1);
   write(resolved, "resolved\n");
   git("add", ".");
-  git("commit", "--quiet", "-m", "resolve upstream merge");
-  if (mergeMain) {
+  const message =
+    laterMerge === "none"
+      ? `chore(sync): merge upstream Bun at ${upstream.slice(0, 10)}`
+      : laterMerge === "main"
+        ? `chore(sync): merge upstream Bun through ${upstream.slice(0, 10)}`
+        : `resolve upstream merge\n\nBun-Upstream: ${laterMerge === "invalid" ? "0".repeat(40) : upstream}`;
+  git("commit", "--quiet", "-m", message);
+  if (laterMerge === "main") {
     git("checkout", "--quiet", "fork-main");
     write("fork-main.txt", "later main change\n");
     git("add", ".");
@@ -272,26 +347,39 @@ test.each([false, true])("sync CLI retains resolutions and ignores a later fork-
     base = git("rev-parse", "HEAD");
     git("checkout", "--quiet", "sync");
     git("merge", "--quiet", "--no-ff", "-m", "merge fork main", "fork-main");
+  } else if (laterMerge === "repair") {
+    git("checkout", "--quiet", "-b", "repair");
+    write("repair.txt", "fork repair\n");
+    git("add", ".");
+    git("commit", "--quiet", "-m", "fork repair");
+    git("checkout", "--quiet", "sync");
+    git("merge", "--quiet", "--no-ff", "-m", "integrate fork repair", "repair");
   }
-  const output = execFileSync(bunExe(), [resolve(import.meta.dir, "../../../scripts/openclaw-ci/tests.ts"), "select"], {
-    cwd: String(dir),
-    encoding: "utf8",
-    env: {
-      ...env,
-      GITHUB_STEP_SUMMARY: join(String(dir), "summary.md"),
-      GITHUB_EVENT_NAME: "pull_request",
-      OPENCLAW_CI_PLATFORM: "linux",
-      PR_BASE_SHA: base,
-      PR_HEAD_SHA: git("rev-parse", "HEAD"),
-    },
-  });
+  const select = () =>
+    execFileSync(bunExe(), [resolve(import.meta.dir, "../../../scripts/openclaw-ci/tests.ts"), "select"], {
+      cwd: String(dir),
+      encoding: "utf8",
+      env: {
+        ...env,
+        GITHUB_STEP_SUMMARY: join(String(dir), "summary.md"),
+        GITHUB_EVENT_NAME: "pull_request",
+        OPENCLAW_CI_PLATFORM: "linux",
+        PR_BASE_SHA: base,
+        PR_HEAD_SHA: git("rev-parse", "HEAD"),
+      },
+    });
+  if (laterMerge === "invalid") {
+    expect(select).toThrow("Invalid Bun-Upstream parent");
+    return;
+  }
+  const output = select();
   const selected = JSON.parse(readFileSync(join(String(dir), "build/openclaw-ci/selected.json"), "utf8"));
   expect(selected).toEqual([...smoke, ...broader, resolved].sort());
   expect(output).toContain(`Upstream parents (newest first): \`${upstream}\`.`);
-  expect(output).toContain(`Changed files: 2. Fork-delta files: 1. Selected tests: ${selected.length}.`);
-  expect(readFileSync(join(String(dir), "summary.md"), "utf8")).toContain(
-    `Changed files: 2. Fork-delta files: 1. Selected tests: ${selected.length}.`,
-  );
+  const counts = laterMerge === "repair" ? [3, 2] : [2, 1];
+  const coverage = `Changed files: ${counts[0]}. Fork-delta files: ${counts[1]}. Selected tests: ${selected.length}.`;
+  expect(output).toContain(coverage);
+  expect(readFileSync(join(String(dir), "summary.md"), "utf8")).toContain(coverage);
 });
 
 test("a successful test step without a completed report cannot produce a green summary", () => {
@@ -309,7 +397,7 @@ test("the native test launcher preserves disk snapshots before and after its run
   using dir = tempDir("openclaw-ci-disk", {
     "build/release/artifact": "fixture",
     "build/openclaw-ci/selected.json": JSON.stringify(["test/fixture.test.ts"]),
-    "scripts/runner.node.ts": `require("node:fs").writeFileSync("build/openclaw-ci/results.json", JSON.stringify([{ testPath: "test/fixture.test.ts", ok: true }]));`,
+    "scripts/runner.node.ts": `require("node:fs").writeFileSync("build/openclaw-ci/results.json", JSON.stringify([{ testPath: "test/fixture.test.ts", ok: true, status: "pass" }]));`,
   });
   const result = spawnSync(bunExe(), [resolve(import.meta.dir, "../../../scripts/openclaw-ci/tests.ts"), "test"], {
     cwd: String(dir),
@@ -343,7 +431,7 @@ test.each([
   using dir = tempDir("openclaw-ci-disk-write", {
     "build/openclaw-ci/selected.json": JSON.stringify(["test/fixture.test.ts"]),
     [`build/openclaw-ci/disk-${stage}-tests.json/directory`]: "prevents a file write",
-    "scripts/runner.node.ts": `require("node:fs").writeFileSync("build/openclaw-ci/results.json", JSON.stringify([{ testPath: "test/fixture.test.ts", ok: true }])); process.exitCode = ${exitCode};`,
+    "scripts/runner.node.ts": `require("node:fs").writeFileSync("build/openclaw-ci/results.json", JSON.stringify([{ testPath: "test/fixture.test.ts", ok: true, status: "pass" }])); process.exitCode = ${exitCode};`,
   });
   const result = spawnSync(bunExe(), [resolve(import.meta.dir, "../../../scripts/openclaw-ci/tests.ts"), "test"], {
     cwd: String(dir),
