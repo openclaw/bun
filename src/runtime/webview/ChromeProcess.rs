@@ -173,7 +173,10 @@ unsafe extern "C" fn Bun__Chrome__ensure(
 
 bun_spawn::link_impl_ProcessExit! {
     ChromeProcess for ChromeProcess => |this| {
-        on_process_exit(process, status, _rusage) => ChromeProcess::on_exit(this, process, &status),
+        on_process_exit(process, status, _rusage) =>
+            bun_removable_features::removable_body!(WebView, Abort, {
+                ChromeProcess::on_exit(this, process, &status)
+            }),
     }
 }
 

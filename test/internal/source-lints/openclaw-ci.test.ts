@@ -235,6 +235,11 @@ test("lowercase Fetch implementation paths select HTTP, net and TLS coverage", (
   expect(selection).toContain("test/js/node/tls/node-tls-connect.test.ts");
 });
 
+test.each(["linux", "darwin", "windows"])("WebView process changes select Chrome pipe coverage on %s", platform => {
+  const selected = selectTests(["src/runtime/webview/ChromeProcess.rs"], tracked, false, platform);
+  expect(selected).toContain("test/js/bun/webview/webview-chrome-pipe.test.ts");
+});
+
 test("a removed fixed smoke test fails loudly instead of shrinking coverage", () => {
   expect(() =>
     selectTests(

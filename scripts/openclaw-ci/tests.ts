@@ -207,6 +207,7 @@ export function selectTests(changed: string[], tracked: string[], nightly: boole
         }
       }
     } else if (path.startsWith("src/")) {
+      if (path.startsWith("src/runtime/webview/")) selected.add("test/js/bun/webview/webview-chrome-pipe.test.ts");
       if (
         /^src\/jsc\/bindings\/(?:CallSite\w*|ErrorStack\w*|FormatStackTraceForJS|ZigSourceProvider)\.(?:cpp|h)$/.test(
           path,
