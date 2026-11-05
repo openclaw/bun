@@ -90,7 +90,7 @@ jobs:
         run: bun scripts/openclaw-ci/tests.ts select
       - name: Install build dependencies
         run: bun install --frozen-lockfile
-      - name: Build native Linux x64 (release, no LTO)
+      - name: Build native Linux x64 (trimmable release, no LTO)
         id: build
         timeout-minutes: 75
         env:
@@ -99,8 +99,9 @@ jobs:
           started=$SECONDS
           timing() { echo "Build: $((SECONDS - started)) seconds; restored cache: ${CACHE_MATCH:-none}" >> "$GITHUB_STEP_SUMMARY"; }
           trap timing EXIT
-          bun run build:release --lto=off --timings
+          bun scripts/build.ts --profile=openclaw-native --timings
           bun scripts/openclaw-ci/tests.ts prepare-engine-tests
+          bun scripts/build/aot-paths.ts --profile=openclaw-native >> "$GITHUB_ENV"
       - name: Save build caches
         if: steps.build.outcome == 'success'
         run: CCACHE_DIR="$BUN_BUILD_CACHE_DIR/ccache" ccache --max-size=3G --cleanup --show-stats
@@ -215,7 +216,7 @@ jobs:
         run: bun scripts/openclaw-ci/tests.ts select
       - name: Install build dependencies
         run: bun install --frozen-lockfile
-      - name: Build native macOS arm64 (release, no LTO)
+      - name: Build native macOS arm64 (trimmable release, no LTO)
         id: build
         timeout-minutes: 75
         env:
@@ -224,8 +225,9 @@ jobs:
           started=$SECONDS
           timing() { echo "Build: $((SECONDS - started)) seconds; restored cache: ${CACHE_MATCH:-none}" >> "$GITHUB_STEP_SUMMARY"; }
           trap timing EXIT
-          bun run build:release --lto=off --timings
+          bun scripts/build.ts --profile=openclaw-native --timings
           bun scripts/openclaw-ci/tests.ts prepare-engine-tests
+          bun scripts/build/aot-paths.ts --profile=openclaw-native >> "$GITHUB_ENV"
       - name: Save build caches
         if: steps.build.outcome == 'success'
         run: CCACHE_DIR="$BUN_BUILD_CACHE_DIR/ccache" ccache --max-size=3G --cleanup --show-stats

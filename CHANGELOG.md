@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Run native CI with trim support and the generators from its exact engine build.
+
 - Keep `require.main` live across test files, cache eviction, and changes to `Bun.main`.
 
 - Keep fork repairs in sync CI coverage, and run changed AOT fixtures, including shared inputs and package fixtures, through their actual compiler and program owners.

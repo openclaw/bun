@@ -136,6 +136,14 @@ export const profiles = {
     webkit: "prebuilt",
   },
 
+  /** Fork native tests need trim support while retaining fast no-LTO relinks. */
+  "openclaw-native": {
+    buildType: "Release",
+    webkit: "prebuilt",
+    lto: false,
+    trimmable: true,
+  },
+
   /** Release with local WebKit. */
   "release-local": {
     buildType: "Release",

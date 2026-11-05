@@ -385,9 +385,11 @@ if (import.meta.main) {
   } else if (command === "prepare-engine-tests") {
     const selected: string[] = JSON.parse(readFileSync(selectionPath, "utf8"));
     if (selected.some(isEngineIr)) {
-      const result = spawnSync("bun", ["run", "build:release", "--lto=off", "--target=engine-test-programs"], {
-        stdio: "inherit",
-      });
+      const result = spawnSync(
+        "bun",
+        ["scripts/build.ts", "--profile=openclaw-native", "--target=engine-test-programs"],
+        { stdio: "inherit" },
+      );
       if (result.error) throw result.error;
       if (result.status !== 0) process.exit(result.status ?? 1);
     }
