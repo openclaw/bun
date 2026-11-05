@@ -36,7 +36,7 @@ on:
       diagnostic:
         description: Reuse a native artifact for focused diagnosis (not source qualification)
         type: choice
-        options: [none, trim-linux, bun-types-darwin]
+        options: [none, trim-linux, bun-types-darwin, aot-evaluators-darwin]
         default: none
       native_run_id:
         description: Run that produced the diagnostic executable
@@ -355,7 +355,7 @@ jobs:
 
   native-diagnostics:
     if: github.repository == 'openclaw/bun' && inputs.diagnostic != '' && inputs.diagnostic != 'none'
-    runs-on: ${{ inputs.diagnostic == 'bun-types-darwin' && 'macos-15' || 'ubuntu-24.04' }}
+    runs-on: ${{ inputs.diagnostic == 'trim-linux' && 'ubuntu-24.04' || 'macos-15' }}
     timeout-minutes: 15
     permissions:
       contents: read
@@ -420,6 +420,18 @@ jobs:
         run: |
           bun install --frozen-lockfile
           ./build/release/bun test test/integration/bun-types/bun-types.test.ts
+      - name: Check native host evaluator reachability
+        if: inputs.diagnostic == 'aot-evaluators-darwin'
+        run: |
+          export JSC="$GITHUB_WORKSPACE/build/release/jsc"
+          export AOT_SCHEMA="$GITHUB_WORKSPACE/build/release/aot-engine/ir/AOTSchema.def"
+          export AOT_BUILTINS_GENERATED="$GITHUB_WORKSPACE/build/release/aot-engine/builtins/generated"
+          export AOT_ENGINE_DIRECTORY="$GITHUB_WORKSPACE/build/release/aot-engine"
+          export AOT_ENGINE_TESTS="$GITHUB_WORKSPACE/build/release/aot-engine/tests"
+          ./build/release/testaot run \
+            test/aot/engine-tests/valueflow/modules/evaluated-text-does-not-call-private-host-evaluators.ir \
+            test/aot/engine-tests/valueflow/modules/a-private-host-evaluator-that-is-called-still-evaluates-text.ir \
+            --show-output
       - name: Upload focused diagnostics
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

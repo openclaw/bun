@@ -1,0 +1,17 @@
+# A real call retains the private evaluator and its truthful text-evaluation effect.
+# RUN: valueflow-solve unseen
+# CHECK: unseen EvaluatesText NativeFunctionsNodeVMCompilationCacheCppJsRunNodeVMSourceForTesting
+# CHECK: unseen-code yes
+# RUN(USED): valueflow-why used-builtin=NativeFunctionsNodeVMCompilationCacheCppJsRunNodeVMSourceForTesting
+# USED: used-builtin=NativeFunctionsNodeVMCompilationCacheCppJsRunNodeVMSourceForTesting
+# USED-NOT: not held
+
+module m0 path="main.js" displayPath="main.js" body=f0
+entry module=m0
+function f0 name="main" module=m0 kind=Module results=[{type=anything}] {
+    v0 = Builtin builtin=NativeFunctionsNodeVMCompilationCacheCppJsRunNodeVMSourceForTesting
+    v1 = String string="1 + 1"
+    v2 = Undefined
+    v3 = Call v0, -, v1, v2, v2, v2, v2
+    Return
+}

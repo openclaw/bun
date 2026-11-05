@@ -1,0 +1,22 @@
+# Public evaluated text does not acquire private native evaluators merely because they can also evaluate text.
+# RUN: valueflow-solve unseen
+# CHECK: unseen EvaluatesText Function
+# CHECK: unseen-code yes
+# RUN(PRIVATE): valueflow-why used-builtin=NativeFunctionsNodeVMCompilationCacheCppJsRunNodeVMSourceForTesting escaped-builtin=NativeFunctionsNodeVMCompilationCacheCppJsRunNodeVMSourceForTesting used-builtin=NativeNewCppFunctionNodeVMCompilationCacheCppJsRunNodeVMSourceForTesting escaped-builtin=NativeNewCppFunctionNodeVMCompilationCacheCppJsRunNodeVMSourceForTesting
+# PRIVATE: used-builtin=NativeFunctionsNodeVMCompilationCacheCppJsRunNodeVMSourceForTesting
+# PRIVATE-NEXT: not held
+# PRIVATE: escaped-builtin=NativeFunctionsNodeVMCompilationCacheCppJsRunNodeVMSourceForTesting
+# PRIVATE-NEXT: not held
+# PRIVATE: used-builtin=NativeNewCppFunctionNodeVMCompilationCacheCppJsRunNodeVMSourceForTesting
+# PRIVATE-NEXT: not held
+# PRIVATE: escaped-builtin=NativeNewCppFunctionNodeVMCompilationCacheCppJsRunNodeVMSourceForTesting
+# PRIVATE-NEXT: not held
+
+module m0 path="main.js" displayPath="main.js" body=f0
+entry module=m0
+function f0 name="main" module=m0 kind=Module results=[{type=anything}] {
+    v0 = Builtin builtin=Function
+    v1 = String string="return 1"
+    v2 = Construct v0, v0, v1
+    Return
+}
