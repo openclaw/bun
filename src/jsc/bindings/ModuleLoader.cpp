@@ -988,7 +988,12 @@ JSValue fetchCommonJSModuleNonBuiltin(
     if (pluginContents) {
         // The engine refuses what it parses as JavaScript. With a loader of data, the text becomes a module without that.
         THROW_AND_RETURN_IF_CODE_GENERATION_FROM_STRINGS_IS_STRICT(globalObject, scope, {});
-        if (hasAlreadyLoadedESMVersionSoWeShouldntTranspileItTwice(vm, loader, specifierWtfString))
+        const bool isJavaScriptLoader = pluginContents->loader == BunLoaderTypeJS
+            || pluginContents->loader == BunLoaderTypeJSX
+            || pluginContents->loader == BunLoaderTypeTS
+            || pluginContents->loader == BunLoaderTypeTSX;
+        // Data loaders return the data value to require(), not import()'s namespace.
+        if (isJavaScriptLoader && hasAlreadyLoadedESMVersionSoWeShouldntTranspileItTwice(vm, loader, specifierWtfString))
             RELEASE_AND_RETURN(scope, jsNumber(-1));
         JSValue cached = requireFromIsolatedModuleCache(globalObject, loader, target, specifierWtfString, typeAttribute, pluginContents);
         RETURN_IF_EXCEPTION(scope, {});

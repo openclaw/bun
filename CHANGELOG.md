@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve runtime plugin data-loader values when require() follows an import.
+
 - Sync upstream AOT Worker-path discovery, module loading, JSDoc parsing and layered-test fixes while retaining the fork regressions.
 
 - Refresh the arm64 loop-poll layout check after upstream allocator changes.
