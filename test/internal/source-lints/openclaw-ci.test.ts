@@ -145,6 +145,28 @@ test("fixture changes select the nearest directory's tests, without unrelated su
   expect(selection).toEqual([...smoke, owner].sort());
 });
 
+test("AOT fixtures select their execution owners instead of unrelated root tests", () => {
+  const ir = "test/aot/engine-tests/valueflow/modules/module-hooks-do-not-receive-the-commonjs-parent.ir";
+  const parallel = "test/aot/parallel/closed-world/files-that-load-as-host-objects-by-name.cjs";
+  const changedTest = "test/aot/the-main-module-of-a-test-run.test.ts";
+  expect(selectTests([ir, parallel, changedTest], tracked, false)).toEqual(
+    [...smoke, ir, parallel, changedTest].sort(),
+  );
+  expect(
+    selectTests(
+      [ir],
+      tracked.filter(path => path !== ir),
+      false,
+    ),
+  ).toEqual([...smoke].sort());
+});
+
+test("an expectation-skipped AOT program does not prove selected coverage", () => {
+  const testPath = "test/aot/parallel/closed-world/files-that-load-as-host-objects-by-name.cjs";
+  expect(() => assertSelectedTestResults([testPath], [{ testPath, ok: true, status: "skip" }])).toThrow(testPath);
+  expect(() => assertSelectedTestResults([testPath], [{ testPath, ok: true, status: "pass" }])).not.toThrow();
+});
+
 test("JS and native Node modules select their adjacent tests", () => {
   const adjacent = "test/js/node/dns/resolve.test.ts";
   for (const source of ["src/js/node/dns.ts", "src/runtime/node/dns/Resolver.rs"]) {
@@ -220,7 +242,7 @@ test("CLI diff selects owners at both ends of a moved fixture", () => {
   expect(output).toContain(`Changed files: 2. Fork-delta files: 2. Selected tests: ${selected.length}.`);
 });
 
-test.each([false, true])("sync CLI retains resolutions and ignores a later fork-main merge: %s", mergeMain => {
+test.each(["none", "main", "repair"])("sync CLI retains resolutions after a later fork merge: %s", laterMerge => {
   const pure = "test/js/custom/upstream.test.ts";
   const resolved = "test/js/custom/resolved.test.ts";
   using dir = tempDir(
@@ -263,8 +285,8 @@ test.each([false, true])("sync CLI retains resolutions and ignores a later fork-
   expect(merge.status).toBe(1);
   write(resolved, "resolved\n");
   git("add", ".");
-  git("commit", "--quiet", "-m", "resolve upstream merge");
-  if (mergeMain) {
+  git("commit", "--quiet", "-m", `resolve upstream merge\n\nBun-Upstream: ${upstream}`);
+  if (laterMerge === "main") {
     git("checkout", "--quiet", "fork-main");
     write("fork-main.txt", "later main change\n");
     git("add", ".");
@@ -272,6 +294,13 @@ test.each([false, true])("sync CLI retains resolutions and ignores a later fork-
     base = git("rev-parse", "HEAD");
     git("checkout", "--quiet", "sync");
     git("merge", "--quiet", "--no-ff", "-m", "merge fork main", "fork-main");
+  } else if (laterMerge === "repair") {
+    git("checkout", "--quiet", "-b", "repair");
+    write("repair.txt", "fork repair\n");
+    git("add", ".");
+    git("commit", "--quiet", "-m", "fork repair");
+    git("checkout", "--quiet", "sync");
+    git("merge", "--quiet", "--no-ff", "-m", "integrate fork repair", "repair");
   }
   const output = execFileSync(bunExe(), [resolve(import.meta.dir, "../../../scripts/openclaw-ci/tests.ts"), "select"], {
     cwd: String(dir),
@@ -288,10 +317,10 @@ test.each([false, true])("sync CLI retains resolutions and ignores a later fork-
   const selected = JSON.parse(readFileSync(join(String(dir), "build/openclaw-ci/selected.json"), "utf8"));
   expect(selected).toEqual([...smoke, ...broader, resolved].sort());
   expect(output).toContain(`Upstream parents (newest first): \`${upstream}\`.`);
-  expect(output).toContain(`Changed files: 2. Fork-delta files: 1. Selected tests: ${selected.length}.`);
-  expect(readFileSync(join(String(dir), "summary.md"), "utf8")).toContain(
-    `Changed files: 2. Fork-delta files: 1. Selected tests: ${selected.length}.`,
-  );
+  const counts = laterMerge === "repair" ? [3, 2] : [2, 1];
+  const coverage = `Changed files: ${counts[0]}. Fork-delta files: ${counts[1]}. Selected tests: ${selected.length}.`;
+  expect(output).toContain(coverage);
+  expect(readFileSync(join(String(dir), "summary.md"), "utf8")).toContain(coverage);
 });
 
 test("a successful test step without a completed report cannot produce a green summary", () => {
