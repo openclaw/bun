@@ -191,6 +191,27 @@ test.each([
   expect(selectTests([path], inventory, false)).toEqual([...smoke, ...owners].sort());
 });
 
+test("shared AOT inputs retain the Node runner's first sibling main exactly once", () => {
+  const dir = "test/aot/parallel/packages/exports-conditions/main-and-module-x-default";
+  const names: string[] = JSON.parse(
+    execFileSync(
+      "node",
+      [
+        "-p",
+        `JSON.stringify(require("node:fs").readdirSync(process.argv[1]).filter(name => ["main.mjs", "main.ts"].includes(name)))`,
+        dir,
+      ],
+      { encoding: "utf8" },
+    ),
+  );
+  expect(names).toHaveLength(2);
+  const mains = names.map(name => `${dir}/${name}`);
+  const inventory = [...smoke, ...mains];
+  const expected = [...smoke, mains[0]!].sort();
+  expect(selectTests([parallelConfig], inventory, false)).toEqual(expected);
+  expect(selectTests([mains[1]!], inventory, false)).toEqual(expected);
+});
+
 test("JS and native Node modules select their adjacent tests", () => {
   const adjacent = "test/js/node/dns/resolve.test.ts";
   for (const source of ["src/js/node/dns.ts", "src/runtime/node/dns/Resolver.rs"]) {
