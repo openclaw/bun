@@ -18,7 +18,7 @@ use core::ffi::{CStr, c_uint, c_void};
 use bun_jsc::bindgen::{JsLocal, JsScope};
 use bun_jsc::virtual_machine::VirtualMachine;
 use bun_jsc::{GlobalRef, JSGlobalObject, JSValue, JsCell, JsResult, host_fn};
-use bun_removable_features::removable_body;
+use bun_removable_features::removable_definition;
 use bun_uws::{us_bun_verify_error_t, uws_callback};
 
 use super::DuplexUpgradeContext;
@@ -731,17 +731,17 @@ impl UpgradedDuplex {
         Ok(())
     }
 
+    #[inline(never)]
     #[uws_callback(export = "UpgradedDuplex__encode_and_write")]
     pub(crate) fn encode_and_write(&self, data: &[u8]) -> i32 {
-        removable_body!(Tls, Abort, {
-            bun_output::scoped_log!(UpgradedDuplex, "encodeAndWrite (len: {})", data.len());
-            let _keep_alive = self.keep_alive();
-            if let Some(w) = self.wrapper_ref() {
-                let written = w.write_data(data).unwrap_or(0);
-                return i32::try_from(written).expect("int cast");
-            }
-            0
-        })
+        removable_definition!(Tls, Self::encode_and_write);
+        bun_output::scoped_log!(UpgradedDuplex, "encodeAndWrite (len: {})", data.len());
+        let _keep_alive = self.keep_alive();
+        if let Some(w) = self.wrapper_ref() {
+            let written = w.write_data(data).unwrap_or(0);
+            return i32::try_from(written).expect("int cast");
+        }
+        0
     }
 
     #[uws_callback(export = "UpgradedDuplex__raw_write")]
@@ -774,21 +774,21 @@ impl UpgradedDuplex {
         }
     }
 
+    #[inline(never)]
     #[uws_callback(export = "UpgradedDuplex__close")]
     pub(crate) fn close(&self) {
-        removable_body!(Tls, Abort, {
-            let _keep_alive = self.keep_alive();
-            let Some(w) = self.wrapper_ref() else {
-                if _keep_alive.uses_native_transport() {
-                    // Native termination can suppress StartTLS; explicit upper close still owns teardown.
-                    self.finish_close();
-                } else {
-                    self.pending_close.set(true);
-                }
-                return;
-            };
-            let _ = w.shutdown(true);
-        })
+        removable_definition!(Tls, Self::close);
+        let _keep_alive = self.keep_alive();
+        let Some(w) = self.wrapper_ref() else {
+            if _keep_alive.uses_native_transport() {
+                // Native termination can suppress StartTLS; explicit upper close still owns teardown.
+                self.finish_close();
+            } else {
+                self.pending_close.set(true);
+            }
+            return;
+        };
+        let _ = w.shutdown(true);
     }
 
     /// Half-close like `us_internal_ssl_shutdown`: close_notify (none mid-handshake), then end().
