@@ -374,10 +374,18 @@ jobs:
       - name: Verify immutable native artifact source
         env:
           GH_TOKEN: ${{ github.token }}
+          DIAGNOSTIC: ${{ inputs.diagnostic }}
         run: |
-          [[ "$EXPECTED_NATIVE_SHA" =~ ^[0-9a-f]{40}$ ]]
-          [[ "$NATIVE_RUN_ID" =~ ^[0-9]+$ && "$NATIVE_ARTIFACT_ID" =~ ^[0-9]+$ ]]
-          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$NATIVE_ARTIFACT_ID" --jq .workflow_run.head_sha)" = "$EXPECTED_NATIVE_SHA"
+          [[ "$EXPECTED_NATIVE_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          [[ "$NATIVE_RUN_ID" =~ ^[0-9]+$ && "$NATIVE_ARTIFACT_ID" =~ ^[0-9]+$ ]] || exit 1
+          # PR metadata names the head; producers name their artifact with the built merge SHA.
+          if [ "$DIAGNOSTIC" = trim-linux ]; then
+            prefix=bun-linux-x64
+          else
+            prefix=bun-darwin-arm64
+          fi
+          name=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$NATIVE_ARTIFACT_ID" --jq .name)
+          [[ "$name" =~ ^${prefix}-${EXPECTED_NATIVE_SHA}-attempt[1-9][0-9]*$ ]] || exit 1
           test "$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$NATIVE_ARTIFACT_ID" --jq .workflow_run.id)" = "$NATIVE_RUN_ID"
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
