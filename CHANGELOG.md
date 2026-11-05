@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep `require.main` live across test files, cache eviction, and changes to `Bun.main`.
+
 - Keep fork repairs in sync CI coverage, and run changed AOT fixtures, including shared inputs and package fixtures, through their actual compiler and program owners.
 
 - Avoid looking up the executable path when a compiled program has no executable-relative source root.
