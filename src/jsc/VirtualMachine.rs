@@ -4505,6 +4505,7 @@ pub enum ResolveMode {
     RequireResolve,
 }
 
+#[derive(Clone, Copy)]
 pub(crate) struct OnResolveOptions {
     pub(crate) split_query: bool,
     pub(crate) same_is_no_answer: bool,
