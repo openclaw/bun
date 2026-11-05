@@ -28,6 +28,11 @@ on:
         description: Ancestor commit for fork-delta selection; empty runs default coverage
         type: string
         required: false
+      platform:
+        description: Native platform to validate
+        type: choice
+        options: [all, linux-x64, darwin-arm64]
+        default: all
   schedule:
     - cron: "23 7 * * *"
 
@@ -35,12 +40,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ inputs.platform || 'all' }}
   cancel-in-progress: true
 
 jobs:
   linux-x64:
-    if: github.repository == 'openclaw/bun'
+    if: github.repository == 'openclaw/bun' && inputs.platform != 'darwin-arm64'
     runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 115
     env:
@@ -121,7 +126,9 @@ jobs:
           key: ${{ steps.cache.outputs.cache-primary-key }}
       - name: Package PR executable
         run: |
-          tar -czf build/openclaw-ci/bun-linux-x64.tar.gz -C build/release bun
+          mkdir -p build/release/bun.trim
+          cp build/release/bun-profile.trim/*.txt build/release/bun.trim/
+          tar -czf build/openclaw-ci/bun-linux-x64.tar.gz -C build/release bun bun.trim
           (cd build/openclaw-ci && sha256sum bun-linux-x64.tar.gz > SHA256SUMS)
           git rev-parse HEAD > build/openclaw-ci/commit.txt
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -144,6 +151,19 @@ jobs:
           # build.ts only executes trailing arguments outside CI.
           ./build/release/bun scripts/openclaw-ci/tests.ts test
           test -s build/openclaw-ci/results.json
+      - name: Explain retained trim features
+        if: failure() && steps.build.outcome == 'success'
+        run: |
+          bun scripts/build/trim/why.ts build/release/bun-profile.trim-work/retained.txt 'sqlite3_|unixDlOpen|SSL_|ERR_|jsSetSqliteQueryPublisher|native_tls|NativeTransport' 20
+          scratch=$(mktemp -d)
+          trap 'rm -rf "$scratch"' EXIT
+          printf '%s\n' 'console.log(new Function("return " + process.argv[2])(), /a+/u.test("aa"), [3, 1, 2].toSorted().join());' > "$scratch/text.ts"
+          printf '%s\n' 'console.log(typeof Bun.build); if (process.argv.length > 5) await Bun.build({ entrypoints: [process.argv[5]] });' > "$scratch/bundles.ts"
+          for entry in text bundles; do
+            echo "::group::trim retention: $entry"
+            env -u BUN_FEATURE_FLAG_INTERNAL_FOR_TESTING BUN_GARBAGE_COLLECTOR_LEVEL=0 BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 ./build/release/bun build --compile --aot --trim --explain=trim "$scratch/$entry.ts" --outfile "$scratch/$entry"
+            echo '::endgroup::'
+          done
       - name: Summarize
         if: always()
         env:
@@ -159,10 +179,13 @@ jobs:
             build/openclaw-ci/*.json
             build/release/timings.html
             build/release/ccache.log
+            build/release/bun-profile.trim/*.txt
+            build/release/bun-profile.trim-work/retained.txt
+            build/release/bun-profile.trim-work/sections.txt
           retention-days: 7
 
   build-darwin-arm64:
-    if: github.repository == 'openclaw/bun'
+    if: github.repository == 'openclaw/bun' && inputs.platform != 'linux-x64'
     outputs:
       artifact_id: ${{ steps.bundle.outputs.artifact-id }}
     runs-on: ${{ vars.OPENCLAW_RELEASE_BUILD_RUNNER || 'ubuntu-24.04-arm' }}
