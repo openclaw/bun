@@ -453,6 +453,36 @@ fn parse_latin1<'a, const WINDOWS: bool, const FLAT_ONLY: bool>(
 
 #[cold]
 #[inline(never)]
+fn parsed_utf16_to_js<'a>(
+    heap: &JsHeap<'a>,
+    parsed: PathParsed<'_, u16>,
+) -> bindgen::Result<'a, ParsedPath<'a>> {
+    Ok(ParsedPath {
+        root: heap.create_utf16_string_from_vec(parsed.root.to_vec())?,
+        dir: heap.create_utf16_string_from_vec(parsed.dir.to_vec())?,
+        base: heap.create_utf16_string_from_vec(parsed.base.to_vec())?,
+        ext: heap.create_utf16_string_from_vec(parsed.ext.to_vec())?,
+        name: heap.create_utf16_string_from_vec(parsed.name.to_vec())?,
+    })
+}
+
+#[cold]
+#[inline(never)]
+fn parsed_utf8_to_js<'a>(
+    heap: &JsHeap<'a>,
+    parsed: PathParsed<'_, u8>,
+) -> bindgen::Result<'a, ParsedPath<'a>> {
+    Ok(ParsedPath {
+        root: heap.create_utf8_string(parsed.root)?,
+        dir: heap.create_utf8_string(parsed.dir)?,
+        base: heap.create_utf8_string(parsed.base)?,
+        ext: heap.create_utf8_string(parsed.ext)?,
+        name: heap.create_utf8_string(parsed.name)?,
+    })
+}
+
+#[cold]
+#[inline(never)]
 fn parse_utf8<'a, const WINDOWS: bool>(
     heap: &JsHeap<'a>,
     path: Text<'a>,
@@ -464,13 +494,7 @@ fn parse_utf8<'a, const WINDOWS: bool>(
         } else {
             parse_posix_t(path.utf16())
         };
-        return Ok(ParsedPath {
-            root: heap.create_utf16_string_from_vec(parsed.root.to_vec())?,
-            dir: heap.create_utf16_string_from_vec(parsed.dir.to_vec())?,
-            base: heap.create_utf16_string_from_vec(parsed.base.to_vec())?,
-            ext: heap.create_utf16_string_from_vec(parsed.ext.to_vec())?,
-            name: heap.create_utf16_string_from_vec(parsed.name.to_vec())?,
-        });
+        return parsed_utf16_to_js(heap, parsed);
     }
     let utf8 = path.to_utf8();
     let parsed = if WINDOWS {
@@ -478,13 +502,7 @@ fn parse_utf8<'a, const WINDOWS: bool>(
     } else {
         parse_posix_t(utf8.slice())
     };
-    Ok(ParsedPath {
-        root: heap.create_utf8_string(parsed.root)?,
-        dir: heap.create_utf8_string(parsed.dir)?,
-        base: heap.create_utf8_string(parsed.base)?,
-        ext: heap.create_utf8_string(parsed.ext)?,
-        name: heap.create_utf8_string(parsed.name)?,
-    })
+    parsed_utf8_to_js(heap, parsed)
 }
 by_form_of_operands!(parse, parse_other, parse_latin1, parse_utf8, <>(path: Text<'a>) -> ParsedPath<'a>);
 

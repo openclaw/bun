@@ -198,13 +198,6 @@ fn without_trailing_slash(s: &[u8]) -> &[u8] {
     &s[..end]
 }
 
-/// What [`resolve_posix_t`] puts in front of a path that is not absolute, where the system's own paths are POSIX paths.
-#[cfg(not(windows))]
-#[inline]
-pub fn posix_working_directory() -> &'static [u8] {
-    working_directory()
-}
-
 fn working_directory() -> &'static [u8] {
     match bun_core::working_directory_in_executable() {
         Some(directory) => directory,
