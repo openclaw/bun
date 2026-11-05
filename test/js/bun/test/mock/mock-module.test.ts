@@ -1831,7 +1831,9 @@ describe.concurrent("unmock", () => {
             expect(mocked.value).toBe("mocked");
             const real = await import("./mod");
             expect(real.value).toBe("real");
-            expect(require("./mod")).toBe(real);
+            const required = require("./mod");
+            expect(required).toEqual({ ...real, __esModule: true });
+            expect(require("./mod")).toBe(required);
             expect(globalThis.loads).toBe(1);
           });
 
@@ -2511,10 +2513,12 @@ describe.concurrent("resetModules", () => {
             expect(second).not.toBe(first);
             expect(second.fn).not.toBe(first.fn);
             expect(first.fn()).toBe("real-fn");
-            expect(require("./mod")).toBe(second);
+            const required = require("./mod");
+            expect(required).toEqual({ ...second, __esModule: true });
+            expect(require("./mod")).toBe(required);
 
             vi.resetModules();
-            expect(require("./mod")).not.toBe(second);
+            expect(require("./mod")).not.toBe(required);
             expect(globalThis.loads).toBe(3);
 
             const cjs = require("cjs-pkg");

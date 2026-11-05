@@ -439,8 +439,11 @@ static JSValue commonJSExportsOfObjectModule(Zig::GlobalObject* globalObject, JS
     auto& vm = JSC::getVM(globalObject);
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    if (auto* mockedCommonJSModule = wasModuleMock ? dynamicDowncast<JSCommonJSModule>(object) : nullptr)
-        RELEASE_AND_RETURN(scope, mockedCommonJSModule->exportsObject());
+    if (wasModuleMock) {
+        if (auto* mockedCommonJSModule = dynamicDowncast<JSCommonJSModule>(object))
+            RELEASE_AND_RETURN(scope, mockedCommonJSModule->exportsObject());
+        return object;
+    }
 
     auto esModuleValue = object->getIfPropertyExists(globalObject, vm.propertyNames->__esModule);
     RETURN_IF_EXCEPTION(scope, {});
@@ -450,7 +453,7 @@ static JSValue commonJSExportsOfObjectModule(Zig::GlobalObject* globalObject, JS
         if (defaultValue && !defaultValue.isUndefined())
             return defaultValue;
     }
-    return wasModuleMock ? object : JSValue();
+    return JSValue();
 }
 
 template<bool allowPromise>
