@@ -4348,7 +4348,7 @@ impl<'a> Resolver<'a> {
             && esm_resolution.path[0] == SEP)
         {
             self.capture_esm_resolution_failure(
-                &esm_resolution,
+                esm_resolution,
                 package_json,
                 package_subpath,
                 is_imports,
