@@ -177,7 +177,23 @@ export default b.declarations(
     uses: { id: [b.loadedAsModule] },
     implementation: b.hostCall,
   }),
-  b.static("process.mainModule", b.property(b.union(moduleObject, b.undefined))),
+  // Test runs change the main module between files, including in compiled executables.
+  b.static("process.mainModule", {
+    getter: b.union(moduleObject, b.undefined),
+    capability: "js",
+    throws: true,
+    uses: { this: b.inspected },
+    implementation: b.generic,
+    setter: {
+      this: b.object,
+      value: b.any,
+      capability: "heap",
+      throws: true,
+      uses: { this: b.inspected, value: [b.retained] },
+      writes: ["ShapeWords", "NamedProperties"],
+      implementation: b.generic,
+    },
+  }),
   // Module is a callable export; its constructed CommonJS modules have a separate native class.
   b.callOfConstructor("node:module", {
     args: { operands: b.any.rest },

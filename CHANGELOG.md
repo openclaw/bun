@@ -8,7 +8,7 @@
 
 - Run native CI with release LTO, trim support, and the generators from its exact engine build, cross-building the macOS test bundle with the supported LLD linker, including full fork-delta selection against an explicit base for manual checks.
 
-- Keep `require.main` live across test files, cache eviction, and changes to `Bun.main`.
+- Keep `require.main` and `process.mainModule` live across test files, including compiled tests, cache eviction, and changes to `Bun.main`.
 
 - Keep fork repairs in sync CI coverage, and run changed AOT fixtures, including shared inputs and package fixtures, through their actual compiler and program owners.
 
