@@ -6,7 +6,7 @@
 
 - Let isolated test files finish loading after accessing idle stdout or stderr, while retaining stdio cleanup.
 
-- Run native CI with trim support and the generators from its exact engine build, including full fork-delta selection against an explicit base for manual checks.
+- Run native CI with release LTO, trim support, and the generators from its exact engine build, cross-building the macOS test bundle with the supported LLD linker, including full fork-delta selection against an explicit base for manual checks.
 
 - Keep `require.main` live across test files, cache eviction, and changes to `Bun.main`.
 
