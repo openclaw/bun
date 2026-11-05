@@ -227,7 +227,6 @@ export default b.declarations(
         b.contentsStoredIn(b.nativeMemory),
         ...["resolve", "load"].map(name =>
           b.memberCalled([name], {
-            afterwards: "TouchesOnlyWhatRowNames",
             times: "Later",
             this: b.undefined,
             args: [b.string, b.object, b.callable],
