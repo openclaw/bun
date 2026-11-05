@@ -30,6 +30,15 @@ history rule and separate maintainer qualification of upstream changes.
 - Include every added or modified Bun `.test.*` or `.spec.*` file still present.
 - For changed test fixtures, walk upward to the nearest directory containing
   tests and include those files. Deleted fixtures also select their owners.
+- AOT engine IR files under `test/aot/engine-tests/` run directly through the
+  same build's `testaot`. The native build step prepares `engine-test-programs`
+  only when IR files are selected, within its existing deadline. Each selected
+  IR file must pass with no failures or TODOs; `engine-ir.json` retains the
+  runtime identity, selection and output, including failures.
+- AOT parallel programs run through the upstream runner's AOT driver. Changes
+  inside a multi-file program select its containing `main.*`; standalone
+  programs select themselves. These fixtures do not select unrelated tests at
+  the AOT root. Trim-specific tests still require their trim-enabled build.
 - For `src/js/node/<module>` and `src/runtime/node/<module>`, include the
   corresponding `test/js/node/<module>/` tests.
 - For shared native code, match child_process/subprocess/spawn to child_process;

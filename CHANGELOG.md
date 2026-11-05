@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep fork repairs in sync CI coverage, and run changed AOT fixtures through their actual compiler and program owners.
+
 - Avoid looking up the executable path when a compiled program has no executable-relative source root.
 
 - Keep AOT customization-hook declarations compatible with the pinned engine's member-call schema.

@@ -69,7 +69,7 @@ test.each(["linux", "darwin", "windows"])("fork printer and Dirent regressions a
 
 test("native Windows result paths prove coverage without admitting failed or missing tests", () => {
   const selected = ["test/js/node/fs/fs.test.ts", "test/js/node/process/process.test.js"];
-  const results = selected.map(testPath => ({ testPath: testPath.replaceAll("/", "\\"), ok: true }));
+  const results = selected.map(testPath => ({ testPath: testPath.replaceAll("/", "\\"), ok: true, status: "pass" }));
   expect(() => assertSelectedTestResults(selected, results, "win32")).not.toThrow();
   expect(() => assertSelectedTestResults(selected, results.slice(1), "win32")).toThrow(selected[0]);
   expect(() => assertSelectedTestResults(selected, [{ ...results[0]!, ok: false }, results[1]!], "win32")).toThrow(
@@ -80,7 +80,7 @@ test("native Windows result paths prove coverage without admitting failed or mis
   expect(() =>
     assertSelectedTestResults(
       selected,
-      selected.map(testPath => ({ testPath, ok: true })),
+      selected.map(testPath => ({ testPath, ok: true, status: "pass" })),
       "linux",
     ),
   ).not.toThrow();
@@ -159,6 +159,10 @@ test("AOT fixtures select their execution owners instead of unrelated root tests
       false,
     ),
   ).toEqual([...smoke].sort());
+  const main = "test/aot/parallel/custom/program/main.ts";
+  const helper = "test/aot/parallel/custom/program/data.json";
+  const declaration = "test/aot/parallel/custom/declaration.d.ts";
+  expect(selectTests([helper, declaration], [...tracked, main, declaration], false)).toEqual([...smoke, main].sort());
 });
 
 test("an expectation-skipped AOT program does not prove selected coverage", () => {
@@ -242,7 +246,7 @@ test("CLI diff selects owners at both ends of a moved fixture", () => {
   expect(output).toContain(`Changed files: 2. Fork-delta files: 2. Selected tests: ${selected.length}.`);
 });
 
-test.each(["none", "main", "repair"])("sync CLI retains resolutions after a later fork merge: %s", laterMerge => {
+test.each(["none", "main", "repair", "invalid"])("sync coverage after fork merge: %s", laterMerge => {
   const pure = "test/js/custom/upstream.test.ts";
   const resolved = "test/js/custom/resolved.test.ts";
   using dir = tempDir(
@@ -285,7 +289,13 @@ test.each(["none", "main", "repair"])("sync CLI retains resolutions after a late
   expect(merge.status).toBe(1);
   write(resolved, "resolved\n");
   git("add", ".");
-  git("commit", "--quiet", "-m", `resolve upstream merge\n\nBun-Upstream: ${upstream}`);
+  const message =
+    laterMerge === "none"
+      ? `chore(sync): merge upstream Bun at ${upstream.slice(0, 10)}`
+      : laterMerge === "main"
+        ? `chore(sync): merge upstream Bun through ${upstream.slice(0, 10)}`
+        : `resolve upstream merge\n\nBun-Upstream: ${laterMerge === "invalid" ? "0".repeat(40) : upstream}`;
+  git("commit", "--quiet", "-m", message);
   if (laterMerge === "main") {
     git("checkout", "--quiet", "fork-main");
     write("fork-main.txt", "later main change\n");
@@ -302,18 +312,24 @@ test.each(["none", "main", "repair"])("sync CLI retains resolutions after a late
     git("checkout", "--quiet", "sync");
     git("merge", "--quiet", "--no-ff", "-m", "integrate fork repair", "repair");
   }
-  const output = execFileSync(bunExe(), [resolve(import.meta.dir, "../../../scripts/openclaw-ci/tests.ts"), "select"], {
-    cwd: String(dir),
-    encoding: "utf8",
-    env: {
-      ...env,
-      GITHUB_STEP_SUMMARY: join(String(dir), "summary.md"),
-      GITHUB_EVENT_NAME: "pull_request",
-      OPENCLAW_CI_PLATFORM: "linux",
-      PR_BASE_SHA: base,
-      PR_HEAD_SHA: git("rev-parse", "HEAD"),
-    },
-  });
+  const select = () =>
+    execFileSync(bunExe(), [resolve(import.meta.dir, "../../../scripts/openclaw-ci/tests.ts"), "select"], {
+      cwd: String(dir),
+      encoding: "utf8",
+      env: {
+        ...env,
+        GITHUB_STEP_SUMMARY: join(String(dir), "summary.md"),
+        GITHUB_EVENT_NAME: "pull_request",
+        OPENCLAW_CI_PLATFORM: "linux",
+        PR_BASE_SHA: base,
+        PR_HEAD_SHA: git("rev-parse", "HEAD"),
+      },
+    });
+  if (laterMerge === "invalid") {
+    expect(select).toThrow("Invalid Bun-Upstream parent");
+    return;
+  }
+  const output = select();
   const selected = JSON.parse(readFileSync(join(String(dir), "build/openclaw-ci/selected.json"), "utf8"));
   expect(selected).toEqual([...smoke, ...broader, resolved].sort());
   expect(output).toContain(`Upstream parents (newest first): \`${upstream}\`.`);
@@ -338,7 +354,7 @@ test("the native test launcher preserves disk snapshots before and after its run
   using dir = tempDir("openclaw-ci-disk", {
     "build/release/artifact": "fixture",
     "build/openclaw-ci/selected.json": JSON.stringify(["test/fixture.test.ts"]),
-    "scripts/runner.node.ts": `require("node:fs").writeFileSync("build/openclaw-ci/results.json", JSON.stringify([{ testPath: "test/fixture.test.ts", ok: true }]));`,
+    "scripts/runner.node.ts": `require("node:fs").writeFileSync("build/openclaw-ci/results.json", JSON.stringify([{ testPath: "test/fixture.test.ts", ok: true, status: "pass" }]));`,
   });
   const result = spawnSync(bunExe(), [resolve(import.meta.dir, "../../../scripts/openclaw-ci/tests.ts"), "test"], {
     cwd: String(dir),
@@ -372,7 +388,7 @@ test.each([
   using dir = tempDir("openclaw-ci-disk-write", {
     "build/openclaw-ci/selected.json": JSON.stringify(["test/fixture.test.ts"]),
     [`build/openclaw-ci/disk-${stage}-tests.json/directory`]: "prevents a file write",
-    "scripts/runner.node.ts": `require("node:fs").writeFileSync("build/openclaw-ci/results.json", JSON.stringify([{ testPath: "test/fixture.test.ts", ok: true }])); process.exitCode = ${exitCode};`,
+    "scripts/runner.node.ts": `require("node:fs").writeFileSync("build/openclaw-ci/results.json", JSON.stringify([{ testPath: "test/fixture.test.ts", ok: true, status: "pass" }])); process.exitCode = ${exitCode};`,
   });
   const result = spawnSync(bunExe(), [resolve(import.meta.dir, "../../../scripts/openclaw-ci/tests.ts"), "test"], {
     cwd: String(dir),

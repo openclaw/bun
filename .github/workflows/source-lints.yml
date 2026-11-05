@@ -38,6 +38,7 @@ on:
       - ".gitignore"
       - ".prettierignore"
       - ".github/workflows/*.yml"
+      - ".github/scripts/sync-upstream.test.cjs"
       - ".github/actions/setup-bun/**"
   pull_request:
     paths:
@@ -67,6 +68,7 @@ on:
       - ".gitignore"
       - ".prettierignore"
       - ".github/workflows/*.yml"
+      - ".github/scripts/sync-upstream.test.cjs"
       - ".github/actions/setup-bun/**"
   merge_group:
 
@@ -95,3 +97,5 @@ jobs:
       # bare checkout is sufficient.
       - name: Run source lints
         run: bun test test/internal/source-lints/
+      - name: Test upstream sync automation
+        run: node --test .github/scripts/sync-upstream.test.cjs
