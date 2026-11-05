@@ -4505,6 +4505,11 @@ pub enum ResolveMode {
     RequireResolve,
 }
 
+pub(crate) struct OnResolveOptions {
+    pub(crate) split_query: bool,
+    pub(crate) same_is_no_answer: bool,
+}
+
 impl ResolveMode {
     #[inline]
     pub fn is_esm(self) -> bool {
@@ -6136,8 +6141,10 @@ impl VirtualMachine {
             source,
             query_string.as_deref_mut(),
             mode,
-            split_query,
-            false,
+            OnResolveOptions {
+                split_query,
+                same_is_no_answer: false,
+            },
         )? {
             return Ok(resolved);
         }
@@ -6180,9 +6187,12 @@ impl VirtualMachine {
         source: &bun_core::String,
         query_string: Option<&mut bun_core::String>,
         mode: ResolveMode,
-        split_query: bool,
-        same_is_no_answer: bool,
+        options: OnResolveOptions,
     ) -> JsResult<Option<Result<bun_core::String, JSValue>>> {
+        let OnResolveOptions {
+            split_query,
+            same_is_no_answer,
+        } = options;
         if global.has_plugins() {
             match run_on_resolve(global, specifier, source, mode.import_kind())? {
                 None => {}

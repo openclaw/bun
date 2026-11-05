@@ -1410,8 +1410,10 @@ extern "C" fn Bun__resolveWithOnResolve(
         source,
         Some(query),
         crate::virtual_machine::ResolveMode::Esm,
-        true,
-        true,
+        crate::virtual_machine::OnResolveOptions {
+            split_query: true,
+            same_is_no_answer: true,
+        },
     ) {
         Ok(None) => return false,
         Ok(Some(Ok(path))) => *res = ErrorableString::ok(path),
