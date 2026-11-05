@@ -17,6 +17,8 @@ server.stop(true);`,
   "bundles.ts": `console.log(typeof Bun.build);
 if (process.argv.length > 5) await Bun.build({ entrypoints: [process.argv[5]] });`,
 };
+// These programs use public modules; the parent harness still needs its private testing API.
+const env = { ...bunEnv, BUN_FEATURE_FLAG_INTERNAL_FOR_TESTING: undefined };
 const sizeOf = (executable: string) => statSync(isWindows ? executable + ".exe" : executable).size;
 
 describe.skipIf(!canTrim || !!unsupported)("a template made with --trim-template", () => {
@@ -39,7 +41,7 @@ describe.skipIf(!canTrim || !!unsupported)("a template made with --trim-template
           outfile,
         ],
         folder,
-        bunEnv,
+        env,
       ),
     );
   const larger: Record<string, number> = {};
@@ -68,7 +70,7 @@ describe.skipIf(!canTrim || !!unsupported)("a template made with --trim-template
           build(entry, `on-bun-${index}`, ...flags),
           build(entry, `on-template-${index}`, ...flags, "--compile-executable-path", template),
         ]);
-        const ran = await spawned([join(folder, `on-template-${index}`), "1 + 2"], folder, bunEnv);
+        const ran = await spawned([join(folder, `on-template-${index}`), "1 + 2"], folder, env);
         found[title] = {
           builds: [onBun.exitCode, onTemplate.exitCode],
           stdout: ran.stdout,
@@ -96,7 +98,7 @@ describe.skipIf(!canTrim || !!unsupported)("a template made with --trim-template
     expect(await build("bundles.ts", "bundles", "--trim", "--compile-executable-path", template)).toMatchObject({
       exitCode: 0,
     });
-    expect(await spawned([join(folder, "bundles")], folder, bunEnv)).toMatchObject({
+    expect(await spawned([join(folder, "bundles")], folder, env)).toMatchObject({
       stdout: "function\n",
       exitCode: 0,
     });
