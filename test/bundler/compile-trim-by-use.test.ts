@@ -79,6 +79,16 @@ const textsOfLibrariesIn = (file: Buffer) =>
 
 const files = {
   "hello.ts": `console.log("hello world");`,
+  "sqlite-diagnostics.ts": `
+    import { channel } from "node:diagnostics_channel";
+    const queries = channel("sqlite.db.query");
+    const subscriber = () => console.log("published");
+    queries.subscribe(subscriber);
+    console.log(queries.hasSubscribers);
+    queries.publish({});
+    queries.unsubscribe(subscriber);
+    console.log(queries.hasSubscribers);
+  `,
   "bundled.ts": `export const answer: number = 42;`,
   "serves-its-default-export.ts": `
     export default { port: 0, fetch: () => new Response("served") };
@@ -229,6 +239,12 @@ const files = {
         expect.arrayContaining(Object.values(features).map(feature => featureOf(feature.implements))),
       );
       expect(await started(built)).toEqual(hello);
+    });
+
+    test("SQLite diagnostic subscriptions work without SQLite", async () => {
+      const built = await without("sqlite-diagnostics.ts", "Sqlite");
+      expect(removedFrom(built)).toContain(featureNamed("Sqlite"));
+      expect(await started(built)).toEqual({ stdout: "true\npublished\nfalse\n", stderr: "", exitCode: 0 });
     });
 
     test("properties of the program's own objects keep no feature, whatever their names", async () => {

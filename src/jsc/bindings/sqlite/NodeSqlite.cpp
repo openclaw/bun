@@ -44,6 +44,7 @@ static constexpr bool lazy_sqlite3_has_session = true;
 #endif
 
 #include "NodeSqlite.h"
+#include "RemovableFeatures.h"
 #include "SqliteUserFunction.h"
 
 #include "ZigGlobalObject.h"
@@ -577,13 +578,16 @@ void JSDatabaseSync::setQueryPublisher(JSObject* publisher)
 
 JSC_DEFINE_HOST_FUNCTION(jsSetSqliteQueryPublisher, (JSGlobalObject * globalObject, CallFrame* callFrame))
 {
-    auto& vm = getVM(globalObject);
-    auto* publisher = callFrame->argument(0).getObject();
-    WTF::Locker locker { openDatabasesLock };
-    for (auto& entry : openDatabases()) {
-        if (entry.value.vm == &vm)
-            entry.key->setQueryPublisher(publisher);
-    }
+    // Subscribing without SQLite is valid; only updating open databases needs its native code.
+    JSC::callRemovableBody<Bun::Feature::Sqlite, JSC::RemovedFeatureStub::ReturnDefault, void>(nullptr, [&] {
+        auto& vm = getVM(globalObject);
+        auto* publisher = callFrame->argument(0).getObject();
+        WTF::Locker locker { openDatabasesLock };
+        for (auto& entry : openDatabases()) {
+            if (entry.value.vm == &vm)
+                entry.key->setQueryPublisher(publisher);
+        }
+    });
     return JSValue::encode(jsUndefined());
 }
 

@@ -14,6 +14,7 @@ use bun_jsc::JsCell;
 use bun_jsc::bindgen::{JsHeap, JsLocal, JsScope};
 use bun_jsc::bun_string_jsc;
 use bun_ptr::RefPtr;
+use bun_removable_features::removable_body;
 // do NOT `use bun_boringssl_sys::SSL` here — it shadows the
 // `const SSL: bool` generic param in `NewSocket<SSL>` below, making rustc
 // resolve `<SSL>` as a type arg (E0747). Use the qualified path instead.
@@ -5271,23 +5272,26 @@ pub(crate) fn shutdown_native_tls_transport(
     socket: SocketHandle<'_>,
     callback: JsLocal<'_>,
 ) -> bool {
-    let SocketHandle::Tls(socket) = socket else {
-        return false;
-    };
-    let uws::InternalSocket::UpgradedDuplex(pointer) = socket.socket.get().socket else {
-        return false;
-    };
-    // SAFETY: the attached tag holds the aligned context.upgrade member; close detaches
-    // it before releasing the context. Take a keep-alive before any reentrant work.
-    let upgrade = unsafe { &*pointer.cast::<UpgradedDuplex>() };
-    let context = upgrade.keep_alive();
-    if !context.uses_native_transport() {
-        return false;
-    }
-    js_TLSSocket::native_shutdown_set_cached(upgrade.js_wrapper, cx.global(), callback.to_js());
-    context.native_shutdown_callback.set(true);
-    upgrade.shutdown();
-    true
+    // Plain TCP shutdown still falls through when TLS has been trimmed away.
+    removable_body!(Tls, ReturnDefault, {
+        let SocketHandle::Tls(socket) = socket else {
+            return false;
+        };
+        let uws::InternalSocket::UpgradedDuplex(pointer) = socket.socket.get().socket else {
+            return false;
+        };
+        // SAFETY: the attached tag holds the aligned context.upgrade member; close detaches
+        // it before releasing the context. Take a keep-alive before any reentrant work.
+        let upgrade = unsafe { &*pointer.cast::<UpgradedDuplex>() };
+        let context = upgrade.keep_alive();
+        if !context.uses_native_transport() {
+            return false;
+        }
+        js_TLSSocket::native_shutdown_set_cached(upgrade.js_wrapper, cx.global(), callback.to_js());
+        context.native_shutdown_callback.set(true);
+        upgrade.shutdown();
+        true
+    })
 }
 
 /// node:net's `destroy()`: drops the handshake flight held for the handshake callback.

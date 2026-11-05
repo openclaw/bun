@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Let trimming remove unused SQLite diagnostics and native TLS transport code while preserving diagnostic subscriptions and plain TCP shutdown.
+
 - Preserve named exports when a Jest mock spreads `jest.requireActual()` with an ESM default export, while retaining `mock.module()` default unwrapping.
 
 - Let isolated test files finish loading after accessing idle stdout or stderr, while retaining stdio cleanup.

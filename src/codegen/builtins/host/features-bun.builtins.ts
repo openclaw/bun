@@ -452,6 +452,8 @@ export default b.declarations(
       "Bindgen",
       "socket_body.bind.ts",
       "checkServerIdentityInHandshake",
+      "attachNativeTLSTransport",
+      "nativeTLSPreviousWritesDone",
       "firstFlightBeforeFin",
       "releaseHeldFlight",
     ),
