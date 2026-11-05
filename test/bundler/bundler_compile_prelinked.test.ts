@@ -15,7 +15,6 @@ import { BundlerTestInput, BundlerTestRunOptions, itBundled as itBundledBase } f
 const inheritedNamespaceVariants = new Set([
   "compile/prelinked/CjsEsmInterop+splitting",
   "compile/prelinked/CjsEsmInterop+source+splitting",
-  "compile/prelinked/GeneratedGraph+splitting",
 ]);
 const itBundled = (id: string, opts: BundlerTestInput) =>
   itBundledBase(id, { backend: "cli", failing: inheritedNamespaceVariants.has(id), ...opts });

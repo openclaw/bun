@@ -1180,7 +1180,7 @@ describe.concurrent("`bun test` and `bun run`", () => {
     "import() of vitest": ["js", `export function f() { return import("vitest"); }`, true],
 
     "import type": ["ts", `import type { Mock } from "vitest"; export function f(a: Mock) { return a; }`, false],
-    "import { type }": ["ts", `import { type Mock } from "vitest"; export function f(a: Mock) { return a; }`, false],
+    "import { type }": ["ts", `import { type Mock } from "vitest"; export function f(a: Mock) { return a; }`, true],
     "export type": ["ts", `export type { Mock } from "vitest"; export function f() {}`, false],
     "require() of no literal": ["cjs", `module.exports = function f(v) { return require(v + "vitest"); };`, false],
     "import() of no literal": ["js", `export function f(v) { return import(v + "vitest"); }`, false],

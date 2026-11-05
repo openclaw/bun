@@ -263,8 +263,8 @@ test("a folder named in parentheses, in the stack of an error whose stack was re
   });
   const [stdout, exitCode] = await Promise.all([proc.stdout.text(), proc.exited]);
   expect(stdout.replaceAll("\\", "/").replaceAll(String(dir).replaceAll("\\", "/"), "[dir]").split("\n")).toEqual([
-    "at [dir]/(group)/throws.js:1:11",
-    "at fails ([dir]/(group)/fails.js:1:37)",
+    "at [dir]/(group)/throws.js:1:7",
+    "at fails ([dir]/(group)/fails.js:1:33)",
     "",
   ]);
   expect(exitCode).toBe(0);

@@ -491,6 +491,17 @@ Writable _destroy () [fresh; filled; ended; destroyed; {}; Object.create(prototy
 Writable _destroy ("a", 1) [fresh; filled; ended; destroyed; {}; Object.create(prototype)]: throws TypeError
 Writable _destroy (bytes, callback) [fresh; filled; ended; destroyed; {}; Object.create(prototype)]: undefined
 Writable _destroy (callback) [fresh; filled; ended; destroyed; {}; Object.create(prototype)]: throws TypeError
+Writable [kWriteOperation] () [fresh; filled; {}; Object.create(prototype)]: throws TypeError | _writableState
+Writable [kWriteOperation] () [ended; destroyed]: false | _writableState, _readableState, _writableState
+Writable [kWriteOperation] ("a", 1) [fresh; filled]: true | _writableState, _write | throws TypeError
+Writable [kWriteOperation] ("a", 1) [ended; destroyed]: throws TypeError ERR_INVALID_ARG_TYPE | _writableState
+Writable [kWriteOperation] ("a", 1) [{}; Object.create(prototype)]: throws TypeError | _writableState
+Writable [kWriteOperation] (bytes, callback) [fresh; filled]: true | _writableState, _write
+Writable [kWriteOperation] (bytes, callback) [ended; destroyed]: false | _writableState, _readableState, _writableState
+Writable [kWriteOperation] (bytes, callback) [{}; Object.create(prototype)]: throws TypeError | _writableState
+Writable [kWriteOperation] (callback) [fresh; filled]: true | _writableState, _write
+Writable [kWriteOperation] (callback) [ended; destroyed]: false | _writableState, _readableState, _writableState
+Writable [kWriteOperation] (callback) [{}; Object.create(prototype)]: throws TypeError | _writableState
 Writable [nodejs.rejection] () [fresh; filled]: undefined | destroy, _writableState, _readableState, _writableState, _destroy, _readableState, _writableState | later _readableState, _writableState, emit, _events
 Writable [nodejs.rejection] () [ended; destroyed]: undefined | destroy, _writableState, _readableState, _writableState
 Writable [nodejs.rejection] () [{}]: throws TypeError | destroy

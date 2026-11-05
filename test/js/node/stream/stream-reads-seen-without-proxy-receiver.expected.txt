@@ -964,6 +964,32 @@ Writable _destroy (bytes, callback) [fresh below a Proxy; fresh own accessors; f
 Writable _destroy (bytes, callback) [fresh accessors on a prototype]: undefined | later _writableState, _events
 Writable _destroy (callback) [fresh below a Proxy; fresh own accessors; filled below a Proxy; filled own accessors; filled accessors on a prototype; ended below a Proxy; ended own accessors; ended accessors on a prototype; destroyed below a Proxy; destroyed own accessors; destroyed accessors on a prototype]: throws TypeError
 Writable _destroy (callback) [fresh accessors on a prototype]: throws TypeError | later _writableState, _events
+Writable [kWriteOperation] () [fresh below a Proxy; fresh own accessors; filled below a Proxy; filled own accessors]: throws TypeError | _writableState
+Writable [kWriteOperation] () [fresh accessors on a prototype]: throws TypeError | later _writableState, _events
+Writable [kWriteOperation] () [filled accessors on a prototype]: throws TypeError
+Writable [kWriteOperation] () [ended below a Proxy; destroyed below a Proxy]: false | _writableState, _readableState, _writableState
+Writable [kWriteOperation] () [ended own accessors; destroyed own accessors]: false | _writableState, _writableState
+Writable [kWriteOperation] () [ended accessors on a prototype; destroyed accessors on a prototype]: false | _readableState
+Writable [kWriteOperation] ("a", 1) [fresh below a Proxy; filled below a Proxy]: true | _writableState, _write | throws TypeError
+Writable [kWriteOperation] ("a", 1) [fresh own accessors; filled own accessors]: true | _writableState, _write, _writableState | throws TypeError
+Writable [kWriteOperation] ("a", 1) [fresh accessors on a prototype]: true | later _writableState, _events | throws TypeError
+Writable [kWriteOperation] ("a", 1) [filled accessors on a prototype]: true | throws TypeError
+Writable [kWriteOperation] ("a", 1) [ended below a Proxy; ended own accessors; destroyed below a Proxy; destroyed own accessors]: throws TypeError ERR_INVALID_ARG_TYPE | _writableState
+Writable [kWriteOperation] ("a", 1) [ended accessors on a prototype; destroyed accessors on a prototype]: throws TypeError ERR_INVALID_ARG_TYPE
+Writable [kWriteOperation] (bytes, callback) [fresh below a Proxy; filled below a Proxy]: true | _writableState, _write
+Writable [kWriteOperation] (bytes, callback) [fresh own accessors; filled own accessors]: true | _writableState, _write, _writableState
+Writable [kWriteOperation] (bytes, callback) [fresh accessors on a prototype]: true | later _writableState, _events
+Writable [kWriteOperation] (bytes, callback) [filled accessors on a prototype]: true
+Writable [kWriteOperation] (bytes, callback) [ended below a Proxy; destroyed below a Proxy]: false | _writableState, _readableState, _writableState
+Writable [kWriteOperation] (bytes, callback) [ended own accessors; destroyed own accessors]: false | _writableState, _writableState
+Writable [kWriteOperation] (bytes, callback) [ended accessors on a prototype; destroyed accessors on a prototype]: false | _readableState
+Writable [kWriteOperation] (callback) [fresh below a Proxy; filled below a Proxy]: true | _writableState, _write
+Writable [kWriteOperation] (callback) [fresh own accessors; filled own accessors]: true | _writableState, _write, _writableState
+Writable [kWriteOperation] (callback) [fresh accessors on a prototype]: true | later _writableState, _events
+Writable [kWriteOperation] (callback) [filled accessors on a prototype]: true
+Writable [kWriteOperation] (callback) [ended below a Proxy; destroyed below a Proxy]: false | _writableState, _readableState, _writableState
+Writable [kWriteOperation] (callback) [ended own accessors; destroyed own accessors]: false | _writableState, _writableState
+Writable [kWriteOperation] (callback) [ended accessors on a prototype; destroyed accessors on a prototype]: false | _readableState
 Writable [nodejs.rejection] () [fresh below a Proxy; filled below a Proxy]: undefined | destroy, _writableState, _readableState, _writableState, _destroy, _readableState, _writableState | later _readableState, _writableState, emit, _events
 Writable [nodejs.rejection] () [fresh own accessors; filled own accessors]: undefined | _writableState, _writableState, _writableState | later _writableState, _events
 Writable [nodejs.rejection] () [fresh accessors on a prototype; filled accessors on a prototype]: undefined | _readableState, _readableState | later _readableState

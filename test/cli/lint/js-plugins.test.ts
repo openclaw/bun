@@ -2502,6 +2502,7 @@ export default {
       const helpers = async (count: number, variables?: Record<string, string>) => {
         // Behave as on a machine with 8 cores.
         const { raw } = await lint(files(count), ["--threads", "8", "-f", "json"], [], {
+          UV_THREADPOOL_SIZE: "8",
           GOMAXPROCS: "8",
           ...variables,
         });

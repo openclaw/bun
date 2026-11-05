@@ -643,7 +643,11 @@ test(
   },
   {
     onConstructorFailure: error => {
-      expect(error.message).toContain("Failed to start server");
+      if (process.platform === "linux") {
+        expect(error).toMatchObject({ code: "EADDRNOTAVAIL", syscall: "listen" });
+      } else {
+        expect(error.message).toContain("Failed to start server");
+      }
     },
   },
 );

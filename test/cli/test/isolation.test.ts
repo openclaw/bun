@@ -254,6 +254,7 @@ describe.concurrent("bun test --isolate", () => {
     if (mode.startsWith("--parallel")) expect(stdout).toContain("PARALLEL");
     expect(stderr).toContain("module load sentinel");
     expect(stderr).toContain("failed-load teardown sentinel");
+    expect(stderr).toContain("a beforeEach/afterEach hook timed out for this test.");
     const events = fs
       .readFileSync(join(String(dir), "events.txt"), "utf8")
       .trim()
@@ -263,7 +264,9 @@ describe.concurrent("bun test --isolate", () => {
     expect(events.indexOf("beforeAll owner")).toBeLessThan(events.indexOf("close owner"));
     expect(events.filter(event => event === "observer")).toHaveLength(1);
     expect(events.filter(event => event === "afterAll observer")).toHaveLength(1);
-    expect(events).not.toContain("afterAll owner");
+    // Failed loads still run preload hooks; resolving one during close must not run them again.
+    expect(events.filter(event => event === "afterAll owner")).toHaveLength(1);
+    expect(events.indexOf("afterAll owner")).toBeLessThan(events.indexOf("close owner"));
     expect(events).not.toContain("unexpected test");
     const report = await require("xml2js").parseStringPromise(fs.readFileSync(join(String(dir), "out.xml"), "utf8"), {
       strict: true,
@@ -271,10 +274,30 @@ describe.concurrent("bun test --isolate", () => {
     const ownerSuite = report.testsuites.testsuite.find(suite => suite.$.file === "a-owner.test.ts");
     const observerSuite = report.testsuites.testsuite.find(suite => suite.$.file === "b-observer.test.ts");
     expect(observerSuite.$.failures).toBe("0");
-    expect(ownerSuite.$.failures).toBe("1");
-    expect(ownerSuite.testcase).toHaveLength(1);
-    expect(ownerSuite.testcase[0].$).toMatchObject({ name: "(unhandled error)", file: "a-owner.test.ts" });
-    expect(ownerSuite.testcase[0].failure[0].$.message).toBe("failed-load teardown sentinel");
+    expect(ownerSuite.$.failures).toBe("3");
+    expect(
+      ownerSuite.testcase.map(testcase => ({
+        name: testcase.$.name,
+        file: testcase.$.file,
+        failure: testcase.failure[0].$,
+      })),
+    ).toEqual([
+      {
+        name: "(unhandled error)",
+        file: "a-owner.test.ts",
+        failure: { type: "Error", message: "module load sentinel" },
+      },
+      {
+        name: "(unnamed)",
+        file: "a-owner.test.ts",
+        failure: { type: "TimeoutError", message: "test timed out" },
+      },
+      {
+        name: "(unhandled error)",
+        file: "a-owner.test.ts",
+        failure: { type: "Error", message: "failed-load teardown sentinel" },
+      },
+    ]);
   });
 
   test.each(["--isolate", "--parallel=2"])("%s releases each file's stdio polls and preserves output", async mode => {

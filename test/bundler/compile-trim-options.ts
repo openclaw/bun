@@ -7,10 +7,10 @@ import { inTurn as slot } from "../aot/harness/shared-builds";
 export const source = readFileSync(join(import.meta.dir, "../../src/runtime/cli/Arguments.rs"), "utf8");
 
 export function specsIn(table: string): string[] {
-  const body = new RegExp(`const ${table}: &\\[ParamType\\] =([^]*?)^[)\\]]*;$`, "m").exec(source)?.[1];
+  const body = new RegExp(`const ${table}: (?:&\\[ParamType\\]|ParamType) =([^]*?);$`, "m").exec(source)?.[1];
   if (body === undefined) throw new Error(`src/runtime/cli/Arguments.rs has no table ${table}`);
   const specs: string[] = [];
-  const parts = /parse_param!\(\s*"((?:[^"\\]|\\.)*)"|\b([A-Z_]+_PARAMS_?)\b|(maybe_debug_params)!/g;
+  const parts = /parse_param!\(\s*"((?:[^"\\]|\\.)*)"|\b([A-Z_]+_PARAMS?_?)\b|(maybe_debug_params)!/g;
   for (const [, spec, otherTable, debug] of body.replace(/^\s*\/\/.*$/gm, "").matchAll(parts)) {
     if (spec !== undefined) specs.push(spec);
     else specs.push(...specsIn(debug ? "DEBUG_PARAMS" : otherTable));
@@ -41,6 +41,8 @@ export const obeyed: Record<string, string[]> = {
   ...themselves(
     "--trace-warnings --trace-deprecation --pending-deprecation --zero-fill-buffers --use-system-ca --use-openssl-ca --use-bundled-ca",
   ),
+  ...themselves("--no-use-system-ca --no-use-openssl-ca --no-use-bundled-ca"),
+  "--max-old-space-size": ["--max-old-space-size=256"],
   // Native code carries out the first, and nobody does anything for the second.
   "--stack-trace-limit": ["--stack-trace-limit=3", "--stack-trace-limit 3"],
   ...themselves("--trace-env-native-stack"),
@@ -155,6 +157,7 @@ export const loadCode: Record<string, string[]> = {
   "-e": ["-e=1", "-e 1"],
   "--print": ["--print=1"],
   "-p": ["-p=1", "-p 1"],
+  "--input-type": ["--input-type=module", "--input-type=commonjs"],
 };
 export const obeyedWhereTheProgramUsesTheFeature: Record<string, { forms: string[]; program: string }> = {
   "--fetch-preconnect": {
