@@ -231,7 +231,10 @@ extern "C" fn Bun__fetchBuiltinModule(
     // So is the module that stands for a compiled entry point.
     let is_compiled_with_program = match specifier.to_utf8().slice() {
         b"bun:wrap" => true,
-        MAIN_FILE_NAME => (unsafe { (*jsc_vm).main_entry_point }) == MainEntryPoint::Compiled,
+        MAIN_FILE_NAME => {
+            // SAFETY: global_object owns this live VM for the synchronous fetch.
+            (unsafe { (*jsc_vm).main_entry_point }) == MainEntryPoint::Compiled
+        }
         _ => false,
     };
     if is_compiled_with_program {

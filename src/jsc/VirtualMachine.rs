@@ -6430,7 +6430,7 @@ impl VirtualMachine {
 
         // (One letter is a Windows drive.)
         if global.has_plugins()
-            && ModuleLoader::on_load_namespace_and_path(&specifier_utf8)
+            && ModuleLoader::on_load_namespace_and_path(specifier_utf8)
                 .is_some_and(|(namespace, _)| namespace.len() > 1)
             && global.has_on_load(specifier_utf8)?
         {
