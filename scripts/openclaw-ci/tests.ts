@@ -155,16 +155,26 @@ export function selectTests(changed: string[], tracked: string[], nightly: boole
     const dir = dirname(path);
     if (!mainsByDirectory.has(dir)) mainsByDirectory.set(dir, path);
     else {
-      const main = readdirSync(dir, { withFileTypes: true }).find(
-        entry => entry.isFile() && /^main\.[^.]+$/.test(entry.name) && isParallelProgram(`${dir}/${entry.name}`),
-      );
+      // Node's Unix scandir sorts names; Bun's native directory order can differ.
+      const main = readdirSync(dir, { withFileTypes: true })
+        .filter(
+          entry => entry.isFile() && /^main\.[^.]+$/.test(entry.name) && isParallelProgram(`${dir}/${entry.name}`),
+        )
+        .map(entry => entry.name)
+        .sort()[0];
       if (!main) throw new Error(`No runnable AOT main in ${dir}`);
-      mainsByDirectory.set(dir, `${dir}/${main.name}`);
+      mainsByDirectory.set(dir, `${dir}/${main}`);
     }
   }
-  const parallelMains = [...mainsByDirectory.values()].sort((a, b) => a.length - b.length);
+  const parallelMain = (path: string) => {
+    let main: string | undefined;
+    for (let dir = dirname(path); dir.startsWith("test/aot/parallel"); dir = dirname(dir)) {
+      main = mainsByDirectory.get(dir) ?? main;
+    }
+    return main;
+  };
   const parallelOwners = parallelFiles.filter(path => {
-    const main = parallelMains.find(main => path.startsWith(dirname(main) + "/"));
+    const main = parallelMain(path);
     return !main || main === path;
   });
   for (const path of changed) {
@@ -173,7 +183,7 @@ export function selectTests(changed: string[], tracked: string[], nightly: boole
     } else if (isEngineIr(path)) {
       if (available.has(path)) selected.add(path);
     } else if (path.startsWith("test/aot/parallel/")) {
-      const main = parallelMains.find(main => path.startsWith(dirname(main) + "/"));
+      const main = parallelMain(path);
       if (main) selected.add(main);
       else if (parallelOwners.includes(path)) selected.add(path);
       else {

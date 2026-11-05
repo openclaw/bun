@@ -206,10 +206,12 @@ test("shared AOT inputs retain the Node runner's first sibling main exactly once
   );
   expect(names).toHaveLength(2);
   const mains = names.map(name => `${dir}/${name}`);
-  const inventory = [...smoke, ...mains];
   const expected = [...smoke, mains[0]!].sort();
-  expect(selectTests([parallelConfig], inventory, false)).toEqual(expected);
-  expect(selectTests([mains[1]!], inventory, false)).toEqual(expected);
+  for (const entries of [mains, [...mains].reverse()]) {
+    const inventory = [...smoke, ...entries];
+    expect(selectTests([parallelConfig], inventory, false)).toEqual(expected);
+    expect(selectTests([mains[1]!], inventory, false)).toEqual(expected);
+  }
 });
 
 test("JS and native Node modules select their adjacent tests", () => {
