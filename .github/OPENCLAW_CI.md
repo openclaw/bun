@@ -37,8 +37,12 @@ history rule and separate maintainer qualification of upstream changes.
   runtime identity, selection and output, including failures.
 - AOT parallel programs run through the upstream runner's AOT driver. Changes
   inside a multi-file program select its containing `main.*`; standalone
-  programs select themselves. These fixtures do not select unrelated tests at
-  the AOT root. Trim-specific tests still require their trim-enabled build.
+  programs select themselves. Shared declarations, configuration, and hidden
+  package fixtures select runnable programs in the nearest containing subtree.
+  Discovery follows the upstream runner's hidden-path and multi-file rules;
+  the parallel root configuration therefore selects every parallel program.
+  These fixtures do not select unrelated tests at the AOT root. Trim-specific
+  tests still require their trim-enabled build.
 - For `src/js/node/<module>` and `src/runtime/node/<module>`, include the
   corresponding `test/js/node/<module>/` tests.
 - For shared native code, match child_process/subprocess/spawn to child_process;

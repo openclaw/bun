@@ -1,5 +1,5 @@
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, statfsSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statfsSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, resolve } from "node:path";
 
@@ -143,9 +143,30 @@ export function selectTests(changed: string[], tracked: string[], nightly: boole
     ...(nightly ? broader : []),
   ]);
   const tests = tracked.filter(isTest);
-  const parallelMains = tracked
-    .filter(path => isParallelProgram(path) && /^main\.[^.]+$/.test(basename(path)))
-    .sort((a, b) => a.length - b.length);
+  // Match the upstream runner's hidden-path and multi-file program discovery.
+  const parallelFiles = tracked.filter(
+    path =>
+      isParallelProgram(path) &&
+      !/node_modules|node.js/.test(dirname(path)) &&
+      !path.split("/").some(part => part.startsWith(".")),
+  );
+  const mainsByDirectory = new Map<string, string>();
+  for (const path of parallelFiles.filter(path => /^main\.[^.]+$/.test(basename(path)))) {
+    const dir = dirname(path);
+    if (!mainsByDirectory.has(dir)) mainsByDirectory.set(dir, path);
+    else {
+      const main = readdirSync(dir, { withFileTypes: true }).find(
+        entry => entry.isFile() && /^main\.[^.]+$/.test(entry.name) && isParallelProgram(`${dir}/${entry.name}`),
+      );
+      if (!main) throw new Error(`No runnable AOT main in ${dir}`);
+      mainsByDirectory.set(dir, `${dir}/${main.name}`);
+    }
+  }
+  const parallelMains = [...mainsByDirectory.values()].sort((a, b) => a.length - b.length);
+  const parallelOwners = parallelFiles.filter(path => {
+    const main = parallelMains.find(main => path.startsWith(dirname(main) + "/"));
+    return !main || main === path;
+  });
   for (const path of changed) {
     if (path === "scripts/build/deps/webkit.ts" || path === "scripts/build/deps/webkit-artifacts.json") {
       [...smoke, ...broader, ...webkitSensitive].forEach(test => selected.add(test));
@@ -154,7 +175,16 @@ export function selectTests(changed: string[], tracked: string[], nightly: boole
     } else if (path.startsWith("test/aot/parallel/")) {
       const main = parallelMains.find(main => path.startsWith(dirname(main) + "/"));
       if (main) selected.add(main);
-      else if (isParallelProgram(path) && available.has(path)) selected.add(path);
+      else if (parallelOwners.includes(path)) selected.add(path);
+      else {
+        for (let dir = dirname(path); dir.startsWith("test/aot/parallel"); dir = dirname(dir)) {
+          const owners = parallelOwners.filter(owner => owner.startsWith(dir + "/"));
+          if (owners.length) {
+            owners.forEach(owner => selected.add(owner));
+            break;
+          }
+        }
+      }
     } else if (isTest(path)) {
       if (available.has(path)) selected.add(path);
     } else if (path.startsWith("test/")) {
