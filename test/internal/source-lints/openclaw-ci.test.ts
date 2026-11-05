@@ -171,6 +171,26 @@ test("an expectation-skipped AOT program does not prove selected coverage", () =
   expect(() => assertSelectedTestResults([testPath], [{ testPath, ok: true, status: "pass" }])).not.toThrow();
 });
 
+const wasmOwners = ["imports-and-tables", "bounds-checked-memory", "many-memories", "partly-interpreted-module"].map(
+  name => `test/aot/parallel/webassembly/${name}/main.ts`,
+);
+const packageFixture =
+  "test/aot/parallel/workers/one-name-in-the-root-and-in-the-build-folder/node_modules/pkg/index.js";
+const packageOwner = "test/aot/parallel/workers/one-name-in-the-root-and-in-the-build-folder/app/main.ts";
+const sharedDeclaration = "test/aot/parallel/webassembly/wasm-files.d.ts";
+const parallelConfig = "test/aot/parallel/tsconfig.json";
+const standaloneProgram = "test/aot/parallel/closed-world/files-that-load-as-host-objects-by-name.cjs";
+const runnableOwners = [...wasmOwners, packageOwner, standaloneProgram];
+
+test.each([
+  [sharedDeclaration, wasmOwners],
+  [packageFixture, [packageOwner]],
+  [parallelConfig, runnableOwners],
+] as const)("AOT shared fixture selects runnable owners: %s", (path, owners) => {
+  const inventory = [...smoke, ...runnableOwners, sharedDeclaration, packageFixture, parallelConfig];
+  expect(selectTests([path], inventory, false)).toEqual([...smoke, ...owners].sort());
+});
+
 test("JS and native Node modules select their adjacent tests", () => {
   const adjacent = "test/js/node/dns/resolve.test.ts";
   for (const source of ["src/js/node/dns.ts", "src/runtime/node/dns/Resolver.rs"]) {
