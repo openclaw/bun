@@ -364,6 +364,7 @@ pub(crate) fn create_stdio(cx: &mut JsScope<'_>, fd_value: JsLocal<'_>) -> JsRes
     let vm = global.bun_vm();
     if vm.test_isolation_enabled {
         sink.flush_on_abort.set(true);
+        sink.abort_handle.set_only_waits_to_be_closed();
         // SAFETY: the started sink is heap-allocated and leaves its context in on_close.
         unsafe { bun_jsc::AbortHandle::arm_owner(sink.as_ptr(), vm.root_context()) };
     }

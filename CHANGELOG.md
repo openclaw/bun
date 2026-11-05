@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Let isolated test files finish loading after accessing idle stdout or stderr, while retaining stdio cleanup.
+
 - Run native CI with trim support and the generators from its exact engine build.
 
 - Keep `require.main` live across test files, cache eviction, and changes to `Bun.main`.
