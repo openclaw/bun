@@ -455,7 +455,7 @@ fn parse_latin1<'a, const WINDOWS: bool, const FLAT_ONLY: bool>(
 #[inline(never)]
 fn parsed_utf16_to_js<'a>(
     heap: &JsHeap<'a>,
-    parsed: PathParsed<'_, u16>,
+    parsed: &PathParsed<'_, u16>,
 ) -> bindgen::Result<'a, ParsedPath<'a>> {
     Ok(ParsedPath {
         root: heap.create_utf16_string_from_vec(parsed.root.to_vec())?,
@@ -470,7 +470,7 @@ fn parsed_utf16_to_js<'a>(
 #[inline(never)]
 fn parsed_utf8_to_js<'a>(
     heap: &JsHeap<'a>,
-    parsed: PathParsed<'_, u8>,
+    parsed: &PathParsed<'_, u8>,
 ) -> bindgen::Result<'a, ParsedPath<'a>> {
     Ok(ParsedPath {
         root: heap.create_utf8_string(parsed.root)?,
@@ -494,7 +494,7 @@ fn parse_utf8<'a, const WINDOWS: bool>(
         } else {
             parse_posix_t(path.utf16())
         };
-        return parsed_utf16_to_js(heap, parsed);
+        return parsed_utf16_to_js(heap, &parsed);
     }
     let utf8 = path.to_utf8();
     let parsed = if WINDOWS {
@@ -502,7 +502,7 @@ fn parse_utf8<'a, const WINDOWS: bool>(
     } else {
         parse_posix_t(utf8.slice())
     };
-    parsed_utf8_to_js(heap, parsed)
+    parsed_utf8_to_js(heap, &parsed)
 }
 by_form_of_operands!(parse, parse_other, parse_latin1, parse_utf8, <>(path: Text<'a>) -> ParsedPath<'a>);
 
