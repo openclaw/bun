@@ -434,15 +434,16 @@ static OnLoadResult handleOnLoadResult(Zig::GlobalObject* globalObject, JSC::JSV
 }
 
 // Returns empty when require() should return the module namespace object instead.
-static JSValue commonJSExportsOfObjectModule(Zig::GlobalObject* globalObject, JSC::JSObject* object, bool wasModuleMock)
+static JSValue commonJSExportsOfObjectModule(Zig::GlobalObject* globalObject, JSC::JSObject* object, JSC::JSObject* moduleMock)
 {
     auto& vm = JSC::getVM(globalObject);
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    if (wasModuleMock) {
+    if (moduleMock) {
         if (auto* mockedCommonJSModule = dynamicDowncast<JSCommonJSModule>(object))
             RELEASE_AND_RETURN(scope, mockedCommonJSModule->exportsObject());
-        return object;
+        if (Bun::isJestModuleMock(moduleMock))
+            return object;
     }
 
     auto esModuleValue = object->getIfPropertyExists(globalObject, vm.propertyNames->__esModule);
@@ -453,7 +454,7 @@ static JSValue commonJSExportsOfObjectModule(Zig::GlobalObject* globalObject, JS
         if (defaultValue && !defaultValue.isUndefined())
             return defaultValue;
     }
-    return JSValue();
+    return moduleMock ? object : JSValue();
 }
 
 template<bool allowPromise>
@@ -540,7 +541,7 @@ static JSValue handleVirtualModuleResult(
         JSC::JSObject* object = onLoadResult.value.object.getObject();
         JSC::JSObject* exportsObject = wasModuleMock ? Bun::resultOfModuleMock(object) : object;
         if (commonJSModule && exportsObject) {
-            JSValue exports = commonJSExportsOfObjectModule(globalObject, exportsObject, wasModuleMock);
+            JSValue exports = commonJSExportsOfObjectModule(globalObject, exportsObject, wasModuleMock ? object : nullptr);
             if (scope.exception()) [[unlikely]] {
                 return rejectOrResolve({});
             }
@@ -687,7 +688,7 @@ BuiltinModule fetchBuiltinModuleWithoutResolution(
                 JSC::throwException(globalObject, scope, createAsyncModuleRequiredError(globalObject, specifier->toWTFString(BunString::ZeroCopy)));
                 return {};
             }
-            JSValue exports = commonJSExportsOfObjectModule(globalObject, result, true);
+            JSValue exports = commonJSExportsOfObjectModule(globalObject, result, moduleMock.getObject());
             RETURN_IF_EXCEPTION(scope, {});
             return { Kind::Exports, exports };
         }
