@@ -23,6 +23,11 @@ on:
       - ".github/actions/setup-bun/**"
       - ".github/workflows/openclaw-build-test.yml"
   workflow_dispatch:
+    inputs:
+      base_sha:
+        description: Ancestor commit for fork-delta selection; empty runs default coverage
+        type: string
+        required: false
   schedule:
     - cron: "23 7 * * *"
 
@@ -85,8 +90,8 @@ jobs:
             openclaw-native-x64-v1-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', 'bun.lock', 'test/bun.lock', 'rust-toolchain.toml', 'scripts/build/**', 'scripts/build.ts', '.github/workflows/openclaw-build-test.yml') }}-${{ steps.pins.outputs.tree }}-
       - name: Select tests
         env:
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha || inputs.base_sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || (inputs.base_sha && github.sha) }}
         run: bun scripts/openclaw-ci/tests.ts select
       - name: Install build dependencies
         run: bun install --frozen-lockfile
@@ -211,8 +216,8 @@ jobs:
             openclaw-native-darwin-arm64-v1-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', 'bun.lock', 'test/bun.lock', 'rust-toolchain.toml', 'scripts/build/**', 'scripts/build.ts', '.github/workflows/openclaw-build-test.yml') }}-${{ steps.pins.outputs.tree }}-
       - name: Select tests
         env:
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha || inputs.base_sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || (inputs.base_sha && github.sha) }}
         run: bun scripts/openclaw-ci/tests.ts select
       - name: Install build dependencies
         run: bun install --frozen-lockfile

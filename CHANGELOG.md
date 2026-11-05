@@ -6,7 +6,7 @@
 
 - Let isolated test files finish loading after accessing idle stdout or stderr, while retaining stdio cleanup.
 
-- Run native CI with trim support and the generators from its exact engine build.
+- Run native CI with trim support and the generators from its exact engine build, including full fork-delta selection against an explicit base for manual checks.
 
 - Keep `require.main` live across test files, cache eviction, and changes to `Bun.main`.
 
