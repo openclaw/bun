@@ -1184,6 +1184,7 @@ unsafe fn auto_tick(vm: *mut VirtualMachine) {
                 unsafe { (*vm).is_main_thread && bun_jsc::node_compile_cache::prepare_idle(&*vm) };
             loop_.tick_with_timeout(if have_timeout { Some(&timespec) } else { None }, now_ns);
             if observe_cache_idle {
+                // SAFETY: this thread's uSockets loop remains live through and after the poll.
                 let idle_ns = unsafe { bun_uws::us_loop_idle_ns(loop_) };
                 bun_jsc::node_compile_cache::on_idle(idle_ns);
             }
@@ -1322,6 +1323,7 @@ unsafe fn auto_tick_active(vm: *mut VirtualMachine) {
                 unsafe { (*vm).is_main_thread && bun_jsc::node_compile_cache::prepare_idle(&*vm) };
             loop_.tick_with_timeout(if have_timeout { Some(&timespec) } else { None }, now_ns);
             if observe_cache_idle {
+                // SAFETY: this thread's uSockets loop remains live through and after the poll.
                 let idle_ns = unsafe { bun_uws::us_loop_idle_ns(loop_) };
                 bun_jsc::node_compile_cache::on_idle(idle_ns);
             }

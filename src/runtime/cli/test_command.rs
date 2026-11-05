@@ -5446,6 +5446,7 @@ impl TestCommand {
                     // SAFETY: exit_file and the loop's local Rc releases precede
                     // dropping the old preload scopes those BunTests referenced.
                     unsafe { (*bun_test_root_ptr).reset_hook_scope_for_test_isolation(); }
+                    // SAFETY: the caller-owned VM remains live on this JS thread after the global swap.
                     crate::test_runner::Expect::reset_for_test_isolation(unsafe { &mut *vm_ptr }.global());
                 }
                 if Output::is_github_action()
