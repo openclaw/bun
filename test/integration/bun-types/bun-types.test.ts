@@ -51,7 +51,7 @@ let BASE_FIXTURE_DIR: string;
 let BUN_TYPES_BUILD_DIR: string;
 
 beforeAll(async () => {
-  TEMP_DIR = await mkdtemp(join(tmpdir(), "bun-types-test-"));
+  TEMP_DIR = await realpath(await mkdtemp(join(tmpdir(), "bun-types-test-")));
   BASE_FIXTURE_DIR = join(TEMP_DIR, "base-fixture");
   BUN_TYPES_BUILD_DIR = join(TEMP_DIR, "bun-types");
   const bunTypesBuildDir = BUN_TYPES_BUILD_DIR;
