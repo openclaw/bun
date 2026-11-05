@@ -164,6 +164,36 @@ test("compiled: a Worker starts from the source it names beside an entry point w
   const run = await spawned([executable], String(elsewhere), bunEnv);
   expect({ stdout: run.stdout.trim(), exitCode: run.exitCode }).toEqual({ stdout: "task.js", exitCode: 0 });
 });
+for (const entryNaming of [undefined, "packed/[dir]/[name].[ext]"]) {
+  test(`compiled: literal embedded paths use prepared entry names (${entryNaming ?? "default"})`, async () => {
+    const prefix = virtualRoot + (entryNaming ? "packed/" : "");
+    const facade = prefix + "chunks/facade.js";
+    const value = prefix + "chunks/value.js";
+    const missing = prefix + "chunks/missing.js";
+    using dir = tempDir("aot-entry-point-literals", {
+      "package.json": JSON.stringify({ type: "module" }),
+      "main.ts": `
+        console.log(import.meta.require(${JSON.stringify(facade)}).who);
+        console.log(require(${JSON.stringify(value)}).who);
+        console.log((await import(${JSON.stringify(value)})).who);
+        try { import.meta.require(${JSON.stringify(missing)}); }
+        catch (error) { console.log("missing", error instanceof Error && error.message.includes(${JSON.stringify(missing)})); }
+      `,
+      "chunks/value.ts": `export const who: string = "value";`,
+      "chunks/facade.js": `export { who } from "./value.ts"; import "./side-effect.js";`,
+      "chunks/side-effect.js": `import "./value.ts";`,
+    });
+    using elsewhere = tempDir("aot-entry-point-literals-elsewhere", {});
+    const flags = ["--aot", ...(entryNaming ? ["--entry-naming", entryNaming] : [])];
+    const executable = await build(String(dir), flags, ["main.ts", "chunks/facade.js", "chunks/value.ts"], "literal");
+    const run = await spawned([executable], String(elsewhere), bunEnv);
+    expect({ stdout: run.stdout.trim(), stderr: run.stderr, exitCode: run.exitCode }).toEqual({
+      stdout: "value\nvalue\nvalue\nmissing true",
+      stderr: "",
+      exitCode: 0,
+    });
+  });
+}
 
 test("compiled: a module shows the path of its source", async () => {
   using dir = tempDir("aot-entry-point-names-shown", files);

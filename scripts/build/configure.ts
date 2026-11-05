@@ -242,8 +242,13 @@ function emitGeneratorRule(
   writeIfChanged(configFile, JSON.stringify(input, null, 2) + "\n");
 
   const hostWin = cfg.host.os === "windows";
+  const regenerate = `${cfg.jsRuntime} ${quote(buildScript, hostWin)} --config-file=${quote(configFile, hostWin)}`;
+  // An external build directory may be inside a different Bun checkout.
+  const command = hostWin
+    ? `cmd /c "cd /d ${quote(cfg.cwd, hostWin)} && ${regenerate}"`
+    : `cd ${quote(cfg.cwd, hostWin)} && ${regenerate}`;
   n.rule("regen", {
-    command: `${cfg.jsRuntime} ${quote(buildScript, hostWin)} --config-file=$in`,
+    command: command.replaceAll("$", () => "$$"),
     description: "reconfigure",
     // generator = 1: exempt from `ninja -t clean`, triggers manifest restart
     // when the output (build.ninja) is rebuilt.

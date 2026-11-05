@@ -24,6 +24,8 @@ const CODE_GENERATION_FLAG: &[u8] = b"--disallow-code-generation-from-strings";
 pub(crate) const COMPILE_AOT_KEYS: &[&str] = &[
     "aot",
     "aotCheck",
+    "aotCountArrivals",
+    "aotCountBranches",
     "aotDisable",
     "aotExplain",
     "aotHeat",
@@ -284,6 +286,8 @@ fn write_spelling(option: OptionName, origin: RequestOrigin, out: &mut Vec<u8>) 
         (Name::Developer("disable"), BuildApi) => "compile.aotDisable",
         (Name::Developer("heat"), BuildApi) => "compile.aotHeat",
         (Name::Developer("testing"), BuildApi) => "compile.aotTesting",
+        (Name::Developer("count-branches"), BuildApi) => "compile.aotCountBranches",
+        (Name::Developer("count-arrivals"), BuildApi) => "compile.aotCountArrivals",
         (Name::Developer(key), _) => developer_flag_name(key),
     };
     out.extend_from_slice(spelling.as_bytes());

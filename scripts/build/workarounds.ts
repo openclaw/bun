@@ -31,7 +31,7 @@
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Config } from "./config.ts";
+import { linksWithLld, type Config } from "./config.ts";
 import { BuildError } from "./error.ts";
 import { satisfiesRange, toolchainOverride } from "./tools.ts";
 
@@ -71,9 +71,9 @@ export const workarounds: Workaround[] = [
       "https://github.com/llvm/llvm-project/blob/main/lld/MachO/Driver.cpp (OPT_stack_size in unimplemented warnings)",
     description:
       "ld64.lld parses `-stack_size` but doesn't implement it (\"is not yet implemented. Stay " +
-      'tuned..."), so darwin cross links keep the 8 MB default main-thread stack instead of the ' +
+      'tuned..."), so ld64.lld links keep the 8 MB default main-thread stack instead of the ' +
       "18 MB JSC needs. shims/macho-postlink.c patches LC_MAIN.stacksize after the link instead.",
-    applies: cfg => cfg.darwin && cfg.crossTarget !== undefined,
+    applies: cfg => cfg.darwin && linksWithLld(cfg),
     expectedToBeFixed: cfg => {
       // Not implemented as of LLVM 23.1.1, nor on llvm main in 2026-09:
       // lld/MachO/Options.td still marks stack_size `HelpHidden`, which

@@ -51,3 +51,38 @@ test("single-letter plugin namespace does not capture Windows drive paths", asyn
   expect(exitCode).toBe(0);
   void stderr;
 });
+
+test("onResolve accepts extensionless files and package subpaths", async () => {
+  using dir = tempDir("plugin-extensionless-resolve", {
+    "real.cjs": `exports.value = 42;`,
+    "dependency.mjs": `export { value } from "uninstalled-package/sdk";`,
+    "entry.mjs": String.raw`
+      import { join } from "node:path";
+      const target = join(import.meta.dir, "real.cjs");
+      Bun.plugin({
+        name: "extensionless-alias",
+        setup(build) {
+          build.onResolve({ filter: /^(extensionless|uninstalled-package\/sdk)$/ }, () => ({ path: target }));
+          build.onResolve({ filter: /^with-extension\.js$/ }, () => ({ path: target, namespace: "file" }));
+          build.onResolve({ filter: /^value$/, namespace: "alias" }, args => ({ path: args.path, namespace: "virtual" }));
+          build.onLoad({ filter: /.*/, namespace: "virtual" }, () => ({ exports: { value: 43 }, loader: "object" }));
+        },
+      });
+      console.log(
+        (await import("extensionless")).value,
+        (await import("./dependency.mjs")).value,
+        (await import("with-extension.js")).value,
+        (await import("alias:value")).value,
+      );
+    `,
+  });
+  await using proc = Bun.spawn({
+    cmd: [bunExe(), "--no-install", "entry.mjs"],
+    env: bunEnv,
+    cwd: String(dir),
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect({ stdout, stderr }).toEqual({ stdout: "42 42 42 43\n", stderr: "" });
+  expect(exitCode).toBe(0);
+});

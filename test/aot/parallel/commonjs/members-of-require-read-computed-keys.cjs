@@ -11,3 +11,13 @@ console.log(require[pick("resolve", "main")] === module, require[pick("resolve",
 const listed = [];
 for (const key of ["resolve", "cache", "extensions", "main"]) listed.push(typeof require[key]);
 console.log(listed.join());
+
+const { createRequire } = require("node:module");
+const localRequire = createRequire(__filename);
+const requirePrototype = Object.getPrototypeOf(require);
+console.log(
+  requirePrototype === Object.getPrototypeOf(localRequire),
+  Object.getPrototypeOf(requirePrototype) === Function.prototype,
+  localRequire.cache === require.cache,
+  typeof requirePrototype.resolve,
+);

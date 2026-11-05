@@ -5763,7 +5763,7 @@ impl VirtualMachine {
         mode: ResolveMode,
         same_is_no_answer: bool,
     ) -> JsResult<Option<Result<bun_core::String, JSValue>>> {
-        let answer = match run_on_resolve(global, specifier, source)? {
+        let answer = match run_on_resolve(global, specifier, source, mode)? {
             None => return Ok(None),
             Some(Err(error)) => return Ok(Some(Err(error))),
             Some(Ok(answer)) => answer,
@@ -5783,7 +5783,7 @@ impl VirtualMachine {
         drop(answer_utf8);
         let is_own = is_bare
             && (answer.eql(specifier)
-                || match run_on_resolve(global, &answer, source)? {
+                || match run_on_resolve(global, &answer, source, mode)? {
                     None => false,
                     Some(Ok(_)) => true,
                     Some(Err(error)) => return Ok(Some(Err(error))),
@@ -8319,6 +8319,7 @@ fn run_on_resolve(
     global: &JSGlobalObject,
     specifier: &bun_core::String,
     importer: &bun_core::String,
+    mode: ResolveMode,
 ) -> JsResult<Option<Result<bun_core::String, JSValue>>> {
     let (in_file_namespace, in_another_namespace) = global.has_on_resolve();
     if !in_file_namespace && !in_another_namespace {
@@ -8354,6 +8355,7 @@ fn run_on_resolve(
             &bun_core::StringView::from_bytes(namespace),
             &bun_core::StringView::borrow_utf8(path),
             &importer,
+            &bun_core::StringView::from_bytes(mode.import_kind().label()),
         )?;
     }
     if answer.is_none() && asks_file_namespace {
@@ -8365,6 +8367,7 @@ fn run_on_resolve(
                 &specifier
             }),
             &importer,
+            &bun_core::StringView::from_bytes(mode.import_kind().label()),
         )?;
     }
     let Some(on_resolve_plugin) = answer else {

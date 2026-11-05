@@ -156,7 +156,7 @@ pub mod parent_death_watchdog {
     /// Job Object half already covers descendants.
     unsafe fn arm_parent_watch() {
         const ERROR_INVALID_PARAMETER: u32 = 87;
-        let ppid = getppid();
+        let ppid = parent_pid();
         if ppid == 0 {
             return;
         }
@@ -207,7 +207,7 @@ pub mod parent_death_watchdog {
     /// `InheritedFromUniqueProcessId` via direct ntdll call. Not
     /// `uv_os_getppid`: libuv loads `NtQueryInformationProcess` lazily in
     /// `uv__winapi_init`, and `enable()` runs from `main()` before that.
-    fn getppid() -> u32 {
+    pub fn parent_pid() -> u32 {
         // SAFETY: out-param is a valid `PROCESS_BASIC_INFORMATION`; the pseudo
         // handle needs no access rights.
         unsafe {

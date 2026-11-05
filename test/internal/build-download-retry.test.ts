@@ -13,15 +13,165 @@
  * in milliseconds; the schedule's real timing is asserted separately.
  */
 import { expect, spyOn, test } from "bun:test";
-import { tempDir } from "harness";
-import { existsSync, readFileSync } from "node:fs";
+import { bunEnv, bunExe, isWindows, tempDir } from "harness";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer, type AddressInfo } from "node:net";
 import { join } from "node:path";
 
 import { downloadRetry, downloadWithRetry, type RetryPolicy } from "../../scripts/build/download.ts";
 import { BuildError, describeError } from "../../scripts/build/error.ts";
+import type { Config } from "../../scripts/build/config.ts";
+import { Ninja } from "../../scripts/build/ninja.ts";
+import { quoteArgs } from "../../scripts/build/shell.ts";
+import { registerDepRules, resolveDep, type Dependency } from "../../scripts/build/source.ts";
 
 const BODY = "tarball bytes";
+
+test.skipIf(isWindows || Bun.which("ninja") === null)(
+  "dependency rules preserve positional arguments through the shell",
+  () => {
+    using dir = tempDir("build-fetch-argv", {
+      "runtime.ts": `
+      const args = process.argv.slice(2);
+      if (args[0].endsWith("/fetch-cli.ts")) {
+        console.log("ARGV_JSON=" + JSON.stringify({args: args.slice(1), cwd: process.cwd()}));
+      } else {
+        const child = Bun.spawnSync([process.execPath, ...args], {stdout: "inherit", stderr: "inherit"});
+        process.exit(child.exitCode);
+      }
+    `,
+      "cargo.ts": `console.log("ARGV_JSON=" + JSON.stringify({args: process.argv.slice(2), cwd: process.cwd()}));`,
+      "codegen.ts": `
+      const args = process.argv.slice(2);
+      await Bun.write(args[1], await Bun.file(args[0]).text());
+      console.log("ARGV_JSON=" + JSON.stringify({args, cwd: process.cwd()}));
+    `,
+      "source 'quoted' $literal/manifest/Cargo.toml": "[package]\nname = 'fixture'\nversion = '0.0.0'\n",
+      "source 'quoted' $literal/input 'quoted' $literal.h": "generated header contents\n",
+    });
+    const root = String(dir);
+    const tricky = "space 'quoted' $(printf expanded) ; &";
+    const cargo = join(root, "cargo 'quoted' ; &");
+    writeFileSync(cargo, `#!/bin/sh\nexec ${quoteArgs([bunExe(), join(root, "cargo.ts")], false)} "$@"\n`);
+    chmodSync(cargo, 0o755);
+    const cfg = {
+      cwd: root,
+      buildDir: root,
+      vendorDir: join(root, "vendor " + tricky),
+      cacheDir: join(root, "cache " + tricky),
+      localDeps: {},
+      host: { os: "linux", exeSuffix: "" },
+      jsRuntime: quoteArgs([bunExe(), join(root, "runtime.ts")], false),
+      hostCc: cargo,
+      cargo,
+      libPrefix: "lib",
+      libSuffix: ".a",
+    } as Config;
+    const patchPaths = ["patch " + tricky, "second patch"];
+    const prebuiltDest = join(root, "prebuilt " + tricky);
+    const url = "https://example.invalid/archive?first=1&second=$literal";
+    const identity = "identity 'quoted' $literal";
+    const removals = ["include/with space", "remove 'quoted' $literal"];
+    const manifest = join(root, "source 'quoted' $literal", "manifest");
+    const toolDir = join(root, "deps", "tinycc");
+    mkdirSync(toolDir, { recursive: true });
+    writeFileSync(
+      join(toolDir, "codegen-tool"),
+      `#!/bin/sh\nexec ${quoteArgs([bunExe(), join(root, "codegen.ts")], false)} "$@"\n`,
+    );
+    chmodSync(join(toolDir, "codegen-tool"), 0o755);
+    const generatedHeader = join(toolDir, "output 'quoted' $literal.h");
+    const cases: { dep: Dependency; target: string; args: string[]; cwd: string; finalOnly?: boolean }[] = [
+      {
+        dep: {
+          name: "zstd",
+          source: () => ({ kind: "github-archive", repo: "owner/repo", commit: "ref 'quoted' $literal" }),
+          patches: patchPaths,
+          build: () => ({ kind: "none" }),
+          provides: () => ({ libs: [], includes: [] }),
+        },
+        target: "clone-zstd",
+        args: [
+          "dep",
+          "zstd",
+          "owner/repo",
+          "ref 'quoted' $literal",
+          join(cfg.vendorDir, "zstd"),
+          join(cfg.cacheDir, "tarballs"),
+          ...patchPaths.map(p => join(root, p)),
+        ],
+        cwd: root,
+      },
+      {
+        dep: {
+          name: "WebKit",
+          source: () => ({ kind: "prebuilt", url, identity, destDir: prebuiltDest, rmAfterExtract: removals }),
+          build: () => ({ kind: "none" }),
+          provides: () => ({ libs: [], includes: [] }),
+        },
+        target: "WebKit",
+        args: ["prebuilt", "WebKit", url, prebuiltDest, identity, ...removals],
+        cwd: root,
+      },
+      {
+        dep: {
+          name: "rust-argon2",
+          source: () => ({ kind: "in-tree", path: "source 'quoted' $literal" }),
+          build: () => ({ kind: "cargo", manifestDir: "manifest", libName: "fixture" }),
+          provides: () => ({ libs: [], includes: [] }),
+        },
+        target: "rust-argon2",
+        args: ["build", "--locked", "--target-dir", join(root, "deps", "rust-argon2")],
+        cwd: manifest,
+      },
+      {
+        dep: {
+          name: "tinycc",
+          source: () => ({ kind: "in-tree", path: "source 'quoted' $literal" }),
+          build: () => ({
+            kind: "direct",
+            sources: [],
+            codegen: {
+              tool: "conftest.c",
+              args: ["input 'quoted' $literal.h", "$out"],
+              output: "output 'quoted' $literal.h",
+            },
+          }),
+          provides: () => ({ libs: [], includes: [] }),
+        },
+        target: generatedHeader,
+        args: [join(root, "source 'quoted' $literal", "input 'quoted' $literal.h"), generatedHeader],
+        cwd: join(root, "source 'quoted' $literal"),
+        // The fixture supplies the host tool; only execute its generated invocation.
+        finalOnly: true,
+      },
+    ];
+    for (const item of cases) {
+      const n = new Ninja({ buildDir: root });
+      registerDepRules(n, cfg);
+      resolveDep(n, cfg, item.dep, new Map());
+      const file = join(root, "build.ninja");
+      writeFileSync(file, n.toString());
+      const expanded = Bun.spawnSync(
+        [Bun.which("ninja")!, "-f", file, "-t", "commands", ...(item.finalOnly ? ["-s"] : []), item.target],
+        {
+          cwd: root,
+          env: bunEnv,
+        },
+      );
+      expect(expanded.stderr.toString()).toBe("");
+      expect(expanded.exitCode).toBe(0);
+      const executed = Bun.spawnSync(["/bin/sh", "-c", expanded.stdout.toString()], { cwd: root, env: bunEnv });
+      expect(executed.stderr.toString()).toBe("");
+      expect(JSON.parse(executed.stdout.toString().split("ARGV_JSON=")[1]!)).toEqual({
+        args: item.args,
+        cwd: item.cwd,
+      });
+      expect(executed.exitCode).toBe(0);
+    }
+    expect(readFileSync(generatedHeader, "utf8")).toBe("generated header contents\n");
+  },
+);
 
 /** The production attempt count with no waiting between attempts. */
 const noBackoff: RetryPolicy = { ...downloadRetry, backoffMs: () => 0 };

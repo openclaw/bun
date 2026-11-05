@@ -130,7 +130,7 @@ export function emitRemovableFeatures({ n, cfg, sources, o, dirStamp }: Ctx): vo
     ],
     orderOnlyInputs: [dirStamp],
     vars: {
-      cwd: cfg.cwd,
+      cwd: shJoin(cfg, [cfg.cwd]),
       desc: "removable features",
       args: shJoin(cfg, ["run", script, cfg.cwd, cfg.codegenDir]),
     },
@@ -152,7 +152,7 @@ export function emitAotSchema({ n, cfg, o, dirStamp, engine }: Ctx): void {
     inputs: engine.schemaInputs,
     orderOnlyInputs: [dirStamp],
     vars: {
-      cwd: cfg.cwd,
+      cwd: shJoin(cfg, [cfg.cwd]),
       desc: "AOTSchema.def",
       args: shJoin(cfg, [
         "run",
@@ -223,7 +223,7 @@ export function emitBuiltinsTable({ n, cfg, sources, o, dirStamp, engine }: Ctx)
     implicitInputs: [o.rootInstall],
     orderOnlyInputs: [dirStamp],
     vars: {
-      cwd: cfg.cwd,
+      cwd: shJoin(cfg, [cfg.cwd]),
       desc: "the table of built-ins",
       args: shJoin(cfg, [
         "run",
@@ -282,7 +282,7 @@ export function emitBuiltinSources({ n, cfg, sources, o, dirStamp, engine }: Ctx
     implicitInputs: [o.rootInstall],
     orderOnlyInputs: [dirStamp],
     vars: {
-      cwd: cfg.cwd,
+      cwd: shJoin(cfg, [cfg.cwd]),
       desc: "builtin_sources.bin",
       args: shJoin(cfg, [
         "run",

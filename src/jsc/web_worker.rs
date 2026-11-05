@@ -78,6 +78,7 @@ pub struct WebWorker {
     /// parent from ever reaching its own wait).
     arm_test_gate: bool,
     execution_context_id: u32,
+    parent_context_id: u32,
     mini: bool,
     eval_mode: bool,
     /// Created by `node:worker_threads`' `Worker` (as opposed to the Web `Worker`
@@ -379,7 +380,7 @@ impl WebWorker {
         specifier_str: &BunString,
         error_message: &mut BunString,
         error_is_invalid_exec_argv: &mut bool,
-        _parent_context_id: u32,
+        parent_context_id: u32,
         this_context_id: u32,
         mini: bool,
         default_unref: bool,
@@ -553,6 +554,7 @@ impl WebWorker {
                 && bun_core::env_var::feature_flag::BUN_DEBUG_TEST_WORKER_TEARDOWN_GATE::get()
                     .unwrap_or(false),
             execution_context_id: this_context_id,
+            parent_context_id,
             mini,
             eval_mode,
             is_node_worker,
@@ -658,12 +660,22 @@ impl WebWorker {
                 start.worker.thread_main(start.init);
                 Bun__AOT__releaseUnusedPagesOfThread();
                 Bun__AOT__didStartThread();
+                crate::worker_vm_trace::record(
+                    crate::worker_vm_trace::Event::ThreadEnd,
+                    start.worker.execution_context_id,
+                    start.worker.parent_context_id,
+                );
                 // The thread's ref (and the parent ticket) drop here.
             });
         match spawn {
             Ok(handle) => {
                 self.thread_start.set(core::ptr::null_mut());
                 self.join_handle.set(Some(handle));
+                crate::worker_vm_trace::record(
+                    crate::worker_vm_trace::Event::ThreadSpawned,
+                    self.execution_context_id,
+                    self.parent_context_id,
+                );
                 StartOutcome::Started
             }
             Err(_) if table_pages.is_null() => StartOutcome::Failed,
@@ -947,6 +959,11 @@ impl WebWorker {
     // be aliased-&mut UB. Worker-thread-only mutable fields are wrapped in
     // `Cell` / `UnsafeCell` instead.
     fn thread_main(&self, init: WorkerVmInit) {
+        crate::worker_vm_trace::record(
+            crate::worker_vm_trace::Event::ThreadStart,
+            self.execution_context_id,
+            self.parent_context_id,
+        );
         bun_analytics::features::workers_spawned.fetch_add(1, Ordering::Relaxed);
 
         if !self.name.is_empty() {
@@ -1071,6 +1088,11 @@ impl WebWorker {
         self.vm.set(vm);
         // SAFETY: `vm` is the live VM just built on this thread.
         *self.vm_handle.lock() = Some(unsafe { (*vm).handle() });
+        crate::worker_vm_trace::record(
+            crate::worker_vm_trace::Event::VmPublished,
+            self.execution_context_id,
+            self.parent_context_id,
+        );
 
         // SAFETY: `vm` is a valid heap-allocated VM ptr (checked above).
         unsafe {
@@ -1360,6 +1382,11 @@ impl WebWorker {
             // thread holds a pointer to it (they only ever held its handle);
             // `init_worker` always passes `log: None`.
             exit_code = i32::from(unsafe { VirtualMachine::exit_and_free(vm_ptr) });
+            crate::worker_vm_trace::record(
+                crate::worker_vm_trace::Event::VmDestroyed,
+                self.execution_context_id,
+                self.parent_context_id,
+            );
         }
         log!(
             "[{}] shutdown: VirtualMachine destroyed",

@@ -1,3 +1,4 @@
+use super::diagnostic_subject::{DiagnosticSubject, containers_completed_by_bun_types};
 use crate::atom::Atom;
 use crate::bind::PatParent;
 use crate::check::mapped::AccessNode;
@@ -21,6 +22,19 @@ impl Program<'_> {
 }
 
 impl Checker<'_, '_> {
+    pub(in crate::check) fn has_incomplete_runtime_members(&self, ty: TypeId) -> bool {
+        if self.files.options.declarations_of_last_resort.is_empty() {
+            return false;
+        }
+        match self.member_container_of_type(ty) {
+            DiagnosticSubject::MemberContainer(container) => {
+                containers_completed_by_bun_types(self.files).contains(&Some(container))
+            }
+            _ => false,
+        }
+    }
+
+    // TypeScript takes a `unique symbol` for `symbol` in every declaration but the one that created it, which is what a declaration file can say.
     pub(in crate::check) fn keeps_unique_symbol(&self, name: Option<(FileId, PatId)>) -> bool {
         let Some((file, pattern)) = name else {
             return false;

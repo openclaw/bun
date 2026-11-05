@@ -1170,6 +1170,7 @@ pub use self::runtime_transpiler_store::RuntimeTranspilerStore;
 
 #[path = "web_worker.rs"]
 pub mod web_worker;
+pub mod worker_vm_trace;
 pub use self::web_worker::WebWorker;
 
 // LAYERING: `Jest`/`TestScope`/`Expect`/`Snapshot` live in

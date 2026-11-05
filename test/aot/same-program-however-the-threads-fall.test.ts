@@ -156,7 +156,7 @@ test("library modules lower the same at any thread count", async () => {
   });
   const first = await build(String(dir), "main.js", 1, withCheapBackEnd);
   expect(first).toEqual({ ...first, exitCode: 0, errors: 0 });
-  for (const threads of [2, 4, 8, 16, 64])
+  for (const threads of [2, 4, 8, 16, 64, 64, 64])
     expect({ threads, ...(await build(String(dir), "main.js", threads, withCheapBackEnd)) }).toEqual({
       threads,
       ...first,

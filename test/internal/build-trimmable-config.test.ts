@@ -3,7 +3,7 @@
  * link the map scripts/build/trim/link.ts reads. Configure-time logic only: no compiler and no download.
  */
 import { describe, expect, test } from "bun:test";
-import { bunEnv, bunExe, isMacOS, isWindows } from "harness";
+import { bunEnv, bunExe, isMacOS, isWindows, tempDir } from "harness";
 import { join } from "node:path";
 
 import {
@@ -15,6 +15,9 @@ import {
   type Toolchain,
 } from "../../scripts/build/config.ts";
 import { computeFlags, linkerMapOutputs, linkerMapPath, writesLinkerMap } from "../../scripts/build/flags.ts";
+import { link, registerCompileRules } from "../../scripts/build/compile.ts";
+import { Ninja, readManifest } from "../../scripts/build/ninja.ts";
+import { machoEntitlementsPlist, needsMachoPostlink } from "../../scripts/build/shims.ts";
 import { getProfile, profiles } from "../../scripts/build/profiles.ts";
 
 const buildScript = join(import.meta.dirname, "..", "..", "scripts", "build.ts");
@@ -31,7 +34,7 @@ function mockToolchain(overrides: Partial<Toolchain> = {}): Toolchain {
     clangVersion: "23.1.1",
     clangResourceDir: "/fake/llvm/lib/clang/23",
     ar: "/fake/llvm/bin/llvm-ar",
-    ld: "/fake/llvm/bin/ld.lld",
+    ld: isMacOS ? "" : "/fake/llvm/bin/ld.lld",
     ld64Lld: "/fake/llvm/bin/ld64.lld",
     rustLlvmVersion: "23.1.1",
     rustSysroot: undefined,
@@ -77,7 +80,7 @@ describe.skipIf(isWindows)("trimmable build config", () => {
     linux,
     freebsd,
     { os: "windows", arch: "x64", winsysroot: "/fake/winsysroot" },
-    ...(isMacOS ? [] : [{ os: "darwin", arch: "aarch64" } satisfies PartialConfig]),
+    { os: "darwin", arch: "aarch64" },
   ];
 
   test.each(trimmableTargets)("$os is trimmable and writes a linker map", partial => {
@@ -116,10 +119,64 @@ describe.skipIf(isWindows)("trimmable build config", () => {
     expect(resolve({ ...linux, valgrind: true }).trimmable).toBe(false);
   });
 
-  test.skipIf(!isMacOS)("is off with Apple's linker", () => {
-    const cfg = resolve({ os: "darwin" });
+  test.skipIf(!isMacOS)("keeps Apple's linker unless trimming is requested", () => {
+    const cfg = resolveConfig({ os: "darwin", buildType: "Release" }, mockToolchain());
     expect(linksWithLld(cfg)).toBe(false);
     expect(cfg.trimmable).toBe(false);
+    expect(cfg.ld).toBe("");
+    expect(needsMachoPostlink(cfg)).toBe(false);
+    expect(computeFlags(cfg).ldflags).toContain("-Wl,-ld_new");
+  });
+
+  test.skipIf(!isMacOS).each(["aarch64", "x64"] as const)(
+    "native Darwin %s trimming selects ld64.lld and its link contract",
+    arch => {
+      using dir = tempDir("native-trim", {});
+      const cfg = resolve({ os: "darwin", arch, buildDir: String(dir) });
+      expect(cfg.crossTarget).toBeUndefined();
+      expect(cfg.ld).toBe("/fake/llvm/bin/ld64.lld");
+      expect(cfg.trimmable).toBe(true);
+      expect(linksWithLld(cfg)).toBe(true);
+      expect(needsMachoPostlink(cfg)).toBe(true);
+      const flags = computeFlags(cfg);
+      expect(flags.ldflags).toContain("--ld-path=/fake/llvm/bin/ld64.lld");
+      expect(flags.ldflags).toContain("-mlinker-version=705");
+      expect(flags.ldflags).not.toContain("-Wl,-ld_new");
+      expect(flags.ldflags.some(flag => flag.startsWith("--target="))).toBe(false);
+      expect(flags.ldflags).toContain("-Wl,-rename_segment,__DATA_DIRTY,__DATA");
+      expect(flags.cxxflags).toContain("-faddrsig");
+      if (arch === "aarch64") expect(flags.ldflags).toContain("-Wl,-adhoc_codesign");
+      else expect(flags.ldflags).toContain("-Wl,-sectalign,__BUN,__bun,0x1000");
+
+      const n = new Ninja({ buildDir: cfg.buildDir });
+      registerCompileRules(n, cfg);
+      const out = link(n, cfg, "bun-profile", [], {
+        libs: [],
+        flags: flags.ldflags,
+        trimmable: true,
+      });
+      const helper = link(n, cfg, "deps/WebKit/bin/LLIntSettingsExtractor", [], {
+        libs: [],
+        flags: flags.ldflags,
+      });
+      const manifest = readManifest(n.toString());
+      const edge = manifest.edges.find(edge => edge.outputs.includes(n.rel(out)))!;
+      expect(edge.rule).toBe("link_trimmable");
+      expect(edge.bindings.ldflags).toContain("--ld-path=/fake/llvm/bin/ld64.lld");
+      expect(edge.implicitInputs).toContain("macho-postlink");
+      const helperEdge = manifest.edges.find(edge => edge.outputs.includes(n.rel(helper)))!;
+      expect(helperEdge.rule).toBe("link");
+      expect(helperEdge.implicitInputs).toContain("macho-postlink");
+      if (arch === "aarch64") {
+        expect(helperEdge.implicitInputs).toContain(n.rel(machoEntitlementsPlist(cfg)));
+      }
+    },
+  );
+
+  test.skipIf(!isMacOS)("requested native trimming reports a missing ld64.lld", () => {
+    expect(() =>
+      resolveConfig({ os: "darwin", buildType: "Release", trimmable: true }, mockToolchain({ ld64Lld: undefined })),
+    ).toThrow("Trimmable macOS builds require ld64.lld");
   });
 
   test("only ci-build asks for it", () => {

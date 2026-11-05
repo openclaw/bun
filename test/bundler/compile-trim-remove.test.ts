@@ -120,8 +120,7 @@ function readLinkReview(name: string): string {
 }
 
 (canTrim && !unsupported ? describe.concurrent : describe.skip)("compile.trim.remove", () => {
-  const dir = tempDirForAotBuilds("compile-trim-remove", {
-    "build.mjs": `const [entry, outfile, trim, executablePath] = process.argv.slice(2);
+  const buildScript = `const [entry, outfile, trim, executablePath] = process.argv.slice(2);
 try {
   const result = await Bun.build({
     entrypoints: [entry],
@@ -131,7 +130,9 @@ try {
   console.log(result.success ? "built" : "failed");
 } catch (error) {
   console.log(String(error.message));
-}`,
+}`;
+  const dir = tempDirForAotBuilds("compile-trim-remove", {
+    "build.mjs": buildScript,
     "hello.ts": `console.log("hello world");`,
     "uses-them.ts": parts.map(({ text }) => text).join("\n"),
     "imports-modules.ts": modulesWithNativeBindings
@@ -155,6 +156,30 @@ try { ${call.replace("imported", "imported" + index) || "throw { code: 'ERR_FEAT
         ...(await run([bunExe(), "build.mjs", `./${entry}`, executable, JSON.stringify(trim), ...carrier], folder)),
       }));
     });
+  test.concurrent.each([true, { remove: ["interpreter"] }])(
+    "starts and runs builtins without the interpreter under trim: %j",
+    async trim => {
+      using dir = tempDirForAotBuilds("compile-trim-without-interpreter", {
+        "build.mjs": buildScript,
+        "entry.ts": `function sum(values: number[]): number { return values.reduce((a, b) => a + b, 0); }
+console.log(JSON.stringify({ sum: sum([1, 2, 3]), regex: /^a.+z$/.test("abz") }));`,
+      });
+      const folder = String(dir);
+      const build = (folder: string, entry: string, outfile: string, trim: unknown) =>
+        run([bunExe(), "build.mjs", `./${entry}`, join(folder, outfile), JSON.stringify(trim)], folder);
+      expect(await build(folder, "entry.ts", "cut", trim)).toMatchObject({
+        stdout: "built\n",
+        exitCode: 0,
+      });
+      expect(
+        await run([join(folder, "cut")], folder, { ...bunEnv, BUN_JSC_crashIfInterpreterIsUsed: "1" }),
+      ).toMatchObject({
+        stdout: '{"sum":6,"regex":true}\n',
+        exitCode: 0,
+      });
+    },
+  );
+
   const everyName = [...new Set(parts.map(({ remove }) => remove))];
 
   test.each([
