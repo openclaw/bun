@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Avoid looking up the executable path when a compiled program has no executable-relative source root.
+
 - Keep AOT customization-hook declarations compatible with the pinned engine's member-call schema.
 
 - Pin the qualified immutable WebKit release `7bf742934b5a72aefaac2dcd993e20d6b0e388c5`, including all 21 native archives and the AOT generator sources with published checksums.
