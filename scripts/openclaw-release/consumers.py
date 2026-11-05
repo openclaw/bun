@@ -402,7 +402,9 @@ def qualify(name, dist, repo, output):
                     if label == "install"
                     else [binary, "--no-env-file", "run", "--bun", label]
                 )
-                log = run(label, args)
+                # Coverage mocks the lookup transports and must exercise them.
+                extra = {"BIRDCLAW_DISABLE_LIVE_PROFILE_LOOKUP": "0"} if label == "coverage" else None
+                log = run(label, args, extra)
                 if label == "coverage":
                     text = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", log.read_text())
                     tests = re.search(r"\bTests\s+([0-9,]+)\s+passed", text)

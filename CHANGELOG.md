@@ -10,7 +10,7 @@
 
 - Pin the qualified immutable WebKit release `7bf742934b5a72aefaac2dcd993e20d6b0e388c5`, including all 21 native archives and the AOT generator sources with published checksums.
 
-- Require the primary Linux x64 release archive to pass frozen OpenClaw and Birdclaw consumer checks before publication, with matching source, engine, and executable hashes.
+- Require the primary Linux x64 release archive to pass frozen OpenClaw and Birdclaw consumer checks before publication, with matching source, engine, and executable hashes and Birdclaw's normal mocked coverage lookups.
 
 - Load compiled modules after resolution-only hook redirects and read properties from the redirected require answer, while preserving source overrides and import attributes.
 

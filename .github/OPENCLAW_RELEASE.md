@@ -78,8 +78,10 @@ The frozen OpenClaw and Birdclaw revisions and their Node versions live in
 and packages its source, exercises all ten Bun-only smoke steps including a real
 browser, and runs its two Bun SQLite boundaries. Birdclaw runs its checks,
 unchanged coverage thresholds, build, synthetic CLI/HTTP/database fixture and
-installed-package Bun/Node smoke. Only Birdclaw's package-smoke revision
-expectation is temporarily projected onto the candidate, then restored.
+installed-package Bun/Node smoke. Coverage retains Birdclaw's normal mocked
+lookup transports; the other phases disable live profile lookup. Only Birdclaw's
+package-smoke revision expectation is temporarily projected onto the candidate,
+then restored.
 
 Consumer jobs have read-only permissions, no signing environment, and private
 HOME/cache/state directories. Their dependency and product processes receive an
