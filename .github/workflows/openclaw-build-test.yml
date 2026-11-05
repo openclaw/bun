@@ -163,6 +163,8 @@ jobs:
 
   build-darwin-arm64:
     if: github.repository == 'openclaw/bun'
+    outputs:
+      artifact_id: ${{ steps.bundle.outputs.artifact-id }}
     runs-on: ${{ vars.OPENCLAW_RELEASE_BUILD_RUNNER || 'ubuntu-24.04-arm' }}
     timeout-minutes: 115
     steps:
@@ -215,6 +217,7 @@ jobs:
           (cd build/openclaw-ci && sha256sum bun-darwin-arm64.tar.gz > SHA256SUMS)
           git rev-parse HEAD > build/openclaw-ci/commit.txt
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        id: bundle
         with:
           name: bun-darwin-arm64-${{ github.sha }}-attempt${{ github.run_attempt }}
           path: |
@@ -268,7 +271,7 @@ jobs:
         run: bun scripts/openclaw-ci/tests.ts select
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: bun-darwin-arm64-${{ github.sha }}-attempt${{ github.run_attempt }}
+          artifact-ids: ${{ needs.build-darwin-arm64.outputs.artifact_id }}
           path: build/openclaw-ci/darwin-bundle
       - name: Verify and unpack native test bundle
         id: build
