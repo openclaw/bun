@@ -1,118 +1,118 @@
 {
   "schema_version": 1,
-  "version": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
+  "version": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
   "repository": "openclaw/WebKit",
-  "tag": "autobuild-7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
+  "tag": "autobuild-8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
   "artifacts": {
     "bun-webkit-linux-amd64.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-7bf742934b5a72aefaac2dcd993e20d6b0e388c5/bun-webkit-linux-amd64.tar.gz",
-      "sha256": "7a81c437298b0d170baa080f6a20d9e2a3b424da1fefbb0d094103960361a197",
-      "size": 715794818
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6/bun-webkit-linux-amd64.tar.gz",
+      "sha256": "8402d6cd2520849081d05461334ecaaa3dd7cc3817c216a4e048769e0795143e",
+      "size": 715788846
     },
     "bun-webkit-macos-arm64.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-7bf742934b5a72aefaac2dcd993e20d6b0e388c5/bun-webkit-macos-arm64.tar.gz",
-      "sha256": "ad91c1500f09a56019afbe28ba8e517a0fda3231236b76ebc33480da06a7c932",
-      "size": 231700489
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6/bun-webkit-macos-arm64.tar.gz",
+      "sha256": "57bfb21bdc616238eed81e13dbdf9f77d56f1588cc008f7aa5537e59998f0d79",
+      "size": 231719773
     },
     "bun-webkit-linux-amd64-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-7bf742934b5a72aefaac2dcd993e20d6b0e388c5/bun-webkit-linux-amd64-lto.tar.gz",
-      "sha256": "c4e7ca256465d4aa4b45f25abebacab90fd2894e685ad242dd578cd912094f39",
-      "size": 391869720
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6/bun-webkit-linux-amd64-lto.tar.gz",
+      "sha256": "6351623b56b67e3fa5f9d459057ffcbbe81e43462115da62b285854e4bcd3b2a",
+      "size": 391870308
     },
     "bun-webkit-linux-arm64-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-7bf742934b5a72aefaac2dcd993e20d6b0e388c5/bun-webkit-linux-arm64-lto.tar.gz",
-      "sha256": "ee018ba8fb35c65e04fa06c95fb22d5cc7e5c2375c1d1bbb379b7c0ef35cdd99",
-      "size": 270530608
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6/bun-webkit-linux-arm64-lto.tar.gz",
+      "sha256": "11fdc253233d6c1802d8ef61fe25ca8239c59a942868cfba24b32f28dc699ae0",
+      "size": 270519164
     },
     "bun-webkit-macos-arm64-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-7bf742934b5a72aefaac2dcd993e20d6b0e388c5/bun-webkit-macos-arm64-lto.tar.gz",
-      "sha256": "80f383f101486768a0c55b4d78ee4771a766df58a1bece8d2aa541f6e89520c9",
-      "size": 181471808
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6/bun-webkit-macos-arm64-lto.tar.gz",
+      "sha256": "093b9cd35679a7445040e02de59811f08616d3a5dd1d3169ce8f07339010679f",
+      "size": 181441453
     },
     "bun-webkit-macos-amd64-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-7bf742934b5a72aefaac2dcd993e20d6b0e388c5/bun-webkit-macos-amd64-lto.tar.gz",
-      "sha256": "c2e52779ece1519bcdfda76fb3ecba3b792634f07449e2b1c5b1c02a1c98426a",
-      "size": 185976831
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6/bun-webkit-macos-amd64-lto.tar.gz",
+      "sha256": "1b75a383aa2b1ccea66d0004d116c3f2f1e17c32e049fe6f231eca65cda088dc",
+      "size": 185981816
     },
     "bun-webkit-linux-amd64-musl-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-7bf742934b5a72aefaac2dcd993e20d6b0e388c5/bun-webkit-linux-amd64-musl-lto.tar.gz",
-      "sha256": "b2d2cc1a552ce9a368e79d222469421866492551bbcceea4ea15949c8ed64549",
-      "size": 286651542
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6/bun-webkit-linux-amd64-musl-lto.tar.gz",
+      "sha256": "7096d679a23e24651e7a4b251c852ac1f9857dec1efb5fba7f554c8dbd05e33b",
+      "size": 286678431
     },
     "bun-webkit-linux-arm64-musl-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-7bf742934b5a72aefaac2dcd993e20d6b0e388c5/bun-webkit-linux-arm64-musl-lto.tar.gz",
-      "sha256": "cdc2eafea91f6ab957cd1cfbcd51f9918b80c8548f0462ea6836e48754a24ca8",
-      "size": 195265412
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6/bun-webkit-linux-arm64-musl-lto.tar.gz",
+      "sha256": "a41dc852594a69412afaf26aaab5d9fe26eea7d24e90f3394a01a1c27ca4640f",
+      "size": 195284632
     },
     "bun-webkit-windows-amd64-lto.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-7bf742934b5a72aefaac2dcd993e20d6b0e388c5/bun-webkit-windows-amd64-lto.tar.gz",
-      "sha256": "e89809f9f66c99a03a8f23d1155ff2bf031ecdcab6bc9d50f7fcdb5c708ffec0",
-      "size": 575980877
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6/bun-webkit-windows-amd64-lto.tar.gz",
+      "sha256": "a985d2fa1b5132bc2a9ffa4d09be4105f6063ef24a238373a0147686b84b3a3c",
+      "size": 575964408
     },
     "bun-webkit-windows-arm64.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-7bf742934b5a72aefaac2dcd993e20d6b0e388c5/bun-webkit-windows-arm64.tar.gz",
-      "sha256": "fd8262ed760a0194cfe7066aefa17ed8b9a4a14268a06566ad0c8ea8a0760b99",
-      "size": 262027357
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6/bun-webkit-windows-arm64.tar.gz",
+      "sha256": "66d3c3544b8c2c7dcf97a6c12aec6cecf09fa07f87ae2749670b518a61d3c22d",
+      "size": 262013279
     },
     "bun-webkit-linux-amd64-aot.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-7bf742934b5a72aefaac2dcd993e20d6b0e388c5/bun-webkit-linux-amd64-aot.tar.gz",
-      "sha256": "edf2a027172797536c3f859933c59cb596c22209d92576cd170e97bd525c446c",
-      "size": 1286739341
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6/bun-webkit-linux-amd64-aot.tar.gz",
+      "sha256": "de9d27492a1a0f3651fa6b0c19e0f66dec64639776a142cb2b3694db96fc9759",
+      "size": 1286756769
     },
     "bun-webkit-macos-arm64-aot.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-7bf742934b5a72aefaac2dcd993e20d6b0e388c5/bun-webkit-macos-arm64-aot.tar.gz",
-      "sha256": "e2fe4d7d58f309f3a0bfff8167c9622e26c01fa34cb6d6aa21098b0c7e3cf51b",
-      "size": 517653068
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6/bun-webkit-macos-arm64-aot.tar.gz",
+      "sha256": "d0e1ce29a0022dc4cb037dff91ef20fe4e9d7e34b96b818eef201e771c440747",
+      "size": 517660421
     },
     "bun-webkit-linux-amd64-lto-aot.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-7bf742934b5a72aefaac2dcd993e20d6b0e388c5/bun-webkit-linux-amd64-lto-aot.tar.gz",
-      "sha256": "3f1c33884ffe4d96cf690d8b8ab5571c17e48f51908bd0045b41c4e3e6eacf90",
-      "size": 809105900
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6/bun-webkit-linux-amd64-lto-aot.tar.gz",
+      "sha256": "c97224062aa59fe0d51323a186f91ad5b5002365e720c2a98398e624dc7c9e2a",
+      "size": 809104824
     },
     "bun-webkit-aot-sources.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-7bf742934b5a72aefaac2dcd993e20d6b0e388c5/bun-webkit-aot-sources.tar.gz",
-      "sha256": "1c2c5fa67b1610d0d8a89fd34f8a5601d6f6ef814ced47ac8593120513f53077",
-      "size": 523146
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6/bun-webkit-aot-sources.tar.gz",
+      "sha256": "0a1f719b7933e1557ed13ac161ebc497bd010bb0c7338b17c7f3d00701f41d5e",
+      "size": 521845
     },
     "bun-webkit-linux-arm64-lto-aot.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-7bf742934b5a72aefaac2dcd993e20d6b0e388c5/bun-webkit-linux-arm64-lto-aot.tar.gz",
-      "sha256": "e4867800d34546bfe88208f10d88ac2002f543407762cf800423e45cbbcd70f1",
-      "size": 672781195
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6/bun-webkit-linux-arm64-lto-aot.tar.gz",
+      "sha256": "47f8efef973933b03368f075703576abd3a07a222f0d9e26f61c1c7d76eef4c0",
+      "size": 672809754
     },
     "bun-webkit-macos-arm64-lto-aot.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-7bf742934b5a72aefaac2dcd993e20d6b0e388c5/bun-webkit-macos-arm64-lto-aot.tar.gz",
-      "sha256": "c1643d82166744282f4a75bb20053d56b47103eb08d34284fa6bae0294dd0011",
-      "size": 365166853
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6/bun-webkit-macos-arm64-lto-aot.tar.gz",
+      "sha256": "69f78e59b97a6a59d3da90406f7b7f383633fa23a927afcca143004e81024013",
+      "size": 365162400
     },
     "bun-webkit-macos-amd64-lto-aot.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-7bf742934b5a72aefaac2dcd993e20d6b0e388c5/bun-webkit-macos-amd64-lto-aot.tar.gz",
-      "sha256": "c455fc45aa23e330457243659c8b3fadce6632d4cc12e2edf371a5aea8c43fb0",
-      "size": 366995092
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6/bun-webkit-macos-amd64-lto-aot.tar.gz",
+      "sha256": "c6b59d41b5a8ac140aea32e1471df846206adaa8e60691f3f3cdd5dab218b492",
+      "size": 367008675
     },
     "bun-webkit-linux-amd64-musl-lto-aot.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-7bf742934b5a72aefaac2dcd993e20d6b0e388c5/bun-webkit-linux-amd64-musl-lto-aot.tar.gz",
-      "sha256": "17a2f76dde70811fc75718b4f2abc5f7795133277074e6058db3e6f1400c132b",
-      "size": 460533641
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6/bun-webkit-linux-amd64-musl-lto-aot.tar.gz",
+      "sha256": "fa57c9432aa178d09167ac453a7f9b1f9c7871539d60e4d4a4a2accde015eaa8",
+      "size": 460544571
     },
     "bun-webkit-linux-arm64-musl-lto-aot.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-7bf742934b5a72aefaac2dcd993e20d6b0e388c5/bun-webkit-linux-arm64-musl-lto-aot.tar.gz",
-      "sha256": "19edb98aa72f4e62b0cd84af5892a26fbeb509b7f4be06dd9236acf00840f599",
-      "size": 360674800
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6/bun-webkit-linux-arm64-musl-lto-aot.tar.gz",
+      "sha256": "44b60c7f5eeaf0e8f2b27ca0041d46ca5aecaa909fea8be49523a0f2b151fc25",
+      "size": 360653959
     },
     "bun-webkit-windows-amd64-lto-aot.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-7bf742934b5a72aefaac2dcd993e20d6b0e388c5/bun-webkit-windows-amd64-lto-aot.tar.gz",
-      "sha256": "71d6d3f308b7c2e22181b90e89a1a4b258e34b56ce35e9106e2ad772e6e437f9",
-      "size": 1167376731
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6/bun-webkit-windows-amd64-lto-aot.tar.gz",
+      "sha256": "e7005e9040eddd905c1481813725a48dcc4db3faf025756c74b0332543fe9c31",
+      "size": 1167405079
     },
     "bun-webkit-windows-arm64-aot.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-7bf742934b5a72aefaac2dcd993e20d6b0e388c5/bun-webkit-windows-arm64-aot.tar.gz",
-      "sha256": "1266349911a5b8a673a3771aab6a70d0ef06b52bc180724d97b1cbff0edeb874",
-      "size": 509237052
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6/bun-webkit-windows-arm64-aot.tar.gz",
+      "sha256": "b3d77da42ad6da94f0fb3ca004ff5e49fd9dd0d861b884b64363b97bdb143c5d",
+      "size": 509227737
     },
     "bun-webkit-linux-amd64-debug-asan-aot.tar.gz": {
-      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-7bf742934b5a72aefaac2dcd993e20d6b0e388c5/bun-webkit-linux-amd64-debug-asan-aot.tar.gz",
-      "sha256": "857d041058174b723e62073582cf9e89145bdae495ad540421de50ae5ec03910",
-      "size": 1502804470
+      "url": "https://github.com/openclaw/WebKit/releases/download/autobuild-8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6/bun-webkit-linux-amd64-debug-asan-aot.tar.gz",
+      "sha256": "caf726bce47677b450bc8d51e43e008aabd2737767538a0ec1d2a8c3bbf505cc",
+      "size": 1502854860
     }
   },
   "variants": {
@@ -223,21 +223,21 @@
   },
   "qualification": {
     "passed": true,
-    "source": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
+    "source": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
     "comparison": "bun-plus-engine-upgrade",
     "selected_files": 44,
     "result_files": 46,
     "comparison_policy": "candidate-pass-baseline-observed-v1",
-    "faithfulness_sha256": "a692f49da4c1f6acc63011fdc4dde15be28af10f459dbe2f452de0f4867c6606",
+    "faithfulness_sha256": "a4111422e84df7db8b2508ed0f7ad75deb0f6f52d1ea30c473ca0be4211052af",
     "als_variants_per_mode": 14,
     "proxy_minimum": 4,
     "resource_minimum": 16,
-    "candidate_identity_sha256": "04fd59d42e0ee03d667e57cc97645fe76811c9301c56f142772eb123acb02814",
+    "candidate_identity_sha256": "67bd822200cd79ecbeeb54902722083849e169b7bc4fcbb33b651ef3e57ae07f",
     "baseline_identity_sha256": "9558dfd36d34377acf371bd7cdb561810857ab2150197f16f1aff05ed31c3636",
     "upstream_sync": {
       "passed": true,
-      "source": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
-      "candidate_identity_sha256": "04fd59d42e0ee03d667e57cc97645fe76811c9301c56f142772eb123acb02814",
+      "source": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
+      "candidate_identity_sha256": "67bd822200cd79ecbeeb54902722083849e169b7bc4fcbb33b651ef3e57ae07f",
       "historical_selected_files": 82,
       "selected_files": 85,
       "result_rows": 87,
@@ -276,16 +276,16 @@
         "worldStateAtStall": 0,
         "collectorParkingThreadId": 0,
         "mutatorParkingThreadId": 0,
-        "conditionAddress": "0x3c9d3020021",
-        "worldAddress": "0x3c9d2c20610",
-        "elapsedMs": 1.973
+        "conditionAddress": "0x4777ae20021",
+        "worldAddress": "0x4777aa20610",
+        "elapsedMs": 1.613
       },
       "aot": {
-        "candidate_identity_sha256": "04fd59d42e0ee03d667e57cc97645fe76811c9301c56f142772eb123acb02814",
+        "candidate_identity_sha256": "67bd822200cd79ecbeeb54902722083849e169b7bc4fcbb33b651ef3e57ae07f",
         "executable": {
           "path": "bun/build/qualify-candidate/bun",
           "size": 137411224,
-          "sha256": "1920692cf260939622277ba37c8ca9d32982893745adb7f1a6d57a09f7f57ab5"
+          "sha256": "784a58404af48e8e6ae931980b84241233b7929cea453b641d7d3e355aaf08fc"
         },
         "test": {
           "path": "bun/test/aot/every-platform.test.ts",
@@ -294,8 +294,8 @@
         },
         "log": {
           "path": "sync/aot-every-platform.log",
-          "size": 410,
-          "sha256": "9ddf2a8122cbbddd554a6b5c6c3adbaa4dc937a4ebd0d200e722d1419624170b"
+          "size": 401,
+          "sha256": "4d6d0ad947d11e2e3d3a3a6056d8a7fd664ba13b769606ff022ecb683741ea95"
         },
         "passed": 4,
         "failed": 0,
@@ -303,7 +303,7 @@
         "todo": 0
       },
       "compile_cache": {
-        "junit_sha256": "ea7f2fb56d2facb1406d85f9eebb101baa4f3ea4a393b163310447b0e8bf0de0",
+        "junit_sha256": "1a44bb768f1f150e7516f8a2e55d46d12a65fcc572d48af9a3a702216f1bb333",
         "cases": [
           {
             "classname": "compile cache exit modes > node-module-module",
@@ -346,12 +346,12 @@
       "invocation": {
         "path": "sync/invocation.json",
         "size": 3516,
-        "sha256": "a51dc22258414b34995e88d494b14a6cb4f4a7c21ad31787b4e522eb02277633"
+        "sha256": "c76568499ecd593bb0b367fa7d26813f3a02f91161f050b976ccdef3233ba344"
       }
     },
     "engine": {
       "passed": true,
-      "source": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
+      "source": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
       "stress_counts": {
         "jsc-stress": 1901,
         "jsc-modules": 1639
@@ -372,29 +372,29 @@
     },
     "compatibility": {
       "passed": true,
-      "source": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
-      "candidate_identity_sha256": "04fd59d42e0ee03d667e57cc97645fe76811c9301c56f142772eb123acb02814",
+      "source": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
+      "candidate_identity_sha256": "67bd822200cd79ecbeeb54902722083849e169b7bc4fcbb33b651ef3e57ae07f",
       "memory_tests": 3,
       "startup": true
     },
     "darwin_arm64": {
       "passed": true,
-      "source": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
+      "source": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
       "lane": "bun-webkit-macos-arm64-aot",
-      "candidate_identity_sha256": "9ee35f547ad68e6674e61fff10c69dd8af95e9b59b21d4e61a72f86656154fb8",
+      "candidate_identity_sha256": "40235f73b69dd8ad774f0be0f7e40ee6a196974bfd4f9159aea62042487c9e64",
       "selected_files": 53,
       "result_files": 55,
       "invocation": {
         "path": "candidate/invocation.json",
         "size": 3463,
-        "sha256": "46deb705bb61e1c2850712d318f667fd8e2ac9a84adc73210d385b2c823ccc90"
+        "sha256": "319622e4b055247e0f3cbf7543518e40f4e923d0c2a69874eb157bc569a08f96"
       },
       "aot": {
-        "candidate_identity_sha256": "9ee35f547ad68e6674e61fff10c69dd8af95e9b59b21d4e61a72f86656154fb8",
+        "candidate_identity_sha256": "40235f73b69dd8ad774f0be0f7e40ee6a196974bfd4f9159aea62042487c9e64",
         "executable": {
           "path": "bun/build/qualify-candidate/bun",
           "size": 125570368,
-          "sha256": "8855669d6eced96f9a5cadb7671441113ee88d482332d79953d7edd5bd8aa437"
+          "sha256": "aa6cbf491e9b9a763bf11be5c510cc11c4f3256c0a9764505b52113a4c0eaf93"
         },
         "test": {
           "path": "bun/test/aot/every-platform.test.ts",
@@ -404,7 +404,7 @@
         "log": {
           "path": "sync/aot-every-platform.log",
           "size": 410,
-          "sha256": "e48fcebb4eb62a6b9645694a4c522c21fd3e63e86b6d70fadc8201f820b8b4cc"
+          "sha256": "0534973faba9a79ac1199446423210692efaa3f3814bc0693cef584007eec2fc"
         },
         "passed": 4,
         "failed": 0,
@@ -413,22 +413,22 @@
       }
     },
     "windows_arm64": {
-      "arraybuffer_accounting": true,
-      "lane": "bun-webkit-windows-arm64",
-      "arraybuffer_modes": 5,
-      "passed": true,
       "dfg": true,
+      "sha256": "66d3c3544b8c2c7dcf97a6c12aec6cecf09fa07f87ae2749670b518a61d3c22d",
       "startup": true,
-      "sha256": "fd8262ed760a0194cfe7066aefa17ed8b9a4a14268a06566ad0c8ea8a0760b99",
-      "source": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
-      "ffi": true,
-      "architecture": "arm64"
+      "passed": true,
+      "source": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
+      "arraybuffer_accounting": true,
+      "architecture": "arm64",
+      "arraybuffer_modes": 5,
+      "lane": "bun-webkit-windows-arm64",
+      "ffi": true
     }
   },
   "lanes": [
     {
       "schema_version": 1,
-      "source": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
+      "source": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
       "base": "4d45755fed4aeef19e95beb90d3d0c884a2812bd",
       "history_floor": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "patches": [
@@ -946,6 +946,11 @@
           "commit": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
           "subject": "Merge pull request #50 from openclaw/claude/sync-webkit-upstream-20261014",
           "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "commit": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
+          "subject": "fix(aot): retain host evaluators only through reachable calls",
+          "patch_sha256": "264d3f7e1e4c316e9e1181741df9a7283f3ae2f94de898fb91a83d910aafe737"
         }
       ],
       "lane": {
@@ -1003,7 +1008,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:f6e61db731a7c50405c0afb9848302e27c3c25fc75f119b740fe7d5b38c4d548",
+      "toolchain_image_id": "sha256:94239accbf536c2a337a37d167edebfa0e34e7c1543a4785fae388b287f89232",
       "commands": {
         "base": [
           "docker",
@@ -1104,25 +1109,25 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910043923+069ef0e7cb36-1~exp1~20260910043934.72)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 4.4.4\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.10.0",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "41855293870",
+      "workflow_run": "42249525393",
       "run_attempt": "1",
-      "elapsed_seconds": 527.3670382499695,
+      "elapsed_seconds": 433.37407398223877,
       "files": {
         "bun-webkit-linux-amd64.tar.gz": {
-          "sha256": "7a81c437298b0d170baa080f6a20d9e2a3b424da1fefbb0d094103960361a197",
-          "size": 715794818
+          "sha256": "8402d6cd2520849081d05461334ecaaa3dd7cc3817c216a4e048769e0795143e",
+          "size": 715788846
         }
       },
       "provenance_files": {
-        "toolchain-build.json": "13fc626098fad0b66524178cd3555bb00db4a7f466567d7ebaad5fb61f6f1730",
+        "artifact-build.json": "2b729b0f13e6a6c3a460123e2ed3edbf59c3afbda6357e23dab7d299dfd64ae4",
         "tool-versions.txt": "482e98b1eb54ae5a88a8e31aaeb70986e8f42683ee8ef8c0a34a569b5ae01b7b",
-        "toolchain-image.json": "f151bfb963e1bc3aaf3b524a8c1888baf6556a32ea7a31c02513761e9b630f67",
-        "artifact-build.json": "daeb9f926be31061c4d6e3e960aea5ab249159288f251bac34a0cf5be0b2500f"
+        "toolchain-image.json": "d8a82c4bf39a2c1eb0827c4478cff938a60ecd7cec17433e52923a9e1fa7d128",
+        "toolchain-build.json": "c3908e93bbcdae37f1098511fded58bdfe7a313bd9809ac2be71dd1ea3543334"
       }
     },
     {
       "schema_version": 1,
-      "source": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
+      "source": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
       "base": "4d45755fed4aeef19e95beb90d3d0c884a2812bd",
       "history_floor": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "patches": [
@@ -1640,6 +1645,11 @@
           "commit": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
           "subject": "Merge pull request #50 from openclaw/claude/sync-webkit-upstream-20261014",
           "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "commit": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
+          "subject": "fix(aot): retain host evaluators only through reachable calls",
+          "patch_sha256": "264d3f7e1e4c316e9e1181741df9a7283f3ae2f94de898fb91a83d910aafe737"
         }
       ],
       "lane": {
@@ -1691,7 +1701,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:b54c6b064365560f4da73c320bf9897df318167d24e3647b520c09126dda197f",
+      "toolchain_image_id": "sha256:de90537f3ed2f15a0d638437ff4b0fcb97941ece61d9f68f9f0c626d17b0f5a4",
       "commands": {
         "base": [
           "docker",
@@ -1772,25 +1782,25 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910044232+069ef0e7cb36-1~exp1~20260910044242.70)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.11.1",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "41855293870",
+      "workflow_run": "42249525393",
       "run_attempt": "1",
-      "elapsed_seconds": 226.47056341171265,
+      "elapsed_seconds": 222.33732438087463,
       "files": {
         "bun-webkit-macos-arm64.tar.gz": {
-          "sha256": "ad91c1500f09a56019afbe28ba8e517a0fda3231236b76ebc33480da06a7c932",
-          "size": 231700489
+          "sha256": "57bfb21bdc616238eed81e13dbdf9f77d56f1588cc008f7aa5537e59998f0d79",
+          "size": 231719773
         }
       },
       "provenance_files": {
-        "toolchain-build.json": "be472b6b1b8ed511544ac61f6c77142eb5c46d26e436a249db2c72c06f55780b",
-        "artifact-build.json": "64d665e641092f7c3de3b653438879d348a4dc133262acf651de761fcf08f7de",
         "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8",
-        "toolchain-image.json": "1dfe38faf1bcb2df6e84804442ae6e77c9df45cb5627fbeee7d761e1deb2e6ae"
+        "toolchain-build.json": "7362d1f08c31b8a4071c07ab0d03433d104f62d6dd8c14ff15535da591447502",
+        "artifact-build.json": "7b99784da3dced55bc24d1b4549eed24b563b4d9625931de77962e76430b9d3c",
+        "toolchain-image.json": "dab4bd7d6aa37a32b6a44479ccb370bf5988b12b70047d233b5fa383fd6be7ea"
       }
     },
     {
       "schema_version": 1,
-      "source": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
+      "source": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
       "base": "4d45755fed4aeef19e95beb90d3d0c884a2812bd",
       "history_floor": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "patches": [
@@ -2308,6 +2318,11 @@
           "commit": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
           "subject": "Merge pull request #50 from openclaw/claude/sync-webkit-upstream-20261014",
           "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "commit": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
+          "subject": "fix(aot): retain host evaluators only through reachable calls",
+          "patch_sha256": "264d3f7e1e4c316e9e1181741df9a7283f3ae2f94de898fb91a83d910aafe737"
         }
       ],
       "lane": {
@@ -2365,7 +2380,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:35eebfc2a6374a485543a885282cea7e1ce1278c44e5eab0a3755a2b37b42e23",
+      "toolchain_image_id": "sha256:0c4bd1cd5761c763e5a1e799a774ddb46234746b18a3263995f694759a6bc80d",
       "commands": {
         "base": [
           "docker",
@@ -2466,25 +2481,25 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910043923+069ef0e7cb36-1~exp1~20260910043934.72)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 4.4.4\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.10.0",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "41855293870",
+      "workflow_run": "42249525393",
       "run_attempt": "1",
-      "elapsed_seconds": 462.9518871307373,
+      "elapsed_seconds": 520.263964176178,
       "files": {
         "bun-webkit-linux-amd64-lto.tar.gz": {
-          "sha256": "c4e7ca256465d4aa4b45f25abebacab90fd2894e685ad242dd578cd912094f39",
-          "size": 391869720
+          "sha256": "6351623b56b67e3fa5f9d459057ffcbbe81e43462115da62b285854e4bcd3b2a",
+          "size": 391870308
         }
       },
       "provenance_files": {
-        "toolchain-image.json": "c2094620318770265e94fa92d876a561ea03a159a9592ac28f48fac8adb1150b",
-        "artifact-build.json": "f434a18ca43bb4e7139cf3bb0a76a80acf844eba210ec1e727155bc8d62a7f70",
         "tool-versions.txt": "482e98b1eb54ae5a88a8e31aaeb70986e8f42683ee8ef8c0a34a569b5ae01b7b",
-        "toolchain-build.json": "2b8be50ebc06fe66733c42bf794fdc8a6e9610f0d92d054d3a7567fd83e661ab"
+        "toolchain-image.json": "cf6f6c4249b8d88b44ee3d67466232dcd77fb2b7809cabea0837ea1f4c9702c2",
+        "artifact-build.json": "f6597eacd6c39cfe63b7a06be83148d192a457d1072ae46cf7ecd19ab21132ba",
+        "toolchain-build.json": "7cd0ed365d59749edfdfe36facff76560a785920e22c235d04e00254cd45298d"
       }
     },
     {
       "schema_version": 1,
-      "source": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
+      "source": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
       "base": "4d45755fed4aeef19e95beb90d3d0c884a2812bd",
       "history_floor": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "patches": [
@@ -3002,6 +3017,11 @@
           "commit": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
           "subject": "Merge pull request #50 from openclaw/claude/sync-webkit-upstream-20261014",
           "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "commit": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
+          "subject": "fix(aot): retain host evaluators only through reachable calls",
+          "patch_sha256": "264d3f7e1e4c316e9e1181741df9a7283f3ae2f94de898fb91a83d910aafe737"
         }
       ],
       "lane": {
@@ -3059,7 +3079,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:b6c61984f11830c6f537ab561b1190069865ef2a99d3f36e4995ed5ece0dcfec",
+      "toolchain_image_id": "sha256:333805acb806ff1fc99e67334e92d2af5b57a5106ba8d95abf77416d55884919",
       "commands": {
         "base": [
           "docker",
@@ -3160,25 +3180,25 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910043923+069ef0e7cb36-1~exp1~20260910043934.72)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 4.4.4\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.10.0",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "41855293870",
+      "workflow_run": "42249525393",
       "run_attempt": "1",
-      "elapsed_seconds": 430.07906317710876,
+      "elapsed_seconds": 452.7745854854584,
       "files": {
         "bun-webkit-linux-arm64-lto.tar.gz": {
-          "sha256": "ee018ba8fb35c65e04fa06c95fb22d5cc7e5c2375c1d1bbb379b7c0ef35cdd99",
-          "size": 270530608
+          "sha256": "11fdc253233d6c1802d8ef61fe25ca8239c59a942868cfba24b32f28dc699ae0",
+          "size": 270519164
         }
       },
       "provenance_files": {
-        "artifact-build.json": "744b2978576360ad36c8c49e9478843bf27cb83e1ca5f608178f47cfbc264111",
-        "toolchain-build.json": "59229aaa124efcb4a23b4c6555b24ba3dbb0d0f8d7a329368e865add7c65cdd1",
         "tool-versions.txt": "482e98b1eb54ae5a88a8e31aaeb70986e8f42683ee8ef8c0a34a569b5ae01b7b",
-        "toolchain-image.json": "dfa9c61b7ce9ed7423e51921e768efed47486da10eefeb48851113bfa4dc6a8d"
+        "toolchain-image.json": "0a448651df7d6978131fe97f446f1d17f51c678722d12df842224c43c06a50f9",
+        "artifact-build.json": "0f86e5daf76d1d5045251ed2cac122d881ced49cfc1088af003ef2cc0cf5c05e",
+        "toolchain-build.json": "a09953421235ba5e6fa4afe0cd61bff059fe84e754dc66dc338b44235ea33b2c"
       }
     },
     {
       "schema_version": 1,
-      "source": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
+      "source": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
       "base": "4d45755fed4aeef19e95beb90d3d0c884a2812bd",
       "history_floor": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "patches": [
@@ -3696,6 +3716,11 @@
           "commit": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
           "subject": "Merge pull request #50 from openclaw/claude/sync-webkit-upstream-20261014",
           "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "commit": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
+          "subject": "fix(aot): retain host evaluators only through reachable calls",
+          "patch_sha256": "264d3f7e1e4c316e9e1181741df9a7283f3ae2f94de898fb91a83d910aafe737"
         }
       ],
       "lane": {
@@ -3747,7 +3772,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:0b37c24e3006ab196a35a46a94d63578384f7fbeefdd2928f9f6e68382f16272",
+      "toolchain_image_id": "sha256:1af67e1406211ed83818bafa258a8d17812b23fa4d13699db1f53e552acbcb3e",
       "commands": {
         "base": [
           "docker",
@@ -3828,25 +3853,25 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910044232+069ef0e7cb36-1~exp1~20260910044242.70)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.11.1",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "41855293870",
+      "workflow_run": "42249525393",
       "run_attempt": "1",
-      "elapsed_seconds": 205.45145273208618,
+      "elapsed_seconds": 231.44672346115112,
       "files": {
         "bun-webkit-macos-arm64-lto.tar.gz": {
-          "sha256": "80f383f101486768a0c55b4d78ee4771a766df58a1bece8d2aa541f6e89520c9",
-          "size": 181471808
+          "sha256": "093b9cd35679a7445040e02de59811f08616d3a5dd1d3169ce8f07339010679f",
+          "size": 181441453
         }
       },
       "provenance_files": {
-        "toolchain-build.json": "456469ee80616455285ad7326af080e546400e786962539aecabe0bd1be72207",
-        "toolchain-image.json": "097112e5c73e86c477bd132bd5b10d49c8c321ee3eb68656832d6581cf1d5c8b",
+        "artifact-build.json": "5edd5fc95cef842b17529bdf36672654b3ee0b522c4d281e9822ca4a586cf452",
+        "toolchain-image.json": "2e463ed8806050dd2b0fa1cd648e4a487c7739c0579c84fcfac328a4636f71dd",
         "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8",
-        "artifact-build.json": "44b1dfb91152627830cdf164d86cec2fd00258c757fec4f24006863daf3e6602"
+        "toolchain-build.json": "306da6630e47c15dbf31c02f76fbf81f744e4a7eaa7ab8861e25cebec670ad30"
       }
     },
     {
       "schema_version": 1,
-      "source": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
+      "source": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
       "base": "4d45755fed4aeef19e95beb90d3d0c884a2812bd",
       "history_floor": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "patches": [
@@ -4364,6 +4389,11 @@
           "commit": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
           "subject": "Merge pull request #50 from openclaw/claude/sync-webkit-upstream-20261014",
           "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "commit": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
+          "subject": "fix(aot): retain host evaluators only through reachable calls",
+          "patch_sha256": "264d3f7e1e4c316e9e1181741df9a7283f3ae2f94de898fb91a83d910aafe737"
         }
       ],
       "lane": {
@@ -4415,7 +4445,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:9fe64773b6b2703b93ccf26e5109a2569809fb4fa138d80bdba54a670a887a6c",
+      "toolchain_image_id": "sha256:7a26b94f2aa7811767d6a53cc224b261883f4b52d582f4ef0608775c15a306a8",
       "commands": {
         "base": [
           "docker",
@@ -4496,25 +4526,25 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910044232+069ef0e7cb36-1~exp1~20260910044242.70)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.11.1",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "41855293870",
+      "workflow_run": "42249525393",
       "run_attempt": "1",
-      "elapsed_seconds": 207.07434725761414,
+      "elapsed_seconds": 257.9749183654785,
       "files": {
         "bun-webkit-macos-amd64-lto.tar.gz": {
-          "sha256": "c2e52779ece1519bcdfda76fb3ecba3b792634f07449e2b1c5b1c02a1c98426a",
-          "size": 185976831
+          "sha256": "1b75a383aa2b1ccea66d0004d116c3f2f1e17c32e049fe6f231eca65cda088dc",
+          "size": 185981816
         }
       },
       "provenance_files": {
-        "toolchain-image.json": "1efaeeec38dba26e0bb326e63ef3fc2bd17e0f2e9e70a17d8bbd0ab910f90336",
-        "toolchain-build.json": "f8595b2238ad25327cf211b5ed0e0424e2e611cf85eb7fbc08c51898a53c0216",
-        "artifact-build.json": "8339ffeb23935d18af730ee40c74c550f449e67d94622e4a469a70889bad27cf",
-        "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8"
+        "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8",
+        "toolchain-image.json": "78cbab59560dd266e00139e18f626a67f84814138331e6cdbcdf9eced4c2e7f7",
+        "toolchain-build.json": "a2c343e4f203e9ffdf894edff65fc123a4be6fa02ababe8a60cbc6c4482e599c",
+        "artifact-build.json": "590d80bba3326d9acdf0091c9c6bcfbd3fa2d4520495107173f5473527eabe1e"
       }
     },
     {
       "schema_version": 1,
-      "source": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
+      "source": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
       "base": "4d45755fed4aeef19e95beb90d3d0c884a2812bd",
       "history_floor": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "patches": [
@@ -5032,6 +5062,11 @@
           "commit": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
           "subject": "Merge pull request #50 from openclaw/claude/sync-webkit-upstream-20261014",
           "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "commit": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
+          "subject": "fix(aot): retain host evaluators only through reachable calls",
+          "patch_sha256": "264d3f7e1e4c316e9e1181741df9a7283f3ae2f94de898fb91a83d910aafe737"
         }
       ],
       "lane": {
@@ -5081,7 +5116,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:9ede50e942a501ce4c64e0addf9ee9a343d9c2605fd818f6366d15ba1cdc0837",
+      "toolchain_image_id": "sha256:5e83260a41f341208e9f827a6322aa29cf4914635bcd9ac1f5cbd9e79c7d6121",
       "commands": {
         "base": [
           "docker",
@@ -5151,28 +5186,28 @@
           "."
         ]
       },
-      "tool_versions": "Alpine clang version 23.1.4\nTarget: x86_64-alpine-linux-musl\nThread model: posix\nInstalledDir: /usr/lib/llvm23/bin\nConfiguration file: /etc/clang23/x86_64-alpine-linux-musl.cfg\ncmake version 4.1.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.9",
+      "tool_versions": "Alpine clang version 23.1.5\nTarget: x86_64-alpine-linux-musl\nThread model: posix\nInstalledDir: /usr/lib/llvm23/bin\nConfiguration file: /etc/clang23/x86_64-alpine-linux-musl.cfg\ncmake version 4.1.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.9",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "41855293870",
+      "workflow_run": "42249525393",
       "run_attempt": "1",
-      "elapsed_seconds": 1007.8760583400726,
+      "elapsed_seconds": 870.1057181358337,
       "files": {
         "bun-webkit-linux-amd64-musl-lto.tar.gz": {
-          "sha256": "b2d2cc1a552ce9a368e79d222469421866492551bbcceea4ea15949c8ed64549",
-          "size": 286651542
+          "sha256": "7096d679a23e24651e7a4b251c852ac1f9857dec1efb5fba7f554c8dbd05e33b",
+          "size": 286678431
         }
       },
       "provenance_files": {
-        "toolchain-build.json": "48c39d097ec129b97aea13ddd72159e3518ba919e1c1cdd28b779cd28086d49f",
-        "tool-versions.txt": "07323c31e3d31c07d4f242f3373210dd096796a2d0dc945bda73bf55bc9225a0",
-        "toolchain-image.json": "fc699374cb9bc0945b9e4bc9eb3452377ce130d89a9c4fbb9092c65a69ce7597",
-        "artifact-build.json": "a99e69f16a94a78f9d52030298e77c51996b050415c700331dfe5279b77a9f8d"
+        "tool-versions.txt": "7f246133260811d4b42a50bfc61fd63c39f7729572b89d7f37ddb3ebc1e8482b",
+        "artifact-build.json": "814faad6a71b41150b11360cdf43eaea09527052e305cebf058550030a1c2ddb",
+        "toolchain-build.json": "b3cf7a799c0079ba8e458d88a1b87f26e9923412a8c2760ce82779cacd746c6b",
+        "toolchain-image.json": "52d3f8f60acbd96379e499e5a59eadb077223098127bc7ca1f1979430a6062a0"
       }
     },
     {
       "schema_version": 1,
-      "source": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
+      "source": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
       "base": "4d45755fed4aeef19e95beb90d3d0c884a2812bd",
       "history_floor": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "patches": [
@@ -5690,6 +5725,11 @@
           "commit": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
           "subject": "Merge pull request #50 from openclaw/claude/sync-webkit-upstream-20261014",
           "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "commit": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
+          "subject": "fix(aot): retain host evaluators only through reachable calls",
+          "patch_sha256": "264d3f7e1e4c316e9e1181741df9a7283f3ae2f94de898fb91a83d910aafe737"
         }
       ],
       "lane": {
@@ -5739,7 +5779,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:097c272419cbfaf52341b193b47acb7229ef3599af7d8ebd51eedfd2fb8d4747",
+      "toolchain_image_id": "sha256:76b822f01866a46ed2afe4a087999c0a941fc98e0a6e02838c3f586cf516e6b5",
       "commands": {
         "base": [
           "docker",
@@ -5809,28 +5849,28 @@
           "."
         ]
       },
-      "tool_versions": "Alpine clang version 23.1.4\nTarget: x86_64-alpine-linux-musl\nThread model: posix\nInstalledDir: /usr/lib/llvm23/bin\nConfiguration file: /etc/clang23/x86_64-alpine-linux-musl.cfg\ncmake version 4.1.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.9",
+      "tool_versions": "Alpine clang version 23.1.5\nTarget: x86_64-alpine-linux-musl\nThread model: posix\nInstalledDir: /usr/lib/llvm23/bin\nConfiguration file: /etc/clang23/x86_64-alpine-linux-musl.cfg\ncmake version 4.1.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.9",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "41855293870",
+      "workflow_run": "42249525393",
       "run_attempt": "1",
-      "elapsed_seconds": 725.7049634456635,
+      "elapsed_seconds": 653.7297134399414,
       "files": {
         "bun-webkit-linux-arm64-musl-lto.tar.gz": {
-          "sha256": "cdc2eafea91f6ab957cd1cfbcd51f9918b80c8548f0462ea6836e48754a24ca8",
-          "size": 195265412
+          "sha256": "a41dc852594a69412afaf26aaab5d9fe26eea7d24e90f3394a01a1c27ca4640f",
+          "size": 195284632
         }
       },
       "provenance_files": {
-        "artifact-build.json": "8da52736c170192eec651f7e393e2815d0cc2d7eacc33018b0d42c1110648d4b",
-        "toolchain-build.json": "d172a0ce5bcdb2105c0b9ae3f775ab636edd907c866ebf7d458172ead135e9d5",
-        "tool-versions.txt": "07323c31e3d31c07d4f242f3373210dd096796a2d0dc945bda73bf55bc9225a0",
-        "toolchain-image.json": "e57395a9bb1e7681315817178fdffa029def313d40fb57415c4b57219c7181ec"
+        "tool-versions.txt": "7f246133260811d4b42a50bfc61fd63c39f7729572b89d7f37ddb3ebc1e8482b",
+        "toolchain-build.json": "6fe7dd8e9388296a858f8e3cfcb665ed4ea4799a2e29d25c1f0b0e4d709fd4cf",
+        "artifact-build.json": "30f7d57407263891976fb4c2546a35090ce249372ade6f33a55b7fe4928e19be",
+        "toolchain-image.json": "2e04b0411dfbae2f5e06144e3c6351f2c693863c646486bfbe7c5474954b8e55"
       }
     },
     {
       "schema_version": 1,
-      "source": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
+      "source": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
       "base": "4d45755fed4aeef19e95beb90d3d0c884a2812bd",
       "history_floor": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "patches": [
@@ -6348,6 +6388,11 @@
           "commit": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
           "subject": "Merge pull request #50 from openclaw/claude/sync-webkit-upstream-20261014",
           "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "commit": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
+          "subject": "fix(aot): retain host evaluators only through reachable calls",
+          "patch_sha256": "264d3f7e1e4c316e9e1181741df9a7283f3ae2f94de898fb91a83d910aafe737"
         }
       ],
       "lane": {
@@ -6400,7 +6445,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:423e2655fba81cb53acc12cdda000504e127d4b4b19a195e4d29df54e81c5fdd",
+      "toolchain_image_id": "sha256:04e522606482c1c84e63b3347bfda9f6fda6fb45ac066d125a88798cad99ad7e",
       "commands": {
         "base": [
           "docker",
@@ -6485,25 +6530,25 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910044232+069ef0e7cb36-1~exp1~20260910044242.70)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.11.1",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "41855293870",
+      "workflow_run": "42249525393",
       "run_attempt": "1",
-      "elapsed_seconds": 522.85777592659,
+      "elapsed_seconds": 518.0285623073578,
       "files": {
         "bun-webkit-windows-amd64-lto.tar.gz": {
-          "sha256": "e89809f9f66c99a03a8f23d1155ff2bf031ecdcab6bc9d50f7fcdb5c708ffec0",
-          "size": 575980877
+          "sha256": "a985d2fa1b5132bc2a9ffa4d09be4105f6063ef24a238373a0147686b84b3a3c",
+          "size": 575964408
         }
       },
       "provenance_files": {
-        "toolchain-build.json": "75a7891ff43f01d84de7b32a386358905e0d0fb2a38ddae6a9def01721d2d332",
-        "toolchain-image.json": "b922f7e7aeda420e933ceb74b5ae9307f7d8b540aac52eb0fca0a17f102a060d",
+        "toolchain-image.json": "91f84486a712a51a4e55124a805f91988277bdb2c778d3476cd5af7359aeaa2e",
         "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8",
-        "artifact-build.json": "52ad341932125ec030645f35d559e147f2a09c8ac63b62b492d15b67e70fc665"
+        "toolchain-build.json": "accbd81dbc135be56d297aa15391ca1ca187f086b87bffa877e092ad9ef2d27a",
+        "artifact-build.json": "de1feff7acde07518c7032b71b325b2f622aa90f2d32dfea3f241a228dde0215"
       }
     },
     {
       "schema_version": 1,
-      "source": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
+      "source": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
       "base": "4d45755fed4aeef19e95beb90d3d0c884a2812bd",
       "history_floor": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "patches": [
@@ -7021,6 +7066,11 @@
           "commit": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
           "subject": "Merge pull request #50 from openclaw/claude/sync-webkit-upstream-20261014",
           "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "commit": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
+          "subject": "fix(aot): retain host evaluators only through reachable calls",
+          "patch_sha256": "264d3f7e1e4c316e9e1181741df9a7283f3ae2f94de898fb91a83d910aafe737"
         }
       ],
       "lane": {
@@ -7073,7 +7123,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:2f889baa79e44163d4244732ca2508c1dbbf3529b4f07d563e6e030200cf2ed3",
+      "toolchain_image_id": "sha256:39abfb70356cb61a67ccc3e0b79f4d3ea101bb21c0dc1d089be62a8923855ba1",
       "commands": {
         "base": [
           "docker",
@@ -7158,25 +7208,25 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910044232+069ef0e7cb36-1~exp1~20260910044242.70)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.11.1",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "41855293870",
+      "workflow_run": "42249525393",
       "run_attempt": "1",
-      "elapsed_seconds": 395.1734232902527,
+      "elapsed_seconds": 431.9407958984375,
       "files": {
         "bun-webkit-windows-arm64.tar.gz": {
-          "sha256": "fd8262ed760a0194cfe7066aefa17ed8b9a4a14268a06566ad0c8ea8a0760b99",
-          "size": 262027357
+          "sha256": "66d3c3544b8c2c7dcf97a6c12aec6cecf09fa07f87ae2749670b518a61d3c22d",
+          "size": 262013279
         }
       },
       "provenance_files": {
-        "artifact-build.json": "c48219384f25fc48410dfbd3f37e20bd4d3144d1327367aa843fe52f4f0d3146",
+        "toolchain-image.json": "3a703eff2061c82e015b95e161bea543bb06507ac2bae53b591c659b2455dbaf",
         "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8",
-        "toolchain-build.json": "a6285c54e011a96adf70d57019bd2d3b7aa6fdb63d06cf30641ef37ae4c99882",
-        "toolchain-image.json": "98d2f59673e3030729052319c39af5cc9612fe02c5b327dd6fcf15773b44058d"
+        "artifact-build.json": "aeb6363321f1aa9f5c1aa4025b7eb5f18471a8725174232aa273b07ba5e87457",
+        "toolchain-build.json": "9b23fb27f306be3f0e1c5eea18f10ae49cebb31e1ae5ba0d6c6a63831ef286ce"
       }
     },
     {
       "schema_version": 1,
-      "source": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
+      "source": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
       "base": "4d45755fed4aeef19e95beb90d3d0c884a2812bd",
       "history_floor": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "patches": [
@@ -7694,6 +7744,11 @@
           "commit": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
           "subject": "Merge pull request #50 from openclaw/claude/sync-webkit-upstream-20261014",
           "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "commit": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
+          "subject": "fix(aot): retain host evaluators only through reachable calls",
+          "patch_sha256": "264d3f7e1e4c316e9e1181741df9a7283f3ae2f94de898fb91a83d910aafe737"
         }
       ],
       "lane": {
@@ -7751,7 +7806,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:2fd9287a839c971546fa8b668e70fc56cb95f29dbdd081f7fbc415f18aee8949",
+      "toolchain_image_id": "sha256:a3a2fd02b0a72f3d62aa19eb8c124844bd17051dcb58228e7831cbd3d057dd2e",
       "commands": {
         "base": [
           "docker",
@@ -7852,25 +7907,25 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910043923+069ef0e7cb36-1~exp1~20260910043934.72)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 4.4.4\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.10.0",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "41855293870",
+      "workflow_run": "42249525393",
       "run_attempt": "1",
-      "elapsed_seconds": 703.9357528686523,
+      "elapsed_seconds": 729.2751841545105,
       "files": {
         "bun-webkit-linux-amd64-aot.tar.gz": {
-          "sha256": "edf2a027172797536c3f859933c59cb596c22209d92576cd170e97bd525c446c",
-          "size": 1286739341
+          "sha256": "de9d27492a1a0f3651fa6b0c19e0f66dec64639776a142cb2b3694db96fc9759",
+          "size": 1286756769
         }
       },
       "provenance_files": {
-        "toolchain-build.json": "8399fd7575282719044bf53a65e3005474b9975ffa22b06493b6e83ddf44af72",
-        "toolchain-image.json": "0bbf54eb4708b29f30c37ab9d13e88aae8a6f4dc8c6ccad0a98c80952963b0ed",
-        "tool-versions.txt": "482e98b1eb54ae5a88a8e31aaeb70986e8f42683ee8ef8c0a34a569b5ae01b7b",
-        "artifact-build.json": "2a03ad85c52f331dd3a2b6117721f3a8d83c5f161f6f46ed844915457fa40894"
+        "artifact-build.json": "29db1cd5cdc9ec2f7daf3a72f7f4bf90ad40c7472ea952d0f1e0cf9ce1a83b3f",
+        "toolchain-build.json": "7f9f0f9528dedb985c5472a4b87e8bf077373acff2e4b8bdc455a67b302f7610",
+        "toolchain-image.json": "0d096afbf4c78aa300f7ec60aad9ec93006bdedd8e338cd19df71d1cbaadfb47",
+        "tool-versions.txt": "482e98b1eb54ae5a88a8e31aaeb70986e8f42683ee8ef8c0a34a569b5ae01b7b"
       }
     },
     {
       "schema_version": 1,
-      "source": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
+      "source": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
       "base": "4d45755fed4aeef19e95beb90d3d0c884a2812bd",
       "history_floor": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "patches": [
@@ -8388,6 +8443,11 @@
           "commit": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
           "subject": "Merge pull request #50 from openclaw/claude/sync-webkit-upstream-20261014",
           "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "commit": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
+          "subject": "fix(aot): retain host evaluators only through reachable calls",
+          "patch_sha256": "264d3f7e1e4c316e9e1181741df9a7283f3ae2f94de898fb91a83d910aafe737"
         }
       ],
       "lane": {
@@ -8439,7 +8499,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:3fae1d31e676e60aab5d2b57471d409f6b7b26fb76c8ea7fbacb819c80c241e8",
+      "toolchain_image_id": "sha256:19c0b1a2ff651e0f2f4d08563d290e8bdac2eec14afccc10707fdf4bd00f3af9",
       "commands": {
         "base": [
           "docker",
@@ -8520,25 +8580,25 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910044232+069ef0e7cb36-1~exp1~20260910044242.70)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.11.1",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "41855293870",
+      "workflow_run": "42249525393",
       "run_attempt": "1",
-      "elapsed_seconds": 398.39669132232666,
+      "elapsed_seconds": 443.6587884426117,
       "files": {
         "bun-webkit-macos-arm64-aot.tar.gz": {
-          "sha256": "e2fe4d7d58f309f3a0bfff8167c9622e26c01fa34cb6d6aa21098b0c7e3cf51b",
-          "size": 517653068
+          "sha256": "d0e1ce29a0022dc4cb037dff91ef20fe4e9d7e34b96b818eef201e771c440747",
+          "size": 517660421
         }
       },
       "provenance_files": {
-        "artifact-build.json": "1ab342e463c5c5750a0d6099058a9829585e91f955c69fe29bc6b32586819b68",
         "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8",
-        "toolchain-build.json": "4224e1b051ac52ed897405c77db680486651ebbc7057b16c83507888ccfc20f2",
-        "toolchain-image.json": "52b4ac6e7b65441b037a351d2f2f31e4a828ee16f6cd535b289221a9a9d34dcc"
+        "artifact-build.json": "9dd977bad8a6ea4d66acc689b6960e09b3372542b0e56f05d89b87d49725d137",
+        "toolchain-build.json": "ae16bddcd5a0d2f3c403193cbec8669b6a6009c039bb5f2518c7b3fbc7fb3548",
+        "toolchain-image.json": "1adb7067baa9f211e30009b159541b21fe39f5bd947e76a403a5fe2c22d678e2"
       }
     },
     {
       "schema_version": 1,
-      "source": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
+      "source": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
       "base": "4d45755fed4aeef19e95beb90d3d0c884a2812bd",
       "history_floor": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "patches": [
@@ -9056,6 +9116,11 @@
           "commit": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
           "subject": "Merge pull request #50 from openclaw/claude/sync-webkit-upstream-20261014",
           "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "commit": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
+          "subject": "fix(aot): retain host evaluators only through reachable calls",
+          "patch_sha256": "264d3f7e1e4c316e9e1181741df9a7283f3ae2f94de898fb91a83d910aafe737"
         }
       ],
       "lane": {
@@ -9113,7 +9178,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:7e0bb9ca24b47ca5b01fa2a9a5d2fb038d9076b92d367accc31e32c1678517ce",
+      "toolchain_image_id": "sha256:fe7d7e586da82027e6d48db21c699964e6bcbb84d11a1dba66e5f87920ea077d",
       "commands": {
         "base": [
           "docker",
@@ -9214,29 +9279,29 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910043923+069ef0e7cb36-1~exp1~20260910043934.72)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 4.4.4\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.10.0",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "41855293870",
+      "workflow_run": "42249525393",
       "run_attempt": "1",
-      "elapsed_seconds": 902.1024873256683,
+      "elapsed_seconds": 954.4565105438232,
       "files": {
         "bun-webkit-linux-amd64-lto-aot.tar.gz": {
-          "sha256": "3f1c33884ffe4d96cf690d8b8ab5571c17e48f51908bd0045b41c4e3e6eacf90",
-          "size": 809105900
+          "sha256": "c97224062aa59fe0d51323a186f91ad5b5002365e720c2a98398e624dc7c9e2a",
+          "size": 809104824
         },
         "bun-webkit-aot-sources.tar.gz": {
-          "sha256": "1c2c5fa67b1610d0d8a89fd34f8a5601d6f6ef814ced47ac8593120513f53077",
-          "size": 523146
+          "sha256": "0a1f719b7933e1557ed13ac161ebc497bd010bb0c7338b17c7f3d00701f41d5e",
+          "size": 521845
         }
       },
       "provenance_files": {
-        "toolchain-image.json": "93b881876ac54ccce133b19eeb87c34928bede5dff19c469ac6345e829828eda",
-        "toolchain-build.json": "35725d90f4b3864e549eee318c73f1c40e162f87cfb239abae7be9b8d9d13c8b",
-        "tool-versions.txt": "482e98b1eb54ae5a88a8e31aaeb70986e8f42683ee8ef8c0a34a569b5ae01b7b",
-        "artifact-build.json": "718f2289e820de937adc0b74e42239f38d332410a70b198d6e3e00b0981a04f2"
+        "toolchain-build.json": "3cbe6987b0db0941d52cb5782743be246f424f82d9b994f671cc71aac9648fcc",
+        "toolchain-image.json": "8cfc0e02b849876153509e210d3cbb8086cd429f273a754dcf2d19dbde28b502",
+        "artifact-build.json": "ecad3596d1f57054bec62e240abe01d4253e0563ee18fae78443eaaa695daf46",
+        "tool-versions.txt": "482e98b1eb54ae5a88a8e31aaeb70986e8f42683ee8ef8c0a34a569b5ae01b7b"
       }
     },
     {
       "schema_version": 1,
-      "source": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
+      "source": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
       "base": "4d45755fed4aeef19e95beb90d3d0c884a2812bd",
       "history_floor": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "patches": [
@@ -9754,6 +9819,11 @@
           "commit": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
           "subject": "Merge pull request #50 from openclaw/claude/sync-webkit-upstream-20261014",
           "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "commit": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
+          "subject": "fix(aot): retain host evaluators only through reachable calls",
+          "patch_sha256": "264d3f7e1e4c316e9e1181741df9a7283f3ae2f94de898fb91a83d910aafe737"
         }
       ],
       "lane": {
@@ -9811,7 +9881,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:3596e31c312697cc120ba1da0df40d057ca688fd76d445a0cd29e10fe45a0016",
+      "toolchain_image_id": "sha256:579fc1dd686d600d32925638f0e6b882ae1e7b927f53dd99019c464df487f672",
       "commands": {
         "base": [
           "docker",
@@ -9912,25 +9982,25 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910043923+069ef0e7cb36-1~exp1~20260910043934.72)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 4.4.4\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.10.0",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "41855293870",
+      "workflow_run": "42249525393",
       "run_attempt": "1",
-      "elapsed_seconds": 804.5361156463623,
+      "elapsed_seconds": 857.8374259471893,
       "files": {
         "bun-webkit-linux-arm64-lto-aot.tar.gz": {
-          "sha256": "e4867800d34546bfe88208f10d88ac2002f543407762cf800423e45cbbcd70f1",
-          "size": 672781195
+          "sha256": "47f8efef973933b03368f075703576abd3a07a222f0d9e26f61c1c7d76eef4c0",
+          "size": 672809754
         }
       },
       "provenance_files": {
-        "toolchain-image.json": "02be9f069b1aa4b2a40c230f130ec459f34ffaf20ac4df103336b0a1083c9780",
-        "toolchain-build.json": "02245e8069935a947be88341f47200b5f8834d3dd51ccc8d71d7c971b2cae5a1",
+        "artifact-build.json": "199018c635593ec32d0a12659e2f191a55e4e579538b46669631521824131c69",
         "tool-versions.txt": "482e98b1eb54ae5a88a8e31aaeb70986e8f42683ee8ef8c0a34a569b5ae01b7b",
-        "artifact-build.json": "862f74aeb137d4f978d32f00481c011c01ca76e4c356dcd4c2e6cd45a50ff208"
+        "toolchain-image.json": "a0f752325da9453c61907df67d07d4386996102ba0e619b9965bc2b0ec350f52",
+        "toolchain-build.json": "6d349fa501fc7f53b811aa51466970b3703fdc7a8171abdba6738069fc9fc079"
       }
     },
     {
       "schema_version": 1,
-      "source": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
+      "source": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
       "base": "4d45755fed4aeef19e95beb90d3d0c884a2812bd",
       "history_floor": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "patches": [
@@ -10448,6 +10518,11 @@
           "commit": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
           "subject": "Merge pull request #50 from openclaw/claude/sync-webkit-upstream-20261014",
           "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "commit": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
+          "subject": "fix(aot): retain host evaluators only through reachable calls",
+          "patch_sha256": "264d3f7e1e4c316e9e1181741df9a7283f3ae2f94de898fb91a83d910aafe737"
         }
       ],
       "lane": {
@@ -10499,7 +10574,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:6c40e1da679a8bb6c89fea4816736d5f31790df563f0de3c9126c47c77543399",
+      "toolchain_image_id": "sha256:7b9c40ad1a692ee2828748ac5a713f6ea34a04f8f51950523066292759e7197a",
       "commands": {
         "base": [
           "docker",
@@ -10580,25 +10655,25 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910044232+069ef0e7cb36-1~exp1~20260910044242.70)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.11.1",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "41855293870",
+      "workflow_run": "42249525393",
       "run_attempt": "1",
-      "elapsed_seconds": 413.8844714164734,
+      "elapsed_seconds": 416.0971419811249,
       "files": {
         "bun-webkit-macos-arm64-lto-aot.tar.gz": {
-          "sha256": "c1643d82166744282f4a75bb20053d56b47103eb08d34284fa6bae0294dd0011",
-          "size": 365166853
+          "sha256": "69f78e59b97a6a59d3da90406f7b7f383633fa23a927afcca143004e81024013",
+          "size": 365162400
         }
       },
       "provenance_files": {
-        "toolchain-build.json": "a955b5c384696b9bc658032b635fdf91fb8167bfeed4fb5d7dd0f4a597fa0e6c",
-        "toolchain-image.json": "e02b8b3a8523728d088fd199f30a958180c9bceb082f9189967558ca0f9fdda8",
         "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8",
-        "artifact-build.json": "95b6328c892be578fea6eda8d10f4fde01fa6ad40bd835ddc7c0b25f594008fa"
+        "artifact-build.json": "d7c812dc1a9e7b56d766ca841fccb4ce791aaf37ebfbfd2307223f0411c6f351",
+        "toolchain-image.json": "d58cca6c2725cb4b6715cc49fd4cbb3b8c9be05fb2235ccd62cf97b74bedf48c",
+        "toolchain-build.json": "208f676775db6429b9ac7a2f340ab71c57eec3be0d90798deebfdfc58cdb00e3"
       }
     },
     {
       "schema_version": 1,
-      "source": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
+      "source": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
       "base": "4d45755fed4aeef19e95beb90d3d0c884a2812bd",
       "history_floor": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "patches": [
@@ -11116,6 +11191,11 @@
           "commit": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
           "subject": "Merge pull request #50 from openclaw/claude/sync-webkit-upstream-20261014",
           "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "commit": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
+          "subject": "fix(aot): retain host evaluators only through reachable calls",
+          "patch_sha256": "264d3f7e1e4c316e9e1181741df9a7283f3ae2f94de898fb91a83d910aafe737"
         }
       ],
       "lane": {
@@ -11167,7 +11247,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:5c298bcb99c2dd132647eceadae893381056af8d8169765febcc983ca060c1a3",
+      "toolchain_image_id": "sha256:6733bf90b213a0e71b13f9bee614e1e1d21e51cf833393f3009fdfc30c129406",
       "commands": {
         "base": [
           "docker",
@@ -11248,25 +11328,25 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910044232+069ef0e7cb36-1~exp1~20260910044242.70)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.11.1",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "41855293870",
+      "workflow_run": "42249525393",
       "run_attempt": "1",
-      "elapsed_seconds": 426.37051939964294,
+      "elapsed_seconds": 432.4607021808624,
       "files": {
         "bun-webkit-macos-amd64-lto-aot.tar.gz": {
-          "sha256": "c455fc45aa23e330457243659c8b3fadce6632d4cc12e2edf371a5aea8c43fb0",
-          "size": 366995092
+          "sha256": "c6b59d41b5a8ac140aea32e1471df846206adaa8e60691f3f3cdd5dab218b492",
+          "size": 367008675
         }
       },
       "provenance_files": {
-        "toolchain-build.json": "dfe8367e06a9eae71ec352674f4999b185447652aa82d41d1b287decba72c92b",
-        "artifact-build.json": "c86da526eb819fdac8f5d8609c27034fb41e77f10046c16d7334242435a7b145",
-        "toolchain-image.json": "009be94c05308c5bb3c20fbcfa05429d02553bdbb522e092b97c41fabc537b6e",
-        "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8"
+        "toolchain-build.json": "469995f27dfce6e09d5ea8ac5383bdf54b2179b9d55a799dc0ef03f7f6c900d6",
+        "artifact-build.json": "6f158a073df6d5d654473297e79f29a2e079265aa433af47ae8e23ed404767e7",
+        "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8",
+        "toolchain-image.json": "0154adc87ef4d251dc0a75974f61198a72c102d0cc43ae6f0654e20e8439cb15"
       }
     },
     {
       "schema_version": 1,
-      "source": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
+      "source": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
       "base": "4d45755fed4aeef19e95beb90d3d0c884a2812bd",
       "history_floor": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "patches": [
@@ -11784,6 +11864,11 @@
           "commit": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
           "subject": "Merge pull request #50 from openclaw/claude/sync-webkit-upstream-20261014",
           "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "commit": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
+          "subject": "fix(aot): retain host evaluators only through reachable calls",
+          "patch_sha256": "264d3f7e1e4c316e9e1181741df9a7283f3ae2f94de898fb91a83d910aafe737"
         }
       ],
       "lane": {
@@ -11833,7 +11918,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:7c4986dc621a431e415fc35831b6bcd54985b3eee6d547cc09d1111205b50ea8",
+      "toolchain_image_id": "sha256:8b5201ba2b872ed3205f61a5c3112a630798b426b61373124a0f6b36e375b977",
       "commands": {
         "base": [
           "docker",
@@ -11903,28 +11988,28 @@
           "."
         ]
       },
-      "tool_versions": "Alpine clang version 23.1.4\nTarget: x86_64-alpine-linux-musl\nThread model: posix\nInstalledDir: /usr/lib/llvm23/bin\nConfiguration file: /etc/clang23/x86_64-alpine-linux-musl.cfg\ncmake version 4.1.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.9",
+      "tool_versions": "Alpine clang version 23.1.5\nTarget: x86_64-alpine-linux-musl\nThread model: posix\nInstalledDir: /usr/lib/llvm23/bin\nConfiguration file: /etc/clang23/x86_64-alpine-linux-musl.cfg\ncmake version 4.1.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.9",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "41855293870",
+      "workflow_run": "42249525393",
       "run_attempt": "1",
-      "elapsed_seconds": 2185.0776336193085,
+      "elapsed_seconds": 1820.5741820335388,
       "files": {
         "bun-webkit-linux-amd64-musl-lto-aot.tar.gz": {
-          "sha256": "17a2f76dde70811fc75718b4f2abc5f7795133277074e6058db3e6f1400c132b",
-          "size": 460533641
+          "sha256": "fa57c9432aa178d09167ac453a7f9b1f9c7871539d60e4d4a4a2accde015eaa8",
+          "size": 460544571
         }
       },
       "provenance_files": {
-        "toolchain-build.json": "f5b45fd7774ef4fee9450704fc3333785ecc343cb224612e775b3b73315864d3",
-        "artifact-build.json": "1bc22b6c7000da965f99076bfde9224d8e33caaaa18deaada158aca0bd139a1e",
-        "toolchain-image.json": "b5b64c0a980b3a8499743d1c3aeef7dfc4c424abc7ad5ed159d7b3a977957b21",
-        "tool-versions.txt": "07323c31e3d31c07d4f242f3373210dd096796a2d0dc945bda73bf55bc9225a0"
+        "toolchain-build.json": "4253e91b52c1a17aa5e987fda9cf8f197765ec028e85e895342c85ccc1aa34bf",
+        "toolchain-image.json": "5e2ccc98f6d346041ddab58c0cc938d344fa35eb9becda4bc5ce2026741fea59",
+        "tool-versions.txt": "7f246133260811d4b42a50bfc61fd63c39f7729572b89d7f37ddb3ebc1e8482b",
+        "artifact-build.json": "e2fa4792ac2bd4e9d69567d47c818e993549f0454b60bc639a43390e54fc0908"
       }
     },
     {
       "schema_version": 1,
-      "source": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
+      "source": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
       "base": "4d45755fed4aeef19e95beb90d3d0c884a2812bd",
       "history_floor": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "patches": [
@@ -12442,6 +12527,11 @@
           "commit": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
           "subject": "Merge pull request #50 from openclaw/claude/sync-webkit-upstream-20261014",
           "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "commit": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
+          "subject": "fix(aot): retain host evaluators only through reachable calls",
+          "patch_sha256": "264d3f7e1e4c316e9e1181741df9a7283f3ae2f94de898fb91a83d910aafe737"
         }
       ],
       "lane": {
@@ -12491,7 +12581,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:47ab69be2cedfbc308d69e071ddffefd5d7a044fc853dd2fa1c957587bd3bba6",
+      "toolchain_image_id": "sha256:b40899ca633ea115ac70989b9a13e174a1a4e94400681178ffe92dc84d362ee4",
       "commands": {
         "base": [
           "docker",
@@ -12561,28 +12651,28 @@
           "."
         ]
       },
-      "tool_versions": "Alpine clang version 23.1.4\nTarget: x86_64-alpine-linux-musl\nThread model: posix\nInstalledDir: /usr/lib/llvm23/bin\nConfiguration file: /etc/clang23/x86_64-alpine-linux-musl.cfg\ncmake version 4.1.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.9",
+      "tool_versions": "Alpine clang version 23.1.5\nTarget: x86_64-alpine-linux-musl\nThread model: posix\nInstalledDir: /usr/lib/llvm23/bin\nConfiguration file: /etc/clang23/x86_64-alpine-linux-musl.cfg\ncmake version 4.1.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.9",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "41855293870",
+      "workflow_run": "42249525393",
       "run_attempt": "1",
-      "elapsed_seconds": 1805.4096240997314,
+      "elapsed_seconds": 1565.4817588329315,
       "files": {
         "bun-webkit-linux-arm64-musl-lto-aot.tar.gz": {
-          "sha256": "19edb98aa72f4e62b0cd84af5892a26fbeb509b7f4be06dd9236acf00840f599",
-          "size": 360674800
+          "sha256": "44b60c7f5eeaf0e8f2b27ca0041d46ca5aecaa909fea8be49523a0f2b151fc25",
+          "size": 360653959
         }
       },
       "provenance_files": {
-        "toolchain-build.json": "9c0915cd606945d192d954daec03bfcebaf7af2fa9ed691f3c9dc4dd154758ba",
-        "tool-versions.txt": "07323c31e3d31c07d4f242f3373210dd096796a2d0dc945bda73bf55bc9225a0",
-        "toolchain-image.json": "9e72987e878f55159a9c74eb0de32ba2c848656fab2d26e5081133ef62878651",
-        "artifact-build.json": "30c46fce63f9d68b293b8bb6e99388a1abdd049bb90678cc3cb50c4f6ec34968"
+        "toolchain-image.json": "34d1672197c87bad9cb4b988e501bc3db5d473f61ead17b5481faa4156265757",
+        "artifact-build.json": "9d90bc43e823f1537e08bc0024f8eebd6510d3120d1e1a5d9962eb92e5cab4a8",
+        "tool-versions.txt": "7f246133260811d4b42a50bfc61fd63c39f7729572b89d7f37ddb3ebc1e8482b",
+        "toolchain-build.json": "30bd20cccde4ce460d3e0f8e7d2cd12dfcf42bf04c4f5cb3254e0e0086ddcc4b"
       }
     },
     {
       "schema_version": 1,
-      "source": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
+      "source": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
       "base": "4d45755fed4aeef19e95beb90d3d0c884a2812bd",
       "history_floor": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "patches": [
@@ -13100,6 +13190,11 @@
           "commit": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
           "subject": "Merge pull request #50 from openclaw/claude/sync-webkit-upstream-20261014",
           "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "commit": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
+          "subject": "fix(aot): retain host evaluators only through reachable calls",
+          "patch_sha256": "264d3f7e1e4c316e9e1181741df9a7283f3ae2f94de898fb91a83d910aafe737"
         }
       ],
       "lane": {
@@ -13152,7 +13247,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:461aab40f0fde2da324fc60d539457bbd5f9fbeeba06159c4766e76075cd4c88",
+      "toolchain_image_id": "sha256:d76d67646c84e9039ae57d3393eb46dd7287790165e2b432041fe2d82ba42b40",
       "commands": {
         "base": [
           "docker",
@@ -13237,25 +13332,25 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910044232+069ef0e7cb36-1~exp1~20260910044242.70)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.11.1",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "41855293870",
+      "workflow_run": "42249525393",
       "run_attempt": "1",
-      "elapsed_seconds": 794.7930374145508,
+      "elapsed_seconds": 869.9379980564117,
       "files": {
         "bun-webkit-windows-amd64-lto-aot.tar.gz": {
-          "sha256": "71d6d3f308b7c2e22181b90e89a1a4b258e34b56ce35e9106e2ad772e6e437f9",
-          "size": 1167376731
+          "sha256": "e7005e9040eddd905c1481813725a48dcc4db3faf025756c74b0332543fe9c31",
+          "size": 1167405079
         }
       },
       "provenance_files": {
-        "artifact-build.json": "f8f062c29c3f0c4f12062adede7d66a69c9dacf1a3301ebc96d3de9b2b3d2a4e",
         "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8",
-        "toolchain-image.json": "c19f9c76a131a667b1db7adc5c7af95a3f705cd2388d491ecd9cc3456b88eca6",
-        "toolchain-build.json": "1e6ce96d92a4a999a16565df8612565368839582fd88e427c347518a2386ad64"
+        "toolchain-build.json": "75bfac85211e988f000b8e5d2cc32291fa0bba773dce4579915aea0a08e69cc4",
+        "artifact-build.json": "4670197fee9ef28eaf6d5f69f5b869ebfb9617d27ec8a5ea27f581ca6eece49b",
+        "toolchain-image.json": "9e5f3933f9211c94f779a684a4ccb6afe2adaf748aee96d7c41919bd6e546896"
       }
     },
     {
       "schema_version": 1,
-      "source": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
+      "source": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
       "base": "4d45755fed4aeef19e95beb90d3d0c884a2812bd",
       "history_floor": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "patches": [
@@ -13773,6 +13868,11 @@
           "commit": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
           "subject": "Merge pull request #50 from openclaw/claude/sync-webkit-upstream-20261014",
           "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "commit": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
+          "subject": "fix(aot): retain host evaluators only through reachable calls",
+          "patch_sha256": "264d3f7e1e4c316e9e1181741df9a7283f3ae2f94de898fb91a83d910aafe737"
         }
       ],
       "lane": {
@@ -13825,7 +13925,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:8553fa23a4eae244f7e419ff084fb734375b3e39e9d9f016286a078f81480be8",
+      "toolchain_image_id": "sha256:a119b32c194bd150481182befd32a03fa9e54bd7e02658e8fec1d5c0a1ff7b2b",
       "commands": {
         "base": [
           "docker",
@@ -13910,25 +14010,25 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910044232+069ef0e7cb36-1~exp1~20260910044242.70)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.11.1",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "41855293870",
+      "workflow_run": "42249525393",
       "run_attempt": "1",
-      "elapsed_seconds": 693.0553424358368,
+      "elapsed_seconds": 690.6414802074432,
       "files": {
         "bun-webkit-windows-arm64-aot.tar.gz": {
-          "sha256": "1266349911a5b8a673a3771aab6a70d0ef06b52bc180724d97b1cbff0edeb874",
-          "size": 509237052
+          "sha256": "b3d77da42ad6da94f0fb3ca004ff5e49fd9dd0d861b884b64363b97bdb143c5d",
+          "size": 509227737
         }
       },
       "provenance_files": {
-        "toolchain-build.json": "509bc99173082c31d03354fc0435b14e0ff31cdc6f58ba190dd78f7d58008882",
-        "artifact-build.json": "2c7cfc58149c6379a26b2031f9565a37af5014d78d239cb2234fe0e2cca59630",
-        "toolchain-image.json": "1def59a0777b302cca8fa1c4001dfc8445764bc509a6bf5c8622f4b08322502c",
+        "artifact-build.json": "4e0456bc4dcae513e8108215a85de62ce3bef18359005b6870a2fa85611622f0",
+        "toolchain-build.json": "037de930e702372f2427b0a66ece3e19bd7a28d209b6f8b5ceec2be2a4456b41",
+        "toolchain-image.json": "0787ad0810e674070a323d4e93f1788106b88cb3c6e13555c8409a0949982964",
         "tool-versions.txt": "9e25fc80a955f54e9ff61e7796df5c0b79d4bc6677fc47ee2357d99fdf5fa8e8"
       }
     },
     {
       "schema_version": 1,
-      "source": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
+      "source": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
       "base": "4d45755fed4aeef19e95beb90d3d0c884a2812bd",
       "history_floor": "5718a6ec579b98362ea7276a426deedcc6281ef5",
       "patches": [
@@ -14446,6 +14546,11 @@
           "commit": "7bf742934b5a72aefaac2dcd993e20d6b0e388c5",
           "subject": "Merge pull request #50 from openclaw/claude/sync-webkit-upstream-20261014",
           "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "commit": "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
+          "subject": "fix(aot): retain host evaluators only through reachable calls",
+          "patch_sha256": "264d3f7e1e4c316e9e1181741df9a7283f3ae2f94de898fb91a83d910aafe737"
         }
       ],
       "lane": {
@@ -14503,7 +14608,7 @@
         "macos-cross/mig": "efa2dc0b4a25c65efce82569f6818fd8c6646351446c62fcd7ce36dc3f5a503a",
         "macos-cross/xmac.mjs": "ba7af744715fec67c8baa3026f679dac75a4ccd30207437572664675f65bd45b"
       },
-      "toolchain_image_id": "sha256:8479f82ce210eb8c4a70255d89bf03e2c465392649d772b548ff765e1d97ac58",
+      "toolchain_image_id": "sha256:b6baf5cafc2fed967e68b41a20acdb60bb506c0c8da255b6cd2eeb1fbe6363bc",
       "commands": {
         "base": [
           "docker",
@@ -14604,30 +14709,30 @@
       "tool_versions": "Ubuntu clang version 23.1.2 (++20260910043923+069ef0e7cb36-1~exp1~20260910043934.72)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-23/bin\ncmake version 4.4.4\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n1.10.0",
       "docker_version": "Client: Docker Engine - Community\n Version:           28.0.4\n API version:       1.48\n Go version:        go1.23.7\n Git commit:        b8034c0\n Built:             Tue Mar 25 15:07:16 2025\n OS/Arch:           linux/amd64\n Context:           default\n\nServer: Docker Engine - Community\n Engine:\n  Version:          28.0.4\n  API version:      1.48 (minimum version 1.24)\n  Go version:       go1.23.7\n  Git commit:       6430e49\n  Built:            Tue Mar 25 15:07:16 2025\n  OS/Arch:          linux/amd64\n  Experimental:     false\n containerd:\n  Version:          v2.3.3\n  GitCommit:        aad11006b869517fcd3009450b6f82da282e1a9b\n runc:\n  Version:          1.4.3\n  GitCommit:        v1.4.3-0-gbb14dab\n docker-init:\n  Version:          0.19.0\n  GitCommit:        de40ad0",
       "buildx_version": "github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a",
-      "workflow_run": "41855293870",
+      "workflow_run": "42249525393",
       "run_attempt": "1",
-      "elapsed_seconds": 681.0081212520599,
+      "elapsed_seconds": 679.7255840301514,
       "files": {
         "bun-webkit-linux-amd64-debug-asan-aot.tar.gz": {
-          "sha256": "857d041058174b723e62073582cf9e89145bdae495ad540421de50ae5ec03910",
-          "size": 1502804470
+          "sha256": "caf726bce47677b450bc8d51e43e008aabd2737767538a0ec1d2a8c3bbf505cc",
+          "size": 1502854860
         }
       },
       "provenance_files": {
-        "toolchain-build.json": "b973a8db3833c045e40b0afa7474fa3810259f033514fe056770f07b6e6956d5",
+        "toolchain-build.json": "1a348a11f5dc30da7ccdbf5ff2bcfbec8c8f9cad37d9d72576eefe71e720751d",
         "tool-versions.txt": "482e98b1eb54ae5a88a8e31aaeb70986e8f42683ee8ef8c0a34a569b5ae01b7b",
-        "artifact-build.json": "2f8c843b4247e9b8f75e01e12b284e37daa20389c647cea434c9a53101368d57",
-        "toolchain-image.json": "492145f5eecb5bf1aa7f3be41d6434d8c2e4d838c4f72faf9fb28bacc3355558"
+        "artifact-build.json": "c7d9e78db1e034536c28b5c009b2192b8a71bec801c38616e7b848329c8f536c",
+        "toolchain-image.json": "5e58364ea50465796945975dbcdd4c56d1ad42ac151f2b1610ba83a46e2e056b"
       }
     }
   ],
   "supporting_files": {
     "provenance.tar.gz": {
-      "sha256": "145681d284d774ecd2236fee6337c50c61c3f269501f172d591a8d161af4a013",
-      "size": 1729934
+      "sha256": "a5fd5aa5f6cfbe74ae7c61c7ac4d6c1f944f1b3420fdf2146dbd5b239ce534a6",
+      "size": 1733324
     },
     "LICENSE-SOURCES.txt": {
-      "sha256": "57a1a90aa68b1b85d7b17fa82963b2118644ccf74abe9941b418a0d4ad5ff835",
+      "sha256": "70cb7fe75d20726f9ae4e21112c23c40a7b44851259ebf1bbf91bf4e5081a9da",
       "size": 26102
     }
   }
