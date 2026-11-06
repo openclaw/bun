@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Use the canonical checksum-pinned LLVM release for Linux native qualification instead of a moving apt snapshot.
+
 - Preserve consumer repository directory names during shipping qualification.
 
 - Let trimming TLS sockets remove Darwin system trust-store loading while preserving plain HTTP and HTTPS peer-certificate chains.
