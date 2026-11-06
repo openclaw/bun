@@ -357,6 +357,9 @@ export function build(source: string, name: TargetName, out: string, mtime: numb
     join(buildDir, "bun-profile.linker-map"),
     join(buildDir, "features.json"),
   ].filter(existsSync);
+  // Preserve byte attribution from this link instead of rebuilding to recover it later.
+  if (name === "linux-x64")
+    debugInfo.push(join(`${profile}.trim-work`, "sections.txt"), join(`${profile}.trim-work`, "retained.txt"));
   if (t.os === "windows") {
     // Windows release bytes are signed and verified on x64 before packaging or hashing.
     for (const [directory, files] of [

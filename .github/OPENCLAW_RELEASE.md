@@ -92,6 +92,10 @@ before-tool-call cases to pass under the candidate Bun with no skips or todos.
 That test's revision expectation is temporarily projected onto the admitted
 executable and restored afterward. A candidate parent and descendant also
 verify the same private handoff database path without opening the database.
+It also builds the full experimental AOT standalone with `--trim-allow run`,
+verifies its compiler identity, executable and complete runtime-sidecar hashes,
+and runs its version/help commands outside the source checkout. This proves
+standalone CLI startup; the Bun-only packaged smoke owns Gateway qualification.
 Birdclaw runs its checks,
 unchanged coverage thresholds, build, synthetic CLI/HTTP/database fixture and
 installed-package Bun/Node smoke. Coverage retains Birdclaw's normal mocked
@@ -247,6 +251,8 @@ not upstream releases.
 The four published Linux/macOS targets additionally set `--trimmable=on` so the
 packaged compiler contains the trim table required by explicit AOT trimming.
 Native test binaries alone do not prove that the shipping compiler has it.
+The Linux x64 profile archive retains the same link's `sections.txt` and
+`retained.txt` for native byte attribution.
 
 ### Where the builds run
 

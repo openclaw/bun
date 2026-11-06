@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Qualify the admitted shipping compiler against frozen OpenClaw's complete AOT standalone and runtime sidecar, including CLI startup outside its source checkout.
+
 - Embed trim tables in the four Linux/macOS release compilers and require each shipping ZIP to compile and run AOT, explicit trim, and retained external-code programs.
 
 - Require the primary Linux shipping ZIP to compile and run the explicit AOT/trim API used by OpenClaw, including retained external code, and preserve failing artifact evidence.

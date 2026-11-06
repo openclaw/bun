@@ -180,7 +180,7 @@ def qualify(name, dist, repo, output):
             "tracked consumer source changed",
         )
 
-    def run(label, args, extra=None):
+    def run(label, args, extra=None, *, cwd=None, timeout=1800):
         print("consumer step: " + label, flush=True)
         row = {"name": label, "passed": False}
         report["steps"].append(row)
@@ -192,7 +192,7 @@ def qualify(name, dist, repo, output):
         ):
             child = subprocess.Popen(
                 list(map(str, args)),
-                cwd=repo,
+                cwd=repo if cwd is None else cwd,
                 env=env | (extra or {}),
                 stdin=subprocess.DEVNULL,
                 stdout=stream,
@@ -200,7 +200,7 @@ def qualify(name, dist, repo, output):
                 start_new_session=True,
             )
             try:
-                row["exitCode"] = child.wait(timeout=1800)
+                row["exitCode"] = child.wait(timeout=timeout)
             finally:
                 # Only this command's process group, including any owned servers.
                 try:
@@ -452,6 +452,89 @@ console.log(JSON.stringify({
                 "parent and descendant must resolve the same private handoff path without opening its database",
             )
             report["package_sha256"] = package_sha
+            standalone = output / "standalone"
+            run(
+                "standalone-build",
+                [
+                    "/usr/bin/time",
+                    "-v",
+                    binary,
+                    "--no-env-file",
+                    "scripts/build-bun-standalone.mjs",
+                    standalone,
+                    "--compile-aot",
+                    "--trim-allow",
+                    "run",
+                ],
+            )
+            standalone_manifest = standalone / "manifest.json"
+            shutil.copyfile(standalone_manifest, output / "standalone-manifest.json")
+            compiled = read(standalone_manifest)
+            require(
+                compiled["schemaVersion"] == 1
+                and compiled["mode"] == "aot"
+                and compiled["build"]["flavor"] == "standard"
+                and compiled["target"] == {"platform": "linux", "arch": "x64"}
+                and compiled["openclaw"] == {"version": version, "commit": source}
+                and compiled["bun"]["commit"] == report["admission"]["commit"]
+                and compiled["bun"]["revision"] == revision
+                and compiled["bun"]["executableSha256"] == report["admission"]["executable_sha256"],
+                "standalone source/compiler identity mismatch",
+            )
+            executable = standalone / "openclaw"
+            require(
+                compiled["executable"]
+                == {"path": "openclaw", "sizeBytes": executable.stat().st_size, "sha256": sha(executable)}
+                and executable.stat().st_size > 0,
+                "standalone executable mismatch",
+            )
+            runtime = read(
+                run(
+                    "standalone-runtime",
+                    [
+                        "node",
+                        "--input-type=module",
+                        "-e",
+                        "import {describeStandaloneRuntime} from './scripts/lib/bun-standalone-contract.mjs';"
+                        + "console.log(JSON.stringify(await describeStandaloneRuntime("
+                        + json.dumps(str(standalone / "runtime"))
+                        + ")));",
+                    ],
+                )
+            )
+            require(
+                all(compiled["runtime"][key] == value for key, value in runtime.items()),
+                "standalone runtime sidecar mismatch",
+            )
+            report["standalone"] = {
+                "manifest_sha256": sha(standalone_manifest),
+                "executable": compiled["executable"],
+                "runtime": runtime,
+            }
+            save()
+            # Run outside the checkout with the complete runtime sidecar beside the executable.
+            standalone_home = tools / "standalone-home"
+            standalone_home.mkdir()
+            standalone_env = {
+                "OPENCLAW_NO_RESPAWN": "1",
+                "HOME": str(standalone_home),
+                "OPENCLAW_HOME": str(standalone_home),
+                "OPENCLAW_STATE_DIR": str(standalone_home / "state"),
+                "OPENCLAW_CONFIG_PATH": str(standalone_home / "state/openclaw.json"),
+            }
+            require(
+                run("standalone-version", [executable, "--version"], standalone_env, cwd=tools, timeout=120)
+                .read_text()
+                .strip()
+                == f"OpenClaw {version} ({source[:7]})",
+                "standalone version mismatch",
+            )
+            require(
+                run("standalone-help", [executable, "--help"], standalone_env, cwd=tools, timeout=120)
+                .read_text()
+                .strip(),
+                "standalone help was empty",
+            )
         else:
             for label in ("install", "check", "coverage", "build"):
                 args = (

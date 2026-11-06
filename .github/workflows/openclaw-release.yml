@@ -592,6 +592,7 @@ jobs:
             ${{ runner.temp }}/consumer-proof/report.json
             ${{ runner.temp }}/consumer-proof/*.log
             ${{ runner.temp }}/consumer-proof/sqlite.json
+            ${{ runner.temp }}/consumer-proof/standalone-manifest.json
             ${{ runner.temp }}/consumer-proof/smoke/
           if-no-files-found: error
           retention-days: 14
