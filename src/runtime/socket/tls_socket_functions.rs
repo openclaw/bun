@@ -10,6 +10,7 @@ use bun_jsc::{
     self as jsc, EncodedSliceJsc as _, HostReturn as _, JSGlobalObject, JSValue, JsResult,
     StringJsc as _,
 };
+use bun_removable_features::removable_body;
 
 use crate::api::bun_x509 as X509;
 
@@ -1325,7 +1326,9 @@ unsafe extern "C" fn Bun__NodeHTTPServerSocket__getPeerCertificate(
     if ssl.is_null() {
         return JSValue::UNDEFINED;
     }
-    peer_certificate_to_js(ssl, global, abbreviated).or_pending_exception()
+    removable_body!(TlsSockets, Abort, {
+        peer_certificate_to_js(ssl, global, abbreviated).or_pending_exception()
+    })
 }
 
 /// # Safety

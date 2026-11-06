@@ -49,6 +49,12 @@ test("PR and nightly smoke lists exist and nightly includes every PR smoke file"
   expect(selectTests([], tracked, true)).toEqual([...smoke, ...broader].sort());
 });
 
+test.each(["linux", "darwin"])("TLS certificate changes qualify removal and HTTPS behavior on %s", platform => {
+  const selected = selectTests(["src/runtime/socket/tls_socket_functions.rs"], tracked, false, platform);
+  expect(selected).toContain("test/bundler/compile-trim-capabilities.test.ts");
+  expect(selected).toContain("test/js/node/http/node-https-checkServerIdentity.test.ts");
+});
+
 test("both Windows architectures use the complete Windows compatibility selection", () => {
   expect(selectTests([], tracked, false, "windows")).toEqual([...windowsSmoke].sort());
   expect(selectTests([], tracked, true, "windows")).toEqual([...windowsSmoke].sort());

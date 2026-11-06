@@ -207,6 +207,10 @@ export function selectTests(changed: string[], tracked: string[], nightly: boole
         }
       }
     } else if (path.startsWith("src/")) {
+      if (path === "src/runtime/socket/tls_socket_functions.rs") {
+        selected.add("test/js/node/http/node-https-checkServerIdentity.test.ts");
+        if (platform !== "windows") selected.add("test/bundler/compile-trim-capabilities.test.ts");
+      }
       if (path.startsWith("src/runtime/webview/")) selected.add("test/js/bun/webview/webview-chrome-pipe.test.ts");
       if (
         /^src\/jsc\/bindings\/(?:CallSite\w*|ErrorStack\w*|FormatStackTraceForJS|ZigSourceProvider)\.(?:cpp|h)$/.test(

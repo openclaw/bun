@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Let trimming TLS sockets remove Darwin system trust-store loading while preserving plain HTTP and HTTPS peer-certificate chains.
+
 - Preserve the interpreter, built-in module text, locales, and Darwin shared memory when an AOT executable retains `bun run` without the JIT.
 
 - Compare Linux AOT hello sizes against an explicitly admitted historical upstream archive through the existing hosted trim diagnostic, preserving both artifact identities and unchanged size limits.
