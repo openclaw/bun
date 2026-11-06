@@ -566,7 +566,7 @@ jobs:
         with:
           repository: openclaw/${{ matrix.consumer }}
           ref: ${{ matrix.commit }}
-          path: consumer
+          path: consumer/${{ matrix.consumer }}
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -581,7 +581,7 @@ jobs:
           EXPECTED_COMMIT: ${{ needs.plan.outputs.commit }}
           EXPECTED_WEBKIT: ${{ needs.plan.outputs.webkit }}
           EXPECTED_RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: python3 pipeline/scripts/openclaw-release/consumers.py "$CONSUMER" release consumer "$RUNNER_TEMP/consumer-proof"
+        run: python3 pipeline/scripts/openclaw-release/consumers.py "$CONSUMER" release "consumer/$CONSUMER" "$RUNNER_TEMP/consumer-proof"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
