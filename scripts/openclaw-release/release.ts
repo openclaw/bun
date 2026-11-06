@@ -509,6 +509,88 @@ function qualifyRuntime(
   }
 }
 
+/** Exercise the explicit compile contract used by OpenClaw's experimental Linux AOT builder. */
+export function qualifyCompiledRuntime(
+  exe: string,
+  scratch: string,
+  reports: string,
+  commit: string,
+  webkit: string,
+): void {
+  mkdirSync(scratch, { recursive: true });
+  mkdirSync(reports, { recursive: true });
+  const steps: Record<string, unknown>[] = [];
+  const summary = { passed: false, commit, webkit, steps };
+  const report = join(reports, "compiled-runtime.json");
+  const save = () => writeFileSync(report, JSON.stringify(summary, null, 2) + "\n");
+  save();
+  const env = { ...process.env, BUN_OPTIONS: undefined, NODE_OPTIONS: undefined, BUN_BE_BUN: undefined };
+  const step = (name: string, command: string[], expected?: string, external = false) => {
+    const result = spawnSync(command[0]!, command.slice(1), {
+      encoding: "utf8",
+      env: { ...env, ...(external ? { BUN_BE_BUN: "1" } : {}) },
+      timeout: 120_000,
+      maxBuffer: 1 << 20,
+    });
+    steps.push({
+      name,
+      command,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      exitCode: result.status,
+      signal: result.signal,
+      error: result.error?.message,
+    });
+    save();
+    if (
+      result.error ||
+      result.signal ||
+      result.status !== 0 ||
+      (expected !== undefined && (result.stdout !== expected || result.stderr !== ""))
+    )
+      throw new Error(`${name} failed; see ${report}`);
+    return result.stdout;
+  };
+  const facts = JSON.parse(
+    step("identity", [
+      exe,
+      "--no-env-file",
+      "-e",
+      "console.log(JSON.stringify({revision:Bun.revision,webkit:process.versions.webkit,platform:process.platform,arch:process.arch}))",
+    ]),
+  );
+  if (facts.revision !== commit || facts.webkit !== webkit || facts.platform !== "linux" || facts.arch !== "x64")
+    throw new Error("Compiled-runtime probe requires the admitted native Linux x64 executable");
+  const entry = join(scratch, "hello.mjs");
+  const driver = join(scratch, "compile.mjs");
+  const external = join(scratch, "external.mjs");
+  writeFileSync(entry, 'console.log("openclaw compiled runtime");');
+  writeFileSync(external, 'import { basename } from "node:path"; console.log(basename(import.meta.filename));');
+  writeFileSync(
+    driver,
+    `
+    const result = await Bun.build({
+      entrypoints: [process.argv[2]],
+      compile: { outfile: process.argv[3], aot: true, allowCodeFromDisk: true, ...JSON.parse(process.argv[4]) },
+    });
+    for (const log of result.logs) console.error(log);
+    if (!result.success) process.exit(1);
+  `,
+  );
+  for (const [name, options] of [
+    ["aot", {}],
+    ["trim", { trim: true }],
+    ["run", { trim: { allow: ["run"] } }],
+  ] as const) {
+    const output = join(scratch, name);
+    step(`compile-${name}`, [exe, "--no-env-file", driver, entry, output, JSON.stringify(options)]);
+    step(`execute-${name}`, [output], "openclaw compiled runtime\n");
+    if (name === "run") step("external-run", [output, "run", external], "external.mjs\n", true);
+  }
+  summary.passed = true;
+  save();
+}
+
 /** Runs the binary of `zipPath` on this machine and checks it is the build the release says it is. */
 export function smoke(
   zipPath: string,
@@ -567,6 +649,8 @@ export function smoke(
       problems.push(`the DFG JIT did not compile (numberOfDFGCompiles: ${facts.dfg})`);
     if (problems.length) throw new Error(`${name} smoke test failed:\n  ${problems.join("\n  ")}`);
     console.log(`${name}: ${run([exe, "--revision"], {}).trim()}, WebKit ${facts.webkit}, DFG compiles: ${facts.dfg}`);
+    if (t.name === "linux-x64")
+      qualifyCompiledRuntime(exe, join(dir, "compiled-runtime"), qualification.reports, commit, webkitVersion);
     qualifyRuntime(
       exe,
       t,

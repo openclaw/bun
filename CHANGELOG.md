@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Require the primary Linux shipping ZIP to compile and run the explicit AOT/trim API used by OpenClaw, including retained external code, and preserve failing artifact evidence.
+
 - Build the packaged Bun executables without concurrent unused engine-program links during Windows x64 release qualification.
 
 - Diagnose the remaining Linux AOT size gap with an unchanged upstream build on matched native inputs, reusing the admitted candidate artifact and paired execution checks.
