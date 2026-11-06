@@ -272,6 +272,8 @@ jobs:
           path: |
             build/release/timings.html
             build/release/ccache.log
+            build/release/bun-profile.trim-work/retained.txt
+            build/release/bun-profile.trim-work/sections.txt
           retention-days: 7
       - name: Remove build container
         if: always()
