@@ -36,7 +36,7 @@ on:
       diagnostic:
         description: Reuse a native artifact for focused diagnosis (not source qualification)
         type: choice
-        options: [none, trim-linux, bun-types-darwin, aot-evaluators-darwin]
+        options: [none, trim-linux, trim-linux-baseline, bun-types-darwin, aot-evaluators-darwin]
         default: none
       native_run_id:
         description: Run that produced the diagnostic executable
@@ -357,7 +357,7 @@ jobs:
 
   native-diagnostics:
     if: github.repository == 'openclaw/bun' && inputs.diagnostic != '' && inputs.diagnostic != 'none'
-    runs-on: ${{ inputs.diagnostic == 'trim-linux' && 'ubuntu-24.04' || 'macos-15' }}
+    runs-on: ${{ startsWith(inputs.diagnostic, 'trim-linux') && 'ubuntu-24.04' || 'macos-15' }}
     timeout-minutes: 15
     permissions:
       contents: read
@@ -381,7 +381,7 @@ jobs:
           [[ "$EXPECTED_NATIVE_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
           [[ "$NATIVE_RUN_ID" =~ ^[0-9]+$ && "$NATIVE_ARTIFACT_ID" =~ ^[0-9]+$ ]] || exit 1
           # PR metadata names the head; producers name their artifact with the built merge SHA.
-          if [ "$DIAGNOSTIC" = trim-linux ]; then
+          if [[ "$DIAGNOSTIC" = trim-linux* ]]; then
             prefix=bun-linux-x64
           else
             prefix=bun-darwin-arm64
@@ -401,7 +401,7 @@ jobs:
         run: |
           cd build/openclaw-ci/native-input
           test "$(cat commit.txt)" = "$EXPECTED_NATIVE_SHA"
-          if [ "$DIAGNOSTIC" = trim-linux ]; then
+          if [[ "$DIAGNOSTIC" = trim-linux* ]]; then
             sha256sum -c SHA256SUMS
             archive=bun-linux-x64.tar.gz
           else
@@ -415,8 +415,13 @@ jobs:
           printf 'native source: %s\nprobe source: %s\n' "$EXPECTED_NATIVE_SHA" "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
           ./build/release/bun -e 'console.log(JSON.stringify({nativeSource: Bun.revision, probeSource: process.env.GITHUB_SHA, diagnostic: process.env.DIAGNOSTIC}))' > build/openclaw-ci/native-diagnostic.json
       - name: Inspect trim witnesses and mapped bytes
-        if: inputs.diagnostic == 'trim-linux'
-        run: ./build/release/bun scripts/openclaw-ci/trim-diagnostics.ts
+        if: startsWith(inputs.diagnostic, 'trim-linux')
+        env:
+          DIAGNOSTIC: ${{ inputs.diagnostic }}
+        run: |
+          args=()
+          [ "$DIAGNOSTIC" = trim-linux-baseline ] && args+=(--compare-upstream-135015)
+          ./build/release/bun scripts/openclaw-ci/trim-diagnostics.ts "${args[@]}"
       - name: Replay native macOS type comparison
         if: inputs.diagnostic == 'bun-types-darwin'
         run: |

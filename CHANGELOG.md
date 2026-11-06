@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Compare Linux AOT hello sizes against an explicitly admitted historical upstream archive through the existing hosted trim diagnostic, preserving both artifact identities and unchanged size limits.
+
 - Replace preassigned ChildProcess stdio with the spawned process's actual streams while preserving tracing order and failed-spawn EOF and close events.
 
 - Qualify each shipping archive with structured-clone, SharedArrayBuffer and Buffer serialization tests, and exercise the frozen OpenClaw hooks and private descendant handoff paths with the admitted executable.
