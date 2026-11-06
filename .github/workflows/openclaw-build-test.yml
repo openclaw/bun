@@ -36,7 +36,8 @@ on:
       diagnostic:
         description: Reuse a native artifact for focused diagnosis (not source qualification)
         type: choice
-        options: [none, trim-linux, trim-linux-baseline, bun-types-darwin, aot-evaluators-darwin]
+        options:
+          [none, trim-linux, trim-linux-baseline, trim-linux-source-baseline, bun-types-darwin, aot-evaluators-darwin]
         default: none
       native_run_id:
         description: Run that produced the diagnostic executable
@@ -88,28 +89,7 @@ jobs:
           LLVM_DIRECTORY: ${{ steps.pins.outputs.llvm-directory }}
           RUST_TOOLCHAIN: ${{ steps.pins.outputs.rust }}
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends cmake ninja-build nasm ccache golang-go python3-fuse
-          # Render only the canonical x64 LLVM installer; do not run the machine's agent or service setup.
-          bun -e '
-            import { readFileSync, writeFileSync } from "node:fs";
-            import { join } from "node:path";
-            import { generateImage, images } from "./scripts/build/ci-images/spec.ts";
-            import { provisionScript } from "./scripts/openclaw-release/release.ts";
-            const image = images.find(image => image.os === "linux" && image.arch === "x64" && image.distro === "debian");
-            if (!image) throw new Error("Missing canonical Linux x64 image");
-            const { directory } = generateImage(image, process.cwd());
-            writeFileSync(join(process.env.RUNNER_TEMP, "openclaw-llvm.sh"), provisionScript(readFileSync(join(directory, "bootstrap.sh"), "utf8"), ["llvm"]));
-          '
-          sudo sh "$RUNNER_TEMP/openclaw-llvm.sh" "$GITHUB_SHA" openclaw-native
-          # Tool discovery prefers system LLVM locations before PATH; bind every tool to the admitted archive.
-          echo "BUN_TOOLCHAIN_LLVM=$LLVM_DIRECTORY" >> "$GITHUB_ENV"
-          echo "$LLVM_DIRECTORY/bin" >> "$GITHUB_PATH"
-          "$LLVM_DIRECTORY/bin/clang" --version
-          "$LLVM_DIRECTORY/bin/ld.lld" --version
-          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
-          echo "RUSTUP_TOOLCHAIN=$RUST_TOOLCHAIN" >> "$GITHUB_ENV"
-          df -h /
+          bash scripts/openclaw-ci/install-linux-toolchain.sh
       - name: Restore build caches
         id: cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -377,8 +357,8 @@ jobs:
 
   native-diagnostics:
     if: github.repository == 'openclaw/bun' && inputs.diagnostic != '' && inputs.diagnostic != 'none'
-    runs-on: ${{ startsWith(inputs.diagnostic, 'trim-linux') && 'ubuntu-24.04' || 'macos-15' }}
-    timeout-minutes: 15
+    runs-on: ${{ inputs.diagnostic == 'trim-linux-source-baseline' && 'blacksmith-16vcpu-ubuntu-2404' || startsWith(inputs.diagnostic, 'trim-linux') && 'ubuntu-24.04' || 'macos-15' }}
+    timeout-minutes: ${{ inputs.diagnostic == 'trim-linux-source-baseline' && 115 || 15 }}
     permissions:
       contents: read
       actions: read
@@ -434,6 +414,60 @@ jobs:
           test "$(./build/release/bun -e 'process.stdout.write(Bun.revision)')" = "$EXPECTED_NATIVE_SHA"
           printf 'native source: %s\nprobe source: %s\n' "$EXPECTED_NATIVE_SHA" "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
           ./build/release/bun -e 'console.log(JSON.stringify({nativeSource: Bun.revision, probeSource: process.env.GITHUB_SHA, diagnostic: process.env.DIAGNOSTIC}))' > build/openclaw-ci/native-diagnostic.json
+      - name: Checkout frozen upstream baseline
+        if: inputs.diagnostic == 'trim-linux-source-baseline'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 3f3a9ff87cdccf3d32d7ec6b648c664eddaae840
+          path: baseline
+          persist-credentials: false
+      - name: Read toolchain pins
+        if: inputs.diagnostic == 'trim-linux-source-baseline'
+        id: pins
+        run: |
+          echo "tree=$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_OUTPUT"
+          # shellcheck disable=SC2016
+          bun -e 'import { locations, pins } from "./scripts/build/ci-images/spec.ts"; console.log(`llvm-directory=${locations.llvm}\nnode=${pins.nodejs.version}\nrust=${pins.rust.channel}`)' >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: inputs.diagnostic == 'trim-linux-source-baseline'
+        with:
+          node-version: ${{ steps.pins.outputs.node }}
+      - name: Install native build tools
+        if: inputs.diagnostic == 'trim-linux-source-baseline'
+        timeout-minutes: 15
+        env:
+          LLVM_DIRECTORY: ${{ steps.pins.outputs.llvm-directory }}
+          RUST_TOOLCHAIN: ${{ steps.pins.outputs.rust }}
+        run: |
+          bash scripts/openclaw-ci/install-linux-toolchain.sh
+      - name: Build unchanged upstream with matched native inputs
+        if: inputs.diagnostic == 'trim-linux-source-baseline'
+        timeout-minutes: 75
+        working-directory: baseline
+        env:
+          # config.ts gives CI revision variables precedence over the checked-out HEAD.
+          UPSTREAM_SHA: 3f3a9ff87cdccf3d32d7ec6b648c664eddaae840
+          BUN_BUILD_CACHE_DIR: ${{ github.workspace }}/baseline/.cache/openclaw-build
+          PUPPETEER_SKIP_DOWNLOAD: "1"
+        run: |
+          unset BUILDKITE_COMMIT GIT_SHA
+          export GITHUB_SHA="$UPSTREAM_SHA"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          bun install --frozen-lockfile
+          mkdir -p ../build/openclaw-ci/trim-diagnostics
+          bun -e '
+            import { configOf } from "./scripts/build/configure.ts";
+            const { cfg } = configOf({ profile: "release", overrides: { ci: true, trimmable: true } });
+            const { buildType, ci, lto, trimmable, webkit, webkitVersion, revision, cc, ld, rustToolchain } = cfg;
+            if (buildType !== "Release" || !ci || !lto || !trimmable || webkit !== "prebuilt" ||
+                revision !== process.env.GITHUB_SHA || webkitVersion !== "4d45755fed4aeef19e95beb90d3d0c884a2812bd")
+              throw new Error("Unexpected upstream baseline configuration");
+            console.log(JSON.stringify({ buildType, ci, lto, trimmable, webkit, webkitVersion, revision, cc, ld, rustToolchain }));
+          ' > ../build/openclaw-ci/trim-diagnostics/upstream-build.json
+          bun scripts/build.ts --profile=release --ci=on --trimmable=on --timings
+          mkdir -p build/release/bun.trim
+          cp build/release/bun-profile.trim/*.txt build/release/bun.trim/
+          test -z "$(git status --porcelain --untracked-files=no)"
       - name: Inspect trim witnesses and mapped bytes
         if: startsWith(inputs.diagnostic, 'trim-linux')
         env:
@@ -441,6 +475,7 @@ jobs:
         run: |
           args=()
           [ "$DIAGNOSTIC" = trim-linux-baseline ] && args+=(--compare-upstream-135015)
+          [ "$DIAGNOSTIC" = trim-linux-source-baseline ] && args+=(--compare-built-upstream)
           ./build/release/bun scripts/openclaw-ci/trim-diagnostics.ts "${args[@]}"
       - name: Replay native macOS type comparison
         if: inputs.diagnostic == 'bun-types-darwin'
