@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Build the packaged Bun executables without concurrent unused engine-program links during Windows x64 release qualification.
+
 - Use the canonical checksum-pinned LLVM release for Linux native qualification instead of a moving apt snapshot.
 
 - Preserve consumer repository directory names during shipping qualification.

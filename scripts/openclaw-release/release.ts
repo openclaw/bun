@@ -332,6 +332,8 @@ export function buildArgs(t: Target, buildDir: string): string[] {
     `--arch=${t.buildArch}`,
     ...(t.os === "linux" ? [`--abi=${t.abi}`] : []),
     `--build-dir=${buildDir}`,
+    // The Windows x64 package needs Bun, not three concurrent LTO links with the engine test programs.
+    ...(t.name === "windows-x64" ? ["--target=bun.exe"] : []),
   ];
 }
 

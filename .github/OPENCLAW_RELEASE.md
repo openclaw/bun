@@ -41,7 +41,10 @@ and `linux-arm64`. Windows becomes required only when the repository variable
 switch once and passes it through to manifest validation. With it off, Windows
 is neither built for publication nor accepted in the published artifacts.
 PRs and non-publishing dry runs still default to all six targets, including
-both Windows architectures and their compatibility checks.
+both Windows architectures and their compatibility checks. The Windows x64
+build explicitly selects `bun.exe`, which also builds `bun-profile.exe` and
+their binary validations, without linking unused `jsc` and `testaot` programs
+concurrently.
 
 Rebuilding a commit that already has a release (a toolchain or pipeline change,
 not a source change) gets a new tag with `--rebuild 2` (`…-r2`). Published
