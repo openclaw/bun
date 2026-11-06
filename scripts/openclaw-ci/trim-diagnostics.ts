@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const executable = resolve("build/release/bun");
@@ -50,6 +50,20 @@ async function compareUpstream135015(): Promise<void> {
     throw extracted.error ?? new Error(`Historical artifact extraction failed: ${extracted.stderr}`);
   const baseline = join(inputFolder, "bun-linux-x64/bun");
   chmodSync(baseline, 0o755);
+  compareHelloBinaries(baseline, historical.source, "baseline-comparison.json", {
+    historical: { ...historical, url },
+    limitations:
+      "Source, engine, toolchain provisioning and ordering differ between builds. Historical ci-build uses preview WebKit and inherited ordering.",
+  });
+}
+
+function compareHelloBinaries(
+  baseline: string,
+  baselineSource: string,
+  reportName: string,
+  context: Record<string, unknown>,
+): void {
+  const sha256 = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
   const env = {
     ...process.env,
     BUN_FEATURE_FLAG_INTERNAL_FOR_TESTING: "1",
@@ -74,7 +88,7 @@ async function compareUpstream135015(): Promise<void> {
   }[] = [];
   const summary = {
     complete: false,
-    historical: { ...historical, url },
+    ...context,
     candidate: {
       source: process.env.EXPECTED_NATIVE_SHA,
       runId: process.env.NATIVE_RUN_ID,
@@ -82,14 +96,12 @@ async function compareUpstream135015(): Promise<void> {
     },
     probeSource: process.env.GITHUB_SHA,
     inputSHA256: sha256(Buffer.from(hello)),
-    limitations:
-      "Source, engine, toolchain provisioning and ordering differ between builds. Historical ci-build uses preview WebKit and inherited ordering.",
     measurements,
   };
-  const report = join(folder, "baseline-comparison.json");
+  const report = join(folder, reportName);
   writeFileSync(report, JSON.stringify(summary, null, 2) + "\n");
   for (const [label, exe, source] of [
-    ["historical", baseline, historical.source],
+    [reportName === "baseline-comparison.json" ? "historical" : "upstream", baseline, baselineSource],
     ["candidate", executable, process.env.EXPECTED_NATIVE_SHA],
   ] as const) {
     const identity = spawnSync(
@@ -108,7 +120,8 @@ async function compareUpstream135015(): Promise<void> {
       facts.revision !== source ||
       facts.platform !== "linux" ||
       facts.arch !== "x64" ||
-      typeof facts.webkit !== "string"
+      typeof facts.webkit !== "string" ||
+      (label === "upstream" && facts.webkit !== "4d45755fed4aeef19e95beb90d3d0c884a2812bd")
     )
       throw new Error(`${label} runtime does not match the admitted source and platform`);
     const executableSHA256 = sha256(readFileSync(exe));
@@ -121,6 +134,16 @@ async function compareUpstream135015(): Promise<void> {
       if (result.error || result.signal || result.status !== 0)
         throw result.error ?? new Error(`${label} trim=${trim}: exit=${result.status}, signal=${result.signal}`);
       const ran = spawnSync(output, [], { encoding: "utf8", env, timeout: 30_000 });
+      writeFileSync(
+        output + ".execution.json",
+        JSON.stringify({
+          stdout: ran.stdout,
+          stderr: ran.stderr,
+          exitCode: ran.status,
+          signal: ran.signal,
+          error: ran.error?.message,
+        }) + "\n",
+      );
       if (ran.error || ran.signal || ran.status !== 0 || ran.stdout !== "hello world\n" || ran.stderr !== "")
         throw ran.error ?? new Error(`${label} trim=${trim}: compiled hello did not execute correctly`);
       const file = readFileSync(output);
@@ -141,6 +164,46 @@ async function compareUpstream135015(): Promise<void> {
   summary.complete = true;
   writeFileSync(report, JSON.stringify(summary, null, 2) + "\n");
   console.log(JSON.stringify(summary));
+}
+function compareBuiltUpstream(): void {
+  const source = "3f3a9ff87cdccf3d32d7ec6b648c664eddaae840";
+  const upstream = resolve("baseline");
+  const git = (args: string[]) => {
+    const result = spawnSync("git", ["-C", upstream, ...args], { encoding: "utf8" });
+    if (result.error || result.status !== 0 || result.signal) throw new Error("Upstream source inspection failed");
+    return result.stdout.trim();
+  };
+  if (git(["rev-parse", "HEAD"]) !== source || git(["status", "--porcelain", "--untracked-files=no"]) !== "")
+    throw new Error("Expected the clean, frozen upstream checkout");
+  const build = join(upstream, "build/release");
+  const order = readFileSync(join(build, "linker.order"), "utf8");
+  const entries = order.split("\n").filter(line => line.trim() && !line.trimStart().startsWith("#")).length;
+  if (entries !== 0) throw new Error("Upstream baseline unexpectedly inherited linker ordering");
+  const toolIdentities = Object.fromEntries(
+    readdirSync(join(build, "toolchain-identity")).map(name => [
+      name,
+      readFileSync(join(build, "toolchain-identity", name), "utf8"),
+    ]),
+  );
+  compareHelloBinaries(join(build, "bun"), source, "upstream-build-comparison.json", {
+    upstream: {
+      source,
+      tree: git(["rev-parse", "HEAD^{tree}"]),
+      build: JSON.parse(readFileSync(join(folder, "upstream-build.json"), "utf8")),
+      toolIdentities,
+      ordering: { entries, sha256: createHash("sha256").update(order).digest("hex") },
+      manifestSHA256: createHash("sha256")
+        .update(readFileSync(join(build, "build.ninja")))
+        .digest("hex"),
+    },
+    limitations:
+      "Matched hosted toolchain, release LTO, trim flags and empty ordering. The upstream-to-fork difference still combines Bun source and WebKit changes.",
+  });
+}
+
+if (process.argv.includes("--compare-built-upstream")) {
+  compareBuiltUpstream();
+  process.exit(0);
 }
 const cases = [
   { name: "hello", source: hello, trim: false, testing: true },

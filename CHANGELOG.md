@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Diagnose the remaining Linux AOT size gap with an unchanged upstream build on matched native inputs, reusing the admitted candidate artifact and paired execution checks.
+
 - Use the canonical checksum-pinned LLVM release for Linux native qualification instead of a moving apt snapshot.
 
 - Preserve consumer repository directory names during shipping qualification.
