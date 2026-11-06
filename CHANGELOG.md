@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve the interpreter, built-in module text, locales, and Darwin shared memory when an AOT executable retains `bun run` without the JIT.
+
 - Compare Linux AOT hello sizes against an explicitly admitted historical upstream archive through the existing hosted trim diagnostic, preserving both artifact identities and unchanged size limits.
 
 - Replace preassigned ChildProcess stdio with the spawned process's actual streams while preserving tracing order and failed-spawn EOF and close events.

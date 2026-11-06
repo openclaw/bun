@@ -155,6 +155,11 @@ jobs:
           retention-days: 7
           compression-level: 0
           if-no-files-found: error
+      - name: Test trimming policy
+        timeout-minutes: 20
+        env:
+          BUN_UNDER_TEST: ${{ github.workspace }}/build/release/bun
+        run: bun scripts/rust-test.ts -p bun_trim
       - name: Run selected and compatibility tests
         id: tests
         timeout-minutes: 20
