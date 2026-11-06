@@ -328,6 +328,8 @@ export function buildArgs(t: Target, buildDir: string): string[] {
     "--profile=release",
     // Reproducibility flags of CI builds (path remapping) and fatal binary checks, without Buildkite's packaging.
     "--ci=on",
+    // OpenClaw's explicit AOT trim API needs the table in the packaged compiler itself.
+    ...(t.release && t.os !== "windows" ? ["--trimmable=on"] : []),
     `--os=${t.os}`,
     `--arch=${t.buildArch}`,
     ...(t.os === "linux" ? [`--abi=${t.abi}`] : []),
@@ -509,18 +511,20 @@ function qualifyRuntime(
   }
 }
 
-/** Exercise the explicit compile contract used by OpenClaw's experimental Linux AOT builder. */
+/** Exercise the explicit compile contract used by OpenClaw's experimental Linux/macOS AOT builder. */
 export function qualifyCompiledRuntime(
   exe: string,
+  name: TargetName,
   scratch: string,
   reports: string,
   commit: string,
   webkit: string,
 ): void {
+  const target = targets[name];
   mkdirSync(scratch, { recursive: true });
   mkdirSync(reports, { recursive: true });
   const steps: Record<string, unknown>[] = [];
-  const summary = { passed: false, commit, webkit, steps };
+  const summary = { passed: false, target: name, commit, webkit, steps };
   const report = join(reports, "compiled-runtime.json");
   const save = () => writeFileSync(report, JSON.stringify(summary, null, 2) + "\n");
   save();
@@ -559,8 +563,13 @@ export function qualifyCompiledRuntime(
       "console.log(JSON.stringify({revision:Bun.revision,webkit:process.versions.webkit,platform:process.platform,arch:process.arch}))",
     ]),
   );
-  if (facts.revision !== commit || facts.webkit !== webkit || facts.platform !== "linux" || facts.arch !== "x64")
-    throw new Error("Compiled-runtime probe requires the admitted native Linux x64 executable");
+  if (
+    facts.revision !== commit ||
+    facts.webkit !== webkit ||
+    facts.platform !== target.os ||
+    facts.arch !== target.arch
+  )
+    throw new Error(`Compiled-runtime probe requires the admitted native ${name} executable`);
   const entry = join(scratch, "hello.mjs");
   const driver = join(scratch, "compile.mjs");
   const external = join(scratch, "external.mjs");
@@ -649,8 +658,8 @@ export function smoke(
       problems.push(`the DFG JIT did not compile (numberOfDFGCompiles: ${facts.dfg})`);
     if (problems.length) throw new Error(`${name} smoke test failed:\n  ${problems.join("\n  ")}`);
     console.log(`${name}: ${run([exe, "--revision"], {}).trim()}, WebKit ${facts.webkit}, DFG compiles: ${facts.dfg}`);
-    if (t.name === "linux-x64")
-      qualifyCompiledRuntime(exe, join(dir, "compiled-runtime"), qualification.reports, commit, webkitVersion);
+    if (t.release && t.os !== "windows")
+      qualifyCompiledRuntime(exe, name, join(dir, "compiled-runtime"), qualification.reports, commit, webkitVersion);
     qualifyRuntime(
       exe,
       t,

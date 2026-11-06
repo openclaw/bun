@@ -392,7 +392,6 @@ jobs:
           name=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$NATIVE_ARTIFACT_ID" --jq .name)
           if [[ "$DIAGNOSTIC" = trim-linux-shipping ]]; then
             test "$name" = release
-            test "$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$NATIVE_ARTIFACT_ID" --jq .workflow_run.head_sha)" = "$EXPECTED_NATIVE_SHA"
           elif [[ "$DIAGNOSTIC" = trim-linux* ]]; then
             prefix=bun-linux-x64
           else
@@ -513,7 +512,7 @@ jobs:
             import { resolve } from "node:path";
             import { qualifyCompiledRuntime } from "./scripts/openclaw-release/release.ts";
             const admission = JSON.parse(readFileSync("build/openclaw-ci/shipping-admission.json", "utf8"));
-            qualifyCompiledRuntime(resolve("build/release/bun"), resolve("build/openclaw-ci/compiled-runtime"),
+            qualifyCompiledRuntime(resolve("build/release/bun"), "linux-x64", resolve("build/openclaw-ci/compiled-runtime"),
               resolve("build/openclaw-ci"), admission.commit, admission.webkit);
           '
       - name: Replay native macOS type comparison

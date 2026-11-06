@@ -215,6 +215,13 @@ its interpreter, so only the JIT's own compile count shows it. On macOS the test
 also verifies the code signature, except on darwin-x64 without a Developer ID,
 which upstream links unsigned.
 
+The four published Linux/macOS targets also compile and run AOT programs from
+the shipping executable: plain AOT, explicit trimming, and trimming with
+`run` retained. The last case executes an external module through the compiled
+program. `compiled-runtime.json` records each command and failure alongside
+the runtime qualification reports. Windows standalone artifacts are outside
+OpenClaw's supported AOT contract.
+
 ## Building
 
 Every target is cross-compiled on upstream's build image, as upstream's own CI
@@ -236,6 +243,10 @@ CodeView emitter cannot encode the ARM64 register tuples used by LTO
 symbol order file (Buildkite publishes that) and without PGO. The version
 string keeps upstream's canary suffix (`1.4.3-canary.1+<commit>`): these are
 not upstream releases.
+
+The four published Linux/macOS targets additionally set `--trimmable=on` so the
+packaged compiler contains the trim table required by explicit AOT trimming.
+Native test binaries alone do not prove that the shipping compiler has it.
 
 ### Where the builds run
 
