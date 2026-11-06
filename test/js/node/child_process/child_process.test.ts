@@ -107,6 +107,62 @@ describe("ChildProcess.spawn()", () => {
     }
   });
 
+  it.each(["pipe", "ignore"] as const)("replaces preassigned stdio when spawning with %s", async stdio => {
+    using proc = new ChildProcess();
+    Object.assign(proc, { stdin: null, stdout: null, stderr: null, stdio: [null, null, null] });
+    const closed = once(proc, "close");
+    // @ts-ignore ChildProcess.spawn() is an internal Node API.
+    proc.spawn({
+      file: bunExe(),
+      args: [bunExe(), "-e", 'process.stdin.pipe(process.stdout); process.stderr.write("stderr")'],
+      stdio: [stdio, stdio, stdio],
+      envPairs: Object.entries(bunEnv).map(([key, value]) => `${key}=${value}`),
+    });
+
+    if (stdio === "pipe") {
+      expect(proc.stdin).not.toBeNull();
+      expect(proc.stdout).not.toBeNull();
+      expect(proc.stderr).not.toBeNull();
+      expect(proc.stdio).toEqual([proc.stdin, proc.stdout, proc.stderr]);
+      const stdout = new Response(proc.stdout).text();
+      const stderr = new Response(proc.stderr).text();
+      proc.stdin!.end("stdin");
+      expect(await stdout).toBe("stdin");
+      expect(await stderr).toBe("stderr");
+    } else {
+      expect([proc.stdin, proc.stdout, proc.stderr, proc.stdio]).toEqual([null, null, null, [null, null, null]]);
+    }
+    expect(await closed).toEqual([0, null]);
+  });
+
+  it("replaces preassigned stdio and delivers EOF after a failed spawn", async () => {
+    using dir = tempDir("preassigned-stdio", {});
+    using proc = new ChildProcess();
+    Object.assign(proc, { stdin: null, stdout: null, stderr: null, stdio: [null, null, null] });
+    const events: string[] = [];
+    proc.on("error", (error: NodeJS.ErrnoException) => events.push(error.code!));
+    const closed = new Promise<void>(resolve => proc.once("close", resolve));
+    const missing = path.join(String(dir), "missing");
+    // @ts-ignore ChildProcess.spawn() is an internal Node API.
+    proc.spawn({ file: missing, args: [missing] });
+
+    expect(proc.stdin).not.toBeNull();
+    expect(proc.stdout).not.toBeNull();
+    expect(proc.stderr).not.toBeNull();
+    expect(proc.stdio).toEqual([proc.stdin, proc.stdout, proc.stderr]);
+    for (const [name, stream] of [
+      ["stdout", proc.stdout],
+      ["stderr", proc.stderr],
+    ] as const) {
+      stream!.on("end", () => events.push(name));
+    }
+    await closed;
+    expect(events[0]).toBe("ENOENT");
+    expect(events.slice(1).sort()).toEqual(["stderr", "stdout"]);
+    expect(proc.stdout!.readableEnded).toBe(true);
+    expect(proc.stderr!.readableEnded).toBe(true);
+  });
+
   it("should emit `spawn` on spawn", async () => {
     const proc = new ChildProcess();
     const result = await new Promise(resolve => {
