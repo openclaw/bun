@@ -1413,7 +1413,7 @@ class ChildProcess extends EventEmitter {
   #stdioOptions;
   #extraStdioHandles: unknown[] = [];
 
-  #initializeStdio(options: ReturnType<typeof getBunStdioFromOptions>) {
+  #initializeStdio(options: ReturnType<typeof getBunStdioFromOptions> | ["undefined", "undefined", "undefined"]) {
     this.#stdioOptions = options;
     ObjectAssign(this, {
       stdin: (this.#stdin = this.#getBunSpawnIo(0, false)),
@@ -1646,9 +1646,7 @@ class ChildProcess extends EventEmitter {
         this.exitCode = exitCode;
         if (exCode === "EMFILE" || exCode === "ENFILE") {
           // Node cannot initialize stdio or IPC when descriptors are exhausted.
-          bunStdio[0] = "undefined";
-          bunStdio[1] = "undefined";
-          bunStdio[2] = "undefined";
+          this.#initializeStdio(["undefined", "undefined", "undefined"]);
         } else {
           if (has_ipc) {
             this.send = this.#send;
@@ -1657,8 +1655,8 @@ class ChildProcess extends EventEmitter {
             this.channel = new Control(null);
             this.#closesNeeded++;
           }
+          this.#initializeStdio(bunStdio);
         }
-        this.#initializeStdio(bunStdio);
         process.nextTick(() => {
           this.#stdin?.destroy();
           this.emit("error", ex);
