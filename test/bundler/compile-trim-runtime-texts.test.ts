@@ -16,8 +16,9 @@ function keyAt(bytes: Uint8Array, at: number) {
   return key;
 }
 
-function textsFoundIn(haystacks: Uint8Array[], texts: string[]): string[] {
+function textsFoundIn(haystacks: Uint8Array[], texts: string[], ignoredWithin: string[] = []): string[] {
   const needles = [...new Set(texts)].map(text => Buffer.from(text)).filter(needle => needle.length >= keyWidth);
+  const contexts = ignoredWithin.map(text => Buffer.from(text));
   const maybe = new Uint8Array(1 << 24);
   const byKey = new Map<number, Buffer[]>();
   for (const needle of needles) {
@@ -28,11 +29,22 @@ function textsFoundIn(haystacks: Uint8Array[], texts: string[]): string[] {
   const found = new Set<string>();
   for (const haystack of haystacks) {
     if (haystack.length < keyWidth) continue;
+    const bytes = Buffer.from(haystack.buffer, haystack.byteOffset, haystack.byteLength);
+    const ignoredRanges: [number, number][] = [];
+    for (const context of contexts) {
+      for (let at = bytes.indexOf(context); at !== -1; at = bytes.indexOf(context, at + 1)) {
+        ignoredRanges.push([at, at + context.length]);
+      }
+    }
     let key = keyAt(haystack, 0);
     for (let at = 0; ; at++) {
       if (maybe[key >>> 8]) {
         for (const needle of byKey.get(key) ?? []) {
-          if (at + needle.length <= haystack.length && needle.equals(haystack.subarray(at, at + needle.length)))
+          if (
+            at + needle.length <= haystack.length &&
+            needle.equals(haystack.subarray(at, at + needle.length)) &&
+            !ignoredRanges.some(([start, end]) => start <= at && at + needle.length <= end)
+          )
             found.add(needle.toString());
         }
       }
@@ -113,6 +125,24 @@ function notAccountedFor(found: string[]) {
 
 const piecesOf = (name: string, width: number) =>
   name.length < width ? [name] : Array.from({ length: name.length - width + 1 }, (_, at) => name.slice(at, at + width));
+
+// Startup flags in src/bun_core/node_options.rs share fragments with lint-rule names.
+const nodeOptionNames = ["--es-module-specifier-resolution", "--experimental-top-level-await"];
+
+test("text matching excludes only occurrences inside complete Node options", () => {
+  const fragments = ["-module-specifie", "-top-level-await", "module-specifier"];
+  const options = Buffer.from(nodeOptionNames.join("\0"));
+  const standalone = Buffer.from(fragments.join("\0"));
+  expect(textsFoundIn([options], fragments)).toEqual(fragments);
+  expect(textsFoundIn([options], fragments, nodeOptionNames)).toEqual([]);
+  expect(textsFoundIn([Buffer.concat([options, Buffer.from("\0"), standalone])], fragments, nodeOptionNames)).toEqual(
+    fragments,
+  );
+  expect(textsFoundIn([standalone, options], fragments, nodeOptionNames)).toEqual(fragments);
+  expect(
+    textsFoundIn([Buffer.from("--experimental-top-level-await-tail")], ["top-level-await-tail"], nodeOptionNames),
+  ).toEqual(["top-level-await-tail"]);
+});
 
 const builtinModulesMagic = "BUNBLTNS";
 const builtinModulesHeaderSize = 48;
@@ -203,6 +233,7 @@ describe.skipIf(!canTrim)("an executable without the Bun command line holds none
         textsFoundIn(
           trimmed,
           names.flatMap(name => piecesOf(name, 16)),
+          nodeOptionNames,
         ),
       ),
     ).toEqual([]);
