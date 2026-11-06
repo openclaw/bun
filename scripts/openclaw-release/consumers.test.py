@@ -13,6 +13,33 @@ consumers = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(consumers)
 
 
+class VitestReceipt(unittest.TestCase):
+    def test_only_complete_passing_selection_is_admitted(self):
+        for count in (2, 31):
+            result = {
+                "success": True,
+                "numTotalTests": count,
+                "numPassedTests": count,
+                "numFailedTests": 0,
+                "numPendingTests": 0,
+                "numTodoTests": 0,
+            }
+            consumers.require_vitest_result(result, count)
+            for changes in (
+                {"success": False},
+                {"numTotalTests": 0, "numPassedTests": 0},
+                {"numTotalTests": count - 1, "numPassedTests": count - 1},
+                {"numPassedTests": count - 1, "numFailedTests": 1},
+                {"numPassedTests": count - 1, "numPendingTests": 1},
+                {"numPassedTests": count - 1, "numTodoTests": 1},
+            ):
+                with (
+                    self.subTest(count=count, changes=changes),
+                    self.assertRaisesRegex(ValueError, "must execute and pass"),
+                ):
+                    consumers.require_vitest_result(result | changes, count)
+
+
 class ReleaseAdmission(unittest.TestCase):
     def test_primary_archive_identity_and_tampering(self):
         commit, webkit = "a" * 40, "b" * 40

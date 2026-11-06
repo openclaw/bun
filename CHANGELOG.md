@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Qualify each shipping archive with structured-clone, SharedArrayBuffer and Buffer serialization tests, and exercise the frozen OpenClaw hooks and private descendant handoff paths with the admitted executable.
+
 - Let trimming remove unused SQLite diagnostics, TLS transport code, and Chrome exit handlers while preserving diagnostic subscriptions and plain TCP shutdown.
 
 - Preserve named exports when a Jest mock spreads `jest.requireActual()` with an ESM default export, while retaining `mock.module()` default unwrapping.

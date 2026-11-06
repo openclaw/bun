@@ -33,6 +33,15 @@ def read(path):
     return json.loads(path.read_text())
 
 
+def require_vitest_result(result, expected):
+    require(
+        result["success"] is True
+        and result["numTotalTests"] == result["numPassedTests"] == expected
+        and all(result[key] == 0 for key in ("numFailedTests", "numPendingTests", "numTodoTests")),
+        f"all {expected} selected consumer cases must execute and pass",
+    )
+
+
 def admit(dist, destination, commit, webkit, run_url):
     manifest = read(dist / "manifest.json")
     require(
@@ -387,12 +396,60 @@ def qualify(name, dist, repo, output):
                     "--outputFile=" + str(output / "sqlite.json"),
                 ],
             )
-            sqlite = read(output / "sqlite.json")
+            require_vitest_result(read(output / "sqlite.json"), 2)
+            pin = repo / "scripts/lib/openclaw-bun.json"
+            original_pin = pin.read_bytes()
+            projected_pin = json.loads(original_pin)
+            require(projected_pin["revision"] == "1.4.4-canary.1+191755ec1", "unexpected frozen Bun revision")
+            projected_pin["revision"] = revision
+            try:
+                # Explicit candidate selection still checks the frozen revision in CI.
+                pin.write_text(json.dumps(projected_pin, indent=2) + "\n")
+                run(
+                    "before-tool-call",
+                    [
+                        "pnpm",
+                        "test",
+                        "src/plugins/hooks.before-tool-call.test.ts",
+                        "--",
+                        "--reporter=json",
+                        "--outputFile=" + str(output / "before-tool-call.json"),
+                    ],
+                    {"OPENCLAW_VITEST_RUNTIME": "bun", "OPENCLAW_BUN_PATH": str(binary)},
+                )
+                require_vitest_result(read(output / "before-tool-call.json"), 31)
+            finally:
+                pin.write_bytes(original_pin)
+            resolver = read(
+                run(
+                    "handoff-path",
+                    [
+                        binary,
+                        "--no-env-file",
+                        "-e",
+                        """
+import { spawnSync } from 'node:child_process';
+import { resolveManagedUpdateLeaseDatabasePath } from './src/infra/update-managed-service-handoff-lease.ts';
+const child = spawnSync(process.execPath, ['--no-env-file', '-e', `
+  import { resolveManagedUpdateLeaseDatabasePath } from './src/infra/update-managed-service-handoff-lease.ts';
+  console.log(JSON.stringify({executable:process.execPath,databasePath:resolveManagedUpdateLeaseDatabasePath()}));
+`], {env:process.env,encoding:'utf8'});
+if (child.error) throw child.error;
+if (child.status !== 0 || child.signal !== null || child.stderr !== '')
+  throw new Error('descendant resolver failed: ' + child.stderr);
+console.log(JSON.stringify({
+  parent:{executable:process.execPath,databasePath:resolveManagedUpdateLeaseDatabasePath()},
+  child:JSON.parse(child.stdout),
+}));
+""",
+                    ],
+                )
+            )
+            database = Path(env["TMPDIR"]) / f"openclaw-{os.getuid()}" / "managed-update-handoffs.sqlite"
             require(
-                sqlite["success"] is True
-                and sqlite["numTotalTests"] == sqlite["numPassedTests"] == 2
-                and all(sqlite[key] == 0 for key in ("numFailedTests", "numPendingTests", "numTodoTests")),
-                "SQLite cases must both execute and pass",
+                resolver["parent"] == resolver["child"] == {"executable": str(binary), "databasePath": str(database)}
+                and not database.exists(),
+                "parent and descendant must resolve the same private handoff path without opening its database",
             )
             report["package_sha256"] = package_sha
         else:

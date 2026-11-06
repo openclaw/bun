@@ -60,12 +60,20 @@ Each smoke job checks out the exact source commit, verifies genuine Node.js
 artifact's executable and the checked-in test configuration. No dependency
 installation or test timeout override is added. Each file must execute passing
 cases with no failures; declared platform and Debug/ASAN-only skips remain
-visible in the six JUnit reports uploaded as `tls-qualification-<target>`.
+visible in the nine JUnit reports uploaded as `tls-qualification-<target>`.
+The reports also include the three runtime suites described below.
 The opted-in smoke job has a 30-minute limit and its test step a 20-minute limit.
 Normal smoke jobs retain their 15-minute limit. These dry runs do not publish
 artifacts or establish sanitizer coverage for release builds.
 
 ## Downstream consumer qualification
+
+Each shipping ZIP runs the structured-clone, SharedArrayBuffer and Buffer
+serialization suites from its exact source with its extracted executable.
+The test harness passes that executable to descendants. Each suite must execute
+passing cases without failures; declared skips remain visible in its JUnit
+report. Normal smoke jobs upload `runtime-qualification-<target>`; TLS dry runs
+include these reports in `tls-qualification-<target>`.
 
 Runs containing `linux-x64` qualify the primary release ZIP in two independent
 GitHub-hosted jobs before publication. Both use the same-run `release` artifact,
@@ -76,12 +84,17 @@ Profile archives are not consumer inputs.
 The frozen OpenClaw and Birdclaw revisions and their Node versions live in
 `scripts/openclaw-release/consumers.py` and the workflow matrix. OpenClaw builds
 and packages its source, exercises all ten Bun-only smoke steps including a real
-browser, and runs its two Bun SQLite boundaries. Birdclaw runs its checks,
+browser, runs its two Bun SQLite boundaries, and requires all 31 frozen
+before-tool-call cases to pass under the candidate Bun with no skips or todos.
+That test's revision expectation is temporarily projected onto the admitted
+executable and restored afterward. A candidate parent and descendant also
+verify the same private handoff database path without opening the database.
+Birdclaw runs its checks,
 unchanged coverage thresholds, build, synthetic CLI/HTTP/database fixture and
 installed-package Bun/Node smoke. Coverage retains Birdclaw's normal mocked
-lookup transports; the other phases disable live profile lookup. Only Birdclaw's
-package-smoke revision expectation is temporarily projected onto the candidate,
-then restored.
+lookup transports; the other phases disable live profile lookup. Birdclaw's
+package-smoke revision expectation is also temporarily projected onto the
+candidate, then restored.
 
 Consumer jobs have read-only permissions, no signing environment, and private
 HOME/cache/state directories. Their dependency and product processes receive an

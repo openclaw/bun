@@ -9,7 +9,7 @@
  *   bun scripts/openclaw-release/release.ts plan [--tag <tag>] [--publish] [--windows-signed] [--qualify-tls]
  *   bun scripts/openclaw-release/release.ts provision --source <dir> --target <t>...
  *   bun scripts/openclaw-release/release.ts build --source <dir> --target <t> --out <dir>
- *   bun scripts/openclaw-release/release.ts smoke --zip <zip> --target <t> --commit <sha> --webkit <sha> [--qualify-tls --source <dir> --out <reports>]
+ *   bun scripts/openclaw-release/release.ts smoke --zip <zip> --target <t> --commit <sha> --webkit <sha> --source <dir> [--out <reports> --qualify-tls]
  *   bun scripts/openclaw-release/release.ts manifest --dist <dir> --tag <tag> --commit <sha> --out <dir>
  *
  * Every command takes `--source <dir>`, the checkout of the commit being
@@ -416,6 +416,12 @@ export const tlsQualificationFiles = [
   "test/js/node/http2/node-http2-upgrade.test.mts",
 ] as const;
 
+const runtimeQualificationFiles = [
+  "test/js/web/workers/structured-clone.test.ts",
+  "test/js/web/structured-clone-shared-array-buffer.test.ts",
+  "test/js/node/v8/v8-serdes-buffer.test.ts",
+] as const;
+
 export function validateTLSQualification(names: readonly TargetName[], publish = false, tag = ""): void {
   if (publish || tag) throw new Error("TLS qualification requires a dry run without a release tag");
   if (names.some(name => targets[name].abi === "musl")) {
@@ -424,68 +430,80 @@ export function validateTLSQualification(names: readonly TargetName[], publish =
 }
 
 /** Checks the single-file report emitted by Bun, including declared skips. This is not a general XML reader. */
-export function tlsQualificationResult(xml: string): { passed: number; skipped: number } {
+export function qualificationResult(xml: string): { passed: number; skipped: number } {
   const root = /^\s*(?:<\?xml[^?]*\?>\s*)?<testsuites\b([^>]*)>/.exec(xml);
   const count = (name: string) => {
     const value = root && new RegExp(`\\s${name}="(\\d+)"`).exec(root[1]!)?.[1];
-    if (value === null || value === undefined) throw new Error(`TLS report is missing a valid ${name} count`);
+    if (value === null || value === undefined) throw new Error(`qualification report is missing a valid ${name} count`);
     const result = Number(value);
-    if (!Number.isSafeInteger(result)) throw new Error(`TLS report has an invalid ${name} count`);
+    if (!Number.isSafeInteger(result)) throw new Error(`qualification report has an invalid ${name} count`);
     return result;
   };
   const tests = count("tests");
   const skipped = count("skipped");
   const failures = count("failures");
   if (!/<\/testsuites>\s*$/.test(xml) || (xml.match(/<testsuites\b/g) ?? []).length !== 1) {
-    throw new Error("TLS report is incomplete or contains multiple runs");
+    throw new Error("qualification report is incomplete or contains multiple runs");
   }
   if (tests !== (xml.match(/<testcase\b/g) ?? []).length || skipped !== (xml.match(/<skipped\b/g) ?? []).length) {
-    throw new Error("TLS report counts do not match its test cases");
+    throw new Error("qualification report counts do not match its test cases");
   }
   if (failures !== 0 || /\serrors="(?!0")/.test(root![1]!) || /<(?:failure|error)\b/.test(xml) || tests <= skipped) {
-    throw new Error("TLS report must contain passing cases and no failures or errors");
+    throw new Error("qualification report must contain passing cases and no failures or errors");
   }
   return { passed: tests - skipped, skipped };
 }
 
-function qualifyTLS(exe: string, t: Target, source: string, reports: string, commit: string, webkit: string): void {
-  validateTLSQualification([t.name]);
+function qualifyRuntime(
+  exe: string,
+  t: Target,
+  source: string,
+  reports: string,
+  commit: string,
+  webkit: string,
+  tls: boolean,
+): void {
   const facts = sourceFacts(source, "HEAD");
   if (facts.commit !== commit || facts.webkitVersion !== webkit) {
-    throw new Error("TLS qualification checkout does not match the artifact's source and WebKit commits");
+    throw new Error("qualification checkout does not match the artifact's source and WebKit commits");
   }
-  const node = Bun.which("node");
-  if (!node) throw new Error("TLS qualification requires Node.js 26.12.1 on PATH");
-  const reference = JSON.parse(
-    run(
-      [
-        node,
-        "-e",
-        `console.log(JSON.stringify({
+  if (tls) {
+    validateTLSQualification([t.name]);
+    const node = Bun.which("node");
+    if (!node) throw new Error("TLS qualification requires Node.js 26.12.1 on PATH");
+    const reference = JSON.parse(
+      run(
+        [
+          node,
+          "-e",
+          `console.log(JSON.stringify({
     name: process.release.name, version: process.versions.node, bun: process.versions.bun ?? null,
     platform: process.platform, arch: process.arch, exe: process.execPath
   }))`,
-      ],
-      {},
-    ),
-  );
-  if (
-    reference.name !== "node" ||
-    reference.version !== "26.12.1" ||
-    reference.bun !== null ||
-    reference.platform !== (t.os === "windows" ? "win32" : t.os) ||
-    reference.arch !== t.arch ||
-    realpathSync(reference.exe) !== realpathSync(node)
-  ) {
-    throw new Error("TLS qualification requires genuine Node.js 26.12.1 for the artifact's platform and architecture");
+        ],
+        {},
+      ),
+    );
+    if (
+      reference.name !== "node" ||
+      reference.version !== "26.12.1" ||
+      reference.bun !== null ||
+      reference.platform !== (t.os === "windows" ? "win32" : t.os) ||
+      reference.arch !== t.arch ||
+      realpathSync(reference.exe) !== realpathSync(node)
+    ) {
+      throw new Error(
+        "TLS qualification requires genuine Node.js 26.12.1 for the artifact's platform and architecture",
+      );
+    }
   }
   mkdirSync(reports, { recursive: true });
-  for (const file of tlsQualificationFiles) {
+  for (const file of [...runtimeQualificationFiles, ...(tls ? tlsQualificationFiles : [])]) {
     const report = join(reports, `${basename(file)}.xml`);
     // A failed invocation must never reuse a report from an earlier attempt.
     rmSync(report, { force: true });
     run([exe, "test", file, "--reporter=junit", `--reporter-outfile=${report}`], { cwd: source, stdio: "inherit" });
-    console.log(`${file}: ${JSON.stringify(tlsQualificationResult(readFileSync(report, "utf8")))}`);
+    console.log(`${file}: ${JSON.stringify(qualificationResult(readFileSync(report, "utf8")))}`);
   }
 }
 
@@ -495,7 +513,7 @@ export function smoke(
   name: TargetName,
   commit: string,
   webkitVersion: string,
-  qualification?: { source: string; reports: string },
+  qualification: { source: string; reports: string; tls?: boolean },
 ): void {
   const t = targets[name];
   const dir = mkdtempSync(join(tmpdir(), "openclaw-smoke-"));
@@ -547,7 +565,15 @@ export function smoke(
       problems.push(`the DFG JIT did not compile (numberOfDFGCompiles: ${facts.dfg})`);
     if (problems.length) throw new Error(`${name} smoke test failed:\n  ${problems.join("\n  ")}`);
     console.log(`${name}: ${run([exe, "--revision"], {}).trim()}, WebKit ${facts.webkit}, DFG compiles: ${facts.dfg}`);
-    if (qualification) qualifyTLS(exe, t, qualification.source, qualification.reports, commit, webkitVersion);
+    qualifyRuntime(
+      exe,
+      t,
+      qualification.source,
+      qualification.reports,
+      commit,
+      webkitVersion,
+      qualification.tls ?? false,
+    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -881,13 +907,11 @@ async function main(argv: string[]): Promise<void> {
     case "smoke": {
       const name = names()[0]!;
       if (values["qualify-tls"]) validateTLSQualification([name], values.publish, values.tag);
-      smoke(
-        resolve(values.zip!),
-        name,
-        values.commit!,
-        values.webkit!,
-        values["qualify-tls"] ? { source, reports: resolve(values.out ?? "tls-results") } : undefined,
-      );
+      smoke(resolve(values.zip!), name, values.commit!, values.webkit!, {
+        source,
+        reports: resolve(values.out ?? "qualification-results"),
+        tls: values["qualify-tls"],
+      });
       return;
     }
     case "manifest": {
