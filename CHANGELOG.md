@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Replace preassigned ChildProcess stdio with the spawned process's actual streams while preserving tracing order and failed-spawn EOF and close events.
+
 - Qualify each shipping archive with structured-clone, SharedArrayBuffer and Buffer serialization tests, and exercise the frozen OpenClaw hooks and private descendant handoff paths with the admitted executable.
 
 - Let trimming remove unused SQLite diagnostics, TLS transport code, and Chrome exit handlers while preserving diagnostic subscriptions and plain TCP shutdown.

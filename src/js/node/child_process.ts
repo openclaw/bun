@@ -1413,6 +1413,16 @@ class ChildProcess extends EventEmitter {
   #stdioOptions;
   #extraStdioHandles: unknown[] = [];
 
+  #initializeStdio(options: ReturnType<typeof getBunStdioFromOptions>) {
+    this.#stdioOptions = options;
+    ObjectAssign(this, {
+      stdin: (this.#stdin = this.#getBunSpawnIo(0, false)),
+      stdout: (this.#stdout = this.#getBunSpawnIo(1, false)),
+      stderr: (this.#stderr = this.#getBunSpawnIo(2, false)),
+    });
+    ObjectAssign(this, { stdio: (this.#stdioObject = this.#createStdioObject()) });
+  }
+
   #createStdioObject() {
     const opts = this.#stdioOptions;
     if (opts === undefined) return undefined;
@@ -1506,7 +1516,6 @@ class ChildProcess extends EventEmitter {
     var env = options[kBunEnv] || parseEnvPairs(envPairs) || process.env;
 
     const detachedOption = options.detached;
-    this.#stdioOptions = bunStdio;
     const hasSocketsToEagerlyLoad = bunStdio.length >= 3;
 
     validateString(options.file, "options.file");
@@ -1524,6 +1533,7 @@ class ChildProcess extends EventEmitter {
     // What script of a disposed Bun.ModuleGraph starts does not start, and reports nothing: a
     // child without a handle, as after a failed spawn, but with no 'error' and no 'close'.
     if (require("internal/shared").isStoppedModuleGraphRunning()) {
+      this.#stdioOptions = bunStdio;
       this.#handle = null;
       // (fork() always gives its child a channel: this one sends nothing.)
       if (has_ipc) {
@@ -1533,6 +1543,8 @@ class ChildProcess extends EventEmitter {
       return;
     }
 
+    // Tracing observes stdio before initialization, matching Node's spawn owner.
+    // https://github.com/nodejs/node/blob/v26.13.0/lib/internal/child_process.js#L361-L510
     childProcessSpawn ??= require("node:diagnostics_channel").tracingChannel("child_process.spawn");
     if (childProcessSpawn.start.hasSubscribers) childProcessSpawn.start.publish({ process: this, options });
 
@@ -1603,6 +1615,7 @@ class ChildProcess extends EventEmitter {
         if (options[kFromNode]) this.#closesNeeded += 1;
       }
 
+      this.#initializeStdio(bunStdio);
       if (hasSocketsToEagerlyLoad) {
         for (let item of this.stdio!) {
           item?.ref?.();
@@ -1633,11 +1646,10 @@ class ChildProcess extends EventEmitter {
         this.exitCode = exitCode;
         if (exCode === "EMFILE" || exCode === "ENFILE") {
           // Node cannot initialize stdio or IPC when descriptors are exhausted.
-          this.#stdioOptions[0] = "undefined";
-          this.#stdioOptions[1] = "undefined";
-          this.#stdioOptions[2] = "undefined";
+          bunStdio[0] = "undefined";
+          bunStdio[1] = "undefined";
+          bunStdio[2] = "undefined";
         } else {
-          void this.stdio;
           if (has_ipc) {
             this.send = this.#send;
             this.disconnect = this.#disconnect;
@@ -1646,6 +1658,7 @@ class ChildProcess extends EventEmitter {
             this.#closesNeeded++;
           }
         }
+        this.#initializeStdio(bunStdio);
         process.nextTick(() => {
           this.#stdin?.destroy();
           this.emit("error", ex);
