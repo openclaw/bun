@@ -42,6 +42,7 @@ on:
             trim-linux,
             trim-linux-cache,
             trim-linux-type-stripping,
+            compile-cache-darwin,
             trim-linux-baseline,
             trim-linux-source-baseline,
             trim-linux-shipping,
@@ -511,7 +512,7 @@ jobs:
           [ "$DIAGNOSTIC" = trim-linux-source-baseline ] && args+=(--compare-built-upstream)
           ./build/release/bun scripts/openclaw-ci/trim-diagnostics.ts "${args[@]}"
       - name: Replay selected runtime regression
-        if: inputs.diagnostic == 'trim-linux-cache' || inputs.diagnostic == 'trim-linux-type-stripping'
+        if: inputs.diagnostic == 'trim-linux-cache' || inputs.diagnostic == 'trim-linux-type-stripping' || inputs.diagnostic == 'compile-cache-darwin'
         env:
           DIAGNOSTIC: ${{ inputs.diagnostic }}
         run: |
