@@ -291,21 +291,25 @@ fn portable_from_env() -> bool {
 pub fn init_from_env_once() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
+        // A standalone app can enable the cache before its first external load.
+        if is_enabled() {
+            return;
+        }
         init_logging();
         if let Some(dir) = env_var::NODE_COMPILE_CACHE::get_not_empty() {
             if env_var::NODE_DISABLE_COMPILE_CACHE::get().is_some() {
                 cclog!("[compile cache] Disabled by NODE_DISABLE_COMPILE_CACHE.\n");
-                ENABLED.store(1, Ordering::Relaxed);
+                let _ = ENABLED.compare_exchange(0, 1, Ordering::Relaxed, Ordering::Relaxed);
                 return;
             }
             if crate::virtual_machine::standalone_module_graph().is_some() {
                 cclog!("[compile cache] Disabled in standalone executables.\n");
-                ENABLED.store(1, Ordering::Relaxed);
+                let _ = ENABLED.compare_exchange(0, 1, Ordering::Relaxed, Ordering::Relaxed);
                 return;
             }
             let _ = enable_with_dir(dir, portable_from_env());
         } else {
-            ENABLED.store(1, Ordering::Relaxed);
+            let _ = ENABLED.compare_exchange(0, 1, Ordering::Relaxed, Ordering::Relaxed);
         }
     });
 }
@@ -922,37 +926,42 @@ fn wake_main_loop() {
 
 /// Register the weak wakeup target before parking. The worker only creates
 /// its JSC VM after an idle observation or an explicit/exit flush requests it.
+/// Only runtime module loading can populate the entries this worker persists.
 pub fn prepare_idle(vm: &crate::virtual_machine::VirtualMachine) -> bool {
-    MAIN_VM.get_or_init(|| vm.handle());
-    if !is_enabled()
-        || !(BACKGROUND_NEEDED.load(Ordering::Relaxed)
-            || BACKGROUND_PENDING.load(Ordering::Relaxed))
-    {
-        return false;
-    }
-    let _ = persist_worker();
-    true
+    bun_removable_features::removable_body!(RuntimeTranspiler, ReturnDefault, {
+        MAIN_VM.get_or_init(|| vm.handle());
+        if !is_enabled()
+            || !(BACKGROUND_NEEDED.load(Ordering::Relaxed)
+                || BACKGROUND_PENDING.load(Ordering::Relaxed))
+        {
+            return false;
+        }
+        let _ = persist_worker();
+        true
+    })
 }
 
 /// Cumulative kernel wait time excludes JS callbacks, including libuv's.
 /// Accumulate a window: periodic timers must not starve an otherwise idle VM.
 pub fn on_idle(total_idle_ns: u64) {
-    let now = bun_uws::us_loop_idle_clock_ns();
-    let (since, idle_before) = IDLE_WINDOW.get();
-    if since == 0 || LAST_FETCH_NS.load(Ordering::Relaxed) > since {
-        IDLE_WINDOW.set((now, total_idle_ns));
-        return;
-    }
-    let elapsed = now.saturating_sub(since);
-    if elapsed >= BACKGROUND_QUIET_NS {
-        IDLE_WINDOW.set((now, total_idle_ns));
-        if total_idle_ns.saturating_sub(idle_before) >= elapsed / 100 * BACKGROUND_IDLE_PERCENT
-            && BACKGROUND_NEEDED.load(Ordering::Relaxed)
-            && can_persist_in_background()
-        {
-            schedule_persist();
+    bun_removable_features::removable_body!(RuntimeTranspiler, ReturnDefault, {
+        let now = bun_uws::us_loop_idle_clock_ns();
+        let (since, idle_before) = IDLE_WINDOW.get();
+        if since == 0 || LAST_FETCH_NS.load(Ordering::Relaxed) > since {
+            IDLE_WINDOW.set((now, total_idle_ns));
+            return;
         }
-    }
+        let elapsed = now.saturating_sub(since);
+        if elapsed >= BACKGROUND_QUIET_NS {
+            IDLE_WINDOW.set((now, total_idle_ns));
+            if total_idle_ns.saturating_sub(idle_before) >= elapsed / 100 * BACKGROUND_IDLE_PERCENT
+                && BACKGROUND_NEEDED.load(Ordering::Relaxed)
+                && can_persist_in_background()
+            {
+                schedule_persist();
+            }
+        }
+    });
 }
 
 fn can_persist_in_background() -> bool {
@@ -1289,14 +1298,16 @@ fn persist_pass(background: bool) {
 
 /// `module.flushCompileCache()`.
 pub fn flush() {
-    if !is_enabled() {
-        return;
-    }
-    cclog!("[compile cache] module.flushCompileCache() requested.\n");
-    if let Some(done) = request_flush() {
-        let _ = done.recv();
-    }
-    cclog!("[compile cache] module.flushCompileCache() finished.\n");
+    bun_removable_features::removable_body!(RuntimeTranspiler, ReturnDefault, {
+        if !is_enabled() {
+            return;
+        }
+        cclog!("[compile cache] module.flushCompileCache() requested.\n");
+        if let Some(done) = request_flush() {
+            let _ = done.recv();
+        }
+        cclog!("[compile cache] module.flushCompileCache() finished.\n");
+    });
 }
 
 /// Exit-time persist; runs once, from the main VM's `on_exit`.
@@ -1329,27 +1340,29 @@ pub fn persist_before_self_signal(termination_signal: bool) {
 }
 
 fn persist_with_signal_budget(bounded: bool) {
-    let started = Instant::now();
-    let mut deadline = bounded.then_some(started + EXIT_PERSIST_BUDGET);
-    if let Some(done) = request_flush() {
-        loop {
-            if deadline.is_none() && TERMINATION_SIGNAL_RECEIVED.load(Ordering::Relaxed) {
-                deadline = Some(started + EXIT_PERSIST_BUDGET);
-            }
-            // Also notice a native signal delivered while a normal exit is already waiting.
-            let wait = deadline.map_or(Duration::from_millis(10), |end| {
-                end.saturating_duration_since(Instant::now())
-            });
-            match done.recv_timeout(wait) {
-                Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
-                Err(mpsc::RecvTimeoutError::Timeout) => {
-                    if deadline.is_some_and(|end| Instant::now() >= end) {
-                        break;
+    bun_removable_features::removable_body!(RuntimeTranspiler, ReturnDefault, {
+        let started = Instant::now();
+        let mut deadline = bounded.then_some(started + EXIT_PERSIST_BUDGET);
+        if let Some(done) = request_flush() {
+            loop {
+                if deadline.is_none() && TERMINATION_SIGNAL_RECEIVED.load(Ordering::Relaxed) {
+                    deadline = Some(started + EXIT_PERSIST_BUDGET);
+                }
+                // Also notice a native signal delivered while a normal exit is already waiting.
+                let wait = deadline.map_or(Duration::from_millis(10), |end| {
+                    end.saturating_duration_since(Instant::now())
+                });
+                match done.recv_timeout(wait) {
+                    Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                    Err(mpsc::RecvTimeoutError::Timeout) => {
+                        if deadline.is_some_and(|end| Instant::now() >= end) {
+                            break;
+                        }
                     }
                 }
             }
         }
-    }
+    });
 }
 
 // ──────────────────────────────────────────────────────────────────────────

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Let trimming remove compile-cache persistence workers when runtime module loading is absent, and preserve explicit cache activation before a compiled app's first external module load.
+
 - Give shipping structured-clone qualification the native runner's 90-second per-test budget, preserving the large-buffer checks and their shared cross-process serializer.
 
 - Qualify the admitted shipping compiler against frozen OpenClaw's complete AOT standalone and runtime sidecar, including CLI startup outside its source checkout.
