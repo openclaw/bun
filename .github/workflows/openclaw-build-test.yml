@@ -514,7 +514,7 @@ jobs:
         run: |
           set -o pipefail
           bun install --frozen-lockfile
-          BUN_FEATURE_FLAG_INTERNAL_FOR_TESTING=1 ./build/release/bun test test/bundler/compile-node-compile-cache.test.ts \
+          ./build/release/bun --expose-internals test test/bundler/compile-node-compile-cache.test.ts \
             --reporter=junit --reporter-outfile=build/openclaw-ci/compile-cache.xml \
             2>&1 | tee build/openclaw-ci/compile-cache.log
       - name: Probe the admitted shipping compile contract
