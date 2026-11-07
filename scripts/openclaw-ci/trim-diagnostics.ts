@@ -204,6 +204,7 @@ function compareHelloBinaries(
   baselineSource: string,
   reportName: string,
   context: Record<string, unknown>,
+  sameEngine = false,
 ): void {
   const sha256 = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
   const env = {
@@ -263,7 +264,10 @@ function compareHelloBinaries(
       facts.platform !== "linux" ||
       facts.arch !== "x64" ||
       typeof facts.webkit !== "string" ||
-      (label === "upstream" && facts.webkit !== "4d45755fed4aeef19e95beb90d3d0c884a2812bd")
+      (label === "upstream" &&
+        facts.webkit !==
+          (sameEngine ? "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6" : "4d45755fed4aeef19e95beb90d3d0c884a2812bd")) ||
+      (sameEngine && label === "candidate" && facts.webkit !== "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6")
     )
       throw new Error(`${label} runtime does not match the admitted source and platform`);
     const executableSHA256 = sha256(readFileSync(exe));
@@ -307,7 +311,7 @@ function compareHelloBinaries(
   writeFileSync(report, JSON.stringify(summary, null, 2) + "\n");
   console.log(JSON.stringify(summary));
 }
-function compareBuiltUpstream(): void {
+function compareBuiltUpstream(sameEngine = false): void {
   const source = "3f3a9ff87cdccf3d32d7ec6b648c664eddaae840";
   const upstream = resolve("baseline");
   const git = (args: string[]) => {
@@ -315,8 +319,30 @@ function compareBuiltUpstream(): void {
     if (result.error || result.status !== 0 || result.signal) throw new Error("Upstream source inspection failed");
     return result.stdout.trim();
   };
-  if (git(["rev-parse", "HEAD"]) !== source || git(["status", "--porcelain", "--untracked-files=no"]) !== "")
-    throw new Error("Expected the clean, frozen upstream checkout");
+  if (git(["rev-parse", "HEAD"]) !== source) throw new Error("Expected the frozen upstream checkout");
+  const routingPath = "scripts/build/deps/webkit.ts";
+  const expectedStatus = sameEngine ? `M ${routingPath}` : "";
+  if (git(["status", "--porcelain", "--untracked-files=no"]) !== expectedStatus)
+    throw new Error("Unexpected upstream tracked changes");
+  const routing = sameEngine ? JSON.parse(readFileSync(join(folder, "upstream-routing.json"), "utf8")) : null;
+  const engineInput = sameEngine ? JSON.parse(readFileSync(join(folder, "upstream-engine-input.json"), "utf8")) : null;
+  if (sameEngine) {
+    const original = git(["show", `HEAD:${routingPath}`]) + "\n";
+    const routed = readFileSync(join(upstream, routingPath), "utf8");
+    const from = "https://github.com/oven-sh/WebKit/releases/download/";
+    const to = "https://github.com/openclaw/WebKit/releases/download/";
+    const hash = (text: string) => createHash("sha256").update(text).digest("hex");
+    if (
+      original.split(from).length !== 2 ||
+      routed !== original.replace(from, to) ||
+      routing.path !== routingPath ||
+      routing.from !== from ||
+      routing.to !== to ||
+      routing.originalSHA256 !== hash(original) ||
+      routing.routedSHA256 !== hash(routed)
+    )
+      throw new Error("Expected exactly the recorded prebuilt WebKit download routing change");
+  }
   const build = join(upstream, "build/release");
   const order = readFileSync(join(build, "linker.order"), "utf8");
   const entries = order.split("\n").filter(line => line.trim() && !line.trimStart().startsWith("#")).length;
@@ -327,24 +353,36 @@ function compareBuiltUpstream(): void {
       readFileSync(join(build, "toolchain-identity", name), "utf8"),
     ]),
   );
-  compareHelloBinaries(join(build, "bun"), source, "upstream-build-comparison.json", {
-    upstream: {
-      source,
-      tree: git(["rev-parse", "HEAD^{tree}"]),
-      build: JSON.parse(readFileSync(join(folder, "upstream-build.json"), "utf8")),
-      toolIdentities,
-      ordering: { entries, sha256: createHash("sha256").update(order).digest("hex") },
-      manifestSHA256: createHash("sha256")
-        .update(readFileSync(join(build, "build.ninja")))
-        .digest("hex"),
+  compareHelloBinaries(
+    join(build, "bun"),
+    source,
+    sameEngine ? "upstream-same-engine-comparison.json" : "upstream-build-comparison.json",
+    {
+      upstream: {
+        source,
+        routing,
+        engineInput,
+        tree: git(["rev-parse", "HEAD^{tree}"]),
+        build: JSON.parse(readFileSync(join(folder, "upstream-build.json"), "utf8")),
+        toolIdentities,
+        ordering: { entries, sha256: createHash("sha256").update(order).digest("hex") },
+        manifestSHA256: createHash("sha256")
+          .update(readFileSync(join(build, "build.ninja")))
+          .digest("hex"),
+      },
+      limitations: sameEngine
+        ? "Matched manifest-verified WebKitS archive, hosted toolchain, release LTO, trim flags and empty ordering. Upstream uses its supported engine override and one recorded prebuilt-download routing substitution. The build display label differs; results do not identify individual-fix savings or repair the size gate."
+        : "Matched hosted toolchain, release LTO, trim flags and empty ordering. The upstream-to-fork difference still combines Bun source and WebKit changes.",
     },
-    limitations:
-      "Matched hosted toolchain, release LTO, trim flags and empty ordering. The upstream-to-fork difference still combines Bun source and WebKit changes.",
-  });
+    sameEngine,
+  );
 }
 
-if (process.argv.includes("--compare-built-upstream")) {
-  compareBuiltUpstream();
+if (
+  process.argv.includes("--compare-built-upstream") ||
+  process.argv.includes("--compare-built-upstream-same-engine")
+) {
+  compareBuiltUpstream(process.argv.includes("--compare-built-upstream-same-engine"));
   process.exit(0);
 }
 const cases = [

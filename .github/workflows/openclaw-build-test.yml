@@ -46,6 +46,7 @@ on:
             compile-cache-darwin,
             trim-linux-baseline,
             trim-linux-source-baseline,
+            trim-linux-source-engine-baseline,
             trim-linux-shipping,
             bun-types-darwin,
             aot-evaluators-darwin,
@@ -373,8 +374,8 @@ jobs:
 
   native-diagnostics:
     if: github.repository == 'openclaw/bun' && inputs.diagnostic != '' && inputs.diagnostic != 'none' && !startsWith(inputs.diagnostic, 'shipping-')
-    runs-on: ${{ inputs.diagnostic == 'trim-linux-source-baseline' && 'blacksmith-16vcpu-ubuntu-2404' || startsWith(inputs.diagnostic, 'trim-linux') && 'ubuntu-24.04' || 'macos-15' }}
-    timeout-minutes: ${{ inputs.diagnostic == 'trim-linux-source-baseline' && 115 || 15 }}
+    runs-on: ${{ startsWith(inputs.diagnostic, 'trim-linux-source-') && 'blacksmith-16vcpu-ubuntu-2404' || startsWith(inputs.diagnostic, 'trim-linux') && 'ubuntu-24.04' || 'macos-15' }}
+    timeout-minutes: ${{ startsWith(inputs.diagnostic, 'trim-linux-source-') && 115 || 15 }}
     permissions:
       contents: read
       actions: read
@@ -450,59 +451,114 @@ jobs:
           printf 'native source: %s\nprobe source: %s\n' "$EXPECTED_NATIVE_SHA" "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
           ./build/release/bun -e 'console.log(JSON.stringify({nativeSource: Bun.revision, probeSource: process.env.GITHUB_SHA, diagnostic: process.env.DIAGNOSTIC}))' > build/openclaw-ci/native-diagnostic.json
       - name: Checkout frozen upstream baseline
-        if: inputs.diagnostic == 'trim-linux-source-baseline'
+        if: startsWith(inputs.diagnostic, 'trim-linux-source-')
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: 3f3a9ff87cdccf3d32d7ec6b648c664eddaae840
           path: baseline
           persist-credentials: false
       - name: Read toolchain pins
-        if: inputs.diagnostic == 'trim-linux-source-baseline'
+        if: startsWith(inputs.diagnostic, 'trim-linux-source-')
         id: pins
         run: |
           echo "tree=$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_OUTPUT"
           # shellcheck disable=SC2016
           bun -e 'import { locations, pins } from "./scripts/build/ci-images/spec.ts"; console.log(`llvm-directory=${locations.llvm}\nnode=${pins.nodejs.version}\nrust=${pins.rust.channel}`)' >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        if: inputs.diagnostic == 'trim-linux-source-baseline'
+        if: startsWith(inputs.diagnostic, 'trim-linux-source-')
         with:
           node-version: ${{ steps.pins.outputs.node }}
       - name: Install native build tools
-        if: inputs.diagnostic == 'trim-linux-source-baseline'
+        if: startsWith(inputs.diagnostic, 'trim-linux-source-')
         timeout-minutes: 15
         env:
           LLVM_DIRECTORY: ${{ steps.pins.outputs.llvm-directory }}
           RUST_TOOLCHAIN: ${{ steps.pins.outputs.rust }}
         run: |
           bash scripts/openclaw-ci/install-linux-toolchain.sh
-      - name: Build unchanged upstream with matched native inputs
-        if: inputs.diagnostic == 'trim-linux-source-baseline'
+      - name: Build frozen upstream with matched native inputs
+        if: startsWith(inputs.diagnostic, 'trim-linux-source-')
         timeout-minutes: 75
         working-directory: baseline
         env:
           # config.ts gives CI revision variables precedence over the checked-out HEAD.
           UPSTREAM_SHA: 3f3a9ff87cdccf3d32d7ec6b648c664eddaae840
+          DIAGNOSTIC: ${{ inputs.diagnostic }}
           BUN_BUILD_CACHE_DIR: ${{ github.workspace }}/baseline/.cache/openclaw-build
           PUPPETEER_SKIP_DOWNLOAD: "1"
         run: |
           unset BUILDKITE_COMMIT GIT_SHA
           export GITHUB_SHA="$UPSTREAM_SHA"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          bun install --frozen-lockfile
           mkdir -p ../build/openclaw-ci/trim-diagnostics
+          flags=()
+          export COMPARISON_WEBKIT=4d45755fed4aeef19e95beb90d3d0c884a2812bd
+          if [ "$DIAGNOSTIC" = trim-linux-source-engine-baseline ]; then
+            test "$EXPECTED_NATIVE_SHA" = b254e61a893cbeae5da97205e94412db07a83804
+            test "$NATIVE_RUN_ID" = 42396910724
+            test "$NATIVE_ARTIFACT_ID" = 13583624634
+            export COMPARISON_WEBKIT=8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6
+            flags+=(--webkit-version="$COMPARISON_WEBKIT")
+            export BUN_BUILD_PREFETCH_DIR="$PWD/.cache/diagnostic-prefetch"
+            python3 -c '
+          import hashlib, json, os, urllib.request
+          from pathlib import Path
+          p = Path("scripts/build/deps/webkit.ts")
+          source = p.read_text()
+          old = "https://github.com/oven-sh/WebKit/releases/download/"
+          new = "https://github.com/openclaw/WebKit/releases/download/"
+          assert source.count(old) == 1
+          routed = source.replace(old, new)
+          p.write_text(routed)
+          Path("../build/openclaw-ci/trim-diagnostics/upstream-routing.json").write_text(json.dumps({
+              "path": str(p), "from": old, "to": new,
+              "originalSHA256": hashlib.sha256(source.encode()).hexdigest(),
+              "routedSHA256": hashlib.sha256(routed.encode()).hexdigest()
+          }) + "\n")
+          manifest = json.loads(Path("../scripts/build/deps/webkit-artifacts.json").read_text())
+          assert manifest["version"] == "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6"
+          engine = manifest["artifacts"]["bun-webkit-linux-amd64-lto-aot.tar.gz"]
+          key = hashlib.sha256(engine["url"].encode()).hexdigest()[:32]
+          target = Path(os.environ["BUN_BUILD_PREFETCH_DIR"]) / "by-url" / key
+          target.parent.mkdir(parents=True, exist_ok=True)
+          digest, size = hashlib.sha256(), 0
+          with urllib.request.urlopen(engine["url"], timeout=120) as response, target.open("wb") as output:
+              while chunk := response.read(8 * 1024 * 1024):
+                  output.write(chunk)
+                  digest.update(chunk)
+                  size += len(chunk)
+          assert size == engine["size"] and digest.hexdigest() == engine["sha256"]
+          target.chmod(0o444)
+          Path("../build/openclaw-ci/trim-diagnostics/upstream-engine-input.json").write_text(json.dumps({
+              **engine, "verifiedSHA256": digest.hexdigest(), "verifiedBytes": size,
+              "prefetchKey": key
+          }) + "\n")
+          '
+          fi
+          bun install --frozen-lockfile
           bun -e '
             import { configOf } from "./scripts/build/configure.ts";
-            const { cfg } = configOf({ profile: "release", overrides: { ci: true, trimmable: true } });
+            import { webkit as webkitDependency } from "./scripts/build/deps/webkit.ts";
+            import { existsSync, readFileSync } from "node:fs";
+            const { cfg } = configOf({ profile: "release", overrides: { ci: true, trimmable: true, webkitVersion: process.env.COMPARISON_WEBKIT } });
             const { buildType, ci, lto, trimmable, webkit, webkitVersion, revision, cc, ld, rustToolchain } = cfg;
             if (buildType !== "Release" || !ci || !lto || !trimmable || webkit !== "prebuilt" ||
-                revision !== process.env.GITHUB_SHA || webkitVersion !== "4d45755fed4aeef19e95beb90d3d0c884a2812bd")
+                revision !== process.env.GITHUB_SHA || webkitVersion !== process.env.COMPARISON_WEBKIT)
               throw new Error("Unexpected upstream baseline configuration");
-            console.log(JSON.stringify({ buildType, ci, lto, trimmable, webkit, webkitVersion, revision, cc, ld, rustToolchain }));
+            const engineSource = webkitDependency.source(cfg);
+            if (process.env.DIAGNOSTIC === "trim-linux-source-engine-baseline") {
+              const input = JSON.parse(readFileSync("../build/openclaw-ci/trim-diagnostics/upstream-engine-input.json", "utf8"));
+              if (engineSource.kind !== "prebuilt" || engineSource.url !== input.url || existsSync(engineSource.destDir))
+                throw new Error("Expected a fresh baseline consuming the verified WebKit prefetch");
+            }
+            console.log(JSON.stringify({ buildType, ci, lto, trimmable, webkit, webkitVersion, revision, cc, ld, rustToolchain, engineSource }));
           ' > ../build/openclaw-ci/trim-diagnostics/upstream-build.json
-          bun scripts/build.ts --profile=release --ci=on --trimmable=on --timings
+          bun scripts/build.ts --profile=release --ci=on --trimmable=on --timings "${flags[@]}"
           mkdir -p build/release/bun.trim
           cp build/release/bun-profile.trim/*.txt build/release/bun.trim/
-          test -z "$(git status --porcelain --untracked-files=no)"
+          if [ "$DIAGNOSTIC" = trim-linux-source-baseline ]; then
+            test -z "$(git status --porcelain --untracked-files=no)"
+          fi
       - name: Read same-build native layout
         if: inputs.diagnostic == 'trim-linux-layout'
         env:
@@ -533,6 +589,7 @@ jobs:
           bun_flags=()
           [ "$DIAGNOSTIC" = trim-linux-baseline ] && args+=(--compare-upstream-135015)
           [ "$DIAGNOSTIC" = trim-linux-source-baseline ] && args+=(--compare-built-upstream)
+          [ "$DIAGNOSTIC" = trim-linux-source-engine-baseline ] && args+=(--compare-built-upstream-same-engine)
           if [ "$DIAGNOSTIC" = trim-linux-layout ]; then
             args+=(--attribute-layout)
             bun_flags+=(--expose-internals)
