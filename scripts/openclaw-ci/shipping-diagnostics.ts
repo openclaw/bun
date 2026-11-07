@@ -134,7 +134,8 @@ function probePendingWrite(exe: string, source: string): void {
     "      assert.strictEqual(received, preamble.length);",
     '      phase("finished");\n      assert.strictEqual(received, preamble.length);',
   );
-  const probe = join(source, "test/js/node/tls/node-tls-duplex-pending-write-diagnostic.test.ts");
+  const probeFile = "test/js/node/tls/node-tls-duplex-pending-write-diagnostic.test.ts";
+  const probe = join(source, probeFile);
   const hook = [
     "const pendingWriteSnapshots = new Set<() => void>();",
     "if (isBun) {",
@@ -145,11 +146,16 @@ function probePendingWrite(exe: string, source: string): void {
     "",
   ].join("\n");
   const instrumented = original.slice(0, start) + hook + section + original.slice(end);
+  const release = readFileSync(join(source, "scripts/openclaw-release/release.ts"), "utf8");
+  const listedFile = JSON.stringify(file);
+  require(release.split(listedFile).length === 2, "Shipping TLS qualification entry changed");
+  const instrumentedRelease = release.replace(listedFile, JSON.stringify(probeFile));
+  const controller = join(source, "scripts/openclaw-release/release-pending-write-diagnostic.ts");
   const run = (name: string, args: string[]) => {
     const result = spawnSync(args[0]!, args.slice(1), {
       cwd: source,
       encoding: "utf8",
-      timeout: 90_000,
+      timeout: name === "quiet-instrumented-smoke-context" ? 20 * 60_000 : 90_000,
       maxBuffer: 1 << 20,
     });
     writeFileSync(join(reports, name + ".log"), (result.stdout ?? "") + (result.stderr ?? ""));
@@ -158,7 +164,31 @@ function probePendingWrite(exe: string, source: string): void {
   const results = [];
   writeFileSync(probe, instrumented, { flag: "wx" });
   try {
-    results.push(run("quiet-instrumented-full-file", [exe, "test", probe]));
+    writeFileSync(controller, instrumentedRelease, { flag: "wx" });
+    try {
+      results.push(
+        run("quiet-instrumented-smoke-context", [
+          exe,
+          controller,
+          "smoke",
+          "--zip",
+          join(input, "selected.zip"),
+          "--target",
+          selected.target,
+          "--commit",
+          producer.commit,
+          "--webkit",
+          producer.webkit,
+          "--source",
+          source,
+          "--out",
+          join(reports, "qualification-context"),
+          "--qualify-tls",
+        ]),
+      );
+    } finally {
+      rmSync(controller);
+    }
     results.push(
       run("original-full-file", [
         exe,
@@ -175,9 +205,11 @@ function probePendingWrite(exe: string, source: string): void {
   receipt.pendingWrite = {
     sourceSHA256: createHash("sha256").update(original).digest("hex"),
     instrumentedSHA256: createHash("sha256").update(instrumented).digest("hex"),
+    releaseSHA256: createHash("sha256").update(release).digest("hex"),
+    instrumentedReleaseSHA256: createHash("sha256").update(instrumentedRelease).digest("hex"),
     payloadBytes: 64 * 1024 * 1024,
     scope:
-      "Complete source file without a name filter; quiet instrumented file first, untouched original second. Only test cleanup or the native Bun afterEach hook prints phase state.",
+      "Copied frozen smoke controller changes only its TLS list entry to the quiet probe; JIT, compiled runtime, clone suites and retention run first in canonical order. Untouched original file runs second, Node last. Only test cleanup or the native Bun afterEach hook prints phase state.",
     results,
     limitation:
       "Diagnostic phases can change timing. Original Bun timeout, payload and assertions are unchanged; this is not a repaired shipping gate.",
