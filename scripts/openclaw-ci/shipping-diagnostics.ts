@@ -85,13 +85,11 @@ function probePendingWrite(exe: string, source: string): void {
     "      const accepted = Promise.withResolvers<net.Socket>();",
     [
       "      const started = performance.now();",
-      "      const events: string[] = [];",
-      '      const state = { received: 0, callbacks: 0, tlsCallbacks: 0, phase: "setup", events };',
+      '      const state = { received: 0, callbacks: 0, tlsCallbacks: 0, phase: "setup" };',
       "      const phase = (name: string) => {",
       "        state.phase = name;",
-      '        console.error(JSON.stringify({ diagnostic: "pending-plain-write", side, ...state, ms: performance.now() - started }));',
       "      };",
-      '      t.after(() => phase("cleanup-after-" + state.phase));',
+      '      t.after(() => console.error(JSON.stringify({ diagnostic: "pending-plain-write", side, ...state, ms: performance.now() - started })));',
       "      const accepted = Promise.withResolvers<net.Socket>();",
     ].join("\n"),
   );
@@ -120,11 +118,6 @@ function probePendingWrite(exe: string, source: string): void {
   replace(
     '      await guard(Promise.all([once(client, "secureConnect"), once(server, "secure"), written.promise]));',
     [
-      '      for (const [label, socket] of [["client", client], ["server", server]] as const) {',
-      '        for (const event of ["secureConnect", "secure", "end", "finish", "close"]) {',
-      '          socket.on(event, () => events.push(label + ":" + event));',
-      "        }",
-      "      }",
       '      phase("peer-attached");',
       '      await guard(Promise.all([once(client, "secureConnect"), once(server, "secure"), written.promise]));',
       '      phase("handshake-complete");',
@@ -148,18 +141,19 @@ function probePendingWrite(exe: string, source: string): void {
     writeFileSync(join(reports, name + ".log"), (result.stdout ?? "") + (result.stderr ?? ""));
     return { name, exitCode: result.status, signal: result.signal, error: result.error?.message };
   };
-  const results = [
-    run("original-full-file", [
-      exe,
-      "test",
-      file,
-      "--reporter=junit",
-      "--reporter-outfile=" + join(reports, "original-full-file.xml"),
-    ]),
-  ];
+  const results = [];
   writeFileSync(probe, instrumented, { flag: "wx" });
   try {
-    results.push(run("instrumented-full-file", [exe, "test", probe]));
+    results.push(run("quiet-instrumented-full-file", [exe, "test", probe]));
+    results.push(
+      run("original-full-file", [
+        exe,
+        "test",
+        file,
+        "--reporter=junit",
+        "--reporter-outfile=" + join(reports, "original-full-file.xml"),
+      ]),
+    );
     results.push(run("node-full-file", ["node", "--test", probe]));
   } finally {
     rmSync(probe);
@@ -168,7 +162,8 @@ function probePendingWrite(exe: string, source: string): void {
     sourceSHA256: createHash("sha256").update(original).digest("hex"),
     instrumentedSHA256: createHash("sha256").update(instrumented).digest("hex"),
     payloadBytes: 64 * 1024 * 1024,
-    scope: "Complete source file without a test-name filter; Bun expects 121 cases.",
+    scope:
+      "Complete source file without a name filter; quiet instrumented file first, untouched original second. Only cleanup prints phase state.",
     results,
     limitation:
       "Diagnostic phases can change timing. Original Bun timeout, payload and assertions are unchanged; this is not a repaired shipping gate.",
