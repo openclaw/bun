@@ -40,6 +40,7 @@ on:
           [
             none,
             trim-linux,
+            trim-linux-cache,
             trim-linux-baseline,
             trim-linux-source-baseline,
             trim-linux-shipping,
@@ -500,7 +501,7 @@ jobs:
           cp build/release/bun-profile.trim/*.txt build/release/bun.trim/
           test -z "$(git status --porcelain --untracked-files=no)"
       - name: Inspect trim witnesses and mapped bytes
-        if: startsWith(inputs.diagnostic, 'trim-linux') && inputs.diagnostic != 'trim-linux-shipping'
+        if: startsWith(inputs.diagnostic, 'trim-linux') && inputs.diagnostic != 'trim-linux-shipping' && inputs.diagnostic != 'trim-linux-cache'
         env:
           DIAGNOSTIC: ${{ inputs.diagnostic }}
         run: |
@@ -508,6 +509,14 @@ jobs:
           [ "$DIAGNOSTIC" = trim-linux-baseline ] && args+=(--compare-upstream-135015)
           [ "$DIAGNOSTIC" = trim-linux-source-baseline ] && args+=(--compare-built-upstream)
           ./build/release/bun scripts/openclaw-ci/trim-diagnostics.ts "${args[@]}"
+      - name: Replay compile-cache qualification
+        if: inputs.diagnostic == 'trim-linux-cache'
+        run: |
+          set -o pipefail
+          bun install --frozen-lockfile
+          ./build/release/bun test test/bundler/compile-node-compile-cache.test.ts \
+            --reporter=junit --reporter-outfile=build/openclaw-ci/compile-cache.xml \
+            2>&1 | tee build/openclaw-ci/compile-cache.log
       - name: Probe the admitted shipping compile contract
         if: inputs.diagnostic == 'trim-linux-shipping'
         run: |
@@ -543,6 +552,8 @@ jobs:
           name: native-diagnostic-${{ inputs.diagnostic }}-${{ github.sha }}-attempt${{ github.run_attempt }}
           path: |
             build/openclaw-ci/native-diagnostic.json
+            build/openclaw-ci/compile-cache.xml
+            build/openclaw-ci/compile-cache.log
             build/openclaw-ci/shipping-admission.json
             build/openclaw-ci/compiled-runtime.json
             build/openclaw-ci/trim-diagnostics/*.json

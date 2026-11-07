@@ -23,19 +23,24 @@ test.skipIf(!canTrim || !!unsupported)("trimmed AOT executables persist and reus
       import { constants, enableCompileCache, flushCompileCache, getCompileCacheDir } from "node:module";
       import { sep } from "node:path";
 
+      const cacheDir = process.env.CACHE_DIR;
+      const cjsModule = process.env.CJS_MODULE;
+      const esmModule = process.env.ESM_MODULE;
+      if (!cacheDir || !cjsModule || !esmModule) throw new Error("Missing cache fixture paths");
       assert.equal(getCompileCacheDir(), undefined);
-      const enabled = enableCompileCache(process.env.CACHE_DIR);
+      const enabled = enableCompileCache(cacheDir);
       assert.equal(enabled.status, constants.compileCacheStatus.ENABLED);
-      assert.equal(enabled.directory, process.env.CACHE_DIR);
+      assert.equal(enabled.directory, cacheDir);
       const directory = getCompileCacheDir();
+      if (directory === undefined) throw new Error("Compile cache did not expose its directory");
       assert.ok(directory.startsWith(enabled.directory + sep));
       const again = enableCompileCache();
       assert.equal(again.status, constants.compileCacheStatus.ALREADY_ENABLED);
       assert.equal(again.directory, directory);
       assert.equal(flushCompileCache(), undefined);
 
-      const cjs = require(process.env.CJS_MODULE);
-      const esm = await import(process.env.ESM_MODULE);
+      const cjs = require(cjsModule);
+      const esm = await import(esmModule);
       assert.equal(cjs.value + esm.value, 42);
       assert.equal(flushCompileCache(), undefined);
       console.log("CACHE_OK", cjs.value + esm.value);
