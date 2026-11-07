@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Let trimming remove unused `node:module.stripTypeScriptTypes` parsing code while retaining the runtime parser when the API is used.
+
 - Let trimming remove compile-cache persistence workers when runtime module loading is absent, and preserve explicit cache activation before a compiled app's first external module load.
 
 - Give shipping structured-clone qualification the native runner's 90-second per-test budget, preserving the large-buffer checks and their shared cross-process serializer.

@@ -41,6 +41,7 @@ on:
             none,
             trim-linux,
             trim-linux-cache,
+            trim-linux-type-stripping,
             trim-linux-baseline,
             trim-linux-source-baseline,
             trim-linux-shipping,
@@ -501,7 +502,7 @@ jobs:
           cp build/release/bun-profile.trim/*.txt build/release/bun.trim/
           test -z "$(git status --porcelain --untracked-files=no)"
       - name: Inspect trim witnesses and mapped bytes
-        if: startsWith(inputs.diagnostic, 'trim-linux') && inputs.diagnostic != 'trim-linux-shipping' && inputs.diagnostic != 'trim-linux-cache'
+        if: startsWith(inputs.diagnostic, 'trim-linux') && inputs.diagnostic != 'trim-linux-shipping' && inputs.diagnostic != 'trim-linux-cache' && inputs.diagnostic != 'trim-linux-type-stripping'
         env:
           DIAGNOSTIC: ${{ inputs.diagnostic }}
         run: |
@@ -509,14 +510,20 @@ jobs:
           [ "$DIAGNOSTIC" = trim-linux-baseline ] && args+=(--compare-upstream-135015)
           [ "$DIAGNOSTIC" = trim-linux-source-baseline ] && args+=(--compare-built-upstream)
           ./build/release/bun scripts/openclaw-ci/trim-diagnostics.ts "${args[@]}"
-      - name: Replay compile-cache qualification
-        if: inputs.diagnostic == 'trim-linux-cache'
+      - name: Replay selected runtime regression
+        if: inputs.diagnostic == 'trim-linux-cache' || inputs.diagnostic == 'trim-linux-type-stripping'
+        env:
+          DIAGNOSTIC: ${{ inputs.diagnostic }}
         run: |
           set -o pipefail
           bun install --frozen-lockfile
-          ./build/release/bun --expose-internals test test/bundler/compile-node-compile-cache.test.ts \
-            --reporter=junit --reporter-outfile=build/openclaw-ci/compile-cache.xml \
-            2>&1 | tee build/openclaw-ci/compile-cache.log
+          test_file=test/bundler/compile-node-compile-cache.test.ts
+          if [ "$DIAGNOSTIC" = trim-linux-type-stripping ]; then
+            test_file=test/bundler/compile-trim-remove.test.ts
+          fi
+          ./build/release/bun --expose-internals test "$test_file" \
+            --reporter=junit --reporter-outfile=build/openclaw-ci/native-test.xml \
+            2>&1 | tee build/openclaw-ci/native-test.log
       - name: Probe the admitted shipping compile contract
         if: inputs.diagnostic == 'trim-linux-shipping'
         run: |
@@ -552,8 +559,8 @@ jobs:
           name: native-diagnostic-${{ inputs.diagnostic }}-${{ github.sha }}-attempt${{ github.run_attempt }}
           path: |
             build/openclaw-ci/native-diagnostic.json
-            build/openclaw-ci/compile-cache.xml
-            build/openclaw-ci/compile-cache.log
+            build/openclaw-ci/native-test.xml
+            build/openclaw-ci/native-test.log
             build/openclaw-ci/shipping-admission.json
             build/openclaw-ci/compiled-runtime.json
             build/openclaw-ci/trim-diagnostics/*.json

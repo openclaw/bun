@@ -35,6 +35,12 @@ export default b.declarations(
   extendAll(["DataFileLoaders"], "node:module._load"),
 
   extendAll(
+    ["RuntimeTranspiler", "Buffer", "RegExp"],
+    "node:module.stripTypeScriptTypes",
+    ...nativeBindings("Bindgen", "node_module_binding.bind.ts", "stripTypeScriptTypesNative"),
+  ),
+
+  extendAll(
     ["NodeZlib"],
     "%NativeZlib%",
     ...nativeBindings("Bindgen", "node_zlib_binding.bind.ts", "crc32"),

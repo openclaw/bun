@@ -18,6 +18,14 @@ const told = `(error: any) => console.log(error.code, String(error.message).incl
 // One program. `whole` is what the part prints where the feature is kept, `cut` where it is removed.
 const parts: { remove: string; text: string; whole: string; cut: string }[] = [
   {
+    remove: "interpreter",
+    text: `import { stripTypeScriptTypes } from "node:module";
+console.log(typeof stripTypeScriptTypes);
+try { console.log(stripTypeScriptTypes("const answer: number = 42;")); } catch (error) { (${told})(error); }`,
+    whole: "function\nconst answer         = 42;\n",
+    cut: "function\nERR_FEATURE_REMOVED true\n",
+  },
+  {
     remove: "ffi",
     text: `console.log("started");
 const { dlopen, suffix } = await import("bun:ffi");
@@ -169,7 +177,7 @@ try { ${call.replace("imported", "imported" + index) || "throw { code: 'ERR_FEAT
     });
   });
 
-  test.each(everyName)("the executable is smaller without %s", async name => {
+  test.each(Object.keys(smallest))("the executable is smaller without %s", async name => {
     const kept = await build("hello.ts", { allow: [name], log: true });
     const withoutIt = await build("hello.ts", { log: true });
     expect([kept, withoutIt]).toMatchObject([
