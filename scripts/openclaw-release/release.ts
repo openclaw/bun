@@ -461,7 +461,7 @@ export function qualificationResult(xml: string): { passed: number; skipped: num
   return { passed: tests - skipped, skipped };
 }
 
-function qualifyRuntime(
+export function qualifyRuntime(
   exe: string,
   t: Target,
   source: string,
@@ -509,7 +509,12 @@ function qualifyRuntime(
     const report = join(reports, `${basename(file)}.xml`);
     // A failed invocation must never reuse a report from an earlier attempt.
     rmSync(report, { force: true });
-    run([exe, "test", file, "--reporter=junit", `--reporter-outfile=${report}`], { cwd: source, stdio: "inherit" });
+    // Match runner.node.ts's native budget for the 1.5 GiB clone cases. A timeout also kills the shared clone child.
+    const timeout = file === "test/js/web/workers/structured-clone.test.ts" ? ["--timeout=90000"] : [];
+    run([exe, "test", file, ...timeout, "--reporter=junit", `--reporter-outfile=${report}`], {
+      cwd: source,
+      stdio: "inherit",
+    });
     console.log(`${file}: ${JSON.stringify(qualificationResult(readFileSync(report, "utf8")))}`);
   }
 }

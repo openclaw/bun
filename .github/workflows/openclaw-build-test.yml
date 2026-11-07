@@ -45,6 +45,10 @@ on:
             trim-linux-shipping,
             bun-types-darwin,
             aot-evaluators-darwin,
+            shipping-darwin-arm64,
+            shipping-darwin-x64,
+            shipping-windows-arm64,
+            shipping-layout-linux-x64,
           ]
         default: none
       native_run_id:
@@ -364,7 +368,7 @@ jobs:
           retention-days: 7
 
   native-diagnostics:
-    if: github.repository == 'openclaw/bun' && inputs.diagnostic != '' && inputs.diagnostic != 'none'
+    if: github.repository == 'openclaw/bun' && inputs.diagnostic != '' && inputs.diagnostic != 'none' && !startsWith(inputs.diagnostic, 'shipping-')
     runs-on: ${{ inputs.diagnostic == 'trim-linux-source-baseline' && 'blacksmith-16vcpu-ubuntu-2404' || startsWith(inputs.diagnostic, 'trim-linux') && 'ubuntu-24.04' || 'macos-15' }}
     timeout-minutes: ${{ inputs.diagnostic == 'trim-linux-source-baseline' && 115 || 15 }}
     permissions:
@@ -544,4 +548,63 @@ jobs:
             build/openclaw-ci/trim-diagnostics/*.json
             build/openclaw-ci/trim-diagnostics/*.log
             build/openclaw-ci/trim-diagnostics/*.ir
+          retention-days: 7
+
+  shipping-diagnostics:
+    if: github.repository == 'openclaw/bun' && startsWith(inputs.diagnostic, 'shipping-')
+    runs-on: ${{ inputs.diagnostic == 'shipping-darwin-x64' && 'macos-15-intel' || inputs.diagnostic == 'shipping-darwin-arm64' && 'macos-15' || inputs.diagnostic == 'shipping-windows-arm64' && 'windows-11-arm' || 'ubuntu-24.04' }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      DIAGNOSTIC: ${{ inputs.diagnostic }}
+      EXPECTED_NATIVE_SHA: ${{ inputs.native_sha }}
+      NATIVE_RUN_ID: ${{ inputs.native_run_id }}
+      NATIVE_ARTIFACT_ID: ${{ inputs.native_artifact_id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: "1.4.4"
+      - name: Download the immutable shipping input
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ "$EXPECTED_NATIVE_SHA" = c4ca435840cde345525407e1d260480dccc78467 ]] || exit 1
+          [[ "$NATIVE_RUN_ID" = 42311827376 && "$NATIVE_ARTIFACT_ID" =~ ^[0-9]+$ ]] || exit 1
+          case "$DIAGNOSTIC:$NATIVE_ARTIFACT_ID" in
+            shipping-darwin-arm64:13550938062|shipping-darwin-x64:13550623523|shipping-windows-arm64:13550722605|shipping-layout-linux-x64:13549904823) ;;
+            *) echo 'Unexpected shipping replay artifact' >&2; exit 1 ;;
+          esac
+          mkdir -p build/openclaw-ci/shipping-input
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$NATIVE_ARTIFACT_ID" > build/openclaw-ci/shipping-input/artifact.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$NATIVE_RUN_ID" > build/openclaw-ci/shipping-input/run.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$NATIVE_ARTIFACT_ID/zip" > build/openclaw-ci/shipping-input/artifact.zip
+      - name: Checkout the executable's exact qualification source
+        if: inputs.diagnostic != 'shipping-layout-linux-x64'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.native_sha }}
+          path: native-source
+          persist-credentials: false
+      - name: Setup the native Node.js reference
+        if: inputs.diagnostic != 'shipping-layout-linux-x64'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "26.12.1"
+      - name: Replay qualification or inspect the linked layout
+        run: bun scripts/openclaw-ci/shipping-diagnostics.ts
+      - name: Upload replay evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: shipping-diagnostic-${{ inputs.diagnostic }}-${{ github.sha }}-attempt${{ github.run_attempt }}
+          path: build/openclaw-ci/shipping-diagnostics/
+          if-no-files-found: error
           retention-days: 7

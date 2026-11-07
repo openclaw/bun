@@ -61,7 +61,7 @@ reference runtime is not qualified.
 Each smoke job checks out the exact source commit, verifies genuine Node.js
 26.12.1 for its platform and architecture, and runs the six files with the
 artifact's executable and the checked-in test configuration. No dependency
-installation or test timeout override is added. Each file must execute passing
+installation is added; the six TLS files keep their checked-in timeouts. Each file must execute passing
 cases with no failures; declared platform and Debug/ASAN-only skips remain
 visible in the nine JUnit reports uploaded as `tls-qualification-<target>`.
 The reports also include the three runtime suites described below.
@@ -77,6 +77,8 @@ The test harness passes that executable to descendants. Each suite must execute
 passing cases without failures; declared skips remain visible in its JUnit
 report. Normal smoke jobs upload `runtime-qualification-<target>`; TLS dry runs
 include these reports in `tls-qualification-<target>`.
+The structured-clone suite uses the native runner's 90-second per-test budget
+for its 1.5 GiB buffer cases; other suites retain their own normal limits.
 
 Runs containing `linux-x64` qualify the primary release ZIP in two independent
 GitHub-hosted jobs before publication. Both use the same-run `release` artifact,
