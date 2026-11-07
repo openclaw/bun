@@ -3,6 +3,7 @@
 import { expect } from "bun:test";
 import { bunEnv, bunExe, isWindows, tempDirWithBunTypes as tempDir } from "harness";
 import { join } from "node:path";
+import { canTrim } from "../bundler/compile-trim-features";
 import { functionsNamed, readBuildReport } from "./harness/build-report";
 import { built, slot, spawned } from "./harness/commands";
 import { compileCommand, withReport } from "./harness/flags";
@@ -139,7 +140,20 @@ describe("compile/aot/types of node's classes", () => {
         });
         const folder = String(dir);
         const executable = join(folder, isWindows ? "app.exe" : "app");
-        built(await spawned([bunExe(), ...compileCommand, "main.ts", "--outfile", executable], folder, bunEnv));
+        built(
+          await spawned(
+            [
+              bunExe(),
+              ...compileCommand,
+              ...(canTrim ? ["--trim-without=Interpreter"] : []),
+              "main.ts",
+              "--outfile",
+              executable,
+            ],
+            folder,
+            bunEnv,
+          ),
+        );
         for (const command of [
           [bunExe(), "main.ts", "registerHooks"],
           [executable, "registerHooks"],

@@ -35,6 +35,11 @@ export default b.declarations(
   extendAll(["DataFileLoaders"], "node:module._load"),
 
   extendAll(
+    ["Interpreter"],
+    ...nativeBindings("NewCppFunction", "NodeModuleModule.cpp", "jsFunctionModuleHooksContainsModuleSyntax"),
+  ),
+
+  extendAll(
     ["RuntimeTranspiler", "Buffer", "RegExp"],
     "node:module.stripTypeScriptTypes",
     ...nativeBindings("Bindgen", "node_module_binding.bind.ts", "stripTypeScriptTypesNative"),
