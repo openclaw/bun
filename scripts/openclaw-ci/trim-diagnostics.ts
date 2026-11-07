@@ -21,6 +21,148 @@ function mappedBytesOf(file: Buffer): number {
   return mappedBytes;
 }
 
+// ELF cutting preserves virtual addresses, while file offsets and symbol sizes can become stale.
+async function attributePlainLayout(): Promise<void> {
+  const { readTrimTable } = await import("bun:internal-for-testing");
+  const nativeTable = readTrimTable(executable);
+  const native = readFileSync(executable);
+  const plain = readFileSync(join(folder, "hello"));
+  type Span = { start: number; end: number; offset: number };
+  function elfSpans(file: Buffer, allocations = false): Span[] {
+    mappedBytesOf(file); // Validate the ELF format before reading its tables.
+    const table = Number(file.readBigUInt64LE(allocations ? 0x28 : 0x20));
+    const stride = file.readUInt16LE(allocations ? 0x3a : 0x36);
+    const count = file.readUInt16LE(allocations ? 0x3c : 0x38);
+    const spans: Span[] = [];
+    for (let index = 0; index < count; index++) {
+      const at = table + index * stride;
+      if (allocations) {
+        if (file.readUInt32LE(at + 4) === 8 || !(file.readBigUInt64LE(at + 8) & 2n)) continue;
+      } else if (file.readUInt32LE(at) !== 1) continue;
+      const start = Number(file.readBigUInt64LE(at + 16));
+      const size = Number(file.readBigUInt64LE(at + 32));
+      const offset = Number(file.readBigUInt64LE(at + (allocations ? 24 : 8)));
+      if (!Number.isSafeInteger(start + size) || offset + size > file.length)
+        throw new Error("Invalid file-backed ELF span");
+      if (size) spans.push({ start, end: start + size, offset });
+    }
+    spans.sort((a, b) => a.start - b.start);
+    for (let index = 1; index < spans.length; index++) {
+      if (spans[index]!.start < spans[index - 1]!.end) throw new Error("Overlapping ELF spans");
+    }
+    return spans;
+  }
+  const loads = elfSpans(plain);
+  const originalLoads = elfSpans(native);
+  const allocations = elfSpans(native, true);
+  const input = resolve("build/openclaw-ci/layout-input");
+  const records = ["sections.txt", "retained.txt"]
+    .flatMap(file =>
+      readFileSync(join(input, file), "utf8")
+        .trim()
+        .split("\n")
+        .map(line => {
+          const fields = line.split(" ");
+          const retained = file === "retained.txt";
+          const start = Number.parseInt(fields[retained ? 2 : 0]!, 16);
+          const size = Number(fields[retained ? 3 : 1]);
+          const name = fields.slice(retained ? 5 : 4).join(" ") || "<unnamed>";
+          if (!Number.isSafeInteger(start) || !Number.isSafeInteger(size) || size < 0)
+            throw new Error("Invalid native layout record");
+          return { start, end: start + size, names: [name], mapped: 0, unchanged: 0 };
+        })
+        .filter(record => record.end > record.start),
+    )
+    .sort((a, b) => a.start - b.start || a.end - b.end || a.names[0]!.localeCompare(b.names[0]!));
+  const groups: typeof records = [];
+  for (const record of records) {
+    const previous = groups.at(-1);
+    if (previous && record.start < previous.end) {
+      previous.end = Math.max(previous.end, record.end);
+      previous.names.push(...record.names);
+    } else groups.push(record);
+  }
+  const boundaries = [
+    ...new Set([...loads, ...originalLoads, ...allocations, ...groups].flatMap(span => [span.start, span.end])),
+  ].sort((a, b) => a - b);
+  const buckets = { namedNative: 0, changedNative: 0, headersOrAlignment: 0, unmatchedNative: 0, newMappedStorage: 0 };
+  let loadIndex = 0,
+    originalIndex = 0,
+    allocationIndex = 0,
+    groupIndex = 0;
+  for (let index = 0; index + 1 < boundaries.length; index++) {
+    const start = boundaries[index]!,
+      end = boundaries[index + 1]!,
+      size = end - start;
+    while (loadIndex < loads.length && loads[loadIndex]!.end <= start) loadIndex++;
+    const load = loads[loadIndex];
+    if (!load || load.start > start) continue;
+    while (originalIndex < originalLoads.length && originalLoads[originalIndex]!.end <= start) originalIndex++;
+    const original = originalLoads[originalIndex];
+    if (!original || original.start > start) {
+      buckets.newMappedStorage += size;
+      continue;
+    }
+    while (allocationIndex < allocations.length && allocations[allocationIndex]!.end <= start) allocationIndex++;
+    const allocation = allocations[allocationIndex];
+    if (!allocation || allocation.start > start) {
+      buckets.headersOrAlignment += size;
+      continue;
+    }
+    while (groupIndex < groups.length && groups[groupIndex]!.end <= start) groupIndex++;
+    const group = groups[groupIndex];
+    const named = group && group.start <= start;
+    const actual = load.offset + start - load.start,
+      expected = original.offset + start - original.start;
+    let unchanged = 0;
+    for (let byte = 0; byte < size; byte++) if (plain[actual + byte] === native[expected + byte]) unchanged++;
+    buckets.changedNative += size - unchanged;
+    if (named) {
+      group.mapped += size;
+      group.unchanged += unchanged;
+      buckets.namedNative += unchanged;
+    } else buckets.unmatchedNative += unchanged;
+  }
+  const mappedBytes = mappedBytesOf(plain);
+  if (Object.values(buckets).reduce((sum, bytes) => sum + bytes, 0) !== mappedBytes)
+    throw new Error("Mapped-byte accounting mismatch");
+  const ran = spawnSync(join(folder, "hello"), [], { encoding: "utf8", timeout: 30_000 });
+  if (ran.error || ran.signal || ran.status !== 0 || ran.stdout !== "hello world\n" || ran.stderr !== "")
+    throw new Error("Attributed hello did not execute");
+  const digest = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
+  const report = {
+    nativeSource: process.env.EXPECTED_NATIVE_SHA,
+    probeSource: process.env.GITHUB_SHA,
+    webkit: process.versions.webkit,
+    version: Bun.version,
+    platform: process.platform,
+    arch: process.arch,
+    nativeRun: process.env.NATIVE_RUN_ID,
+    nativeArtifact: process.env.NATIVE_ARTIFACT_ID,
+    layoutArtifact: 13584172708,
+    layoutSHA256: "3242e8e21cc65c6aea2d7a60c925b3b434bf58df23fe20b0ebf48733fada8fe5",
+    featuresHash: nativeTable.featuresHash.toString(),
+    compilerSHA256: digest(native),
+    executableSHA256: digest(plain),
+    inputSHA256: digest(Buffer.from(hello)),
+    mappedBytes,
+    buckets,
+    owners: groups
+      .filter(group => group.mapped)
+      .sort((a, b) => b.mapped - a.mapped)
+      .slice(0, 100)
+      .map(({ names, ...group }) => ({
+        ...group,
+        names: [...new Set(names)].slice(0, 8),
+        nameCount: new Set(names).size,
+      })),
+    limitations:
+      "Actual mapped native VA ownership, not marginal fork growth. Overlapping section names share one interval. Changed native bytes include fills and fixups; new mapped storage includes AOT payload, padding and newly file-backed bytes. Reports list primary symbols, not complete source/object ownership or every ICF alias.",
+  };
+  writeFileSync(join(folder, "plain-layout.json"), JSON.stringify(report, null, 2) + "\n");
+  console.log(JSON.stringify({ mappedBytes, buckets, owners: report.owners.slice(0, 15) }));
+}
+
 // Keep the historical archive bound to its original Buildkite producer.
 async function compareUpstream135015(): Promise<void> {
   const historical = {
@@ -293,4 +435,5 @@ const summary = {
 };
 writeFileSync(join(folder, "summary.json"), JSON.stringify(summary, null, 2) + "\n");
 console.log(JSON.stringify(summary));
+if (process.argv.includes("--attribute-layout")) await attributePlainLayout();
 if (process.argv.includes("--compare-upstream-135015")) await compareUpstream135015();

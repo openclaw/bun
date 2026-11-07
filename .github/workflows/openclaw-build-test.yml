@@ -40,6 +40,7 @@ on:
           [
             none,
             trim-linux,
+            trim-linux-layout,
             trim-linux-cache,
             trim-linux-type-stripping,
             compile-cache-darwin,
@@ -502,15 +503,41 @@ jobs:
           mkdir -p build/release/bun.trim
           cp build/release/bun-profile.trim/*.txt build/release/bun.trim/
           test -z "$(git status --porcelain --untracked-files=no)"
+      - name: Read same-build native layout
+        if: inputs.diagnostic == 'trim-linux-layout'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$EXPECTED_NATIVE_SHA" = b254e61a893cbeae5da97205e94412db07a83804
+          test "$NATIVE_RUN_ID" = 42396910724
+          test "$NATIVE_ARTIFACT_ID" = 13583624634
+          mkdir -p build/openclaw-ci/layout-input
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/13584172708/zip" > build/openclaw-ci/layout-input/report.zip
+          python3 -c '
+          import hashlib, zipfile
+          from pathlib import Path
+          folder = Path("build/openclaw-ci/layout-input")
+          data = (folder / "report.zip").read_bytes()
+          assert len(data) == 4605345
+          assert hashlib.sha256(data).hexdigest() == "3242e8e21cc65c6aea2d7a60c925b3b434bf58df23fe20b0ebf48733fada8fe5"
+          with zipfile.ZipFile(folder / "report.zip") as archive:
+              for name in ("sections.txt", "retained.txt"):
+                  (folder / name).write_bytes(archive.read("release/bun-profile.trim-work/" + name))
+          '
       - name: Inspect trim witnesses and mapped bytes
         if: startsWith(inputs.diagnostic, 'trim-linux') && inputs.diagnostic != 'trim-linux-shipping' && inputs.diagnostic != 'trim-linux-cache' && inputs.diagnostic != 'trim-linux-type-stripping'
         env:
           DIAGNOSTIC: ${{ inputs.diagnostic }}
         run: |
           args=()
+          bun_flags=()
           [ "$DIAGNOSTIC" = trim-linux-baseline ] && args+=(--compare-upstream-135015)
           [ "$DIAGNOSTIC" = trim-linux-source-baseline ] && args+=(--compare-built-upstream)
-          ./build/release/bun scripts/openclaw-ci/trim-diagnostics.ts "${args[@]}"
+          if [ "$DIAGNOSTIC" = trim-linux-layout ]; then
+            args+=(--attribute-layout)
+            bun_flags+=(--expose-internals)
+          fi
+          ./build/release/bun "${bun_flags[@]}" scripts/openclaw-ci/trim-diagnostics.ts "${args[@]}"
       - name: Replay selected runtime regression
         if: inputs.diagnostic == 'trim-linux-cache' || inputs.diagnostic == 'trim-linux-type-stripping' || inputs.diagnostic == 'compile-cache-darwin'
         env:
