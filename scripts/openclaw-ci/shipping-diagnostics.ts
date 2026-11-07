@@ -1,4 +1,4 @@
-/** Replay the failed c4 shipping qualification and inspect its exact linked layout without rebuilding. */
+/** Diagnose immutable shipping artifacts without rebuilding them. */
 import { spawnSync, type SpawnSyncOptions } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -15,20 +15,28 @@ import { join, resolve } from "node:path";
 import { findHolders, parseRetained } from "../build/trim/why.ts";
 import { qualifyRuntime, targets, type TargetName } from "../openclaw-release/release.ts";
 
-const producer = {
-  run: 42311827376,
-  commit: "c4ca435840cde345525407e1d260480dccc78467",
-  webkit: "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
-};
+const mode = process.env.DIAGNOSTIC ?? "";
+const pendingWrite = mode === "shipping-pending-write-darwin-x64";
+const producer = pendingWrite
+  ? {
+      run: 42397790517,
+      commit: "037399efe520ddbacd6aa75b61ed7a52b95c7664",
+      webkit: "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
+    }
+  : {
+      run: 42311827376,
+      commit: "c4ca435840cde345525407e1d260480dccc78467",
+      webkit: "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6",
+    };
 const cases: Record<string, { target: TargetName; artifact: number; name: string; layout?: boolean }> = {
+  "shipping-pending-write-darwin-x64": { target: "darwin-x64", artifact: 13585357191, name: "signed-darwin-x64" },
   "shipping-darwin-arm64": { target: "darwin-arm64", artifact: 13550938062, name: "signed-darwin-arm64" },
   "shipping-darwin-x64": { target: "darwin-x64", artifact: 13550623523, name: "signed-darwin-x64" },
   "shipping-windows-arm64": { target: "windows-arm64", artifact: 13550722605, name: "test-only-windows" },
   "shipping-layout-linux-x64": { target: "linux-x64", artifact: 13549904823, name: "build-linux-x64", layout: true },
 };
-const mode = process.env.DIAGNOSTIC ?? "";
 const selected = cases[mode];
-if (!selected) throw new Error("Unknown c4 shipping diagnostic");
+if (!selected) throw new Error("Unknown shipping diagnostic");
 const target = targets[selected.target];
 const input = resolve("build/openclaw-ci/shipping-input");
 const reports = resolve("build/openclaw-ci/shipping-diagnostics");
@@ -60,6 +68,107 @@ function extract(zip: string, entry: string, path: string): void {
   } finally {
     closeSync(fd);
   }
+}
+
+function probePendingWrite(exe: string, source: string): void {
+  const file = "test/js/node/tls/node-tls-duplex-end-verify.test.ts";
+  const original = readFileSync(join(source, file), "utf8");
+  const start = original.indexOf("// The pre-upgrade plain TCP queue");
+  const end = original.indexOf('test("native nested TLS pauses', start);
+  require(start >= 0 && end > start, "Pending-write fixture boundaries changed");
+  let section = original.slice(start, end);
+  const replace = (before: string, after: string) => {
+    require(section.split(before).length === 2, "Pending-write checkpoint changed");
+    section = section.replace(before, after);
+  };
+  replace(
+    "      const accepted = Promise.withResolvers<net.Socket>();",
+    [
+      "      const started = performance.now();",
+      "      const events: string[] = [];",
+      '      const state = { received: 0, callbacks: 0, tlsCallbacks: 0, phase: "setup", events };',
+      "      const phase = (name: string) => {",
+      "        state.phase = name;",
+      '        console.error(JSON.stringify({ diagnostic: "pending-plain-write", side, ...state, ms: performance.now() - started }));',
+      "      };",
+      '      t.after(() => phase("cleanup-after-" + state.phase));',
+      "      const accepted = Promise.withResolvers<net.Socket>();",
+    ].join("\n"),
+  );
+  replace(
+    "      const preamble = Buffer.alloc(64 * 1024 * 1024, 0x61);",
+    '      phase("connected");\n      const preamble = Buffer.alloc(64 * 1024 * 1024, 0x61);',
+  );
+  replace(
+    "        callbacks++;",
+    '        callbacks++;\n        state.callbacks = callbacks;\n        phase("plain-callback");',
+  );
+  replace(
+    "      // Consume only the known plaintext prefix.",
+    '      phase("first-attached");\n\n      // Consume only the known plaintext prefix.',
+  );
+  replace("        received += chunk.length;", "        received += chunk.length;\n        state.received = received;");
+  replace("      const second =", '      phase("prefix-complete");\n      const second =');
+  replace(
+    '      await guard(Promise.all([once(client, "secureConnect"), once(server, "secure"), written.promise]));',
+    [
+      '      for (const [label, socket] of [["client", client], ["server", server]] as const) {',
+      '        for (const event of ["secureConnect", "secure", "end", "finish", "close"]) {',
+      '          socket.on(event, () => events.push(label + ":" + event));',
+      "        }",
+      "      }",
+      '      phase("peer-attached");',
+      '      await guard(Promise.all([once(client, "secureConnect"), once(server, "secure"), written.promise]));',
+      '      phase("handshake-complete");',
+    ].join("\n"),
+  );
+  require(section.split("tlsCallbacks++;").length === 3, "TLS callback checkpoints changed");
+  section = section.replaceAll("tlsCallbacks++;", "tlsCallbacks++;\n        state.tlsCallbacks = tlsCallbacks;");
+  replace(
+    "      assert.strictEqual(received, preamble.length);",
+    '      phase("finished");\n      assert.strictEqual(received, preamble.length);',
+  );
+  const probe = join(source, "test/js/node/tls/node-tls-duplex-pending-write-diagnostic.test.ts");
+  const instrumented = original.slice(0, start) + section + original.slice(end);
+  const run = (name: string, args: string[]) => {
+    const result = spawnSync(args[0]!, args.slice(1), {
+      cwd: source,
+      encoding: "utf8",
+      timeout: 90_000,
+      maxBuffer: 1 << 20,
+    });
+    writeFileSync(join(reports, name + ".log"), (result.stdout ?? "") + (result.stderr ?? ""));
+    return { name, exitCode: result.status, signal: result.signal, error: result.error?.message };
+  };
+  const client = "native takeover: a client keeps its unfinished plain write ahead of TLS";
+  const both = "native takeover: a (client|server) keeps its unfinished plain write ahead of TLS";
+  const results = [
+    run("original-client", [
+      exe,
+      "test",
+      file,
+      "-t",
+      client,
+      "--reporter=junit",
+      "--reporter-outfile=" + join(reports, "original-client.xml"),
+    ]),
+  ];
+  writeFileSync(probe, instrumented, { flag: "wx" });
+  try {
+    results.push(run("instrumented-client", [exe, "test", probe, "-t", client]));
+    results.push(run("instrumented-both", [exe, "test", probe, "-t", both]));
+    results.push(run("node-reference", ["node", "--test", "--test-name-pattern=" + both, probe]));
+  } finally {
+    rmSync(probe);
+  }
+  receipt.pendingWrite = {
+    sourceSHA256: createHash("sha256").update(original).digest("hex"),
+    instrumentedSHA256: createHash("sha256").update(instrumented).digest("hex"),
+    payloadBytes: 64 * 1024 * 1024,
+    results,
+    limitation:
+      "Diagnostic phases can change timing. Original Bun timeout, payload and assertions are unchanged; this is not a repaired shipping gate.",
+  };
 }
 
 try {
@@ -132,8 +241,9 @@ try {
       identity.arch === target.arch, "Executable identity mismatch");
     receipt.executable = { sha256: executableSHA256, ...identity };
     const source = resolve("native-source");
+    if (pendingWrite) probePendingWrite(exe, source);
     let isolatedFailed = false;
-    if (target.os === "windows" || selected.target === "darwin-x64") {
+    if (!pendingWrite && (target.os === "windows" || selected.target === "darwin-x64")) {
       const file = "test/js/bun/net/socket-retention.test.ts";
       const name = "TLS Duplex cycles collect after startup while a retained origin keeps its wrapper alive";
       const isolated = spawnSync(
@@ -287,7 +397,7 @@ try {
         }
       }
     }
-    qualifyRuntime(exe, target, source, reports, producer.commit, producer.webkit, true);
+    if (!pendingWrite) qualifyRuntime(exe, target, source, reports, producer.commit, producer.webkit, true);
     require(!isolatedFailed, "Isolated TLS retention assertion failed; diagnostics do not waive it");
     require((await hash(exe)) === executableSHA256, "Executable changed during replay");
     require(command(["git", "diff", "HEAD", "--name-only"], { cwd: source }).trim() ===

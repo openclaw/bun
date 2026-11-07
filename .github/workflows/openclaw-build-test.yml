@@ -50,6 +50,7 @@ on:
             aot-evaluators-darwin,
             shipping-darwin-arm64,
             shipping-darwin-x64,
+            shipping-pending-write-darwin-x64,
             shipping-windows-arm64,
             shipping-layout-linux-x64,
           ]
@@ -571,7 +572,7 @@ jobs:
 
   shipping-diagnostics:
     if: github.repository == 'openclaw/bun' && startsWith(inputs.diagnostic, 'shipping-')
-    runs-on: ${{ inputs.diagnostic == 'shipping-darwin-x64' && 'macos-15-intel' || inputs.diagnostic == 'shipping-darwin-arm64' && 'macos-15' || inputs.diagnostic == 'shipping-windows-arm64' && 'windows-11-arm' || 'ubuntu-24.04' }}
+    runs-on: ${{ (inputs.diagnostic == 'shipping-darwin-x64' || inputs.diagnostic == 'shipping-pending-write-darwin-x64') && 'macos-15-intel' || inputs.diagnostic == 'shipping-darwin-arm64' && 'macos-15' || inputs.diagnostic == 'shipping-windows-arm64' && 'windows-11-arm' || 'ubuntu-24.04' }}
     timeout-minutes: 30
     permissions:
       contents: read
@@ -595,12 +596,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          [[ "$EXPECTED_NATIVE_SHA" = c4ca435840cde345525407e1d260480dccc78467 ]] || exit 1
-          [[ "$NATIVE_RUN_ID" = 42311827376 && "$NATIVE_ARTIFACT_ID" =~ ^[0-9]+$ ]] || exit 1
-          case "$DIAGNOSTIC:$NATIVE_ARTIFACT_ID" in
-            shipping-darwin-arm64:13550938062|shipping-darwin-x64:13550623523|shipping-windows-arm64:13550722605|shipping-layout-linux-x64:13549904823) ;;
-            *) echo 'Unexpected shipping replay artifact' >&2; exit 1 ;;
-          esac
+          if [[ "$DIAGNOSTIC" = shipping-pending-write-darwin-x64 ]]; then
+            [[ "$EXPECTED_NATIVE_SHA" = 037399efe520ddbacd6aa75b61ed7a52b95c7664 &&
+               "$NATIVE_RUN_ID" = 42397790517 && "$NATIVE_ARTIFACT_ID" = 13585357191 ]] || exit 1
+          else
+            [[ "$EXPECTED_NATIVE_SHA" = c4ca435840cde345525407e1d260480dccc78467 ]] || exit 1
+            [[ "$NATIVE_RUN_ID" = 42311827376 && "$NATIVE_ARTIFACT_ID" =~ ^[0-9]+$ ]] || exit 1
+            case "$DIAGNOSTIC:$NATIVE_ARTIFACT_ID" in
+              shipping-darwin-arm64:13550938062|shipping-darwin-x64:13550623523|shipping-windows-arm64:13550722605|shipping-layout-linux-x64:13549904823) ;;
+              *) echo 'Unexpected shipping replay artifact' >&2; exit 1 ;;
+            esac
+          fi
           mkdir -p build/openclaw-ci/shipping-input
           gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$NATIVE_ARTIFACT_ID" > build/openclaw-ci/shipping-input/artifact.json
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$NATIVE_RUN_ID" > build/openclaw-ci/shipping-input/run.json
