@@ -187,7 +187,7 @@ try {
               "settings set target.disable-aslr false",
               `process launch --stop-at-entry --stdout ${JSON.stringify(join(reports, "inferior.stdout"))} --stderr ${JSON.stringify(join(reports, "inferior.stderr"))}`,
               "process handle SIGSTOP --stop true --notify true --pass false",
-              `command script import ${JSON.stringify(resolve("scripts/openclaw-ci/retention-stack.py"))}`,
+              `command script import ${JSON.stringify(resolve("scripts/openclaw-ci/retention_stack.py"))}`,
             ].join("\n") + "\n",
           );
           const traced = spawnSync("lldb", ["--batch", "--source", commands, "--", exe, "--no-env-file", childFile], {
