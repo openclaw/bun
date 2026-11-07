@@ -89,7 +89,12 @@ function probePendingWrite(exe: string, source: string): void {
       "      const phase = (name: string) => {",
       "        state.phase = name;",
       "      };",
-      '      t.after(() => console.error(JSON.stringify({ diagnostic: "pending-plain-write", side, ...state, ms: performance.now() - started })));',
+      "      const flush = () => {",
+      "        if (!pendingWriteSnapshots.delete(flush)) return;",
+      '        console.error(JSON.stringify({ diagnostic: "pending-plain-write", side, ...state, ms: performance.now() - started }));',
+      "      };",
+      "      pendingWriteSnapshots.add(flush);",
+      "      t.after(flush);",
       "      const accepted = Promise.withResolvers<net.Socket>();",
     ].join("\n"),
   );
@@ -130,7 +135,16 @@ function probePendingWrite(exe: string, source: string): void {
     '      phase("finished");\n      assert.strictEqual(received, preamble.length);',
   );
   const probe = join(source, "test/js/node/tls/node-tls-duplex-pending-write-diagnostic.test.ts");
-  const instrumented = original.slice(0, start) + section + original.slice(end);
+  const hook = [
+    "const pendingWriteSnapshots = new Set<() => void>();",
+    "if (isBun) {",
+    '  require("bun:test").afterEach(() => {',
+    "    for (const flush of pendingWriteSnapshots) flush();",
+    "  });",
+    "}",
+    "",
+  ].join("\n");
+  const instrumented = original.slice(0, start) + hook + section + original.slice(end);
   const run = (name: string, args: string[]) => {
     const result = spawnSync(args[0]!, args.slice(1), {
       cwd: source,
@@ -163,7 +177,7 @@ function probePendingWrite(exe: string, source: string): void {
     instrumentedSHA256: createHash("sha256").update(instrumented).digest("hex"),
     payloadBytes: 64 * 1024 * 1024,
     scope:
-      "Complete source file without a name filter; quiet instrumented file first, untouched original second. Only cleanup prints phase state.",
+      "Complete source file without a name filter; quiet instrumented file first, untouched original second. Only test cleanup or the native Bun afterEach hook prints phase state.",
     results,
     limitation:
       "Diagnostic phases can change timing. Original Bun timeout, payload and assertions are unchanged; this is not a repaired shipping gate.",
