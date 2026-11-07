@@ -199,6 +199,36 @@ try {
           });
           writeFileSync(join(reports, "retention-debugger.log"), `${traced.stdout ?? ""}${traced.stderr ?? ""}`);
           receipt.debugger = { exitCode: traced.status, signal: traced.signal, error: traced.error?.message };
+
+          const loop = "for (let i = 0; i < 30; i++) { await turn(); Bun.gc(true); }";
+          require(template.split(loop).length === 3, "Retention collection loops changed");
+          // Change only the first existing checkpoint; the second loop and assertion stay unchanged.
+          const variant = template
+            .replace(interpolation, JSON.stringify(tls))
+            .replace(
+              loop,
+              "for (let i = 0; i < 30; i++) { await new Promise(resolve => setImmediate(() => { Bun.gc(true); resolve(); })); }",
+            );
+          const compared = spawnSync(exe, ["--no-env-file", "-e", variant], {
+            cwd: source,
+            encoding: "utf8",
+            timeout: 120_000,
+            maxBuffer: 1 << 20,
+            env: bunEnv,
+          });
+          writeFileSync(join(reports, "retention-gc-boundary.log"), `${compared.stdout ?? ""}${compared.stderr ?? ""}`);
+          receipt.gcBoundaryVariant = {
+            exitCode: compared.status,
+            signal: compared.signal,
+            error: compared.error?.message,
+            passed:
+              !compared.error &&
+              !compared.signal &&
+              compared.status === 0 &&
+              compared.stderr === "" &&
+              compared.stdout.trim() === '{"retainedAlive":true,"droppedCollected":true,"releasedCollected":true}',
+            limitation: "Same admitted binary; separate fixture variant, not a passing original qualification gate.",
+          };
         } else {
           // Instrument a separate probe copy only. The admitted qualification checkout stays untouched.
           const needle = "const droppedCollected = !dropped.weak.deref();";
