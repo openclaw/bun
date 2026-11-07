@@ -2,8 +2,8 @@
 import { spawnSync, type SpawnSyncOptions } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
-  createReadStream,
   closeSync,
+  createReadStream,
   mkdirSync,
   openSync,
   readFileSync,
