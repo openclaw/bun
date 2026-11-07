@@ -321,11 +321,19 @@ function compareBuiltUpstream(sameEngine = false): void {
   };
   if (git(["rev-parse", "HEAD"]) !== source) throw new Error("Expected the frozen upstream checkout");
   const routingPath = "scripts/build/deps/webkit.ts";
-  const expectedStatus = sameEngine ? `M ${routingPath}` : "";
-  if (git(["status", "--porcelain", "--untracked-files=no"]) !== expectedStatus)
+  const namespacePath = "src/jsc/bindings/ZigGlobalObject.cpp";
+  const expectedStatus = sameEngine ? [`M ${routingPath}`, `M ${namespacePath}`] : [];
+  const actualStatus = git(["status", "--porcelain", "--untracked-files=no"])
+    .split("\n")
+    .map(line => line.trim())
+    .filter(Boolean);
+  if (JSON.stringify(actualStatus) !== JSON.stringify(expectedStatus))
     throw new Error("Unexpected upstream tracked changes");
   const routing = sameEngine ? JSON.parse(readFileSync(join(folder, "upstream-routing.json"), "utf8")) : null;
   const engineInput = sameEngine ? JSON.parse(readFileSync(join(folder, "upstream-engine-input.json"), "utf8")) : null;
+  const namespaceAdapter = sameEngine
+    ? JSON.parse(readFileSync(join(folder, "upstream-namespace-adapter.json"), "utf8"))
+    : null;
   if (sameEngine) {
     const original = git(["show", `HEAD:${routingPath}`]) + "\n";
     const routed = readFileSync(join(upstream, routingPath), "utf8");
@@ -342,6 +350,18 @@ function compareBuiltUpstream(sameEngine = false): void {
       routing.routedSHA256 !== hash(routed)
     )
       throw new Error("Expected exactly the recorded prebuilt WebKit download routing change");
+    const originalNamespace = git(["show", `HEAD:${namespacePath}`]) + "\n";
+    const adaptedNamespace = readFileSync(join(upstream, namespacePath), "utf8");
+    if (
+      namespaceAdapter.path !== namespacePath ||
+      namespaceAdapter.originalSHA256 !== "453771c5670c499c056b24004cb1b395b7c58f393bf78287cc9ee152c9851758" ||
+      namespaceAdapter.adaptedSHA256 !== "cb4e4d9254c83d238eaa0e513a00dae19ed02193d67f32e714cde389be695b9f" ||
+      hash(originalNamespace) !== namespaceAdapter.originalSHA256 ||
+      hash(adaptedNamespace) !== namespaceAdapter.adaptedSHA256 ||
+      namespaceAdapter.removedLines !== 36 ||
+      namespaceAdapter.diff !== git(["diff", "--", namespacePath]) + "\n"
+    )
+      throw new Error("Expected exactly the recorded compile-only namespace ABI adapter");
   }
   const build = join(upstream, "build/release");
   const order = readFileSync(join(build, "linker.order"), "utf8");
@@ -362,6 +382,7 @@ function compareBuiltUpstream(sameEngine = false): void {
         source,
         routing,
         engineInput,
+        namespaceAdapter,
         tree: git(["rev-parse", "HEAD^{tree}"]),
         build: JSON.parse(readFileSync(join(folder, "upstream-build.json"), "utf8")),
         toolIdentities,
@@ -371,7 +392,7 @@ function compareBuiltUpstream(sameEngine = false): void {
           .digest("hex"),
       },
       limitations: sameEngine
-        ? "Matched manifest-verified WebKitS archive, hosted toolchain, release LTO, trim flags and empty ordering. Upstream uses its supported engine override and one recorded prebuilt-download routing substitution. The build display label differs; results do not identify individual-fix savings or repair the size gate."
+        ? "ABI-adapted upstream hello comparison: matched manifest-verified WebKitS archive, hosted toolchain, release LTO, trim flags and empty ordering. Upstream uses its supported engine override, one recorded prebuilt-download routing substitution and a hash-pinned 36-line removal of obsolete namespace-marker accessors/initializer. The build display label differs. This is not unchanged upstream, module-semantic or source qualification, individual-fix savings, or a repaired size gate."
         : "Matched hosted toolchain, release LTO, trim flags and empty ordering. The upstream-to-fork difference still combines Bun source and WebKit changes.",
     },
     sameEngine,

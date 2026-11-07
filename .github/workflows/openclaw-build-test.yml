@@ -501,7 +501,7 @@ jobs:
             flags+=(--webkit-version="$COMPARISON_WEBKIT")
             export BUN_BUILD_PREFETCH_DIR="$PWD/.cache/diagnostic-prefetch"
             python3 -c '
-          import hashlib, json, os, urllib.request
+          import hashlib, json, os, subprocess, urllib.request
           from pathlib import Path
           p = Path("scripts/build/deps/webkit.ts")
           source = p.read_text()
@@ -514,6 +514,30 @@ jobs:
               "path": str(p), "from": old, "to": new,
               "originalSHA256": hashlib.sha256(source.encode()).hexdigest(),
               "routedSHA256": hashlib.sha256(routed.encode()).hexdigest()
+          }) + "\n")
+          # The old upstream namespace-marker ABI cannot compile against WebKitS.
+          # Remove only its obsolete accessors and initializer, as in a7c2bb616e.
+          p = Path("src/jsc/bindings/ZigGlobalObject.cpp")
+          source = p.read_text()
+          original_sha = "453771c5670c499c056b24004cb1b395b7c58f393bf78287cc9ee152c9851758"
+          adapted_sha = "cb4e4d9254c83d238eaa0e513a00dae19ed02193d67f32e714cde389be695b9f"
+          assert hashlib.sha256(source.encode()).hexdigest() == original_sha
+          a = source.index("JSC_DEFINE_CUSTOM_GETTER(moduleNamespacePrototypeGetESModuleMarker,")
+          b = source.index("\nnamespace {", a)
+          c = source.index("        { OBJECT_OFFSETOF(GlobalObject, m_moduleNamespaceObjectStructure),")
+          d = source.index("        { OBJECT_OFFSETOF(GlobalObject, m_JSBufferSubclassStructure),", c)
+          assert a < b < c < d
+          adapted = source[:c] + source[d:]
+          adapted = adapted[:a] + adapted[b:]
+          assert hashlib.sha256(adapted.encode()).hexdigest() == adapted_sha
+          assert len(source.splitlines()) - len(adapted.splitlines()) == 36
+          p.write_text(adapted)
+          diff = subprocess.run(["git", "diff", "--", str(p)], check=True, capture_output=True, text=True).stdout
+          Path("../build/openclaw-ci/trim-diagnostics/upstream-namespace-adapter.json").write_text(json.dumps({
+              "path": str(p), "originalSHA256": original_sha, "adaptedSHA256": adapted_sha,
+              "removedLines": 36, "diff": diff,
+              "reference": "https://github.com/openclaw/bun/commit/a7c2bb616e49193b542081ba74c0fcb7abced15d",
+              "scope": "Compile-only namespace ABI adapter; not unchanged upstream or module-semantic qualification"
           }) + "\n")
           manifest = json.loads(Path("../scripts/build/deps/webkit-artifacts.json").read_text())
           assert manifest["version"] == "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6"
