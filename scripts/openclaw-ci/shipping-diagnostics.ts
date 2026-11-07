@@ -96,6 +96,14 @@ function probePendingWrite(exe: string, source: string): void {
     ].join("\n"),
   );
   replace(
+    '      await new Promise<void>(resolve => listener.listen(0, "127.0.0.1", resolve));',
+    '      await new Promise<void>(resolve => listener.listen(0, "127.0.0.1", resolve));\n      phase("listener-ready");',
+  );
+  replace(
+    '      const [rawServer] = await Promise.all([accepted.promise, once(rawClient, "connect")]);',
+    '      const [rawServer] = await Promise.all([accepted.promise, once(rawClient, "connect")]);\n      phase("raw-connected");',
+  );
+  replace(
     "      const preamble = Buffer.alloc(64 * 1024 * 1024, 0x61);",
     '      phase("connected");\n      const preamble = Buffer.alloc(64 * 1024 * 1024, 0x61);',
   );
@@ -140,24 +148,19 @@ function probePendingWrite(exe: string, source: string): void {
     writeFileSync(join(reports, name + ".log"), (result.stdout ?? "") + (result.stderr ?? ""));
     return { name, exitCode: result.status, signal: result.signal, error: result.error?.message };
   };
-  const client = "native takeover: a client keeps its unfinished plain write ahead of TLS";
-  const both = "native takeover: a (client|server) keeps its unfinished plain write ahead of TLS";
   const results = [
-    run("original-client", [
+    run("original-full-file", [
       exe,
       "test",
       file,
-      "-t",
-      client,
       "--reporter=junit",
-      "--reporter-outfile=" + join(reports, "original-client.xml"),
+      "--reporter-outfile=" + join(reports, "original-full-file.xml"),
     ]),
   ];
   writeFileSync(probe, instrumented, { flag: "wx" });
   try {
-    results.push(run("instrumented-client", [exe, "test", probe, "-t", client]));
-    results.push(run("instrumented-both", [exe, "test", probe, "-t", both]));
-    results.push(run("node-reference", ["node", "--test", "--test-name-pattern=" + both, probe]));
+    results.push(run("instrumented-full-file", [exe, "test", probe]));
+    results.push(run("node-full-file", ["node", "--test", probe]));
   } finally {
     rmSync(probe);
   }
@@ -165,6 +168,7 @@ function probePendingWrite(exe: string, source: string): void {
     sourceSHA256: createHash("sha256").update(original).digest("hex"),
     instrumentedSHA256: createHash("sha256").update(instrumented).digest("hex"),
     payloadBytes: 64 * 1024 * 1024,
+    scope: "Complete source file without a test-name filter; Bun expects 121 cases.",
     results,
     limitation:
       "Diagnostic phases can change timing. Original Bun timeout, payload and assertions are unchanged; this is not a repaired shipping gate.",
