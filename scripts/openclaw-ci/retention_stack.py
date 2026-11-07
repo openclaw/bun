@@ -58,7 +58,9 @@ def __lldb_init_module(debugger, _internal_dict):
         nodes = snapshot["snapshot"]["nodes"]
         classes = snapshot["snapshot"]["nodeClassNames"]
         for at in range(0, len(nodes), 7):
-            cells[int(nodes[at + 5], 16)] = {"id": nodes[at], "class": classes[nodes[at + 2]]}
+            address = int(nodes[at + 5], 16)
+            if address and nodes[at]:
+                cells[address] = {"id": nodes[at], "class": classes[nodes[at + 2]]}
         handles = {}
         for name, description in snapshot["descriptions"].items():
             found = re.search(r"0x[0-9a-fA-F]+", description)
@@ -94,9 +96,27 @@ def __lldb_init_module(debugger, _internal_dict):
         memory = process.ReadMemory(start, end - start, error)
         if not error.Success() or len(memory) != end - start:
             raise RuntimeError("Incomplete stopped-stack read")
+        cell_references = {}
+
+        def reference_for(value):
+            cell = cells.get(value)
+            if cell is None:
+                return None
+            return cell_references.setdefault(cell["id"], {
+                **cell, "address": hex(value), "stackOccurrences": 0,
+                "firstStackWord": None, "frames": [], "registerNames": [],
+            })
+
         matches = []
         for offset in range(0, len(memory) - 7, 8):
             value = struct.unpack_from("<Q", memory, offset)[0]
+            reference = reference_for(value)
+            if reference is not None:
+                if not reference["stackOccurrences"]:
+                    word = start + offset
+                    reference["firstStackWord"] = hex(word)
+                    reference["frames"] = [f["index"] for f in frames if f["sp"] <= word < f["cfa"] <= end]
+                reference["stackOccurrences"] += 1
             if value not in handles:
                 continue
             word = start + offset
@@ -110,8 +130,12 @@ def __lldb_init_module(debugger, _internal_dict):
                 continue
             for register in group:
                 value = register.GetValueAsUnsigned()
+                reference = reference_for(value)
+                if reference is not None:
+                    reference["registerNames"].append(register.GetName())
                 receipt["registers"].append({"name": register.GetName(), "value": hex(value),
                                              "handle": handles.get(value)})
+        receipt["cellReferences"] = list(cell_references.values())
         receipt["captured"] = True
     except Exception as error:
         receipt["error"] = str(error)
