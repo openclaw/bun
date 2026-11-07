@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { chmodSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 
 const executable = resolve("build/release/bun");
 const folder = resolve("build/openclaw-ci/trim-diagnostics");
@@ -227,6 +227,7 @@ function compareHelloBinaries(
     fileSHA256: string;
     fileBytes: number;
     mappedBytes: number;
+    aotReport?: { file: string; bytes: number; sha256: string };
     execution: { stdout: string; stderr: string; exitCode: number };
   }[] = [];
   const summary = {
@@ -273,7 +274,17 @@ function compareHelloBinaries(
     const executableSHA256 = sha256(readFileSync(exe));
     for (const trim of [false, true]) {
       const output = join(folder, `${label}-paired-hello${trim ? "-trim" : ""}`);
-      const command = ["build", "--compile", "--aot", ...(trim ? ["--trim"] : []), input, "--outfile", output];
+      const reportPath = sameEngine ? output + ".report.json" : undefined;
+      const command = [
+        "build",
+        "--compile",
+        "--aot",
+        ...(trim ? ["--trim"] : []),
+        ...(reportPath ? [`--aot-report=${reportPath}`, "--aot-report-detail=sites"] : []),
+        input,
+        "--outfile",
+        output,
+      ];
       const result = spawnSync(exe, command, { encoding: "utf8", env, timeout: 120_000, maxBuffer: 32 * 1024 * 1024 });
       writeFileSync(output + ".stdout.log", result.stdout ?? "");
       writeFileSync(output + ".stderr.log", result.stderr ?? "");
@@ -293,6 +304,8 @@ function compareHelloBinaries(
       if (ran.error || ran.signal || ran.status !== 0 || ran.stdout !== "hello world\n" || ran.stderr !== "")
         throw ran.error ?? new Error(`${label} trim=${trim}: compiled hello did not execute correctly`);
       const file = readFileSync(output);
+      const reportBytes = reportPath ? readFileSync(reportPath) : undefined;
+      if (reportBytes) JSON.parse(reportBytes.toString("utf8"));
       measurements.push({
         label,
         trim,
@@ -302,6 +315,10 @@ function compareHelloBinaries(
         fileSHA256: sha256(file),
         fileBytes: file.length,
         mappedBytes: mappedBytesOf(file),
+        aotReport:
+          reportPath && reportBytes
+            ? { file: basename(reportPath), bytes: reportBytes.length, sha256: sha256(reportBytes) }
+            : undefined,
         execution: { stdout: ran.stdout, stderr: ran.stderr, exitCode: ran.status },
       });
       writeFileSync(report, JSON.stringify(summary, null, 2) + "\n");
@@ -386,6 +403,13 @@ function compareBuiltUpstream(sameEngine = false): void {
         tree: git(["rev-parse", "HEAD^{tree}"]),
         build: JSON.parse(readFileSync(join(folder, "upstream-build.json"), "utf8")),
         toolIdentities,
+        nativeLayout: sameEngine
+          ? ["sections.txt", "retained.txt"].map(name => {
+              const file = "upstream-" + name;
+              const data = readFileSync(join(folder, file));
+              return { file, bytes: data.length, sha256: createHash("sha256").update(data).digest("hex") };
+            })
+          : undefined,
         ordering: { entries, sha256: createHash("sha256").update(order).digest("hex") },
         manifestSHA256: createHash("sha256")
           .update(readFileSync(join(build, "build.ninja")))
