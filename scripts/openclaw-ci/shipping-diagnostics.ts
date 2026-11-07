@@ -262,6 +262,29 @@ try {
             rmSync(probe);
           }
         }
+        const fixture = readFileSync(file);
+        const probe = join(source, "test/js/bun/net/socket-retention-source-probe.test.ts");
+        writeFileSync(probe, fixture, { flag: "wx" });
+        try {
+          const gate = spawnSync(
+            exe,
+            ["test", probe, "--reporter=junit", `--reporter-outfile=${join(reports, "changed-retention.xml")}`],
+            { cwd: source, encoding: "utf8", timeout: 120_000, maxBuffer: 1 << 20 },
+          );
+          writeFileSync(join(reports, "changed-retention.log"), `${gate.stdout ?? ""}${gate.stderr ?? ""}`);
+          receipt.changedFixtureGate = {
+            source: process.env.GITHUB_SHA,
+            sha256: createHash("sha256").update(fixture).digest("hex"),
+            exitCode: gate.status,
+            signal: gate.signal,
+            error: gate.error?.message,
+            passed: !gate.error && !gate.signal && gate.status === 0,
+            limitation:
+              "Current fixture bytes replayed on the admitted older executable, not source-head qualification.",
+          };
+        } finally {
+          rmSync(probe);
+        }
       }
     }
     qualifyRuntime(exe, target, source, reports, producer.commit, producer.webkit, true);
