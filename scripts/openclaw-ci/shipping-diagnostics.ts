@@ -133,7 +133,7 @@ try {
     receipt.executable = { sha256: executableSHA256, ...identity };
     const source = resolve("native-source");
     let isolatedFailed = false;
-    if (target.os === "windows") {
+    if (target.os === "windows" || selected.target === "darwin-x64") {
       const file = "test/js/bun/net/socket-retention.test.ts";
       const name = "TLS Duplex cycles collect after startup while a retained origin keeps its wrapper alive";
       const isolated = spawnSync(
@@ -145,37 +145,92 @@ try {
       isolatedFailed = !!isolated.error || !!isolated.signal || isolated.status !== 0;
       receipt.isolated = { exitCode: isolated.status, signal: isolated.signal, error: isolated.error?.message };
       if (isolatedFailed) {
-        // Instrument a separate probe copy only. The admitted qualification checkout stays untouched.
-        const needle = "const droppedCollected = !dropped.weak.deref();";
         const original = readFileSync(join(source, file), "utf8");
-        require(original.split(needle).length === 2, "Retention checkpoint changed");
-        const probe = resolve("test/js/bun/net/socket-retention-diagnostic.test.ts");
-        const snapshot = join(reports, "socket-first-checkpoint.json");
-        const injection = `${needle}
+        if (target.os === "darwin") {
+          const section = original.slice(original.indexOf(`test("${name}"`));
+          const template = /cmd: \[\s*bunExe\(\),\s*"-e",\s*`([\s\S]*?)`,\s*\]/.exec(section)?.[1];
+          require(template, "Retention child template changed");
+          const interpolation = "${JSON.stringify(tlsCert)}";
+          require(template.split(interpolation).length === 2, "Retention certificate interpolation changed");
+          const { tls, bunEnv } = await import(join(source, "test/harness.ts"));
+          let child = template.replace(interpolation, JSON.stringify(tls));
+          require(!child.includes("${"), "Unexpected retention child interpolation");
+          const returned = "return { weak: new WeakRef(client._handle), origin: retain ? clientSide : null };";
+          require(child.split(returned).length === 2, "Retention handle checkpoint changed");
+          child = child.replace(
+            returned,
+            'return { weak: new WeakRef(client._handle), origin: retain ? clientSide : null, description: require("bun:jsc").jscDescribe(client._handle) };',
+          );
+          const checkpoint = "const droppedCollected = !dropped.weak.deref();";
+          require(child.split(checkpoint).length === 2, "Retention collection checkpoint changed");
+          child = child.replace(
+            checkpoint,
+            `${checkpoint}
+          if (!droppedCollected) {
+            const jsc = require("bun:jsc");
+            const stats = jsc.heapStats();
+            jsc.releaseWeakRefs();
+            require("node:fs").writeFileSync(process.env.SOCKET_RETENTION_SNAPSHOT, JSON.stringify({
+              pid: process.pid, revision: Bun.revision, stats,
+              descriptions: { retained: retained.description, dropped: dropped.description },
+              snapshot: jsc.generateHeapSnapshotForDebugging()
+            }));
+            process.kill(process.pid, "SIGSTOP");
+          }`,
+          );
+          const childFile = join(reports, "retention-child.js");
+          const commands = join(reports, "retention.lldb");
+          writeFileSync(childFile, child);
+          writeFileSync(
+            commands,
+            [
+              "settings set target.disable-aslr false",
+              `process launch --stop-at-entry --stdout ${JSON.stringify(join(reports, "inferior.stdout"))} --stderr ${JSON.stringify(join(reports, "inferior.stderr"))}`,
+              "process handle SIGSTOP --stop true --notify true --pass false",
+              `command script import ${JSON.stringify(resolve("scripts/openclaw-ci/retention-stack.py"))}`,
+            ].join("\n") + "\n",
+          );
+          const traced = spawnSync("lldb", ["--batch", "--source", commands, "--", exe, "--no-env-file", childFile], {
+            cwd: source,
+            encoding: "utf8",
+            timeout: 120_000,
+            maxBuffer: 1 << 20,
+            env: { ...bunEnv, SOCKET_RETENTION_SNAPSHOT: join(reports, "socket-first-checkpoint.json") },
+          });
+          writeFileSync(join(reports, "retention-debugger.log"), `${traced.stdout ?? ""}${traced.stderr ?? ""}`);
+          receipt.debugger = { exitCode: traced.status, signal: traced.signal, error: traced.error?.message };
+        } else {
+          // Instrument a separate probe copy only. The admitted qualification checkout stays untouched.
+          const needle = "const droppedCollected = !dropped.weak.deref();";
+          require(original.split(needle).length === 2, "Retention checkpoint changed");
+          const probe = resolve("test/js/bun/net/socket-retention-diagnostic.test.ts");
+          const snapshot = join(reports, "socket-first-checkpoint.json");
+          const injection = `${needle}
         if (!droppedCollected) {
           const jsc = require("bun:jsc");
           const stats = jsc.heapStats();
           jsc.releaseWeakRefs();
           require("node:fs").writeFileSync(process.env.SOCKET_RETENTION_SNAPSHOT, JSON.stringify({ stats, snapshot: jsc.generateHeapSnapshotForDebugging() }));
         }`;
-        writeFileSync(probe, original.replace(needle, injection), { flag: "wx" });
-        try {
-          const traced = spawnSync(exe, ["test", probe, "-t", name], {
-            encoding: "utf8",
-            timeout: 120_000,
-            maxBuffer: 1 << 20,
-            env: { ...process.env, SOCKET_RETENTION_SNAPSHOT: snapshot },
-          });
-          writeFileSync(join(reports, "retention-trace.log"), `${traced.stdout ?? ""}${traced.stderr ?? ""}`);
-          receipt.trace = {
-            exitCode: traced.status,
-            signal: traced.signal,
-            error: traced.error?.message,
-            limitation:
-              "Separate instrumented observation after the first failed deref; kept WeakRef objects released before snapshot. Conservative stack roots still require debugger evidence.",
-          };
-        } finally {
-          rmSync(probe);
+          writeFileSync(probe, original.replace(needle, injection), { flag: "wx" });
+          try {
+            const traced = spawnSync(exe, ["test", probe, "-t", name], {
+              encoding: "utf8",
+              timeout: 120_000,
+              maxBuffer: 1 << 20,
+              env: { ...process.env, SOCKET_RETENTION_SNAPSHOT: snapshot },
+            });
+            writeFileSync(join(reports, "retention-trace.log"), `${traced.stdout ?? ""}${traced.stderr ?? ""}`);
+            receipt.trace = {
+              exitCode: traced.status,
+              signal: traced.signal,
+              error: traced.error?.message,
+              limitation:
+                "Separate instrumented observation after the first failed deref; kept WeakRef objects released before snapshot. Conservative stack roots still require debugger evidence.",
+            };
+          } finally {
+            rmSync(probe);
+          }
         }
       }
     }
