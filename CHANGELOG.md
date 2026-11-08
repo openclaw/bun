@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Give OpenClaw's full standalone AOT consumer qualification a dedicated high-memory runner after measured memory pressure, while keeping Birdclaw on its existing hosted runner.
+
 - Let trimming remove unused module-mock factories and property handlers while retaining normal plugin loading and compiled mocks.
 
 - Keep consumer qualification phases and resource counters visible during long-running builds, and diagnose the frozen OpenClaw AOT build with the admitted shipping artifact.

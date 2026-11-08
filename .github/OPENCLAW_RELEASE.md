@@ -81,7 +81,7 @@ The structured-clone suite uses the native runner's 90-second per-test budget
 for its 1.5 GiB buffer cases; other suites retain their own normal limits.
 
 Runs containing `linux-x64` qualify the primary release ZIP in two independent
-GitHub-hosted jobs before publication. Both use the same-run `release` artifact,
+consumer jobs before publication. Both use the same-run `release` artifact,
 check its manifest source/run identity and archive/executable checksums, and
 verify the executable's full Bun and WebKit revisions before and after testing.
 Profile archives are not consumer inputs.
@@ -110,6 +110,20 @@ HOME/cache/state directories. Their dependency and product processes receive an
 explicit environment without Actions or GitHub credentials. Receipts and logs
 are uploaded as `consumer-openclaw` and `consumer-birdclaw`; a failed or skipped
 consumer blocks publication. These jobs do not update downstream pins or deploy.
+
+OpenClaw's full standalone AOT build and its focused artifact diagnostic use
+`blacksmith-32vcpu-ubuntu-2404`; Birdclaw stays on `ubuntu-24.04`.
+The memory-heavy command is the admitted Bun executable running
+`--no-env-file scripts/build-bun-standalone.mjs <output> --compile-aot --trim-allow run`.
+The [hosted diagnostic](https://github.com/openclaw/bun/actions/runs/42460225353)
+reached a sampled cgroup peak of 15,733,264,384 bytes and exhausted almost all
+3 GiB of swap before a runner shutdown, with under 0.8 GiB of host memory
+available. Its sampled OOM counters remained zero, so this is memory-pressure
+evidence, not proof of an OOM kill. OpenClaw's
+[runner measurements](https://docs.openclaw.ai/ci/runners#blacksmith-runner-capacity)
+found about 15 GiB on the 16-class and 31 GiB on the 32-class. Consumer
+heartbeats record actual capacity and pressure; labels alone do not prove it.
+The command deadlines and complete qualification assertions stay unchanged.
 
 ## Tag scheme
 

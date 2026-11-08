@@ -545,7 +545,7 @@ jobs:
     name: Consumer ${{ matrix.consumer }}
     needs: [plan, manifest]
     if: ${{ !cancelled() && needs.manifest.result == 'success' && contains(fromJSON(needs.plan.outputs.matrix).*.target, 'linux-x64') }}
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.consumer == 'openclaw' && 'blacksmith-32vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
