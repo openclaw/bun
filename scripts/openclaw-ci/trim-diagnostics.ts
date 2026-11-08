@@ -21,37 +21,38 @@ function mappedBytesOf(file: Buffer): number {
   return mappedBytes;
 }
 
+type Span = { start: number; end: number; offset: number };
+function elfSpans(file: Buffer, allocations = false): Span[] {
+  mappedBytesOf(file); // Validate the ELF format before reading its tables.
+  const table = Number(file.readBigUInt64LE(allocations ? 0x28 : 0x20));
+  const stride = file.readUInt16LE(allocations ? 0x3a : 0x36);
+  const count = file.readUInt16LE(allocations ? 0x3c : 0x38);
+  const spans: Span[] = [];
+  for (let index = 0; index < count; index++) {
+    const at = table + index * stride;
+    if (allocations) {
+      if (file.readUInt32LE(at + 4) === 8 || !(file.readBigUInt64LE(at + 8) & 2n)) continue;
+    } else if (file.readUInt32LE(at) !== 1) continue;
+    const start = Number(file.readBigUInt64LE(at + 16));
+    const size = Number(file.readBigUInt64LE(at + 32));
+    const offset = Number(file.readBigUInt64LE(at + (allocations ? 24 : 8)));
+    if (!Number.isSafeInteger(start + size) || offset + size > file.length)
+      throw new Error("Invalid file-backed ELF span");
+    if (size) spans.push({ start, end: start + size, offset });
+  }
+  spans.sort((a, b) => a.start - b.start);
+  for (let index = 1; index < spans.length; index++) {
+    if (spans[index]!.start < spans[index - 1]!.end) throw new Error("Overlapping ELF spans");
+  }
+  return spans;
+}
+
 // ELF cutting preserves virtual addresses, while file offsets and symbol sizes can become stale.
 async function attributePlainLayout(): Promise<void> {
   const { readTrimTable } = await import("bun:internal-for-testing");
   const nativeTable = readTrimTable(executable);
   const native = readFileSync(executable);
   const plain = readFileSync(join(folder, "hello"));
-  type Span = { start: number; end: number; offset: number };
-  function elfSpans(file: Buffer, allocations = false): Span[] {
-    mappedBytesOf(file); // Validate the ELF format before reading its tables.
-    const table = Number(file.readBigUInt64LE(allocations ? 0x28 : 0x20));
-    const stride = file.readUInt16LE(allocations ? 0x3a : 0x36);
-    const count = file.readUInt16LE(allocations ? 0x3c : 0x38);
-    const spans: Span[] = [];
-    for (let index = 0; index < count; index++) {
-      const at = table + index * stride;
-      if (allocations) {
-        if (file.readUInt32LE(at + 4) === 8 || !(file.readBigUInt64LE(at + 8) & 2n)) continue;
-      } else if (file.readUInt32LE(at) !== 1) continue;
-      const start = Number(file.readBigUInt64LE(at + 16));
-      const size = Number(file.readBigUInt64LE(at + 32));
-      const offset = Number(file.readBigUInt64LE(at + (allocations ? 24 : 8)));
-      if (!Number.isSafeInteger(start + size) || offset + size > file.length)
-        throw new Error("Invalid file-backed ELF span");
-      if (size) spans.push({ start, end: start + size, offset });
-    }
-    spans.sort((a, b) => a.start - b.start);
-    for (let index = 1; index < spans.length; index++) {
-      if (spans[index]!.start < spans[index - 1]!.end) throw new Error("Overlapping ELF spans");
-    }
-    return spans;
-  }
   const loads = elfSpans(plain);
   const originalLoads = elfSpans(native);
   const allocations = elfSpans(native, true);
@@ -227,6 +228,9 @@ function compareHelloBinaries(
     fileSHA256: string;
     fileBytes: number;
     mappedBytes: number;
+    fileBackedSegments?: Span[];
+    nativeFileBackedSegments?: Span[];
+    nativeAllocatedSections?: Span[];
     aotReport?: { file: string; bytes: number; sha256: string };
     execution: { stdout: string; stderr: string; exitCode: number };
   }[] = [];
@@ -271,7 +275,8 @@ function compareHelloBinaries(
       (sameEngine && label === "candidate" && facts.webkit !== "8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6")
     )
       throw new Error(`${label} runtime does not match the admitted source and platform`);
-    const executableSHA256 = sha256(readFileSync(exe));
+    const native = readFileSync(exe);
+    const executableSHA256 = sha256(native);
     for (const trim of [false, true]) {
       const output = join(folder, `${label}-paired-hello${trim ? "-trim" : ""}`);
       const reportPath = sameEngine ? output + ".report.json" : undefined;
@@ -315,6 +320,10 @@ function compareHelloBinaries(
         fileSHA256: sha256(file),
         fileBytes: file.length,
         mappedBytes: mappedBytesOf(file),
+        // Match each compiled image against its own native map; VAs differ across builds.
+        fileBackedSegments: sameEngine ? elfSpans(file) : undefined,
+        nativeFileBackedSegments: sameEngine ? elfSpans(native) : undefined,
+        nativeAllocatedSections: sameEngine ? elfSpans(native, true) : undefined,
         aotReport:
           reportPath && reportBytes
             ? { file: basename(reportPath), bytes: reportBytes.length, sha256: sha256(reportBytes) }
