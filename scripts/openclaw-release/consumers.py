@@ -45,11 +45,29 @@ def require_vitest_result(result, expected):
 
 def heartbeat(label, started, directory):
     metrics = {"step": label, "elapsedSeconds": int(time.monotonic() - started)}
-    for name in ("memory.current", "memory.peak", "memory.events", "memory.pressure", "cpu.stat"):
-        try:
-            metrics[name] = (Path("/sys/fs/cgroup") / name).read_text().strip()
-        except OSError as error:
-            metrics[name] = {"unavailable": error.errno}
+    metrics["cgroup"] = counters = {}
+    try:
+        membership = Path("/proc/self/cgroup").read_text().splitlines()
+        relative = next(line[3:] for line in membership if line.startswith("0::"))
+    except OSError as error:
+        counters["unavailable"] = error.errno
+    except StopIteration:
+        counters["unavailable"] = "no unified cgroup"
+    else:
+        group = Path("/sys/fs/cgroup") / relative.lstrip("/")
+        for name in ("memory.current", "memory.peak", "memory.max", "memory.events", "memory.pressure", "cpu.stat"):
+            try:
+                counters[name] = (group / name).read_text().strip()
+            except OSError as error:
+                counters[name] = {"unavailable": error.errno}
+    try:
+        metrics["hostMemory"] = {}
+        for line in Path("/proc/meminfo").read_text().splitlines():
+            key, value = line.split(":", 1)
+            if key in ("MemTotal", "MemAvailable", "SwapTotal", "SwapFree"):
+                metrics["hostMemory"][key] = value.strip()
+    except OSError as error:
+        metrics["hostMemory"] = {"unavailable": error.errno}
     try:
         metrics["diskFreeBytes"] = shutil.disk_usage(directory).free
     except OSError as error:
