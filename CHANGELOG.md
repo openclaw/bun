@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fetch checksum-verified CI release assets through GitHub's public API when browser download routes fail, and seed the native engine's existing checksum-keyed prefetch cache.
+
 - Give OpenClaw's full standalone AOT consumer qualification a dedicated high-memory runner after measured memory pressure, while keeping Birdclaw on its existing hosted runner.
 
 - Let trimming remove unused module-mock factories and property handlers while retaining normal plugin loading and compiled mocks.

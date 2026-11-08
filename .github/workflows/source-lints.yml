@@ -21,6 +21,7 @@ on:
       - "src/jsc/bindings/**"
       - "packages/bun-types/redis.d.ts"
       - "scripts/build/**"
+      - "scripts/openclaw-ci/github-release-asset*.py"
       - "scripts/glob-sources.ts"
       - "scripts/agent.ts"
       - "scripts/buildkite.ts"
@@ -51,6 +52,7 @@ on:
       - "src/jsc/bindings/**"
       - "packages/bun-types/redis.d.ts"
       - "scripts/build/**"
+      - "scripts/openclaw-ci/github-release-asset*.py"
       - "scripts/glob-sources.ts"
       - "scripts/agent.ts"
       - "scripts/buildkite.ts"
@@ -99,3 +101,5 @@ jobs:
         run: bun test test/internal/source-lints/
       - name: Test upstream sync automation
         run: node --test .github/scripts/sync-upstream.test.cjs
+      - name: Test release asset admission
+        run: python3 scripts/openclaw-ci/github-release-asset.test.py

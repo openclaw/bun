@@ -81,6 +81,7 @@ jobs:
     timeout-minutes: 115
     env:
       BUN_BUILD_CACHE_DIR: ${{ github.workspace }}/.cache/openclaw-build
+      BUN_BUILD_PREFETCH_DIR: ${{ runner.temp }}/openclaw-prefetch
       PUPPETEER_SKIP_DOWNLOAD: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -125,6 +126,17 @@ jobs:
         run: bun scripts/openclaw-ci/tests.ts select
       - name: Install build dependencies
         run: bun install --frozen-lockfile
+      - name: Prefetch the pinned WebKit archive through the release API
+        timeout-minutes: 15
+        run: |
+          read -r repository tag digest size < <(python3 -c '
+          import json
+          manifest = json.load(open("scripts/build/deps/webkit-artifacts.json"))
+          artifact = manifest["artifacts"]["bun-webkit-linux-amd64-lto-aot.tar.gz"]
+          print(manifest["repository"], manifest["tag"], artifact["sha256"], artifact["size"])
+          ')
+          python3 scripts/openclaw-ci/github-release-asset.py "$repository" "$tag" \
+            bun-webkit-linux-amd64-lto-aot.tar.gz "$BUN_BUILD_PREFETCH_DIR/by-sha256/$digest" "$digest" "$size"
       - name: Build native Linux x64 (trimmable release)
         id: build
         timeout-minutes: 75
