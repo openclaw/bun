@@ -81,7 +81,6 @@ jobs:
     timeout-minutes: 115
     env:
       BUN_BUILD_CACHE_DIR: ${{ github.workspace }}/.cache/openclaw-build
-      BUN_BUILD_PREFETCH_DIR: ${{ runner.temp }}/openclaw-prefetch
       PUPPETEER_SKIP_DOWNLOAD: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -129,6 +128,8 @@ jobs:
       - name: Prefetch the pinned WebKit archive through the release API
         if: steps.cache.outputs.cache-matched-key == ''
         timeout-minutes: 15
+        env:
+          BUN_BUILD_PREFETCH_DIR: ${{ runner.temp }}/openclaw-prefetch
         run: |
           read -r repository tag digest size < <(python3 -c '
           import json
@@ -148,6 +149,7 @@ jobs:
         id: build
         timeout-minutes: 75
         env:
+          BUN_BUILD_PREFETCH_DIR: ${{ runner.temp }}/openclaw-prefetch
           CACHE_MATCH: ${{ steps.cache.outputs.cache-matched-key }}
         run: |
           started=$SECONDS
