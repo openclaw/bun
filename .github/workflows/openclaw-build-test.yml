@@ -42,6 +42,7 @@ on:
             trim-linux,
             trim-linux-cache,
             trim-linux-type-stripping,
+            trim-linux-module-mocks,
             compile-cache-darwin,
             trim-linux-baseline,
             trim-linux-source-baseline,
@@ -525,7 +526,7 @@ jobs:
           cp build/release/bun-profile.trim/*.txt build/release/bun.trim/
           test -z "$(git status --porcelain --untracked-files=no)"
       - name: Inspect trim witnesses and mapped bytes
-        if: startsWith(inputs.diagnostic, 'trim-linux') && inputs.diagnostic != 'trim-linux-shipping' && inputs.diagnostic != 'trim-linux-cache' && inputs.diagnostic != 'trim-linux-type-stripping'
+        if: startsWith(inputs.diagnostic, 'trim-linux') && inputs.diagnostic != 'trim-linux-shipping' && inputs.diagnostic != 'trim-linux-cache' && inputs.diagnostic != 'trim-linux-type-stripping' && inputs.diagnostic != 'trim-linux-module-mocks'
         env:
           DIAGNOSTIC: ${{ inputs.diagnostic }}
         run: |
@@ -534,17 +535,24 @@ jobs:
           [ "$DIAGNOSTIC" = trim-linux-source-baseline ] && args+=(--compare-built-upstream)
           ./build/release/bun scripts/openclaw-ci/trim-diagnostics.ts "${args[@]}"
       - name: Replay selected runtime regression
-        if: inputs.diagnostic == 'trim-linux-cache' || inputs.diagnostic == 'trim-linux-type-stripping' || inputs.diagnostic == 'compile-cache-darwin'
+        if: inputs.diagnostic == 'trim-linux-cache' || inputs.diagnostic == 'trim-linux-type-stripping' || inputs.diagnostic == 'trim-linux-module-mocks' || inputs.diagnostic == 'compile-cache-darwin'
         env:
           DIAGNOSTIC: ${{ inputs.diagnostic }}
         run: |
           set -o pipefail
           bun install --frozen-lockfile
-          test_file=test/bundler/compile-node-compile-cache.test.ts
+          test_files=(test/bundler/compile-node-compile-cache.test.ts)
           if [ "$DIAGNOSTIC" = trim-linux-type-stripping ]; then
-            test_file=test/bundler/compile-trim-remove.test.ts
+            test_files=(test/bundler/compile-trim-remove.test.ts)
+          elif [ "$DIAGNOSTIC" = trim-linux-module-mocks ]; then
+            test_files=(
+              test/js/bun/test/mock/mock-module.test.ts
+              test/aot/the-default-of-a-mocked-built-in-module-is-the-mocks.test.ts
+              test/aot/a-commonjs-file-mocked-again-is-seen-by-who-required-it.test.ts
+              test/aot/bun-plugin-in-a-trimmed-executable.test.ts
+            )
           fi
-          ./build/release/bun --expose-internals test "$test_file" \
+          ./build/release/bun --expose-internals test "${test_files[@]}" \
             --reporter=junit --reporter-outfile=build/openclaw-ci/native-test.xml \
             2>&1 | tee build/openclaw-ci/native-test.log
       - name: Probe the admitted shipping compile contract
