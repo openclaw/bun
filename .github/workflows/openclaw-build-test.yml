@@ -127,6 +127,7 @@ jobs:
       - name: Install build dependencies
         run: bun install --frozen-lockfile
       - name: Prefetch the pinned WebKit archive through the release API
+        if: steps.cache.outputs.cache-matched-key == ''
         timeout-minutes: 15
         run: |
           read -r repository tag digest size < <(python3 -c '
@@ -135,8 +136,14 @@ jobs:
           artifact = manifest["artifacts"]["bun-webkit-linux-amd64-lto-aot.tar.gz"]
           print(manifest["repository"], manifest["tag"], artifact["sha256"], artifact["size"])
           ')
-          python3 scripts/openclaw-ci/github-release-asset.py "$repository" "$tag" \
-            bun-webkit-linux-amd64-lto-aot.tar.gz "$BUN_BUILD_PREFETCH_DIR/by-sha256/$digest" "$digest" "$size"
+          if python3 scripts/openclaw-ci/github-release-asset.py "$repository" "$tag" \
+            bun-webkit-linux-amd64-lto-aot.tar.gz "$BUN_BUILD_PREFETCH_DIR/by-sha256/$digest" "$digest" "$size"; then
+            echo 'Pinned engine archive is ready for the normal build fetch.'
+          else
+            status=$?
+            test "$status" -eq 75 || exit "$status"
+            echo '::warning::Release API unavailable; retaining the normal checksum-verified build fetch.'
+          fi
       - name: Build native Linux x64 (trimmable release)
         id: build
         timeout-minutes: 75

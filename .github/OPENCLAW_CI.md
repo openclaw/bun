@@ -134,7 +134,7 @@ Before enabling the repository variable, configure the Azure OIDC secrets in
 
 ## Caches and artifacts
 
-The Linux native lane seeds its temporary checksum-keyed prefetch cache from
+On a cold native cache, the Linux lane seeds its temporary checksum-keyed prefetch cache from
 GitHub's public release API using the exact WebKit manifest asset, size and
 SHA-256. The build's existing prebuilt owner verifies the archive again before
 extraction. This keeps the pinned source and archive identity when GitHub's
@@ -142,6 +142,7 @@ browser download route returns transient errors. Bootstrap setup uses the same
 API downloader only after that exact GitHub download base fails; the normal
 R2 bootstrap route stays unchanged. The downloader uses no credentials, checks
 the API's size and digest, and publishes a temporary file only after verification.
+Transient API transport failures retain the normal build fetch; integrity mismatches fail the job.
 
 The lane caches the build system's download/prebuilt/ccache directory, Rust
 unit artifacts (`build/release/rust-target`) and Cargo registry/git downloads.
