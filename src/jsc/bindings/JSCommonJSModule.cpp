@@ -1634,48 +1634,6 @@ JSC_DEFINE_HOST_FUNCTION(jsFunctionRequireCommonJS, (JSGlobalObject * lexicalGlo
 }
 #undef REQUIRE_CJS_RETURN_IF_EXCEPTION
 
-static EncodedJSValue evaluateBuiltinModuleSource(Zig::GlobalObject* globalObject, const WTF::String& specifier, JSValue specifierValue, JSValue parent, JSModuleGraph* graph, ResolvedSource& source)
-{
-    auto& vm = JSC::getVM(globalObject);
-    auto throwScope = DECLARE_THROW_SCOPE(vm);
-    auto* overrides = graph ? graph->moduleHooksBuiltinCache(globalObject) : globalObject->moduleHooksBuiltinCache();
-    if (source.isCommonJSModule) {
-        auto* module = JSCommonJSModule::create(globalObject, jsString(vm, specifier), constructEmptyObject(globalObject), false, parent);
-        RETURN_IF_EXCEPTION(throwScope, {});
-        // Builtin overrides persist like Node's module cache, without appearing in require.cache.
-        overrides->set(globalObject, specifierValue, module);
-        RETURN_IF_EXCEPTION(throwScope, {});
-        module->evaluate(globalObject, specifier, source, true);
-        if (throwScope.exception()) {
-            overrides->remove(globalObject, specifierValue);
-            return {};
-        }
-        return JSValue::encode(module->exportsObject());
-    }
-    auto* loader = Bun::moduleLoaderOf(globalObject, throwScope, graph);
-    RETURN_IF_EXCEPTION(throwScope, {});
-    auto provider = Zig::SourceProvider::create(globalObject, source);
-    {
-        JSC::VM::SynchronousModuleQueueScope queueScope(vm);
-        loader->provideFetch(globalObject, JSC::Identifier::fromString(vm, specifier), JSC::ScriptFetchParameters::Type::JavaScript, JSC::SourceCode(WTF::move(provider)));
-        if (!throwScope.exception()) JSC::JSModuleLoader::drainSynchronousModuleQueue(globalObject);
-    }
-    RETURN_IF_EXCEPTION(throwScope, {});
-    auto* module = JSCommonJSModule::create(globalObject, jsString(vm, specifier), constructEmptyObject(globalObject), false, parent);
-    RETURN_IF_EXCEPTION(throwScope, {});
-    auto* requireESM = globalObject->requireESMFromHijackedExtension();
-    MarkedArgumentBuffer args;
-    args.append(specifierValue);
-    ASSERT(!args.hasOverflowed());
-    auto callData = getCallData(requireESM);
-    call(globalObject, requireESM, callData, module, args);
-    RETURN_IF_EXCEPTION(throwScope, {});
-    module->hasEvaluated = true;
-    overrides->set(globalObject, specifierValue, module);
-    RETURN_IF_EXCEPTION(throwScope, {});
-    return JSValue::encode(module->exportsObject());
-}
-
 JSC_DEFINE_HOST_FUNCTION(jsFunctionRequireNativeModule, (JSGlobalObject * lexicalGlobalObject, CallFrame* callframe))
 {
     auto* globalObject = uncheckedDowncast<Zig::GlobalObject>(lexicalGlobalObject);
@@ -1718,7 +1676,42 @@ JSC_DEFINE_HOST_FUNCTION(jsFunctionRequireNativeModule, (JSGlobalObject * lexica
         return JSC::JSValue::encode(result.exports);
     }
     if (result.kind == BuiltinModule::Kind::Source) {
-        RELEASE_AND_RETURN(throwScope, (JSC::callRemovable<Bun::Feature::Interpreter, JSC::RemovedFeatureStub::Throw, evaluateBuiltinModuleSource>(globalObject, specifier, specifierValue, parent, graph, res.result.value)));
+        overrides = graph ? graph->moduleHooksBuiltinCache(globalObject) : globalObject->moduleHooksBuiltinCache();
+        if (res.result.value.isCommonJSModule) {
+            auto* module = JSCommonJSModule::create(globalObject, jsString(vm, specifier), constructEmptyObject(globalObject), false, parent);
+            RETURN_IF_EXCEPTION(throwScope, {});
+            // Builtin overrides persist like Node's module cache, without appearing in require.cache.
+            overrides->set(globalObject, specifierValue, module);
+            RETURN_IF_EXCEPTION(throwScope, {});
+            module->evaluate(globalObject, specifier, res.result.value, true);
+            if (throwScope.exception()) {
+                overrides->remove(globalObject, specifierValue);
+                return {};
+            }
+            return JSValue::encode(module->exportsObject());
+        }
+        auto* loader = Bun::moduleLoaderOf(globalObject, throwScope, graph);
+        RETURN_IF_EXCEPTION(throwScope, {});
+        auto provider = Zig::SourceProvider::create(globalObject, res.result.value);
+        {
+            JSC::VM::SynchronousModuleQueueScope queueScope(vm);
+            loader->provideFetch(globalObject, JSC::Identifier::fromString(vm, specifier), JSC::ScriptFetchParameters::Type::JavaScript, JSC::SourceCode(WTF::move(provider)));
+            if (!throwScope.exception()) JSC::JSModuleLoader::drainSynchronousModuleQueue(globalObject);
+        }
+        RETURN_IF_EXCEPTION(throwScope, {});
+        auto* module = JSCommonJSModule::create(globalObject, jsString(vm, specifier), constructEmptyObject(globalObject), false, parent);
+        RETURN_IF_EXCEPTION(throwScope, {});
+        auto* requireESM = globalObject->requireESMFromHijackedExtension();
+        MarkedArgumentBuffer args;
+        args.append(specifierValue);
+        ASSERT(!args.hasOverflowed());
+        auto callData = getCallData(requireESM);
+        call(globalObject, requireESM, callData, module, args);
+        RETURN_IF_EXCEPTION(throwScope, {});
+        module->hasEvaluated = true;
+        overrides->set(globalObject, specifierValue, module);
+        RETURN_IF_EXCEPTION(throwScope, {});
+        return JSValue::encode(module->exportsObject());
     }
     throwScope.assertNoExceptionExceptTermination();
     return throwVMError(globalObject, throwScope, "Failed to fetch builtin module"_s);
