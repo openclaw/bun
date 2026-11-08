@@ -70,8 +70,6 @@ def cli():
         main()
         return 0
     except urllib.error.HTTPError as error:
-        if error.code < 500 and error.code not in (408, 429):
-            raise
         print(f"release API unavailable: HTTP {error.code}", file=sys.stderr)
     except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException):
         print("release API transport unavailable", file=sys.stderr)

@@ -142,7 +142,7 @@ browser download route returns transient errors. Bootstrap setup uses the same
 API downloader only after that exact GitHub download base fails; the normal
 R2 bootstrap route stays unchanged. The downloader uses no credentials, checks
 the API's size and digest, and publishes a temporary file only after verification.
-Transient API transport failures retain the normal build fetch; integrity mismatches fail the job.
+API request failures retain the normal build fetch; integrity mismatches fail the job.
 
 The lane caches the build system's download/prebuilt/ccache directory, Rust
 unit artifacts (`build/release/rust-target`) and Cargo registry/git downloads.

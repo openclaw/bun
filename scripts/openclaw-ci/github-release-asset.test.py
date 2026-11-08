@@ -65,16 +65,17 @@ class ReleaseAssetTests(unittest.TestCase):
     def test_manifest_mismatch_stops_before_download(self):
         self.exercise(wrong_pin=True)
 
-    def test_transient_api_failure_allows_the_normal_fetch(self):
-        with tempfile.TemporaryDirectory() as folder:
-            destination = Path(folder) / "asset.zip"
-            with (
-                patch("sys.argv", ["download", "example/project", "latest", "asset.zip", str(destination)]),
-                patch("urllib.request.urlopen", side_effect=urllib.error.HTTPError("https://api.github.com/", 503, "Unavailable", {}, None)),
-                contextlib.redirect_stderr(io.StringIO()),
-            ):
-                self.assertEqual(downloader.cli(), 75)
-            self.assertFalse(destination.exists())
+    def test_api_request_failure_allows_the_normal_fetch(self):
+        for status in (403, 503):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as folder:
+                destination = Path(folder) / "asset.zip"
+                with (
+                    patch("sys.argv", ["download", "example/project", "latest", "asset.zip", str(destination)]),
+                    patch("urllib.request.urlopen", side_effect=urllib.error.HTTPError("https://api.github.com/", status, "Unavailable", {}, None)),
+                    contextlib.redirect_stderr(io.StringIO()),
+                ):
+                    self.assertEqual(downloader.cli(), 75)
+                self.assertFalse(destination.exists())
 
 
 if __name__ == "__main__":
