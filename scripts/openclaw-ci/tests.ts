@@ -106,6 +106,13 @@ const webkitSensitive = [
   "test/js/node/module/node-module-module.test.js",
 ];
 
+const moduleMockSensitive = [
+  "test/js/bun/test/mock/mock-module.test.ts",
+  "test/aot/the-default-of-a-mocked-built-in-module-is-the-mocks.test.ts",
+  "test/aot/a-commonjs-file-mocked-again-is-seen-by-who-required-it.test.ts",
+  "test/aot/bun-plugin-in-a-trimmed-executable.test.ts",
+];
+
 const sourcePositionSensitive = [
   "test/js/bun/jsc/webkit-upgrade-7b485a76e9.test.ts",
   "test/js/node/vm/vm-sourceUrl.test.ts",
@@ -207,6 +214,7 @@ export function selectTests(changed: string[], tracked: string[], nightly: boole
         }
       }
     } else if (path.startsWith("src/")) {
+      if (path === "src/jsc/bindings/BunPlugin.cpp") moduleMockSensitive.forEach(test => selected.add(test));
       if (path === "src/runtime/socket/tls_socket_functions.rs") {
         selected.add("test/js/node/http/node-https-checkServerIdentity.test.ts");
         if (platform !== "windows") selected.add("test/bundler/compile-trim-capabilities.test.ts");

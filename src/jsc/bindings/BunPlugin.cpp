@@ -560,6 +560,7 @@ const JSC::ClassInfo JSModuleMock::s_info = { "ModuleMock"_s, &Base::s_info, nul
 
 JSModuleMock* JSModuleMock::create(JSC::VM& vm, JSC::Structure* structure, JSC::JSValue factory, JSC::JSString* specifier, JSC::JSString* writtenSpecifier, ModuleMockFunction function)
 {
+    BUN_REMOVABLE_DEFINITION(Test, &JSModuleMock::create);
     JSModuleMock* ptr = new (NotNull, JSC::allocateCell<JSModuleMock>(vm)) JSModuleMock(vm, structure, factory, specifier, writtenSpecifier, function);
     ptr->finishCreation(vm);
     return ptr;
@@ -581,6 +582,7 @@ JSModuleMock::JSModuleMock(JSC::VM& vm, JSC::Structure* structure, JSC::JSValue 
 
 Structure* JSModuleMock::createStructure(JSC::VM& vm, JSC::JSGlobalObject* globalObject, JSC::JSValue prototype)
 {
+    BUN_REMOVABLE_DEFINITION(Test, &JSModuleMock::createStructure);
     return Bun::createClassStructure(vm, globalObject, prototype, JSC::TypeInfo(JSC::ObjectType, StructureFlags), info());
 }
 
@@ -1521,6 +1523,7 @@ static String fileOfFunction(JSValue function)
 
 __attribute__((minsize)) JSC::JSPromise* JSModuleMock::run(Zig::GlobalObject* globalObject, bool synchronous, JSObject* dependency)
 {
+    BUN_REMOVABLE_DEFINITION(Test, &JSModuleMock::run);
     auto& vm = JSC::getVM(globalObject);
     auto scope = DECLARE_THROW_SCOPE(vm);
 
@@ -1962,6 +1965,8 @@ JSC_DEFINE_HOST_FUNCTION_WITH_ATTRIBUTES(jsFunctionRunModuleMockLater, __attribu
 
 bool JSModuleMock::getOwnPropertySlot(JSObject* object, JSC::JSGlobalObject* globalObject, JSC::PropertyName propertyName, JSC::PropertySlot& slot)
 {
+    // Type checks keep the ClassInfo alive; its mock methods still belong to Test.
+    BUN_REMOVABLE_DEFINITION(Test, &JSModuleMock::getOwnPropertySlot);
     auto& vm = JSC::getVM(globalObject);
     auto scope = DECLARE_THROW_SCOPE(vm);
     auto* mock = uncheckedDowncast<JSModuleMock>(object);
@@ -2021,6 +2026,7 @@ bool JSModuleMock::getOwnPropertySlot(JSObject* object, JSC::JSGlobalObject* glo
 
 bool JSModuleMock::getOwnPropertySlotByIndex(JSObject* object, JSC::JSGlobalObject* globalObject, unsigned index, JSC::PropertySlot& slot)
 {
+    BUN_REMOVABLE_DEFINITION(Test, &JSModuleMock::getOwnPropertySlotByIndex);
     return getOwnPropertySlot(object, globalObject, JSC::Identifier::from(globalObject->vm(), index), slot);
 }
 
@@ -4456,6 +4462,7 @@ JSC::JSValue findModuleMock(Zig::GlobalObject* globalObject, const BunString* sp
 
 JSC::JSPromise* runModuleMock(Zig::GlobalObject* globalObject, JSC::JSObject* moduleMock, const String& key, bool synchronous)
 {
+    BUN_REMOVABLE_DEFINITION(Test, &runModuleMock);
     auto& vm = JSC::getVM(globalObject);
     auto scope = DECLARE_THROW_SCOPE(vm);
     auto* mock = Zig::toModuleMock(globalObject, scope, moduleMock);
@@ -4609,6 +4616,7 @@ __attribute__((minsize)) static JSC::JSObject* generateSettledModuleMock(JSValue
 
 __attribute__((minsize)) JSC::JSSourceCode* sourceCodeOfModuleMock(Zig::GlobalObject* globalObject, JSC::JSObject* moduleMock, const String& key, const String& typeAttribute)
 {
+    BUN_REMOVABLE_DEFINITION(Test, &sourceCodeOfModuleMock);
     auto& vm = JSC::getVM(globalObject);
     auto scope = DECLARE_THROW_SCOPE(vm);
     auto* mock = Zig::toModuleMock(globalObject, scope, moduleMock);

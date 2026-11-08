@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Let trimming remove unused module-mock factories and property handlers while retaining normal plugin loading and compiled mocks.
+
 - Keep consumer qualification phases and resource counters visible during long-running builds, and diagnose the frozen OpenClaw AOT build with the admitted shipping artifact.
 
 - Let trimming remove unused `node:module.stripTypeScriptTypes` parsing code while retaining the runtime parser when the API is used.

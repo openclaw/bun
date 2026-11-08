@@ -50,7 +50,7 @@ function findCompleteness(report: string): Completeness | undefined {
           const found: Record<string, unknown> = {};
           for (const [kind, flags] of [
             ["untrimmed", []],
-            ["trimmed", ["--trim"]],
+            ["trimmed", ["--trim", "--trim-without=Test"]],
           ] as const) {
             const build = await spawned(
               [
