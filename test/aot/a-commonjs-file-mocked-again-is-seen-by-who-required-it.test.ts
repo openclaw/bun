@@ -16,8 +16,8 @@ exports.held = () => T;
 exports.keys = () => Object.keys(T).join();
 `;
 
-// Whoever required the file behind the first mock holds an object. A later mock replaces the values of the names that the object has:
-// it adds none, and a name that it leaves out keeps its value. A later require() answers another object, with the names of the later mock.
+// require() keeps the first factory's object. A later mock changes future require() calls and live ESM bindings,
+// but does not mutate the object or destructured values that an earlier require() returned.
 const testFile = `
 import { test, mock } from "bun:test";
 const say = (...words) => console.error("SEEN " + words.join(" "));
@@ -52,7 +52,7 @@ test("the second mock names less", () => {
 });
 `;
 
-test("a later mock of a CommonJS file reaches the object that an earlier require() answered", async () => {
+test("a later CommonJS mock updates future requires and ESM bindings without changing an earlier require's object", async () => {
   using dir = tempDir("aot-commonjs-file-mocked-again", {
     "package.json": `{ "name": "commonjs-file-mocked-again" }`,
     ...Object.fromEntries(
@@ -81,12 +81,12 @@ export const keys = () => Object.keys(all).join();
   expect(plain).toEqual({
     seen: [
       "SEEN a1 first first v",
-      "SEEN a2 second first v false second",
-      "SEEN a3 third first v false third",
+      "SEEN a2 first first v false second",
+      "SEEN a3 first first v false third",
       "SEEN b1 first first v",
-      "SEEN b2 second second v",
-      "SEEN c2 second v  false v,w",
-      "SEEN d2 second v,w first w false v",
+      "SEEN b2 first second v",
+      "SEEN c2 first v  false v,w",
+      "SEEN d2 first v,w first w false v",
     ],
     exitCode: 0,
   });
