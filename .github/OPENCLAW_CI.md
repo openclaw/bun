@@ -143,6 +143,10 @@ API downloader only after that exact GitHub download base fails; the normal
 R2 bootstrap route stays unchanged. The downloader uses no credentials, checks
 the API's size and digest, and publishes a temporary file only after verification.
 API request failures retain the normal build fetch; integrity mismatches fail the job.
+The native LLVM installer also stages its versioned archive through this API
+adapter. Only the generated installer's download URL changes to the staged file;
+its canonical source checksum, selected archive members and installation steps
+remain authoritative. API request failures retain the original LLVM URL.
 
 The lane caches the build system's download/prebuilt/ccache directory, Rust
 unit artifacts (`build/release/rust-target`) and Cargo registry/git downloads.

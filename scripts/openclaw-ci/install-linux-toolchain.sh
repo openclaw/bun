@@ -3,18 +3,37 @@ set -euo pipefail
 
 sudo apt-get update -qq
 sudo apt-get install -y --no-install-recommends cmake ninja-build nasm ccache golang-go python3-fuse
+llvm_version=$(bun -e 'import { pins } from "./scripts/build/ci-images/spec.ts"; console.log(pins.llvm.version)')
+llvm_asset="LLVM-${llvm_version}-Linux-X64.tar.xz"
+llvm_archive="$RUNNER_TEMP/$llvm_asset"
+if python3 scripts/openclaw-ci/github-release-asset.py llvm/llvm-project "llvmorg-$llvm_version" "$llvm_asset" "$llvm_archive"; then
+  export OPENCLAW_LLVM_ARCHIVE="$llvm_archive"
+else
+  status=$?
+  test "$status" -eq 75 || exit "$status"
+  echo '::warning::Release API unavailable; retaining the normal checksum-verified LLVM download.'
+fi
 # Render only the canonical x64 LLVM installer; do not run the machine's agent or service setup.
 bun -e '
   import { readFileSync, writeFileSync } from "node:fs";
   import { join } from "node:path";
-  import { generateImage, images } from "./scripts/build/ci-images/spec.ts";
+  import { pathToFileURL } from "node:url";
+  import { generateImage, images, pins } from "./scripts/build/ci-images/spec.ts";
   import { provisionScript } from "./scripts/openclaw-release/release.ts";
   const image = images.find(image => image.os === "linux" && image.arch === "x64" && image.distro === "debian");
   if (!image) throw new Error("Missing canonical Linux x64 image");
   const { directory } = generateImage(image, process.cwd());
-  writeFileSync(join(process.env.RUNNER_TEMP, "openclaw-llvm.sh"), provisionScript(readFileSync(join(directory, "bootstrap.sh"), "utf8"), ["llvm"]));
+  let script = provisionScript(readFileSync(join(directory, "bootstrap.sh"), "utf8"), ["llvm"]);
+  if (process.env.OPENCLAW_LLVM_ARCHIVE) {
+    const url = `https://github.com/llvm/llvm-project/releases/download/llvmorg-${pins.llvm.version}/LLVM-${pins.llvm.version}-Linux-X64.tar.xz`;
+    if (script.split(url).length !== 2) throw new Error("Missing unique canonical LLVM download");
+    // The canonical installer still checks the source pin before extracting its selected members.
+    script = script.replace(url, pathToFileURL(process.env.OPENCLAW_LLVM_ARCHIVE).href);
+  }
+  writeFileSync(join(process.env.RUNNER_TEMP, "openclaw-llvm.sh"), script);
 '
 sudo sh "$RUNNER_TEMP/openclaw-llvm.sh" "$GITHUB_SHA" openclaw-native
+rm -f "$llvm_archive"
 # Tool discovery prefers system LLVM locations before PATH; bind every tool to the admitted archive.
 echo "BUN_TOOLCHAIN_LLVM=$LLVM_DIRECTORY" >> "$GITHUB_ENV"
 echo "$LLVM_DIRECTORY/bin" >> "$GITHUB_PATH"
