@@ -10,6 +10,7 @@ import signal
 import subprocess
 import sys
 import tarfile
+import time
 import zipfile
 from pathlib import Path
 
@@ -40,6 +41,20 @@ def require_vitest_result(result, expected):
         and all(result[key] == 0 for key in ("numFailedTests", "numPendingTests", "numTodoTests")),
         f"all {expected} selected consumer cases must execute and pass",
     )
+
+
+def heartbeat(label, started, directory):
+    metrics = {"step": label, "elapsedSeconds": int(time.monotonic() - started)}
+    for name in ("memory.current", "memory.peak", "memory.events", "memory.pressure", "cpu.stat"):
+        try:
+            metrics[name] = (Path("/sys/fs/cgroup") / name).read_text().strip()
+        except OSError as error:
+            metrics[name] = {"unavailable": error.errno}
+    try:
+        metrics["diskFreeBytes"] = shutil.disk_usage(directory).free
+    except OSError as error:
+        metrics["diskFreeBytes"] = {"unavailable": error.errno}
+    print("consumer heartbeat: " + json.dumps(metrics), flush=True)
 
 
 def admit(dist, destination, commit, webkit, run_url):
@@ -200,7 +215,17 @@ def qualify(name, dist, repo, output):
                 start_new_session=True,
             )
             try:
-                row["exitCode"] = child.wait(timeout=timeout)
+                started = time.monotonic()
+                deadline = started + timeout
+                while True:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise subprocess.TimeoutExpired(child.args, timeout)
+                    try:
+                        row["exitCode"] = child.wait(timeout=min(30, remaining))
+                        break
+                    except subprocess.TimeoutExpired:
+                        heartbeat(label, started, output)
             finally:
                 # Only this command's process group, including any owned servers.
                 try:

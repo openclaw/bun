@@ -52,6 +52,7 @@ on:
             shipping-darwin-x64,
             shipping-windows-arm64,
             shipping-layout-linux-x64,
+            shipping-consumer-openclaw,
           ]
         default: none
       native_run_id:
@@ -570,7 +571,7 @@ jobs:
           retention-days: 7
 
   shipping-diagnostics:
-    if: github.repository == 'openclaw/bun' && startsWith(inputs.diagnostic, 'shipping-')
+    if: github.repository == 'openclaw/bun' && startsWith(inputs.diagnostic, 'shipping-') && inputs.diagnostic != 'shipping-consumer-openclaw'
     runs-on: ${{ inputs.diagnostic == 'shipping-darwin-x64' && 'macos-15-intel' || inputs.diagnostic == 'shipping-darwin-arm64' && 'macos-15' || inputs.diagnostic == 'shipping-windows-arm64' && 'windows-11-arm' || 'ubuntu-24.04' }}
     timeout-minutes: 30
     permissions:
@@ -627,3 +628,52 @@ jobs:
           path: build/openclaw-ci/shipping-diagnostics/
           if-no-files-found: error
           retention-days: 7
+
+  consumer-diagnostics:
+    if: github.repository == 'openclaw/bun' && inputs.diagnostic == 'shipping-consumer-openclaw'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: pipeline
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: openclaw/openclaw
+          ref: 7c26e8cccd19b74c3443fb3f0ed6fbf9d7d410a3
+          persist-credentials: false
+          path: consumer/openclaw
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24.22.1"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: "13597989409"
+          run-id: "42429807742"
+          github-token: ${{ github.token }}
+          path: release
+      - name: Verify the frozen manifest
+        run: |
+          echo '1a7e187e643b25778b959a82b309ad0098b3fb2b99c10a6dac2ae5e0473d49a2  release/manifest.json' | sha256sum --check --strict
+      - name: Diagnose the frozen OpenClaw consumer
+        env:
+          EXPECTED_COMMIT: fa54b248b66ed7eb48217ad759120502be489e97
+          EXPECTED_WEBKIT: 8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6
+          EXPECTED_RUN: https://github.com/openclaw/bun/actions/runs/42429807742
+        run: python3 pipeline/scripts/openclaw-release/consumers.py openclaw release consumer/openclaw "$RUNNER_TEMP/consumer-proof"
+      - name: Upload consumer diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: consumer-diagnostic-openclaw-${{ github.sha }}-attempt${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/consumer-proof/*.json
+            ${{ runner.temp }}/consumer-proof/*.log
+            ${{ runner.temp }}/consumer-proof/package/*.json
+            ${{ runner.temp }}/consumer-proof/smoke/
+          if-no-files-found: error
+          retention-days: 14

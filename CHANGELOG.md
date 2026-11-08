@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep consumer qualification phases and resource counters visible during long-running builds, and diagnose the frozen OpenClaw AOT build with the admitted shipping artifact.
+
 - Let trimming remove unused `node:module.stripTypeScriptTypes` parsing code while retaining the runtime parser when the API is used.
 
 - Let trimming remove compile-cache persistence workers when runtime module loading is absent, and preserve explicit cache activation before a compiled app's first external module load.
