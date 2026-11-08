@@ -124,6 +124,13 @@ evidence, not proof of an OOM kill. OpenClaw's
 found about 15 GiB on the 16-class and 31 GiB on the 32-class. Consumer
 heartbeats record actual capacity and pressure; labels alone do not prove it.
 The command deadlines and complete qualification assertions stay unchanged.
+The [resource-corrected consumer run](https://github.com/openclaw/bun/actions/runs/42463585662)
+passed all 22 phases with the same admitted compiler and frozen consumer.
+Its 32-class runner actually delivered about 124 GiB of host RAM; sampled
+cgroup memory peaked at 50,463,993,856 bytes without swap consumption or OOM
+kills. Standalone compilation completed in about 14 minutes. These observations
+supersede the older sizing assumptions for this run; they do not promise a
+future allocation or establish that a smaller class completes this workload.
 
 ## Tag scheme
 
