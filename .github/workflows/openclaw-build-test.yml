@@ -1,4 +1,4 @@
-name: OpenClaw HTTP surface capture (temporary diagnosis)
+name: OpenClaw isolated reflection (temporary diagnosis)
 
 on:
   workflow_dispatch:
@@ -29,28 +29,28 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$(gh api repos/openclaw/bun/actions/artifacts/13668171712 --jq .workflow_run.id)" = 42603897638
-          test "$(gh api repos/openclaw/bun/actions/artifacts/13668171712 --jq .workflow_run.head_sha)" = 56739277f7834a63cdd2ba8fd496672c5ab8f645
-          test "$(gh api repos/openclaw/bun/actions/artifacts/13668171712 --jq .digest)" = sha256:a9c48e76661ce10b96cfb8bcf96acef6bd991d7fb11a66ee92d8157f9425877f
+          test "$(gh api repos/openclaw/bun/actions/artifacts/13670611811 --jq .workflow_run.id)" = 42609885305
+          test "$(gh api repos/openclaw/bun/actions/artifacts/13670611811 --jq .workflow_run.head_sha)" = 11e3dd7ffa155cb63a38028adcc94be71553671d
+          test "$(gh api repos/openclaw/bun/actions/artifacts/13670611811 --jq .digest)" = sha256:c046ee9348754ea6efcedf2a451e7bfaf6df1bbf671b8852c4daa359074e97dd
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          artifact-ids: 13668171712
-          run-id: 42603897638
+          artifact-ids: 13670611811
+          run-id: 42609885305
           github-token: ${{ github.token }}
           path: build/openclaw-ci/native-input
       - name: Verify and unpack the admitted executable
         run: |
           cd build/openclaw-ci/native-input
-          test "$(cat commit.txt)" = 56739277f7834a63cdd2ba8fd496672c5ab8f645
+          test "$(cat commit.txt)" = 11e3dd7ffa155cb63a38028adcc94be71553671d
           sha256sum -c SHA256SUMS
           mkdir -p ../../release
           tar -xzf bun-linux-x64.tar.gz -C ../../release bun bun.trim engine-source.json
           cd ../../..
-          ./build/release/bun -e 'if (Bun.revision !== "56739277f7834a63cdd2ba8fd496672c5ab8f645" || process.versions.webkit !== "651eeaca6e2792378928033b1ae7ac66d6f91eab") throw new Error("unadmitted source pair")'
-      - name: Capture reviewed HTTP and reflection observations
+          ./build/release/bun -e 'if (Bun.revision !== "11e3dd7ffa155cb63a38028adcc94be71553671d" || process.versions.webkit !== "651eeaca6e2792378928033b1ae7ac66d6f91eab") throw new Error("unadmitted source pair")'
+      - name: Capture isolated receiver and surface observations
         run: |
           ./build/release/bun install --frozen-lockfile
-          node scripts/openclaw-ci/reflection-oracle.cjs --capture-http
+          node scripts/openclaw-ci/reflection-oracle.cjs
       - name: Upload receiver controls
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

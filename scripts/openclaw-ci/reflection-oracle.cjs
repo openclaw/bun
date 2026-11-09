@@ -53,6 +53,7 @@ function execute(group) {
   const ids = [];
   const descriptors = [];
   for (let operationIndex = 0; operationIndex < group.operations.length; operationIndex++) {
+    if (operationIndex !== group.operationIndex) continue;
     const operation = group.operations[operationIndex];
     const key = operation.key === "asyncDispose" ? Symbol.asyncDispose : operation.key;
     let owner = level;
@@ -73,6 +74,7 @@ function execute(group) {
       value: typeof descriptor?.value,
     });
     for (let receiverIndex = 0; receiverIndex < receivers.length; receiverIndex++) {
+      if (receiverIndex !== group.receiverIndex) continue;
       const [name, make] = receivers[receiverIndex];
       const before = new Map(Reflect.ownKeys(level).map(key => [key, Object.getOwnPropertyDescriptor(level, key)]));
       const receiver = make(level);
@@ -139,156 +141,27 @@ const env = {
   BUN_GARBAGE_COLLECTOR_LEVEL: "0",
   BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0",
   BUN_DEBUG_QUIET_LOGS: "1",
+  GITHUB_ACTIONS: "false",
+  CI: "1",
+  BUN_DISABLE_SLOW_FILESYSTEM_WARNING: "1",
+  BUN_CONFIG_HTTP_RETRY_BACKOFF: "1",
+  BUN_INTERNAL_INTERACTIVE_ASSUME_TTY: "1",
+  BUN_FEATURE_FLAG_EXPERIMENTAL_BAKE: "1",
+  BUN_DEBUG_linkerctx: "0",
+  WANTS_LOUD: "0",
+  AGENT: "false",
 };
-// Capture exact current outputs for separately reviewed expectation migrations.
-if (process.argv.includes("--capture-http")) {
-  Object.assign(env, {
-    GITHUB_ACTIONS: "false",
-    CI: "1",
-    BUN_DISABLE_SLOW_FILESYSTEM_WARNING: "1",
-    BUN_CONFIG_HTTP_RETRY_BACKOFF: "1",
-    BUN_INTERNAL_INTERACTIVE_ASSUME_TTY: "1",
-    BUN_FEATURE_FLAG_EXPERIMENTAL_BAKE: "1",
-    BUN_DEBUG_linkerctx: "0",
-    WANTS_LOUD: "0",
-    AGENT: "false",
-  });
-  delete env.JSC_useJIT;
-  delete env.NODE_OPTIONS;
-  delete env.FORCE_COLOR;
-  const binary = resolve("build/release/bun");
-  const http = "test/js/node/http/";
-  const parallel = "test/aot/parallel/node-http/";
-  const targets = [
-    [
-      "added-accessors",
-      http + "node-http-accessors-added-between-a-socket-and-their-owner-fixture.ts",
-      http + "node-http-accessors-added-between-a-socket-and-their-owner.test.ts",
-      true,
-    ],
-    [
-      "socket-accessors",
-      http + "node-http-replaced-accessors-of-a-socket-fixture.ts",
-      http + "node-http-replaced-accessors-of-a-socket.test.ts",
-      true,
-    ],
-    [
-      "response-accessors",
-      http + "node-http-replaced-accessors-fixture.ts",
-      http + "node-http-replaced-accessors.test.ts",
-      true,
-    ],
-    [
-      "own-keys",
-      "test/aot/parallel/library-modules/keys-responses-sockets-emitters-lives.js",
-      http + "node-http-own-keys-through-an-exchange.expected.txt",
-      true,
-    ],
-    [
-      "own-values",
-      http + "node-http-own-values-through-an-exchange-fixture.js",
-      http + "node-http-own-values-through-an-exchange.expected.txt",
-      true,
-    ],
-    ["proxy-traps", parallel + "http-proxy-traps.js", http + "node-http-proxy-traps.expected.txt", false],
-    [
-      "foreign-receivers",
-      parallel + "members-outgoing-messages-receivers.js",
-      http + "node-http-members-of-outgoing-messages-for-receivers-that-are-no-messages.expected.txt",
-      false,
-    ],
-    [
-      "heir-headers",
-      parallel + "headers-of-response-through-proxy-heir.ts",
-      http + "node-http-headers-through-an-heir-and-a-proxy.expected.txt",
-      true,
-    ],
-    [
-      "heir-state",
-      parallel + "state-of-response-through-proxy-and-heir.ts",
-      http + "node-http-state-through-an-heir-and-a-proxy.expected.txt",
-      true,
-    ],
-  ];
-  const receipt = {
-    complete: false,
-    mode: "capture-only",
-    probeSource: process.env.GITHUB_SHA,
-    nativeSource: "56739277f7834a63cdd2ba8fd496672c5ab8f645",
-    engineReceipt: JSON.parse(readFileSync("build/release/engine-source.json", "utf8")),
-    binarySHA256: createHash("sha256").update(readFileSync(binary)).digest("hex"),
-    captures: [],
-  };
-  const save = () => writeFileSync(join(folder, "http-capture.json"), JSON.stringify(receipt, null, 2) + "\n");
-  save();
-  function capture(id, args, target, emptyStderr = true, timeout = 60000) {
-    const child = spawnSync(binary, args, { env, encoding: "utf8", timeout, maxBuffer: 32 * 1024 * 1024 });
-    writeFileSync(join(folder, id + ".stdout.txt"), child.stdout ?? "");
-    writeFileSync(join(folder, id + ".stderr.log"), child.stderr ?? "");
-    const record = {
-      id,
-      args,
-      target,
-      exitCode: child.status,
-      signal: child.signal,
-      error: child.error?.message,
-      stdoutSHA256: createHash("sha256")
-        .update(child.stdout ?? "")
-        .digest("hex"),
-    };
-    receipt.captures.push(record);
-    save();
-    assert(!child.error && !child.signal && child.status === 0, JSON.stringify(record));
-    assert(child.stdout.length > 0, "empty output for " + id);
-    if (emptyStderr) assert.equal(child.stderr, "", id);
-    return child.stdout;
-  }
-  for (const [id, path, target, emptyStderr] of targets) capture(id, [path], target, emptyStderr);
-  const ownFile = http + "node-http-own-accessors-on-an-exchange.test.ts";
-  const ownSource = readFileSync(ownFile, "utf8");
-  const argument = ownSource.indexOf('"-e",');
-  assert(argument >= 0 && ownSource.lastIndexOf('"-e",') === argument);
-  const quote = String.fromCharCode(96);
-  const start = ownSource.indexOf(quote, argument);
-  const end = ownSource.indexOf(quote, start + 1);
-  assert(start > argument && end > start);
-  const literal = ownSource.slice(start, end + 1);
-  assert(!literal.includes("$" + "{"), "unexpected template interpolation");
-  const cooked = Function("return " + literal)();
-  capture("own-accessors", ["-e", cooked], ownFile);
-  receipt.regressionRed = [];
-  for (const aot of [false, true]) {
-    const id = "https-validation-red-" + aot;
-    const pattern = "setSecureContext validates options before its receiver.*AOT: " + aot;
-    const child = spawnSync(
-      binary,
-      ["--expose-internals", "test", "test/js/node/http/node-https-server.test.ts", "--test-name-pattern", pattern],
-      { env, encoding: "utf8", timeout: 60000, maxBuffer: 8 * 1024 * 1024 },
-    );
-    writeFileSync(join(folder, id + ".stdout.txt"), child.stdout ?? "");
-    writeFileSync(join(folder, id + ".stderr.log"), child.stderr ?? "");
-    const record = { aot, exitCode: child.status, signal: child.signal, error: child.error?.message };
-    receipt.regressionRed.push(record);
-    save();
-    const output = (child.stdout ?? "") + (child.stderr ?? "");
-    assert(!child.error && !child.signal && child.status === 1, JSON.stringify(record));
-    assert(output.includes("1 fail") && output.includes("incorrect option validation"), id + " did not reproduce");
-  }
-  const changes = spawnSync("git", ["diff", "--name-only"], { encoding: "utf8" });
-  assert.equal(changes.status, 0);
-  assert.equal(changes.stdout, "", "capture modified tracked source");
-  receipt.complete = true;
-  save();
-  console.log(JSON.stringify({ complete: true, captures: receipt.captures.length }));
-  process.exit(0);
-}
+delete env.JSC_useJIT;
+delete env.NODE_OPTIONS;
+delete env.FORCE_COLOR;
 const summary = {
   complete: false,
   probeSource: process.env.GITHUB_SHA,
   nodeVersion: process.version,
   engineReceipt: JSON.parse(readFileSync("build/release/engine-source.json", "utf8")),
   binarySHA256: createHash("sha256").update(readFileSync("build/release/bun")).digest("hex"),
-  nativeSource: "56739277f7834a63cdd2ba8fd496672c5ab8f645",
+  nativeSource: "11e3dd7ffa155cb63a38028adcc94be71553671d",
+  isolation: "one operation, arguments and receiver per process; restore before four Immediate turns",
   engineSource: "651eeaca6e2792378928033b1ae7ac66d6f91eab",
   fixtureSHA256: createHash("sha256").update(fixture).digest("hex"),
   records: [],
@@ -296,6 +169,12 @@ const summary = {
 };
 const save = () => writeFileSync(join(folder, "summary.json"), JSON.stringify(summary, null, 2) + "\n");
 save();
+const receiversForParent = Array.from({ length: 11 });
+const isolatedGroups = groups.flatMap(group =>
+  group.operations.flatMap((_, operationIndex) =>
+    receiversForParent.map((_, receiverIndex) => ({ ...group, operationIndex, receiverIndex })),
+  ),
+);
 const observations = new Map();
 for (const [runtime, executable] of [
   ["node", process.execPath],
@@ -303,7 +182,7 @@ for (const [runtime, executable] of [
 ]) {
   let total = 0;
   const cases = [];
-  for (const group of groups) {
+  for (const group of isolatedGroups) {
     const source = helpers + "\n(" + execute.toString() + ")(" + JSON.stringify(group) + ");";
     const child = spawnSync(executable, ["-e", source], {
       env,
@@ -311,12 +190,13 @@ for (const [runtime, executable] of [
       timeout: 15000,
       maxBuffer: 4 * 1024 * 1024,
     });
-    const name = runtime + "-" + group.id;
+    const name = runtime + "-" + group.id + "-" + group.operationIndex + "-" + group.receiverIndex;
     writeFileSync(join(folder, name + ".stdout.jsonl"), child.stdout ?? "");
     writeFileSync(join(folder, name + ".stderr.log"), child.stderr ?? "");
     const status = {
       runtime,
       group: group.id,
+      caseId: group.id + ":" + group.operationIndex + ":" + group.receiverIndex,
       exitCode: child.status,
       signal: child.signal,
       error: child.error?.message,
@@ -330,9 +210,7 @@ for (const [runtime, executable] of [
       .map(line => JSON.parse(line));
     const complete = lines.filter(line => line.type === "complete");
     const actual = lines.filter(line => line.type === "case");
-    const expected = group.operations.flatMap((_, operation) =>
-      Array.from({ length: 11 }, (_, receiver) => group.id + ":" + operation + ":" + receiver),
-    );
+    const expected = [group.id + ":" + group.operationIndex + ":" + group.receiverIndex];
     assert.equal(complete.length, 1);
     assert.deepEqual(
       actual.map(line => line.id),
@@ -340,7 +218,7 @@ for (const [runtime, executable] of [
     );
     assert.deepEqual(complete[0].ids, expected);
     assert.equal(complete[0].count, expected.length);
-    assert.equal(complete[0].descriptors.length, group.operations.length);
+    assert.equal(complete[0].descriptors.length, 1);
     status.count = expected.length;
     status.descriptors = complete[0].descriptors;
     status.later = complete[0].later;
@@ -357,6 +235,101 @@ for (const [id, node] of observations.get("node")) {
   assert(candidate);
   if (JSON.stringify(node) !== JSON.stringify(candidate)) summary.differences.push({ id, node, candidate });
 }
+summary.pendingPromises = summary.records.flatMap(record =>
+  record.promises
+    .filter(promise => promise.state === "pending")
+    .map(promise => ({ runtime: record.runtime, ...promise })),
+);
+summary.settlementLimitation =
+  "Four Immediate turns are a bounded observation window; pending promises are unresolved proof gaps.";
+
+// Capture the unchanged tests' failures before collecting candidate snapshot bytes.
+const snapshotPaths = [
+  "test/js/node/__snapshots__/members-of-prototype-objects-for-any-receiver.test.ts.snap",
+  "test/js/node/__snapshots__/visible-surface.test.ts.snap",
+];
+const testPaths = [
+  "test/js/node/members-of-prototype-objects-for-any-receiver.test.ts",
+  "test/js/node/visible-surface.test.ts",
+];
+summary.snapshotRuns = [];
+for (const update of [false, true]) {
+  const child = spawnSync(
+    resolve("build/release/bun"),
+    ["test", ...testPaths, ...(update ? ["--update-snapshots"] : [])],
+    {
+      env,
+      encoding: "utf8",
+      timeout: 120000,
+      maxBuffer: 32 * 1024 * 1024,
+    },
+  );
+  const name = update ? "candidate-snapshots" : "original-snapshot-failures";
+  writeFileSync(join(folder, name + ".stdout.log"), child.stdout ?? "");
+  writeFileSync(join(folder, name + ".stderr.log"), child.stderr ?? "");
+  const status = { update, exitCode: child.status, signal: child.signal, error: child.error?.message };
+  summary.snapshotRuns.push(status);
+  save();
+  assert(!child.error && !child.signal && child.status === (update ? 0 : 1), JSON.stringify(status));
+}
+const changed = spawnSync("git", ["diff", "--name-only"], { encoding: "utf8" });
+assert.equal(changed.status, 0);
+assert.deepEqual(changed.stdout.trim().split("\n").sort(), [...snapshotPaths].sort());
+summary.snapshotFiles = snapshotPaths.map(path => {
+  const bytes = readFileSync(path);
+  const target = path.split("/").at(-1);
+  writeFileSync(join(folder, target), bytes);
+  return { path, sha256: createHash("sha256").update(bytes).digest("hex"), bytes: bytes.length };
+});
+const patch = spawnSync("git", ["diff", "--", ...snapshotPaths], { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
+assert.equal(patch.status, 0);
+writeFileSync(join(folder, "candidate-snapshots.diff"), patch.stdout);
+
+// Reuse the three unchanged descriptor/constructor walks under both runtimes.
+const visiblePath = "test/js/node/visible-surface.test.ts";
+const visible = readFileSync(visiblePath, "utf8");
+assert(visible.startsWith('import { expect, test } from "bun:test";\n'));
+const stripped = require("node:module").stripTypeScriptTypes(visible.slice(visible.indexOf("\n") + 1));
+const shim = `
+const assert = require("node:assert/strict");
+const { writeSync } = require("node:fs");
+let title, count = 0;
+const emit = value => writeSync(1, JSON.stringify(value) + "\\n");
+const test = (name, body) => { title = name; body(); };
+const expect = value => ({
+  toBe(other) { assert.strictEqual(value, other); },
+  toMatchSnapshot() { count++; emit({ type: "snapshot", title, value }); },
+});
+`;
+summary.visibleRuns = [];
+for (const [runtime, executable] of [
+  ["node", process.execPath],
+  ["candidate", resolve("build/release/bun")],
+]) {
+  const child = spawnSync(
+    executable,
+    ["-e", shim + stripped + '\nassert.equal(count, 3); emit({ type: "complete", count }); process.exit(0);'],
+    {
+      env,
+      encoding: "utf8",
+      timeout: 15000,
+      maxBuffer: 4 * 1024 * 1024,
+    },
+  );
+  writeFileSync(join(folder, runtime + "-visible.stdout.jsonl"), child.stdout ?? "");
+  writeFileSync(join(folder, runtime + "-visible.stderr.log"), child.stderr ?? "");
+  const status = { runtime, exitCode: child.status, signal: child.signal, error: child.error?.message };
+  summary.visibleRuns.push(status);
+  save();
+  assert(!child.error && !child.signal && child.status === 0, JSON.stringify(status));
+  const rows = child.stdout
+    .trim()
+    .split("\n")
+    .map(line => JSON.parse(line));
+  assert.equal(rows.filter(row => row.type === "snapshot").length, 3);
+  assert.deepEqual(rows.at(-1), { type: "complete", count: 3 });
+}
+summary.visibleSourceSHA256 = createHash("sha256").update(visible).digest("hex");
 summary.complete = true;
 save();
 console.log(JSON.stringify({ complete: true, casesPerRuntime: 176, differences: summary.differences.length }));
