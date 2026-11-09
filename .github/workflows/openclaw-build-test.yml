@@ -2,6 +2,11 @@ name: OpenClaw isolated reflection (temporary diagnosis)
 
 on:
   workflow_dispatch:
+    inputs:
+      probe:
+        type: choice
+        options: [reflection, types]
+        default: reflection
 
 permissions:
   contents: read
@@ -48,9 +53,15 @@ jobs:
           cd ../../..
           ./build/release/bun -e 'if (Bun.revision !== "11e3dd7ffa155cb63a38028adcc94be71553671d" || process.versions.webkit !== "651eeaca6e2792378928033b1ae7ac66d6f91eab") throw new Error("unadmitted source pair")'
       - name: Capture isolated receiver and surface observations
+        if: inputs.probe != 'types'
         run: |
           ./build/release/bun install --frozen-lockfile
           node scripts/openclaw-ci/reflection-oracle.cjs
+      - name: Probe the exact node-class fixture's emitted type guards
+        if: inputs.probe == 'types'
+        run: |
+          ./build/release/bun install --frozen-lockfile
+          node scripts/openclaw-ci/node-class-guard-probe.cjs
       - name: Upload receiver controls
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
