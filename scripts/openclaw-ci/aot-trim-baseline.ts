@@ -8,6 +8,7 @@ import { dirname, join, resolve } from "node:path";
 import { readRemovedFeatures } from "../../test/aot/trimmed-against-whole/removed-features.ts";
 import { featureFiles, loadFeatures } from "../build/trim/features.ts";
 
+const operationOrigins = process.argv.includes("--operation-origins");
 const source = "2596ac5d391d47804c93a42bdbe615804aa62387";
 const engine = "5a61071f79134bf41844e7ea31a8449147d85dd4";
 const root = resolve(".");
@@ -21,12 +22,14 @@ const summary: Record<string, unknown> = {
   probeSource: process.env.GITHUB_SHA,
   candidate: {
     source: process.env.EXPECTED_NATIVE_SHA,
+    engine: operationOrigins ? process.env.WEBKIT_SOURCE_SHA : undefined,
     runId: process.env.NATIVE_RUN_ID,
     artifactId: process.env.NATIVE_ARTIFACT_ID,
   },
   measurements,
-  limitations:
-    "This compares stock Bun/WebKit with the fork pair; it does not isolate source from engine changes or qualify shipping ICU.",
+  limitations: operationOrigins
+    ? "Temporary engine instrumentation on frozen Bun source; operation attribution only, not shipping or full-suite qualification."
+    : "This compares stock Bun/WebKit with the fork pair; it does not isolate source from engine changes or qualify shipping ICU.",
 };
 const record = () => writeFileSync(join(folder, "comparison.json"), JSON.stringify(summary, null, 2) + "\n");
 record();
@@ -178,14 +181,49 @@ writeFileSync(join(inputs, "tsconfig.json"), `{ "compilerOptions": { "types": ["
 summary.inputs = Object.fromEntries(
   [...fixtures, "tsconfig.json"].map(name => [name, sha256(readFileSync(join(inputs, name)))]),
 );
+if (operationOrigins) {
+  const reference = {
+    "types": {
+      "bun": {
+        "tree": "d3e2c608b8962a7505f3c1c8179ce134cb5254c5",
+        "sha256": "abf56fb18c1db969116549713adce1454c5fb2e208744b18ff9eb8ed01c6edaf",
+      },
+      "node": {
+        "version": "26.2.0",
+        "sha256": "b7c0dfc286696c7a82b851166dad27067818feea77de82ae437cf2389c0b9b84",
+      },
+      "undici": {
+        "version": "8.3.0",
+        "sha256": "6bbd5a075849e745bf75b93ad6850daf426b08ae6be3052661efacaf25e9df2f",
+      },
+      "lockSHA256": "d212e788d345c0b8db561d9884114d918ded0ade1e818eea3f9647b005c8be17",
+    },
+    "inputs": {
+      "serves.ts": "2e388c8f38798b4f9f6766265790e808d3c18341119206a9e7b40151d9716fbb",
+      "serves-values-nobody-knows.ts": "5ceb3977ed6a6b51b8f271e62d8ccd84a79e5efdcd2daaed993962d98f5c003f",
+      "bundled.ts": "26a8680bbf0c861168714585a9facbb8dda5378b24d70451e9cb11495e71d37a",
+      "tsconfig.json": "d64528c0b52c161715ed03f881486efb4292a504330a4c955b651391c5f78713",
+    },
+  };
+  assert.deepEqual(
+    { types: summary.types, inputs: summary.inputs },
+    reference,
+    "inputs differ from the matched stock control",
+  );
+  const icu = JSON.parse(readFileSync(join(folder, "icu.json"), "utf8"));
+  assert.equal(icu.referenceMatch, true, "ICU differs from the matched stock control");
+  assert.equal(icu.referenceSHA256, "119094f556f6bb38db24f3ec0665778f5bddea27d94b4500b2cf87f0e1e0a515");
+}
 summary.upstream = {
   source,
   tree: git(baseline, "rev-parse", "HEAD^{tree}"),
   engine,
-  engineTree: git(resolve("baseline-webkit"), "rev-parse", "HEAD^{tree}"),
+  engineTree: operationOrigins ? undefined : git(resolve("baseline-webkit"), "rev-parse", "HEAD^{tree}"),
 };
-summary.upstreamBuild = JSON.parse(readFileSync(join(folder, "upstream-build.json"), "utf8"));
-const build = join(baseline, "build/release");
+summary[operationOrigins ? "probeBuild" : "upstreamBuild"] = JSON.parse(
+  readFileSync(join(folder, operationOrigins ? "probe-build.json" : "upstream-build.json"), "utf8"),
+);
+const build = operationOrigins ? resolve("build/release") : join(baseline, "build/release");
 const order = readFileSync(join(build, "linker.order"), "utf8");
 assert.equal(order.split("\n").filter(line => line.trim() && !line.trimStart().startsWith("#")).length, 0);
 summary.orderingSHA256 = sha256(order);
@@ -197,16 +235,17 @@ summary.toolIdentities = Object.fromEntries(
 summary.buildManifestSHA256 = sha256(readFileSync(join(build, "build.ninja")));
 record();
 
-for (const [label, checkout, exe, revision, webkit] of [
+const pairs = [
   ["upstream", baseline, join(build, "bun"), source, engine],
   [
     "candidate",
     root,
     resolve("build/release/bun"),
     process.env.EXPECTED_NATIVE_SHA,
-    "651eeaca6e2792378928033b1ae7ac66d6f91eab",
+    operationOrigins ? process.env.WEBKIT_SOURCE_SHA : "651eeaca6e2792378928033b1ae7ac66d6f91eab",
   ],
-] as const) {
+] as const;
+for (const [label, checkout, exe, revision, webkit] of operationOrigins ? pairs.slice(1) : pairs) {
   const identity = checked(
     exe,
     [
@@ -224,7 +263,8 @@ for (const [label, checkout, exe, revision, webkit] of [
   for (const entry of fixtures.slice(0, 2)) {
     const output = join(folder, `${label}-${entry.replace(/\.ts$/, "")}`);
     const command = ["build", "--compile", "--aot", "--trim", "--explain=trim", entry, "--outfile", output];
-    checked(exe, command, inputs, output + ".compile");
+    const compilation = checked(exe, command, inputs, output + ".compile");
+    if (operationOrigins) assert(compilation.stderr.includes("AOT retention "), "missing diagnostic engine trace");
     const removedIndexes = readRemovedFeatures(output);
     assert(removedIndexes, "missing ELF feature bitmap");
     const removed = model.features
