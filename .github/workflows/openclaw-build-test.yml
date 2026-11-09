@@ -278,7 +278,7 @@ jobs:
             CARGO_PROFILE_DEV_OPT_LEVEL=1 CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS='-Cforce-frame-pointers=yes -Zthreads=8' \
             cargo test --no-fail-fast -p bun_aot --lib load::contents::tests::file_found_for_a_load_is_read_as_that_load_reads_it
       - name: Test AOT CLI stacks and module semantics
-        if: inputs.webkit_source_sha != ''
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && inputs.webkit_source_sha != '' }}
         timeout-minutes: 5
         run: |
           ./build/release/bun test test/cli/run/run-aot.test.ts \
@@ -319,6 +319,7 @@ jobs:
           JS
           cat build/openclaw-ci/node-reflection-control.json
       - name: Run selected and compatibility tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         id: tests
         timeout-minutes: 20
         run: |
