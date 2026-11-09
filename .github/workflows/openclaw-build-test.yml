@@ -1,24 +1,17 @@
-name: OpenClaw isolated reflection (temporary diagnosis)
+name: OpenClaw isolated crash-wrapper qualification
 
-on:
-  workflow_dispatch:
-    inputs:
-      probe:
-        type: choice
-        options: [reflection, types, visible, type-receipt, install, selected-suite, module-format, stdio, nocore]
-        default: reflection
+on: workflow_dispatch
 
 permissions:
   contents: read
   actions: read
 
 concurrency:
-  group: receiver-oracle-${{ github.ref }}
-  cancel-in-progress: true
+  group: nocore-oracle-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  receiver-oracle:
-    if: inputs.probe != 'type-receipt'
+  nocore:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     defaults:
@@ -53,114 +46,7 @@ jobs:
           tar -xzf bun-linux-x64.tar.gz -C ../../release bun bun.trim engine-source.json
           cd ../../..
           ./build/release/bun -e 'if (Bun.revision !== "5cd0cffa4a84f8a9285fc8b55d98c3d1deabab58" || process.versions.webkit !== "651eeaca6e2792378928033b1ae7ac66d6f91eab") throw new Error("unadmitted source pair")'
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: inputs.probe == 'selected-suite'
-        with:
-          ref: 5cd0cffa4a84f8a9285fc8b55d98c3d1deabab58
-          path: source
-          persist-credentials: false
-      - name: Verify the frozen native test selection
-        if: inputs.probe == 'selected-suite'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          test "$(gh api repos/openclaw/bun/actions/artifacts/13695825581 --jq .workflow_run.id)" = 42658362697
-          test "$(gh api repos/openclaw/bun/actions/artifacts/13695825581 --jq .workflow_run.head_sha)" = 5cd0cffa4a84f8a9285fc8b55d98c3d1deabab58
-          test "$(gh api repos/openclaw/bun/actions/artifacts/13695825581 --jq .digest)" = sha256:82a30d385e7f97fe971cc274a8d12eae3572e26d74edd07c222ee18c40cc1aa0
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        if: inputs.probe == 'selected-suite'
-        with:
-          artifact-ids: 13695825581
-          run-id: 42658362697
-          github-token: ${{ github.token }}
-          path: frozen-report
-      - name: Resume the exact selected native suite after frozen dependency setup
-        if: inputs.probe == 'selected-suite'
-        env:
-          PUPPETEER_SKIP_DOWNLOAD: "1"
-          BUN_INSTALL_CACHE_DIR: ${{ runner.temp }}/selected-suite-install-cache
-        run: |
-          set -euo pipefail
-          test "$(git -C source rev-parse HEAD)" = 5cd0cffa4a84f8a9285fc8b55d98c3d1deabab58
-          mkdir -p source/build/openclaw-ci
-          cp frozen-report/openclaw-ci/selected.json source/build/openclaw-ci/selected.json
-          cd source
-          ../build/release/bun install --frozen-lockfile
-          (cd test && ../../build/release/bun install --frozen-lockfile)
-          ../build/release/bun scripts/openclaw-ci/tests.ts test
-      - name: Capture isolated receiver and surface observations
-        if: inputs.probe == 'reflection' || inputs.probe == ''
-        run: |
-          ./build/release/bun install --frozen-lockfile
-          node scripts/openclaw-ci/reflection-oracle.cjs
-      - name: Replay only the visible descriptor and constructor walks
-        if: inputs.probe == 'visible'
-        run: node scripts/openclaw-ci/reflection-oracle.cjs --visible-only
-      - name: Probe the exact node-class fixture's emitted type guards
-        if: inputs.probe == 'types'
-        run: |
-          ./build/release/bun install --frozen-lockfile
-          node scripts/openclaw-ci/node-class-guard-probe.cjs
-      - name: Compare grouped-runner setup with explicit frozen dependency setup
-        if: inputs.probe == 'install'
-        run: node scripts/openclaw-ci/install-setup-probe.cjs
-      - name: Compare concurrent and synchronous imported TSX formats
-        if: inputs.probe == 'module-format'
-        run: |
-          ./build/release/bun install --frozen-lockfile
-          node scripts/openclaw-ci/module-format-probe.cjs
-      - name: Verify the pre-fix stdio control artifact
-        if: inputs.probe == 'stdio'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          test "$(gh api repos/openclaw/bun/actions/artifacts/13657933371 --jq .workflow_run.id)" = 42582282341
-          test "$(gh api repos/openclaw/bun/actions/artifacts/13657933371 --jq .workflow_run.head_sha)" = aa024e5a1d5466098357784d7f6fb159581e1478
-          test "$(gh api repos/openclaw/bun/actions/artifacts/13657933371 --jq .digest)" = sha256:c07a02e7a49a8d2a25be96e2b98539d9e7d94bb6567672a5e96a065733d1dfd6
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        if: inputs.probe == 'stdio'
-        with:
-          artifact-ids: 13657933371
-          run-id: 42582282341
-          github-token: ${{ github.token }}
-          path: build/openclaw-ci/stdio-control-input
-      - name: Replay original stdio exception identity before and after the repair
-        if: inputs.probe == 'stdio'
-        run: |
-          set -euo pipefail
-          cd build/openclaw-ci/stdio-control-input
-          test "$(cat commit.txt)" = aa024e5a1d5466098357784d7f6fb159581e1478
-          sha256sum -c SHA256SUMS
-          mkdir -p ../../stdio-control
-          tar -xzf bun-linux-x64.tar.gz -C ../../stdio-control bun engine-source.json
-          cd ../../..
-          ./build/stdio-control/bun -e 'if (Bun.revision !== "aa024e5a1d5466098357784d7f6fb159581e1478") throw new Error("unadmitted pre-fix control")'
-          ./build/release/bun install --frozen-lockfile
-          mkdir -p build/openclaw-ci/receiver-oracle/stdio
-          set +e
-          timeout --kill-after=5s 120s ./build/stdio-control/bun test ./test/js/node/process/process-stdio.test.ts --test-name-pattern 'preserves a constructor exception' --reporter=junit --reporter-outfile=build/openclaw-ci/receiver-oracle/stdio/before.xml > build/openclaw-ci/receiver-oracle/stdio/before.log 2>&1
-          before=$?
-          timeout --kill-after=5s 120s ./build/release/bun test ./test/js/node/process/process-stdio.test.ts --test-name-pattern 'preserves a constructor exception' --reporter=junit --reporter-outfile=build/openclaw-ci/receiver-oracle/stdio/after.xml > build/openclaw-ci/receiver-oracle/stdio/after.log 2>&1
-          after=$?
-          set -e
-          cat build/openclaw-ci/receiver-oracle/stdio/before.log
-          cat build/openclaw-ci/receiver-oracle/stdio/after.log
-          printf '{"before":%s,"after":%s}\n' "$before" "$after" > build/openclaw-ci/receiver-oracle/stdio/status.json
-          test "$before" = 1
-          test "$after" = 0
-          python3 - <<'PY'
-          from pathlib import Path
-          import xml.etree.ElementTree as ET
-          folder=Path('build/openclaw-ci/receiver-oracle/stdio')
-          for label in ('before','after'):
-              rows=[row for row in ET.parse(folder/(label+'.xml')).iter('testcase') if 'preserves a constructor exception' in row.get('name','')]
-              assert len(rows)==3, (label,len(rows))
-              assert all(row.find('skipped') is None for row in rows)
-              assert all((row.find('failure') is not None)==(label=='before') for row in rows)
-          print('All three original-exception identity regressions fail before and pass after the repair.')
-          PY
       - name: Replay noCoreCmd with writable and read-only procfs
-        if: inputs.probe == 'nocore'
         env:
           PUPPETEER_SKIP_DOWNLOAD: "1"
         run: |
@@ -217,44 +103,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: receiver-oracle-${{ github.sha }}-attempt${{ github.run_attempt }}
+          name: nocore-oracle-${{ github.sha }}-attempt${{ github.run_attempt }}
           path: |
             build/openclaw-ci/receiver-oracle/
-            source/build/openclaw-ci/*.json
           if-no-files-found: error
           retention-days: 7
-
-  type-receipt:
-    if: inputs.probe == 'type-receipt'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - name: Verify the immutable failed guard-probe artifact
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          test "$(gh api repos/openclaw/bun/actions/artifacts/13693460388 --jq .workflow_run.id)" = 42656642088
-          test "$(gh api repos/openclaw/bun/actions/artifacts/13693460388 --jq .workflow_run.head_sha)" = 9fd25c8b664b669c76f187c427a9a75c3ca0c6d4
-          test "$(gh api repos/openclaw/bun/actions/artifacts/13693460388 --jq .digest)" = sha256:dbbf0c473ae0cefcc2ff47971b632e4cf71580a4bdc5857715b6da5fe96cb1d5
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          artifact-ids: 13693460388
-          run-id: 42656642088
-          github-token: ${{ github.token }}
-          path: guard-proof
-      - name: Read existing guard records without rebuilding or executing the program
-        run: |
-          python3 - <<'PY'
-          import json,collections
-          from pathlib import Path
-          folder=Path("guard-proof/node-class-guards")
-          receipt=json.loads((folder/"receipt.json").read_text())
-          keys=("complete","nativeSource","probeSource","runtimeMatches","requiredTypes","presentTypes","answerGuards","accessSummary","typesTree","bunLockSHA256")
-          print("GUARD_RECEIPT "+json.dumps({k:receipt.get(k) for k in keys}))
-          rows=[json.loads(line) for line in (folder/"compile.stdout.log").read_text().splitlines() if line.startswith("{")]
-          print("RECORD_KINDS "+json.dumps(dict(collections.Counter(row.get("aot") for row in rows))))
-          answer=[row for row in rows if row.get("function")=="answer"]
-          print("ANSWER_RECORDS "+json.dumps(answer[:20]))
-          guards=[row for row in rows if row.get("aot")=="type-check"]
-          print("GUARD_SAMPLES "+json.dumps(guards[:10]))
-          PY
