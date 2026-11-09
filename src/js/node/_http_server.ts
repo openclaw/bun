@@ -742,6 +742,7 @@ Server.prototype.address = function () {
 };
 
 Server.prototype[setSecureContextSymbol] = function (options) {
+  validateObject(options, "options");
   const current = this[tlsSymbol];
   if (!current) {
     throw $ERR_INVALID_ARG_VALUE("options", options, "server is not configured for TLS");

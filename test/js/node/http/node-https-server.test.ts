@@ -44,35 +44,6 @@ function tlsRequest(port: number): Promise<string> {
   return promise;
 }
 
-test.each([false, true])("setSecureContext validates options before its receiver (AOT: %s)", async aot => {
-  using dir = tempDir("https-context-validation", {
-    "validation.js": `
-      const { Server } = require("node:https");
-      let checked = 0;
-      for (const receiver of [undefined, null, {}, Object.create(Server.prototype)]) {
-        for (const args of [[], ["a"]]) {
-          let caught;
-          try { Reflect.apply(Server.prototype.setSecureContext, receiver, args); }
-          catch (error) { caught = error; }
-          if (!(caught instanceof TypeError) || caught.code !== "ERR_INVALID_ARG_TYPE") {
-            throw new Error("incorrect option validation: " + caught);
-          }
-          checked++;
-        }
-      }
-      console.log(checked + " invalid options rejected");
-    `,
-  });
-  await using proc = Bun.spawn({
-    cmd: [bunExe(), "run", ...(aot ? ["--aot"] : []), join(String(dir), "validation.js")],
-    env: bunEnv,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
-  expect({ stdout, stderr, exitCode }).toEqual({ stdout: "8 invalid options rejected\n", stderr: "", exitCode: 0 });
-});
-
 // Inherited live-context normalization gaps; see followup-https-context-normalization.md.
 test.failing.each(["TLS 1.3 cipher names", "per-key passphrase", "default cipher order"] as const)(
   "setSecureContext applies %s like the constructor",

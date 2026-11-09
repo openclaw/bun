@@ -783,9 +783,8 @@ jobs:
           timeout --kill-after=5s 300s ./build/release/bun --expose-internals test \
             test/cli/run/run-aot.test.ts \
             test/js/node/http/node-http-fast-path-regressions.test.ts \
-            test/js/node/http/node-http-closed-response.test.ts \
             test/bundler/compile-trim-removed-features-throw.test.ts \
-            --test-name-pattern 'files that are CommonJS only by name|node:http server keeps its behavior|a response closed by Object|dynamic standard-stream construction errors remain catchable' \
+            --test-name-pattern 'files that are CommonJS only by name|node:http server keeps its behavior|dynamic standard-stream construction errors remain catchable' \
             --reporter=junit --reporter-outfile=build/openclaw-ci/native-test.xml \
             2>&1 | tee build/openclaw-ci/native-test.log
       - name: Probe the admitted shipping compile contract

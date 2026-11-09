@@ -618,7 +618,6 @@ $toClass(Server, "Server", http.Server);
 // A listener of this class speaks TLS whatever its options hold.
 Server.prototype[isTlsSymbol] = true;
 Server.prototype.setSecureContext = function setSecureContext(options) {
-  validateObject(options, "options");
   return this[setSecureContextSymbol](options);
 };
 
