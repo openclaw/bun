@@ -6036,9 +6036,9 @@ describe("fs/promises", () => {
     };
 
     if (withFileTypes) {
-      it("readdirSync(path, {recursive: true, withFileTypes: true} should work x 100", doIt, timeout);
+      it("readdirSync(path, {recursive: true, withFileTypes: true} should work x 100", doIt, 10_000);
     } else {
-      it("readdirSync(path, {recursive: true} should work x 100", doIt, timeout);
+      it("readdirSync(path, {recursive: true} should work x 100", doIt, 10_000);
     }
   }
 
