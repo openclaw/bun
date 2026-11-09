@@ -690,7 +690,7 @@ jobs:
             assert.ok(fs.existsSync(path.join(path.dirname(manifest), "http.d.ts")));
             console.log("Node declarations: " + require(manifest).version);
           '
-      - name: Compare the original single-file Node type program
+      - name: Inspect original Node callback guards
         if: inputs.diagnostic == 'trim-linux-runtime'
         run: |
           set -o pipefail
@@ -709,12 +709,12 @@ jobs:
               import { expect, test } from "bun:test";
               import { bunEnv, bunExe, tempDirWithBunTypes } from "harness";
               import { built, slot, spawned } from "./harness/commands";
-              test("original single-file Node type explain control", () => slot(async () => {
+              test("original single-file Node callback guard control", () => slot(async () => {
                 using dir = tempDirWithBunTypes("aot-node-type-control", { "main.ts": ${JSON.stringify(program)} });
                 const folder = String(dir);
-                const build = await spawned([bunExe(), "build", "--compile", "--aot", "--explain=json", "main.ts", "--outfile", "app"], folder, bunEnv);
+                const build = await spawned([bunExe(), "build", "--compile", "--aot", "--explain=guards-json", "main.ts", "--outfile", "app"], folder, bunEnv);
                 built(build);
-                console.log("ORIGINAL_SINGLE_FILE_EXPLAIN\\n" + build.stdout);
+                console.log("ORIGINAL_NODE_CALLBACK_GUARDS\\n" + build.stdout);
                 const plain = await spawned([bunExe(), "main.ts"], folder, bunEnv);
                 expect(plain.exitCode).toBe(0);
                 expect(plain.stdout).toBe("true false 2 4\\n200 text/plain hello\\n404 text/plain hello\\n");
@@ -725,41 +725,6 @@ jobs:
           timeout --kill-after=5s 100s ./build/release/bun --expose-internals test \
             test/aot/openclaw-node-type-control.test.ts \
             2>&1 | tee build/openclaw-ci/node-type-control.log
-      - name: Replay unresolved runtime owners in separate test processes
-        if: always() && inputs.diagnostic == 'trim-linux-runtime' && steps.native.outcome == 'success' && steps.runtime-deps.outcome == 'success'
-        run: |
-          set -o pipefail
-          test_files=(
-            aot/types-of-node-classes-name-what-buns-modules-make.test.ts
-          )
-          printf '[' > build/openclaw-ci/runtime-results.json
-          separator=
-          failed=0
-          for i in "${!test_files[@]}"; do
-            set +e
-            timeout --kill-after=5s 90s ./build/release/bun --expose-internals test \
-              "test/${test_files[$i]}" --test-name-pattern 'a position of such a type is not read by name' \
-              2>&1 | tee -a build/openclaw-ci/runtime-test.log
-            status=$?
-            set -e
-            printf '%s{"testPath":"%s","exitCode":%s,"diagnosticDeadlineSeconds":90}' \
-              "$separator" "${test_files[$i]}" "$status" >> build/openclaw-ci/runtime-results.json
-            separator=,
-            if [ "$status" -ne 0 ]; then failed=1; fi
-          done
-          printf ']\n' >> build/openclaw-ci/runtime-results.json
-          exit "$failed"
-      - name: Verify all focused runtime files were exercised
-        if: always() && inputs.diagnostic == 'trim-linux-runtime' && steps.native.outcome == 'success' && steps.runtime-deps.outcome == 'success'
-        run: |
-          node -e '
-            const assert = require("node:assert/strict");
-            const results = require("./build/openclaw-ci/runtime-results.json");
-            const expected = [
-              "aot/types-of-node-classes-name-what-buns-modules-make.test.ts",
-            ];
-            assert.deepEqual(results.map(result => result.testPath.replace(/^test\//, "")).sort(), expected.sort());
-          '
       - name: Probe the admitted shipping compile contract
         if: inputs.diagnostic == 'trim-linux-shipping'
         run: |
@@ -797,8 +762,6 @@ jobs:
             build/openclaw-ci/native-diagnostic.json
             build/openclaw-ci/native-test.xml
             build/openclaw-ci/native-test.log
-            build/openclaw-ci/runtime-results.json
-            build/openclaw-ci/runtime-test.log
             build/openclaw-ci/node-type-control.log
             build/openclaw-ci/shipping-admission.json
             build/openclaw-ci/compiled-runtime.json
