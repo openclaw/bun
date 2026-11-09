@@ -169,6 +169,14 @@ const summary = {
 };
 const save = () => writeFileSync(join(folder, "summary.json"), JSON.stringify(summary, null, 2) + "\n");
 save();
+if (process.argv.includes("--visible-only")) {
+  summary.mode = "visible-only";
+  captureVisible();
+  summary.complete = true;
+  save();
+  console.log(JSON.stringify({ complete: true, mode: "visible-only" }));
+  process.exit(0);
+}
 const receiversForParent = Array.from({ length: 11 });
 const isolatedGroups = groups.flatMap(group =>
   group.operations.flatMap((_, operationIndex) =>
@@ -285,12 +293,18 @@ const patch = spawnSync("git", ["diff", "--", ...snapshotPaths], { encoding: "ut
 assert.equal(patch.status, 0);
 writeFileSync(join(folder, "candidate-snapshots.diff"), patch.stdout);
 
-// Reuse the three unchanged descriptor/constructor walks under both runtimes.
-const visiblePath = "test/js/node/visible-surface.test.ts";
-const visible = readFileSync(visiblePath, "utf8");
-assert(visible.startsWith('import { expect, test } from "bun:test";\n'));
-const stripped = require("node:module").stripTypeScriptTypes(visible.slice(visible.indexOf("\n") + 1));
-const shim = `
+captureVisible();
+summary.complete = true;
+save();
+console.log(JSON.stringify({ complete: true, casesPerRuntime: 176, differences: summary.differences.length }));
+
+function captureVisible() {
+  // Reuse the three unchanged descriptor/constructor walks under both runtimes.
+  const visiblePath = "test/js/node/visible-surface.test.ts";
+  const visible = readFileSync(visiblePath, "utf8");
+  assert(visible.startsWith('import { expect, test } from "bun:test";\n'));
+  const stripped = require("node:module").stripTypeScriptTypes(visible.slice(visible.indexOf("\n") + 1));
+  const shim = `
 const assert = require("node:assert/strict");
 const { writeSync } = require("node:fs");
 let title, count = 0;
@@ -301,35 +315,44 @@ const expect = value => ({
   toMatchSnapshot() { count++; emit({ type: "snapshot", title, value }); },
 });
 `;
-summary.visibleRuns = [];
-for (const [runtime, executable] of [
-  ["node", process.execPath],
-  ["candidate", resolve("build/release/bun")],
-]) {
-  const child = spawnSync(
-    executable,
-    ["-e", shim + stripped + '\nassert.equal(count, 3); emit({ type: "complete", count }); process.exit(0);'],
-    {
-      env,
-      encoding: "utf8",
-      timeout: 15000,
-      maxBuffer: 4 * 1024 * 1024,
-    },
-  );
-  writeFileSync(join(folder, runtime + "-visible.stdout.jsonl"), child.stdout ?? "");
-  writeFileSync(join(folder, runtime + "-visible.stderr.log"), child.stderr ?? "");
-  const status = { runtime, exitCode: child.status, signal: child.signal, error: child.error?.message };
-  summary.visibleRuns.push(status);
-  save();
-  assert(!child.error && !child.signal && child.status === 0, JSON.stringify(status));
-  const rows = child.stdout
-    .trim()
-    .split("\n")
-    .map(line => JSON.parse(line));
-  assert.equal(rows.filter(row => row.type === "snapshot").length, 3);
-  assert.deepEqual(rows.at(-1), { type: "complete", count: 3 });
+  summary.visibleRuns = [];
+  for (const [runtime, executable] of [
+    ["node", process.execPath],
+    ["candidate", resolve("build/release/bun")],
+  ]) {
+    let code = stripped;
+    if (runtime === "node") {
+      const first = code.indexOf('test("the visible surface');
+      assert(first >= 0);
+      const adapter =
+        '\nfor (let i = modules.length - 1; i >= 0; i--) { if (!require("node:module").isBuiltin("node:" + modules[i])) { emit({ type: "unsupported-module", id: modules[i] }); modules.splice(i, 1); } }\n';
+      code = code.slice(0, first) + adapter + code.slice(first);
+    }
+    const child = spawnSync(
+      executable,
+      ["-e", shim + code + '\nassert.equal(count, 3); emit({ type: "complete", count }); process.exit(0);'],
+      {
+        env,
+        encoding: "utf8",
+        timeout: 15000,
+        maxBuffer: 4 * 1024 * 1024,
+      },
+    );
+    writeFileSync(join(folder, runtime + "-visible.stdout.jsonl"), child.stdout ?? "");
+    writeFileSync(join(folder, runtime + "-visible.stderr.log"), child.stderr ?? "");
+    const status = { runtime, exitCode: child.status, signal: child.signal, error: child.error?.message };
+    summary.visibleRuns.push(status);
+    save();
+    assert(!child.error && !child.signal && child.status === 0, JSON.stringify(status));
+    const rows = child.stdout
+      .trim()
+      .split("\n")
+      .map(line => JSON.parse(line));
+    assert.equal(rows.filter(row => row.type === "snapshot").length, 3);
+    assert.deepEqual(rows.at(-1), { type: "complete", count: 3 });
+    status.unsupportedModuleIds = rows.filter(row => row.type === "unsupported-module").map(row => row.id);
+  }
+  summary.visibleSourceSHA256 = createHash("sha256").update(visible).digest("hex");
+  summary.visibleLimitations =
+    "Node module IDs absent from isBuiltin are explicitly recorded and excluded only from its module walk; candidate walks all original IDs.";
 }
-summary.visibleSourceSHA256 = createHash("sha256").update(visible).digest("hex");
-summary.complete = true;
-save();
-console.log(JSON.stringify({ complete: true, casesPerRuntime: 176, differences: summary.differences.length }));

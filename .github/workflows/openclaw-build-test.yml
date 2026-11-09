@@ -5,7 +5,7 @@ on:
     inputs:
       probe:
         type: choice
-        options: [reflection, types]
+        options: [reflection, types, visible]
         default: reflection
 
 permissions:
@@ -53,10 +53,13 @@ jobs:
           cd ../../..
           ./build/release/bun -e 'if (Bun.revision !== "11e3dd7ffa155cb63a38028adcc94be71553671d" || process.versions.webkit !== "651eeaca6e2792378928033b1ae7ac66d6f91eab") throw new Error("unadmitted source pair")'
       - name: Capture isolated receiver and surface observations
-        if: inputs.probe != 'types'
+        if: inputs.probe == 'reflection' || inputs.probe == ''
         run: |
           ./build/release/bun install --frozen-lockfile
           node scripts/openclaw-ci/reflection-oracle.cjs
+      - name: Replay only the visible descriptor and constructor walks
+        if: inputs.probe == 'visible'
+        run: node scripts/openclaw-ci/reflection-oracle.cjs --visible-only
       - name: Probe the exact node-class fixture's emitted type guards
         if: inputs.probe == 'types'
         run: |
