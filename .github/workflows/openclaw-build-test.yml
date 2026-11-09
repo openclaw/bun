@@ -682,52 +682,16 @@ jobs:
             2>&1 | tee build/openclaw-ci/native-test.log
       - name: Prepare focused runtime diagnosis
         if: inputs.diagnostic == 'trim-linux-runtime'
-        id: runtime-deps
-        run: |
-          ./build/release/bun install --frozen-lockfile
-          node -e '
-            const assert = require("node:assert/strict");
-            const path = require("node:path");
-            const fs = require("node:fs");
-            const manifest = require.resolve("@types/node/package.json", { paths: [path.resolve("packages/bun-types")] });
-            assert.ok(fs.existsSync(path.join(path.dirname(manifest), "http.d.ts")));
-            console.log("Node declarations: " + require(manifest).version);
-          '
-      - name: Inspect original Node callback guards
+        run: ./build/release/bun install --frozen-lockfile
+      - name: Replay Proxy socket write regressions
         if: inputs.diagnostic == 'trim-linux-runtime'
         run: |
-          set -o pipefail
-          curl --fail --location \
-            https://raw.githubusercontent.com/openclaw/bun/05ac1e0fda2eef1f3890882f19223b4e7ee2d440/test/aot/types-of-node-classes-name-what-buns-modules-make.test.ts \
-            --output build/openclaw-ci/node-type-original-fixture.ts
-          node -e '
-            const fs = require("node:fs");
-            const assert = require("node:assert/strict");
-            const { createHash } = require("node:crypto");
-            const source = fs.readFileSync("build/openclaw-ci/node-type-original-fixture.ts");
-            assert.equal(createHash("sha256").update(source).digest("hex"), "717433b7e63a4c828187dc0af3872a21570f3539033854d61bd307cc5773dadb");
-            const program = source.toString().match(/const program = `([\s\S]*?)`;/)?.[1];
-            assert.ok(program);
-            fs.writeFileSync("test/aot/openclaw-node-type-control.test.ts", `
-              import { expect, test } from "bun:test";
-              import { bunEnv, bunExe, tempDirWithBunTypes } from "harness";
-              import { built, slot, spawned } from "./harness/commands";
-              test("original single-file Node callback guard control", () => slot(async () => {
-                using dir = tempDirWithBunTypes("aot-node-type-control", { "main.ts": ${JSON.stringify(program)} });
-                const folder = String(dir);
-                const build = await spawned([bunExe(), "build", "--compile", "--aot", "--explain=guards-json", "main.ts", "--outfile", "app"], folder, bunEnv);
-                built(build);
-                console.log("ORIGINAL_NODE_CALLBACK_GUARDS\\n" + build.stdout);
-                const plain = await spawned([bunExe(), "main.ts"], folder, bunEnv);
-                expect(plain.exitCode).toBe(0);
-                expect(plain.stdout).toBe("true false 2 4\\n200 text/plain hello\\n404 text/plain hello\\n");
-                expect(await spawned([folder + "/app"], folder, bunEnv)).toEqual(plain);
-              }), 90000);
-            `);
-          '
+          set -euo pipefail
           timeout --kill-after=5s 100s ./build/release/bun --expose-internals test \
-            test/aot/openclaw-node-type-control.test.ts \
-            2>&1 | tee build/openclaw-ci/node-type-control.log
+            test/js/node/http/node-http-fast-path-regressions.test.ts \
+            --test-name-pattern 'a Proxy socket (writes bytes|uncorks queued response writes)' \
+            --reporter=junit --reporter-outfile=build/openclaw-ci/native-test.xml \
+            2>&1 | tee build/openclaw-ci/native-test.log
       - name: Probe the admitted shipping compile contract
         if: inputs.diagnostic == 'trim-linux-shipping'
         run: |
@@ -765,7 +729,6 @@ jobs:
             build/openclaw-ci/native-diagnostic.json
             build/openclaw-ci/native-test.xml
             build/openclaw-ci/native-test.log
-            build/openclaw-ci/node-type-control.log
             build/openclaw-ci/shipping-admission.json
             build/openclaw-ci/compiled-runtime.json
             build/openclaw-ci/trim-diagnostics/*.json
