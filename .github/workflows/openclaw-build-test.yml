@@ -33,6 +33,10 @@ on:
         type: choice
         options: [all, linux-x64, darwin-arm64]
         default: all
+      webkit_source_sha:
+        description: Full openclaw/WebKit SHA for Linux x64 source-pair qualification (requires platform=linux-x64)
+        type: string
+        required: false
       diagnostic:
         description: Reuse a native artifact for focused diagnosis (not source qualification)
         type: choice
@@ -77,17 +81,50 @@ concurrency:
 
 jobs:
   linux-x64:
-    if: github.repository == 'openclaw/bun' && inputs.platform != 'darwin-arm64' && (inputs.diagnostic == '' || inputs.diagnostic == 'none')
+    if: github.repository == 'openclaw/bun' && (inputs.webkit_source_sha != '' || inputs.platform != 'darwin-arm64') && (inputs.diagnostic == '' || inputs.diagnostic == 'none')
     runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 115
     env:
       BUN_BUILD_CACHE_DIR: ${{ github.workspace }}/.cache/openclaw-build
       PUPPETEER_SKIP_DOWNLOAD: "1"
+      WEBKIT_SOURCE_SHA: ${{ inputs.webkit_source_sha }}
     steps:
+      - name: Validate source-pair request
+        if: inputs.webkit_source_sha != ''
+        env:
+          PLATFORM: ${{ inputs.platform }}
+        run: |
+          test "$PLATFORM" = linux-x64
+          [[ "$WEBKIT_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: inputs.webkit_source_sha != ''
+        with:
+          repository: openclaw/WebKit
+          ref: ${{ inputs.webkit_source_sha }}
+          path: .openclaw-webkit
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*
+            !/LayoutTests/
+            !/JSTests/
+            !/PerformanceTests/
+            !/Websites/
+            !/ManualTests/
+            !/WebDriverTests/
+      - name: Record source-pair identity
+        if: inputs.webkit_source_sha != ''
+        run: |
+          test "$(git -C .openclaw-webkit rev-parse HEAD)" = "$WEBKIT_SOURCE_SHA"
+          test -z "$(git -C .openclaw-webkit status --porcelain)"
+          mkdir -p build/openclaw-ci
+          python3 -c 'import json,subprocess; from pathlib import Path; rev=lambda *args: subprocess.check_output(["git",*args],text=True).strip(); Path("build/openclaw-ci/engine-source.json").write_text(json.dumps({"mode":"source", "bun":{"sha":rev("rev-parse","HEAD"),"tree":rev("rev-parse","HEAD^{tree}")},"webkit":{"repository":"openclaw/WebKit","sha":rev("-C",".openclaw-webkit","rev-parse","HEAD"),"tree":rev("-C",".openclaw-webkit","rev-parse","HEAD^{tree}")},"shippingArchiveQualified":False},indent=2)+"\n")'
+          echo "BUN_WEBKIT_PATH=$GITHUB_WORKSPACE/.openclaw-webkit" >> "$GITHUB_ENV"
+          echo 'Source-pair qualification uses local WebKit and system ICU; it does not qualify a shipping archive.' >> "$GITHUB_STEP_SUMMARY"
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: "1.4.4"
@@ -107,6 +144,9 @@ jobs:
           RUST_TOOLCHAIN: ${{ steps.pins.outputs.rust }}
         run: |
           bash scripts/openclaw-ci/install-linux-toolchain.sh
+          if test -n "$WEBKIT_SOURCE_SHA"; then
+            sudo apt-get install -y --no-install-recommends libicu-dev ruby perl
+          fi
       - name: Restore build caches
         id: cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -116,9 +156,9 @@ jobs:
             build/release/rust-target
             ~/.cargo/registry
             ~/.cargo/git
-          key: openclaw-native-x64-v1-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', 'bun.lock', 'test/bun.lock', 'rust-toolchain.toml', 'scripts/build/**', 'scripts/build.ts', '.github/workflows/openclaw-build-test.yml') }}-${{ steps.pins.outputs.tree }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: openclaw-native-x64-v1-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', 'bun.lock', 'test/bun.lock', 'rust-toolchain.toml', 'scripts/build/**', 'scripts/build.ts', '.github/workflows/openclaw-build-test.yml') }}-${{ steps.pins.outputs.tree }}-${{ inputs.webkit_source_sha || 'pinned' }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            openclaw-native-x64-v1-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', 'bun.lock', 'test/bun.lock', 'rust-toolchain.toml', 'scripts/build/**', 'scripts/build.ts', '.github/workflows/openclaw-build-test.yml') }}-${{ steps.pins.outputs.tree }}-
+            openclaw-native-x64-v1-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', 'bun.lock', 'test/bun.lock', 'rust-toolchain.toml', 'scripts/build/**', 'scripts/build.ts', '.github/workflows/openclaw-build-test.yml') }}-${{ steps.pins.outputs.tree }}-${{ inputs.webkit_source_sha || 'pinned' }}-
       - name: Select tests
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha || inputs.base_sha }}
@@ -127,7 +167,7 @@ jobs:
       - name: Install build dependencies
         run: bun install --frozen-lockfile
       - name: Prefetch the pinned WebKit archive through the release API
-        if: steps.cache.outputs.cache-matched-key == ''
+        if: inputs.webkit_source_sha == '' && steps.cache.outputs.cache-matched-key == ''
         timeout-minutes: 15
         env:
           BUN_BUILD_PREFETCH_DIR: ${{ runner.temp }}/openclaw-prefetch
@@ -156,9 +196,15 @@ jobs:
           started=$SECONDS
           timing() { echo "Build: $((SECONDS - started)) seconds; restored cache: ${CACHE_MATCH:-none}" >> "$GITHUB_STEP_SUMMARY"; }
           trap timing EXIT
-          bun scripts/build.ts --profile=openclaw-native --timings
-          bun scripts/openclaw-ci/tests.ts prepare-engine-tests
-          bun scripts/build/aot-paths.ts --profile=openclaw-native >> "$GITHUB_ENV"
+          engine_args=()
+          if test -n "$WEBKIT_SOURCE_SHA"; then engine_args+=(--webkit=local); fi
+          bun scripts/build.ts --profile=openclaw-native "${engine_args[@]}" --timings
+          if test -n "$WEBKIT_SOURCE_SHA"; then
+            bun scripts/build.ts --profile=openclaw-native "${engine_args[@]}" --target=engine-test-programs
+          else
+            bun scripts/openclaw-ci/tests.ts prepare-engine-tests
+          fi
+          bun scripts/build/aot-paths.ts --profile=openclaw-native "${engine_args[@]}" >> "$GITHUB_ENV"
       - name: Save build caches
         if: steps.build.outcome == 'success'
         run: CCACHE_DIR="$BUN_BUILD_CACHE_DIR/ccache" ccache --max-size=3G --cleanup --show-stats
@@ -175,7 +221,10 @@ jobs:
         run: |
           mkdir -p build/release/bun.trim
           cp build/release/bun-profile.trim/*.txt build/release/bun.trim/
-          tar -czf build/openclaw-ci/bun-linux-x64.tar.gz -C build/release bun bun.trim
+          if test -n "$WEBKIT_SOURCE_SHA"; then cp build/openclaw-ci/engine-source.json build/release/engine-source.json; fi
+          members=(bun bun.trim)
+          if test -n "$WEBKIT_SOURCE_SHA"; then members+=(engine-source.json); fi
+          tar -czf build/openclaw-ci/bun-linux-x64.tar.gz -C build/release "${members[@]}"
           (cd build/openclaw-ci && sha256sum bun-linux-x64.tar.gz > SHA256SUMS)
           git rev-parse HEAD > build/openclaw-ci/commit.txt
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -192,7 +241,15 @@ jobs:
         timeout-minutes: 20
         env:
           BUN_UNDER_TEST: ${{ github.workspace }}/build/release/bun
-        run: bun scripts/rust-test.ts -p bun_trim
+        run: |
+          if test -n "$WEBKIT_SOURCE_SHA"; then
+            # Reuse the exact source-pair build's generators; rust-test.ts downloads the pinned engine's generators.
+            BUN_CODEGEN_DIR="$GITHUB_WORKSPACE/build/release/codegen" CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0 \
+              CARGO_PROFILE_DEV_OPT_LEVEL=1 CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS='-Cforce-frame-pointers=yes -Zthreads=8' \
+              cargo test --no-fail-fast -p bun_trim
+          else
+            bun scripts/rust-test.ts -p bun_trim
+          fi
       - name: Run selected and compatibility tests
         id: tests
         timeout-minutes: 20
@@ -237,7 +294,7 @@ jobs:
           retention-days: 7
 
   build-darwin-arm64:
-    if: github.repository == 'openclaw/bun' && inputs.platform != 'linux-x64' && (inputs.diagnostic == '' || inputs.diagnostic == 'none')
+    if: github.repository == 'openclaw/bun' && inputs.webkit_source_sha == '' && inputs.platform != 'linux-x64' && (inputs.diagnostic == '' || inputs.diagnostic == 'none')
     outputs:
       artifact_id: ${{ steps.bundle.outputs.artifact-id }}
     runs-on: ${{ vars.OPENCLAW_RELEASE_BUILD_RUNNER || 'ubuntu-24.04-arm' }}
