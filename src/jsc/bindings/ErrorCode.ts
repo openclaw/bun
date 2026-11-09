@@ -375,5 +375,6 @@ const errors: ErrorCodeMapping = [
   ["ERR_INVALID_TYPESCRIPT_SYNTAX", SyntaxError],
   ["ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX", SyntaxError],
   ["HPE_INVALID_URL", Error],
+  ["ERR_HTTP2_TOO_MANY_ORIGINS", Error],
 ];
 export default errors;

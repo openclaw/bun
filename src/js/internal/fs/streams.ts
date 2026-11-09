@@ -650,6 +650,12 @@ const writeStreamPrototype = WriteStream.prototype;
 writeStreamPrototype.open = streamNoop;
 writeStreamPrototype._construct = streamConstruct;
 
+// In the words that the engine has for `this[kFs].write(..)` in the text that `bun run` evaluates.
+function fileSystemOrThrow<T>(fs: T): NonNullable<T> {
+  if (fs == null) throw new TypeError(`${fs} is not an object (evaluating 'size')`);
+  return fs;
+}
+
 function writeAll(
   this: $Node.WriteStream,
   data: Buffer,
@@ -658,35 +664,40 @@ function writeAll(
   cb: ErrorCallback,
   retries = 0,
 ) {
-  if (IS_COMPILED_AHEAD_OF_TIME && this[kFs] == null)
-    throw new TypeError(`${this[kFs]} is not an object (evaluating 'size')`);
-  this[kFs].write!(this.fd, data, 0, size, pos, (er, bytesWritten, buffer) => {
-    // No data currently available and operation should be retried later.
-    if (er?.code === "EAGAIN") {
-      er = null;
-      bytesWritten = 0;
-    }
+  (IS_COMPILED_AHEAD_OF_TIME ? fileSystemOrThrow(this[kFs]) : this[kFs]).write!(
+    this.fd,
+    data,
+    0,
+    size,
+    pos,
+    (er, bytesWritten, buffer) => {
+      // No data currently available and operation should be retried later.
+      if (er?.code === "EAGAIN") {
+        er = null;
+        bytesWritten = 0;
+      }
 
-    if (this.destroyed || er) {
-      return cb(er || $ERR_STREAM_DESTROYED("write"));
-    }
+      if (this.destroyed || er) {
+        return cb(er || $ERR_STREAM_DESTROYED("write"));
+      }
 
-    this.bytesWritten += bytesWritten!;
+      this.bytesWritten += bytesWritten!;
 
-    retries = bytesWritten ? 0 : retries + 1;
-    size -= bytesWritten!;
-    if (pos !== undefined) pos += bytesWritten!;
+      retries = bytesWritten ? 0 : retries + 1;
+      size -= bytesWritten!;
+      if (pos !== undefined) pos += bytesWritten!;
 
-    // Try writing non-zero number of bytes up to 5 times.
-    if (retries > 5) {
-      // cb($ERR_SYSTEM_ERROR('write failed'));
-      cb(new Error("write failed"));
-    } else if (size) {
-      writeAll.$call(this, buffer!.slice(bytesWritten), size, pos, cb, retries);
-    } else {
-      cb();
-    }
-  });
+      // Try writing non-zero number of bytes up to 5 times.
+      if (retries > 5) {
+        // cb($ERR_SYSTEM_ERROR('write failed'));
+        cb(new Error("write failed"));
+      } else if (size) {
+        writeAll.$call(this, buffer!.slice(bytesWritten), size, pos, cb, retries);
+      } else {
+        cb();
+      }
+    },
+  );
 }
 
 function writevAll(

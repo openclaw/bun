@@ -144,7 +144,7 @@ private:
     void drainMessagesToWorkerObject(ScriptExecutionContext&, DrainBudget);
     void rejectAllCrossVMRequests();
     void postMessageErrorToWorkerObject(String&& message, String&& code);
-    bool postSerializedErrorToWorkerObject(Zig::GlobalObject&, JSC::JSValue error);
+    bool postSerializedErrorToWorkerObject(Zig::GlobalObject&, const String& message, JSC::JSValue error);
 
     // Parent thread only.
     RefPtr<ScriptExecutionContext> m_scriptExecutionContext;

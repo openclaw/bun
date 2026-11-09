@@ -269,7 +269,7 @@ static void throwIfResolvedFileIsRefused(JSC::JSGlobalObject* globalObject, JSC:
     }
     size_t query = resolved.find('?');
     StringView path = query == notFound ? StringView(resolved) : StringView(resolved).left(static_cast<unsigned>(query));
-    if (!path.endsWith(".node"_s))
+    if (!path.endsWith(".node"_s) || Bun::letsTestRunLoadAddon(globalObject, resolved) || Bun::isFileInExecutable(resolved))
         return;
     if (JSValue error = Bun::errorIfCodeOutsideImageIsRefused(globalObject, Bun::ErrorCode::MODULE_NOT_FOUND, resolved))
         JSC::throwException(globalObject, scope, error);
@@ -866,6 +866,8 @@ void ImportMetaObject::finishCreation(VM& vm)
         auto* object = Bun::JSCommonJSModule::createBoundRequireFunction(init.vm, meta->globalObject(), path, meta->moduleGraph());
         RETURN_IF_EXCEPTION(scope, );
         ASSERT(object);
+        if (meta->isOfCompiledModule)
+            Bun::didCreateRequireOfCompiledModule(object);
         init.set(uncheckedDowncast<JSFunction>(object));
     });
     this->urlProperty.initLater([](const JSC::LazyProperty<JSC::JSObject, JSC::JSString>::Initializer& init) {

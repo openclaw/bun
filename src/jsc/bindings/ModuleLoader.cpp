@@ -925,14 +925,12 @@ JSValue fetchCommonJSModule(
     RETURN_IF_EXCEPTION(scope, {});
 
     if (Bun::hasCompiledModules() && !target->moduleGraph()) [[unlikely]] {
-        String pathOfAsker = referrer ? referrer->toWTFString(BunString::ZeroCopy) : String();
+        String pathOfAsker = Bun::pathOfRequirer(target, referrer ? referrer->toWTFString(BunString::ZeroCopy) : String());
         JSC::AOT::AskerOfModule asker(globalObject, pathOfAsker);
         bool hasRun = requireCompiledModule(globalObject, target, specifierWtfString, !!typeAttribute);
         RETURN_IF_EXCEPTION(scope, {});
-        if (hasRun) {
-            target->hasEvaluated = true;
+        if (hasRun)
             RELEASE_AND_RETURN(scope, target);
-        }
     }
 
     if (ModuleHookFetchScope::rejectConflict(globalObject, loader, specifierWtfString, ScriptFetchParameters::Type::JavaScript, true))

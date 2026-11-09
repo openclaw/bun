@@ -17,5 +17,6 @@ enum class AsyncHooksTimerLifecycleEvent : uint8_t {
 extern "C" void Bun__AsyncHooks__emitTimerLifecycle(
     JSC::JSGlobalObject*, JSC::EncodedJSValue timer, uint64_t asyncHooksId,
     AsyncHooksTimerLifecycleEvent event);
+void beginTrackingAsyncContexts(JSC::JSGlobalObject*);
 
 }

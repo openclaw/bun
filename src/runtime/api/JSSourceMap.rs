@@ -240,9 +240,9 @@ impl JSSourceMap {
         Ok(Bun__createNodeModuleSourceMapOriginObject(
             global,
             name,
+            source,
             JSValue::js_number(mapping.original.lines.zero_based() as f64 + line_offset),
             JSValue::js_number(mapping.original.columns.zero_based() as f64 + column_offset),
-            source,
         ))
     }
 
@@ -292,9 +292,9 @@ unsafe extern "C" {
     safe fn Bun__createNodeModuleSourceMapOriginObject(
         globalObject: &JSGlobalObject,
         name: JSValue,
+        source: JSValue,
         line: JSValue,
         column: JSValue,
-        source: JSValue,
     ) -> JSValue;
 
     safe fn Bun__createNodeModuleSourceMapEntryObject(

@@ -4,6 +4,7 @@ import {
   bunExe,
   gc,
   getMaxFD,
+  isASAN,
   isBroken,
   isDebug,
   isFreeBSD,
@@ -6036,9 +6037,9 @@ describe("fs/promises", () => {
     };
 
     if (withFileTypes) {
-      it("readdirSync(path, {recursive: true, withFileTypes: true} should work x 100", doIt, 10_000);
+      it("readdirSync(path, {recursive: true, withFileTypes: true} should work x 100", doIt, timeout);
     } else {
-      it("readdirSync(path, {recursive: true} should work x 100", doIt, 10_000);
+      it("readdirSync(path, {recursive: true} should work x 100", doIt, timeout);
     }
   }
 

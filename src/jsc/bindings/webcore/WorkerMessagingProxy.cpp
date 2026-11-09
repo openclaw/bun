@@ -772,7 +772,7 @@ static void applyWorkerErrorMetadata(JSC::JSGlobalObject& globalObject, JSC::JSO
     }
 }
 
-bool WorkerMessagingProxy::postSerializedErrorToWorkerObject(Zig::GlobalObject& workerGlobalObject, JSC::JSValue value)
+bool WorkerMessagingProxy::postSerializedErrorToWorkerObject(Zig::GlobalObject& workerGlobalObject, const String& message, JSC::JSValue value)
 {
     // Top of the worker's error-dispatch stack: neither the structured clone (which can run script
     // through getters even in NonThrowing mode) nor the `code` read may leave an exception behind.
@@ -813,25 +813,35 @@ bool WorkerMessagingProxy::postSerializedErrorToWorkerObject(Zig::GlobalObject& 
         serializedMetadata = serializeWorkerErrorMetadata(workerGlobalObject, *errorInstance, seen, false, 0);
     }
 
-    return ScriptExecutionContext::postTaskTo(m_loaderContextIdentifier, m_loaderLoopKind, [protectedThis = Ref { *this }, serialized = serialized.releaseNonNull(), serializedMetadata = WTF::move(serializedMetadata), errorCode = WTF::move(errorCode).isolatedCopy()](ScriptExecutionContext& context) {
+    return ScriptExecutionContext::postTaskTo(m_loaderContextIdentifier, m_loaderLoopKind, [protectedThis = Ref { *this }, serialized = serialized.releaseNonNull(), serializedMetadata = WTF::move(serializedMetadata), errorCode = WTF::move(errorCode).isolatedCopy(), message = message.isolatedCopy()](ScriptExecutionContext& context) {
         RefPtr workerObject = protectedThis->m_workerObject;
         if (!workerObject)
             return;
         auto* globalObject = context.globalObject();
         auto& vm = JSC::getVM(globalObject);
         auto scope = DECLARE_TOP_EXCEPTION_SCOPE(vm);
-        JSC::JSValue deserialized = serialized->deserialize(*globalObject, globalObject, SerializationErrorMode::NonThrowing);
+        bool didFail = false;
+        JSC::JSValue deserialized = serialized->deserialize(*globalObject, globalObject, SerializationErrorMode::NonThrowing, &didFail);
         CLEAR_AND_RETURN_IF_EXCEPTION(scope, );
-        if (!errorCode.isNull()) {
-            if (auto* errorObject = deserialized.getObject())
-                errorObject->putDirect(vm, WebCore::builtinNames(vm).codePublicName(), JSC::jsString(vm, errorCode));
-        }
-        if (serializedMetadata) {
-            if (auto* errorObject = deserialized.getObject())
-                applyWorkerErrorMetadata(*globalObject, *errorObject, *serializedMetadata);
-        }
         ErrorEvent::Init init;
-        init.error = deserialized;
+        if (didFail) {
+            init.message = message;
+            if (!errorCode.isNull()) {
+                auto* carrier = JSC::createError(globalObject, message);
+                carrier->putDirect(vm, WebCore::builtinNames(vm).codePublicName(), JSC::jsString(vm, errorCode));
+                init.error = carrier;
+            }
+        } else {
+            if (!errorCode.isNull()) {
+                if (auto* errorObject = deserialized.getObject())
+                    errorObject->putDirect(vm, WebCore::builtinNames(vm).codePublicName(), JSC::jsString(vm, errorCode));
+            }
+            if (serializedMetadata) {
+                if (auto* errorObject = deserialized.getObject())
+                    applyWorkerErrorMetadata(*globalObject, *errorObject, *serializedMetadata);
+            }
+            init.error = deserialized;
+        }
         workerObject->dispatchEvent(ErrorEvent::create(eventNames().errorEvent, init, EventIsTrusted::Yes));
     });
 }
@@ -843,7 +853,7 @@ void WorkerMessagingProxy::postErrorToWorkerObject(Zig::GlobalObject& workerGlob
         postMessageErrorToWorkerObject(String { message }, {});
         return;
     case WorkerOptions::Kind::Node:
-        if (!postSerializedErrorToWorkerObject(workerGlobalObject, error))
+        if (!postSerializedErrorToWorkerObject(workerGlobalObject, message, error))
             postMessageErrorToWorkerObject(String { message }, errorCodeOf(workerGlobalObject, error));
         return;
     }
