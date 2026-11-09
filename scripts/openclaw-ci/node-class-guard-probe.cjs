@@ -13,7 +13,7 @@ const source = readFileSync(owner, "utf8");
 const digest = bytes => createHash("sha256").update(bytes).digest("hex");
 const receipt = {
   complete: false,
-  nativeSource: "11e3dd7ffa155cb63a38028adcc94be71553671d",
+  nativeSource: "5cd0cffa4a84f8a9285fc8b55d98c3d1deabab58",
   probeSource: process.env.GITHUB_SHA,
   engine: JSON.parse(readFileSync("build/release/engine-source.json", "utf8")),
   binarySHA256: digest(readFileSync(binary)),

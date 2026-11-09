@@ -160,7 +160,7 @@ const summary = {
   nodeVersion: process.version,
   engineReceipt: JSON.parse(readFileSync("build/release/engine-source.json", "utf8")),
   binarySHA256: createHash("sha256").update(readFileSync("build/release/bun")).digest("hex"),
-  nativeSource: "11e3dd7ffa155cb63a38028adcc94be71553671d",
+  nativeSource: "5cd0cffa4a84f8a9285fc8b55d98c3d1deabab58",
   isolation: "one operation, arguments and receiver per process; restore before four Immediate turns",
   engineSource: "651eeaca6e2792378928033b1ae7ac66d6f91eab",
   fixtureSHA256: createHash("sha256").update(fixture).digest("hex"),
