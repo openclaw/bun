@@ -5,8 +5,8 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
-import { featureFiles, loadFeatures } from "../build/trim/features.ts";
 import { readRemovedFeatures } from "../../test/aot/trimmed-against-whole/removed-features.ts";
+import { featureFiles, loadFeatures } from "../build/trim/features.ts";
 
 const source = "2596ac5d391d47804c93a42bdbe615804aa62387";
 const engine = "5a61071f79134bf41844e7ea31a8449147d85dd4";
