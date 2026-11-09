@@ -878,7 +878,8 @@ jobs:
             --test-name-pattern 'what is reached|program with a Bun.serve route that has the style option ends by itself|server whose options ask for neither bundler nor transpiler serves|server that calls reload\(\) answers as the whole executable does|server that reads names off values nobody knows answers as it should' \
             --reporter=junit --reporter-outfile=build/openclaw-ci/native-retention-test.xml \
             2>&1 | tee build/openclaw-ci/native-retention-test.log
-          timeout --kill-after=5s 300s ./build/release/bun test/aot/run-parallel.ts --jobs=1 --no-erased --root=test \
+          # Node metadata reads the original source, which is not a file in the compiled executable.
+          NODE_SKIP_FLAG_CHECK=1 timeout --kill-after=5s 300s ./build/release/bun test/aot/run-parallel.ts --jobs=1 --no-erased --root=test \
             test/js/node/test/parallel/test-path-glob.js \
             test/aot/parallel/under-proof-checks-a-unit-names-nothing-out-of-its-reach/a-record-of-one-member-holds-a-function-under-a-name-that-the-glob-library-reads.cjs \
             2>&1 | tee build/openclaw-ci/native-glob-aot-test.log
