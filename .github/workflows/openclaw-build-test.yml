@@ -197,7 +197,7 @@ jobs:
           timing() { echo "Build: $((SECONDS - started)) seconds; restored cache: ${CACHE_MATCH:-none}" >> "$GITHUB_STEP_SUMMARY"; }
           trap timing EXIT
           engine_args=()
-          if test -n "$WEBKIT_SOURCE_SHA"; then engine_args+=(--webkit=local); fi
+          if test -n "$WEBKIT_SOURCE_SHA"; then engine_args+=(--webkit=local "--webkit-version=$WEBKIT_SOURCE_SHA"); fi
           bun scripts/build.ts --profile=openclaw-native "${engine_args[@]}" --timings
           if test -n "$WEBKIT_SOURCE_SHA"; then
             bun scripts/build.ts --profile=openclaw-native "${engine_args[@]}" --target=engine-test-programs
@@ -205,6 +205,9 @@ jobs:
             bun scripts/openclaw-ci/tests.ts prepare-engine-tests
           fi
           bun scripts/build/aot-paths.ts --profile=openclaw-native "${engine_args[@]}" >> "$GITHUB_ENV"
+          if test -n "$WEBKIT_SOURCE_SHA"; then
+            ./build/release/bun -e 'if(process.versions.webkit!==process.env.WEBKIT_SOURCE_SHA)throw new Error("source engine identity mismatch"); console.log("qualified engine identity: "+process.versions.webkit)'
+          fi
       - name: Save build caches
         if: steps.build.outcome == 'success'
         run: CCACHE_DIR="$BUN_BUILD_CACHE_DIR/ccache" ccache --max-size=3G --cleanup --show-stats
