@@ -658,8 +658,8 @@ impl InternalSourceMap {
         let sync_idx = self.locate_window(line, column)?;
 
         let mut state = State::default();
-        let mut reader = WindowReader::DANGLING;
-        self.seed_window(sync_idx, &mut state, &mut reader);
+        let mut reader = WindowReader::new(self.stream());
+        self.seed_window(sync_idx, &mut state, &mut reader)?;
 
         let mut best = state;
         while !reader.done() {
@@ -672,6 +672,9 @@ impl InternalSourceMap {
             state = nxt;
         }
 
+        if reader.count == 0 {
+            return None;
+        }
         Some(best.to_mapping())
     }
 }
