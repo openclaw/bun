@@ -235,16 +235,22 @@ describe.skipIf(!supported)("bun run --aot", () => {
     expect(stdout).toBe("main\ntrue true false [ false, true ]\n");
   });
 
-  test.concurrent("__esModule of a module namespace object can be set", async () => {
-    const { stdout, stderr } = await expectSameAsBunRun(
+  test.concurrent("__esModule cannot be added to an imported module namespace", async () => {
+    const { stdout, stderr, exitCode } = await expectSameAsBunRun(
       {
         "entry.ts": `
           import * as Self from "./entry.ts";
+          export let a = 1;
           const self: any = Self;
-          const seen: unknown[] = [self.__esModule];
+          const seen: boolean[] = [];
           for (const value of [true, false, 1, undefined, "yes", null]) {
-            self.__esModule = value;
-            seen.push(self.__esModule);
+            try {
+              self.__esModule = value;
+              seen.push(false);
+            } catch (error) {
+              if (!(error instanceof TypeError)) throw error;
+              seen.push(true);
+            }
           }
           console.log(seen.join(), "__esModule" in Self, Object.getOwnPropertyNames(Self).join());
           console.log(require("./entry.ts") === Self, self.__esModule);
@@ -255,12 +261,15 @@ describe.skipIf(!supported)("bun run --aot", () => {
               console.log(error.constructor.name + ": " + error.message);
             }
           }
-          export let a = 1;
+          console.log(self.a);
         `,
       },
       "entry.ts",
     );
-    expect(stdout, stderr).toStartWith(",true,,true,,true, true a\ntrue true\nTypeError: ");
+    expect(exitCode).toBe(0);
+    expect(stderr).toBe("");
+    expect(stdout).toStartWith("true,true,true,true,true,true false a\ntrue undefined\nTypeError: ");
+    expect(stdout).toEndWith("\n1\n");
   });
 
   test.concurrent(
