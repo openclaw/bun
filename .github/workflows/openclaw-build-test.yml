@@ -5,7 +5,7 @@ on:
     inputs:
       probe:
         type: choice
-        options: [reflection, types, visible]
+        options: [reflection, types, visible, type-receipt]
         default: reflection
 
 permissions:
@@ -18,6 +18,7 @@ concurrency:
 
 jobs:
   receiver-oracle:
+    if: inputs.probe != 'type-receipt'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     defaults:
@@ -73,3 +74,38 @@ jobs:
           path: build/openclaw-ci/receiver-oracle/
           if-no-files-found: error
           retention-days: 7
+
+  type-receipt:
+    if: inputs.probe == 'type-receipt'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Verify the immutable failed guard-probe artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(gh api repos/openclaw/bun/actions/artifacts/13693460388 --jq .workflow_run.id)" = 42656642088
+          test "$(gh api repos/openclaw/bun/actions/artifacts/13693460388 --jq .workflow_run.head_sha)" = 9fd25c8b664b669c76f187c427a9a75c3ca0c6d4
+          test "$(gh api repos/openclaw/bun/actions/artifacts/13693460388 --jq .digest)" = sha256:dbbf0c473ae0cefcc2ff47971b632e4cf71580a4bdc5857715b6da5fe96cb1d5
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: 13693460388
+          run-id: 42656642088
+          github-token: ${{ github.token }}
+          path: guard-proof
+      - name: Read existing guard records without rebuilding or executing the program
+        run: |
+          python3 - <<'PY'
+          import json,collections
+          from pathlib import Path
+          folder=Path("guard-proof/node-class-guards")
+          receipt=json.loads((folder/"receipt.json").read_text())
+          keys=("complete","nativeSource","probeSource","runtimeMatches","requiredTypes","presentTypes","answerGuards","accessSummary","typesTree","bunLockSHA256")
+          print("GUARD_RECEIPT "+json.dumps({k:receipt.get(k) for k in keys}))
+          rows=[json.loads(line) for line in (folder/"compile.stdout.log").read_text().splitlines() if line.startswith("{")]
+          print("RECORD_KINDS "+json.dumps(dict(collections.Counter(row.get("aot") for row in rows))))
+          answer=[row for row in rows if row.get("function")=="answer"]
+          print("ANSWER_RECORDS "+json.dumps(answer[:20]))
+          guards=[row for row in rows if row.get("aot")=="type-check"]
+          print("GUARD_SAMPLES "+json.dumps(guards[:10]))
+          PY
