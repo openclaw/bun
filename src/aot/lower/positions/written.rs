@@ -29,14 +29,7 @@ impl FileLowering<'_, '_, '_, '_> {
     }
 
     pub(in crate::lower) fn construct_position(&self, expression: ExprId) -> u32 {
-        let hir = self.hir;
-        let ExprKind::New(site) = hir[expression].kind else {
-            return hir[expression].pos;
-        };
-        match hir[site].close_pos {
-            u32::MAX => hir[expression].pos,
-            _ => self.call_position(hir[site]),
-        }
+        self.hir[expression].pos
     }
 
     pub(in crate::lower) fn load_position(&self, call: ExprId) -> u32 {
@@ -128,7 +121,7 @@ mod tests {
     }
 
     #[test]
-    fn construction_reports_as_a_call_only_where_it_has_parentheses() {
+    fn construction_reports_at_new_with_or_without_parentheses() {
         let source = "export function probe(a: any, x: any) {
   new a.Plain;
   new a.Called(
@@ -137,7 +130,7 @@ mod tests {
   new (new a.Inner)();
 }
 ";
-        let texts = ["new a.Plain", "Called", "new a.Inner", "Inner"];
+        let texts = ["new a.Plain", "new a.Called", "new a.Inner", "new (new a.Inner)"];
         let expected = texts.map(|text| offset_of(source, text));
         assert_eq!(reported_positions(source, Opcode::Construct), expected);
     }
