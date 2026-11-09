@@ -1,12 +1,14 @@
 # Hooks do not receive the CommonJS parent; legacy replacements do.
+# Keep entry exports inside the closed image to isolate the parent's handoff.
 # REQUIRES: entries-of-bun
+# OPTIONS: exclude=CodeOutsideImage
 # RUN: link functions
 # CHECK-NOT: function f1 unreached
 # CHECK-NOT: function f2 unreached
 
 variable g0 name="exports" module=m0 declared={type=anything} initialization=Undefined
 module m0 path="/app/main.cjs" displayPath="main.cjs" kind=CommonJs flags=[KeepsError] exportRule=CommonJs requireResult=ModuleExports body=f0 exportsVariable=g0
-entry module=m0
+entry module=m0 hostReads=[{exportName="default" builtin=BunServe namesLookedFor=["fetch", "app"]}, {exportName="then"}]
 layout L0 kind=Record name="options"
 function f0 name="main" module=m0 kind=CommonJsModule thisType={type=anything} results=[{type=anything}] {
     v0 = NewClosure function=f2
