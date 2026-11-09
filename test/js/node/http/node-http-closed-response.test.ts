@@ -93,7 +93,6 @@ test.each([
 ])("a response closed by Object.%s %s its end() still emits 'finish' and 'close'", async (level, moment) => {
   expect(await run(level, moment)).toEqual([
     ...fourAnswersOnOneConnection,
-    `uncaught in onNodeHTTPRequest: ${notExtensible}`,
     `uncaught in markResponseEndedNT < processTicksAndRejections: ${notExtensible}`,
     "finish 1",
     "close 1",
