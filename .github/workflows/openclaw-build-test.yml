@@ -5,7 +5,7 @@ on:
     inputs:
       probe:
         type: choice
-        options: [reflection, types, visible, type-receipt, install, selected-suite, module-format, stdio]
+        options: [reflection, types, visible, type-receipt, install, selected-suite, module-format, stdio, nocore]
         default: reflection
 
 permissions:
@@ -158,6 +158,60 @@ jobs:
               assert all(row.find('skipped') is None for row in rows)
               assert all((row.find('failure') is not None)==(label=='before') for row in rows)
           print('All three original-exception identity regressions fail before and pass after the repair.')
+          PY
+      - name: Replay noCoreCmd with writable and read-only procfs
+        if: inputs.probe == 'nocore'
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: "1"
+        run: |
+          set -euo pipefail
+          ./build/release/bun install --frozen-lockfile
+          (cd test && ../build/release/bun install --frozen-lockfile)
+          output="$PWD/build/openclaw-ci/receiver-oracle/nocore"
+          mkdir -p "$output"
+          native_bun="$PWD/build/release/bun"
+          runner_uid="$(id -u)"
+          runner_gid="$(id -g)"
+          fixed_harness="$RUNNER_TEMP/nocore-fixed-harness.ts"
+          cp test/harness.ts "$fixed_harness"
+          trap 'cp "$fixed_harness" test/harness.ts' EXIT
+          readonly_probe() {
+            sudo unshare --mount --propagation private /bin/sh -eu -c '
+              printf 0x33 > "/proc/$$/coredump_filter"
+              mount --bind /proc /proc
+              mount -o remount,bind,ro /proc
+              if { printf 0 > "/proc/$$/coredump_filter"; } 2>/dev/null; then
+                echo "procfs is unexpectedly writable" >&2
+                exit 2
+              fi
+              exec setpriv --reuid "$3" --regid "$4" --init-groups -- \
+                "$1" test ./test/internal/harness-no-core.test.ts --reporter=junit --reporter-outfile="$2"
+            ' sh "$native_bun" "$output/$1.xml" "$runner_uid" "$runner_gid"
+          }
+          git show 715558502eef56982604058963722932cf383504:test/harness.ts > test/harness.ts
+          set +e
+          readonly_probe before > "$output/before.log" 2>&1
+          before=$?
+          cp "$fixed_harness" test/harness.ts
+          readonly_probe after > "$output/after.log" 2>&1
+          after=$?
+          set -e
+          cat "$output/before.log" "$output/after.log"
+          printf '{"before":%s,"after":%s}\n' "$before" "$after" > "$output/status.json"
+          test "$before" = 1
+          test "$after" = 0
+          "$native_bun" test ./test/internal/harness-no-core.test.ts --reporter=junit --reporter-outfile="$output/writable.xml"
+          timeout --kill-after=5s 240s "$native_bun" test ./test/js/node/process/dlopen-duplicate-load.test.ts -t 'the crash report shows the addon whose init function crashed' --reporter=junit --reporter-outfile="$output/fatal-init.xml"
+          timeout --kill-after=5s 240s "$native_bun" test ./test/napi/uv_stub.test.ts -t 'unsupported: uv_accept$' --reporter=junit --reporter-outfile="$output/uv.xml"
+          python3 - "$output" <<'PY'
+          import sys,xml.etree.ElementTree as ET
+          from pathlib import Path
+          folder=Path(sys.argv[1])
+          for label,count in [('before',1),('after',1),('writable',1),('fatal-init',3),('uv',1)]:
+              rows=[r for r in ET.parse(folder/(label+'.xml')).iter('testcase') if r.find('skipped') is None]
+              assert len(rows)==count,(label,len(rows))
+              assert all((r.find('failure') is not None)==(label=='before') for r in rows)
+          print('Read-only procfs reproduction is red before and green after; writable procfs and four existing crash cases pass.')
           PY
       - name: Upload receiver controls
         if: always()
