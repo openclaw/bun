@@ -1,97 +1,40 @@
-name: OpenClaw build and test
+name: OpenClaw HTTP access costs (temporary diagnosis)
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - "src/**"
-      - "test/**"
-      - "scripts/**"
-      - "packages/**"
-      - "patches/**"
-      - "vendor/**"
-      - "cmake/**"
-      - "**/CMakeLists.txt"
-      - "**/*.cmake"
-      - "**/Cargo.toml"
-      - "**/Cargo.lock"
-      - ".cargo/**"
-      - "rust-toolchain.toml"
-      - "package.json"
-      - "bun.lock"
-      - "bunfig.toml"
-      - ".github/actions/setup-bun/**"
-      - ".github/workflows/openclaw-build-test.yml"
   workflow_dispatch:
     inputs:
-      base_sha:
-        description: Ancestor commit for fork-delta selection; empty runs default coverage
-        type: string
-        required: false
       platform:
-        description: Native platform to validate
         type: choice
-        options: [all, linux-x64, darwin-arm64]
-        default: all
+        options: [linux-x64]
+        default: linux-x64
       webkit_source_sha:
-        description: Full openclaw/WebKit SHA for Linux x64 source-pair qualification (requires platform=linux-x64)
+        description: Diagnostic engine commit with temporary operation-origin logging
         type: string
-        required: false
-      diagnostic:
-        description: Reuse a native artifact for focused diagnosis (not source qualification)
-        type: choice
-        options:
-          [
-            none,
-            trim-linux,
-            trim-linux-cache,
-            trim-linux-type-stripping,
-            trim-linux-module-mocks,
-            trim-linux-runtime,
-            compile-cache-darwin,
-            trim-linux-baseline,
-            trim-linux-source-baseline,
-            trim-linux-aot-baseline,
-            trim-linux-shipping,
-            bun-types-darwin,
-            aot-evaluators-darwin,
-            shipping-darwin-arm64,
-            shipping-darwin-x64,
-            shipping-windows-arm64,
-            shipping-layout-linux-x64,
-            shipping-consumer-openclaw,
-          ]
-        default: none
-      native_run_id:
-        description: Run that produced the diagnostic executable
-        type: string
-      native_artifact_id:
-        description: Immutable executable artifact ID from that run
-        type: string
-      native_sha:
-        description: Full source SHA of the diagnostic executable
-        type: string
-  schedule:
-    - cron: "23 7 * * *"
+        required: true
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ inputs.platform || 'all' }}-${{ inputs.diagnostic || 'none' }}
+  group: aot-http-access-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  linux-x64:
-    if: github.repository == 'openclaw/bun' && (inputs.webkit_source_sha != '' || inputs.platform != 'darwin-arm64') && (inputs.diagnostic == '' || inputs.diagnostic == 'none')
+  operation-origins:
     runs-on: blacksmith-16vcpu-ubuntu-2404
-    timeout-minutes: 115
+    timeout-minutes: 100
+    defaults:
+      run:
+        shell: bash
+        working-directory: source
     env:
       BUN_BUILD_CACHE_DIR: ${{ github.workspace }}/.cache/openclaw-build
       PUPPETEER_SKIP_DOWNLOAD: "1"
       WEBKIT_SOURCE_SHA: ${{ inputs.webkit_source_sha }}
+      EXPECTED_NATIVE_SHA: 11e3dd7ffa155cb63a38028adcc94be71553671d
     steps:
       - name: Validate source-pair request
+        working-directory: .
         if: inputs.webkit_source_sha != ''
         env:
           PLATFORM: ${{ inputs.platform }}
@@ -103,11 +46,16 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 11e3dd7ffa155cb63a38028adcc94be71553671d
+          path: source
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: inputs.webkit_source_sha != ''
         with:
           repository: openclaw/WebKit
           ref: ${{ inputs.webkit_source_sha }}
-          path: .openclaw-webkit
+          path: source/.openclaw-webkit
           persist-credentials: false
           sparse-checkout-cone-mode: false
           sparse-checkout: |
@@ -125,8 +73,8 @@ jobs:
           test -z "$(git -C .openclaw-webkit status --porcelain)"
           mkdir -p build/openclaw-ci
           python3 -c 'import json,subprocess; from pathlib import Path; rev=lambda *args: subprocess.check_output(["git",*args],text=True).strip(); Path("build/openclaw-ci/engine-source.json").write_text(json.dumps({"mode":"source", "bun":{"sha":rev("rev-parse","HEAD"),"tree":rev("rev-parse","HEAD^{tree}")},"webkit":{"repository":"openclaw/WebKit","sha":rev("-C",".openclaw-webkit","rev-parse","HEAD"),"tree":rev("-C",".openclaw-webkit","rev-parse","HEAD^{tree}")},"shippingArchiveQualified":False},indent=2)+"\n")'
-          echo "BUN_WEBKIT_PATH=$GITHUB_WORKSPACE/.openclaw-webkit" >> "$GITHUB_ENV"
-          echo 'Source-pair qualification uses local WebKit and static system ICU; it does not qualify a shipping archive.' >> "$GITHUB_STEP_SUMMARY"
+          echo "BUN_WEBKIT_PATH=$GITHUB_WORKSPACE/source/.openclaw-webkit" >> "$GITHUB_ENV"
+          echo 'Temporary operation-origin diagnosis only; this does not qualify shipping or the full suite.' >> "$GITHUB_STEP_SUMMARY"
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: "1.4.4"
@@ -160,6 +108,22 @@ jobs:
             echo "BUN_ICU_ROOT=$icu_root" >> "$GITHUB_ENV"
             echo "Source-pair ICU: $(pkg-config --modversion icu-uc), static system archives." >> "$GITHUB_STEP_SUMMARY"
           fi
+      - name: Verify the matched static ICU input
+        run: |
+          mkdir -p build/openclaw-ci/aot-baseline
+          python3 - <<'PY'
+          import hashlib,json,os,subprocess
+          from pathlib import Path
+          root=Path(os.environ["BUN_ICU_ROOT"])
+          digest=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
+          receipt={"version":subprocess.check_output(["pkg-config","--modversion","icu-uc"],text=True).strip(),
+                   "archives":{name:digest(root/"lib"/name) for name in ("libicui18n.a","libicuuc.a","libicudata.a")},
+                   "headers":{p.name:digest(p) for p in sorted((root/"include/unicode").glob("*.h"))}}
+          checksum=hashlib.sha256(json.dumps(receipt,sort_keys=True,separators=(",",":")).encode()).hexdigest()
+          receipt.update(referenceSHA256="119094f556f6bb38db24f3ec0665778f5bddea27d94b4500b2cf87f0e1e0a515",actualSHA256=checksum,referenceMatch=checksum=="119094f556f6bb38db24f3ec0665778f5bddea27d94b4500b2cf87f0e1e0a515")
+          Path("build/openclaw-ci/aot-baseline/icu.json").write_text(json.dumps(receipt,indent=2)+"\n")
+          assert receipt["referenceMatch"],"static ICU input differs from matched stock control"
+          PY
       - name: Restore build caches
         id: cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -172,772 +136,44 @@ jobs:
           key: openclaw-native-x64-v1-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', 'bun.lock', 'test/bun.lock', 'rust-toolchain.toml', 'scripts/build/**', 'scripts/build.ts', '.github/workflows/openclaw-build-test.yml') }}-${{ steps.pins.outputs.tree }}-${{ inputs.webkit_source_sha || 'pinned' }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             openclaw-native-x64-v1-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', 'bun.lock', 'test/bun.lock', 'rust-toolchain.toml', 'scripts/build/**', 'scripts/build.ts', '.github/workflows/openclaw-build-test.yml') }}-${{ steps.pins.outputs.tree }}-${{ inputs.webkit_source_sha || 'pinned' }}-
-      - name: Select tests
-        env:
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha || inputs.base_sha }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || (inputs.base_sha && github.sha) }}
-        run: bun scripts/openclaw-ci/tests.ts select
-      - name: Install build dependencies
-        run: bun install --frozen-lockfile
-      - name: Prefetch the pinned WebKit archive through the release API
-        if: inputs.webkit_source_sha == '' && steps.cache.outputs.cache-matched-key == ''
-        timeout-minutes: 15
-        env:
-          BUN_BUILD_PREFETCH_DIR: ${{ runner.temp }}/openclaw-prefetch
+      - name: Install frozen source dependencies
         run: |
-          read -r repository tag digest size < <(python3 -c '
-          import json
-          manifest = json.load(open("scripts/build/deps/webkit-artifacts.json"))
-          artifact = manifest["artifacts"]["bun-webkit-linux-amd64-lto-aot.tar.gz"]
-          print(manifest["repository"], manifest["tag"], artifact["sha256"], artifact["size"])
-          ')
-          if python3 scripts/openclaw-ci/github-release-asset.py "$repository" "$tag" \
-            bun-webkit-linux-amd64-lto-aot.tar.gz "$BUN_BUILD_PREFETCH_DIR/by-sha256/$digest" "$digest" "$size"; then
-            echo 'Pinned engine archive is ready for the normal build fetch.'
-          else
-            status=$?
-            test "$status" -eq 75 || exit "$status"
-            echo '::warning::Release API unavailable; retaining the normal checksum-verified build fetch.'
-          fi
-      - name: Build native Linux x64 (trimmable release)
-        id: build
+          test "$(git rev-parse HEAD)" = "$EXPECTED_NATIVE_SHA"
+          bun install --frozen-lockfile
+      - name: Build the frozen source with the diagnostic engine
         timeout-minutes: 75
-        env:
-          BUN_BUILD_PREFETCH_DIR: ${{ runner.temp }}/openclaw-prefetch
-          CACHE_MATCH: ${{ steps.cache.outputs.cache-matched-key }}
-        run: |
-          started=$SECONDS
-          timing() { echo "Build: $((SECONDS - started)) seconds; restored cache: ${CACHE_MATCH:-none}" >> "$GITHUB_STEP_SUMMARY"; }
-          trap timing EXIT
-          engine_args=()
-          if test -n "$WEBKIT_SOURCE_SHA"; then engine_args+=(--webkit=local "--webkit-version=$WEBKIT_SOURCE_SHA"); fi
-          # Report independent compilation failures in the same run.
-          bun scripts/build.ts --profile=openclaw-native "${engine_args[@]}" --timings -k0
-          if test -n "$WEBKIT_SOURCE_SHA"; then
-            bun scripts/build.ts --profile=openclaw-native "${engine_args[@]}" --target=engine-test-programs
-          else
-            bun scripts/openclaw-ci/tests.ts prepare-engine-tests
-          fi
-          bun scripts/build/aot-paths.ts --profile=openclaw-native "${engine_args[@]}" >> "$GITHUB_ENV"
-          if test -n "$WEBKIT_SOURCE_SHA"; then
-            ./build/release/bun -e 'if(process.versions.webkit!==process.env.WEBKIT_SOURCE_SHA)throw new Error("source engine identity mismatch"); console.log("qualified engine identity: "+process.versions.webkit)'
-          fi
-      - name: Save build caches
-        if: steps.build.outcome == 'success'
-        run: CCACHE_DIR="$BUN_BUILD_CACHE_DIR/ccache" ccache --max-size=3G --cleanup --show-stats
-      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: steps.build.outcome == 'success'
-        with:
-          path: |
-            .cache/openclaw-build
-            build/release/rust-target
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ steps.cache.outputs.cache-primary-key }}
-      - name: Package PR executable
-        run: |
-          mkdir -p build/release/bun.trim
-          cp build/release/bun-profile.trim/*.txt build/release/bun.trim/
-          if test -n "$WEBKIT_SOURCE_SHA"; then cp build/openclaw-ci/engine-source.json build/release/engine-source.json; fi
-          members=(bun bun.trim)
-          if test -n "$WEBKIT_SOURCE_SHA"; then members+=(engine-source.json); fi
-          tar -czf build/openclaw-ci/bun-linux-x64.tar.gz -C build/release "${members[@]}"
-          (cd build/openclaw-ci && sha256sum bun-linux-x64.tar.gz > SHA256SUMS)
-          git rev-parse HEAD > build/openclaw-ci/commit.txt
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: bun-linux-x64-${{ github.sha }}-attempt${{ github.run_attempt }}
-          path: |
-            build/openclaw-ci/bun-linux-x64.tar.gz
-            build/openclaw-ci/SHA256SUMS
-            build/openclaw-ci/commit.txt
-          retention-days: 7
-          compression-level: 0
-          if-no-files-found: error
-      - name: Test trimming policy
-        timeout-minutes: 20
-        env:
-          BUN_UNDER_TEST: ${{ github.workspace }}/build/release/bun
-        run: |
-          if test -n "$WEBKIT_SOURCE_SHA"; then
-            # Reuse the exact source-pair build's generators; rust-test.ts downloads the pinned engine's generators.
-            BUN_CODEGEN_DIR="$GITHUB_WORKSPACE/build/release/codegen" CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0 \
-              CARGO_PROFILE_DEV_OPT_LEVEL=1 CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS='-Cforce-frame-pointers=yes -Zthreads=8' \
-              cargo test --no-fail-fast -p bun_trim
-          else
-            bun scripts/rust-test.ts -p bun_trim
-          fi
-      - name: Test AOT written positions and module loading
-        if: inputs.webkit_source_sha != ''
-        timeout-minutes: 20
-        run: |
-          BUN_CODEGEN_DIR="$GITHUB_WORKSPACE/build/release/codegen" CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0 \
-            CARGO_PROFILE_DEV_OPT_LEVEL=1 CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS='-Cforce-frame-pointers=yes -Zthreads=8' \
-            cargo test --no-fail-fast -p bun_aot --lib lower::positions::written::tests
-          BUN_CODEGEN_DIR="$GITHUB_WORKSPACE/build/release/codegen" CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0 \
-            CARGO_PROFILE_DEV_OPT_LEVEL=1 CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS='-Cforce-frame-pointers=yes -Zthreads=8' \
-            cargo test --no-fail-fast -p bun_aot --lib load::contents::tests::file_found_for_a_load_is_read_as_that_load_reads_it
-      - name: Test AOT CLI stacks and module semantics
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && inputs.webkit_source_sha != '' }}
-        timeout-minutes: 5
-        run: |
-          ./build/release/bun test test/cli/run/run-aot.test.ts \
-            --test-name-pattern '__esModule cannot be added to an imported module namespace|stack traces|files that are CommonJS only by name'
-      - name: Record Node reflection controls
-        if: inputs.webkit_source_sha != ''
-        run: |
-          node > build/openclaw-ci/node-reflection-control.json <<'JS'
-          const http = require("node:http");
-          const names = new Set([
-            "stdin", "stdout", "stderr", "stdio", "resourceLimits", "setSecureContext",
-            "socket", "connection", "headersSent", "writableLength", "writableNeedDrain",
-            "writableHighWaterMark", "writableCorked", "kWriteOperation", "kNativeTLSTransport",
-            "kRealListen", "is_tls",
-          ]);
-          const prototypes = {
-            Writable: require("node:stream").Writable.prototype,
-            Socket: require("node:net").Socket.prototype,
-            Server: http.Server.prototype,
-            ServerResponse: http.ServerResponse.prototype,
-            HTTPSServer: require("node:https").Server.prototype,
-            ChildProcess: require("node:child_process").ChildProcess.prototype,
-            Worker: require("node:worker_threads").Worker.prototype,
-          };
-          const describe = object => Reflect.ownKeys(object).filter(key => names.has(typeof key === "symbol" ? key.description : key)).map(key => {
-            const d = Object.getOwnPropertyDescriptor(object, key);
-            return { key: String(key), configurable: d.configurable, enumerable: d.enumerable,
-              writable: d.writable, get: typeof d.get, set: typeof d.set,
-              kind: typeof d.value, length: typeof d.value === "function" ? d.value.length : undefined };
-          });
-          const response = new http.ServerResponse(new http.IncomingMessage(null));
-          const foreignReceivers = [{}, http.ServerResponse.prototype].map(receiver => {
-            try { const value = Reflect.get(response, "writableCorked", receiver); return { type: typeof value, value }; }
-            catch (error) { return { error: error.name, message: error.message }; }
-          });
-          console.log(JSON.stringify({ node: process.version, prototypes: Object.fromEntries(
-            Object.entries(prototypes).map(([name, object]) => [name, describe(object)])), writableCorked: foreignReceivers }, null, 2));
-          JS
-          cat build/openclaw-ci/node-reflection-control.json
-      - name: Run selected and compatibility tests
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        id: tests
-        timeout-minutes: 20
-        run: |
-          started=$SECONDS
-          timing() { echo "Tests: $((SECONDS - started)) seconds" >> "$GITHUB_STEP_SUMMARY"; }
-          trap timing EXIT
-          # build.ts only executes trailing arguments outside CI.
-          ./build/release/bun scripts/openclaw-ci/tests.ts test
-          test -s build/openclaw-ci/results.json
-      - name: Explain retained trim features
-        if: failure() && steps.build.outcome == 'success'
-        run: |
-          bun scripts/build/trim/why.ts build/release/bun-profile.trim-work/retained.txt 'sqlite3_|unixDlOpen|SSL_|ERR_|jsSetSqliteQueryPublisher|native_tls|NativeTransport' 20
-          scratch=$(mktemp -d)
-          trap 'rm -rf "$scratch"' EXIT
-          printf '%s\n' 'console.log(new Function("return " + process.argv[2])(), /a+/u.test("aa"), [3, 1, 2].toSorted().join());' > "$scratch/text.ts"
-          printf '%s\n' 'console.log(typeof Bun.build); if (process.argv.length > 5) await Bun.build({ entrypoints: [process.argv[5]] });' > "$scratch/bundles.ts"
-          for entry in text bundles; do
-            echo "::group::trim retention: $entry"
-            env -u BUN_FEATURE_FLAG_INTERNAL_FOR_TESTING BUN_GARBAGE_COLLECTOR_LEVEL=0 BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 ./build/release/bun build --compile --aot --trim --explain=trim "$scratch/$entry.ts" --outfile "$scratch/$entry"
-            echo '::endgroup::'
-          done
-      - name: Summarize
-        if: always()
-        env:
-          BUILD_OUTCOME: ${{ steps.build.outcome }}
-          TEST_OUTCOME: ${{ steps.tests.outcome }}
-        run: bun scripts/openclaw-ci/tests.ts summary
-      - name: Upload diagnostics
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: build-test-report-${{ github.sha }}-attempt${{ github.run_attempt }}
-          path: |
-            build/openclaw-ci/*.json
-            build/release/timings.html
-            build/release/ccache.log
-            build/release/bun-profile.trim/*.txt
-            build/release/bun-profile.trim-work/retained.txt
-            build/release/bun-profile.trim-work/sections.txt
-          retention-days: 7
-
-  build-darwin-arm64:
-    if: github.repository == 'openclaw/bun' && inputs.webkit_source_sha == '' && inputs.platform != 'linux-x64' && (inputs.diagnostic == '' || inputs.diagnostic == 'none')
-    outputs:
-      artifact_id: ${{ steps.bundle.outputs.artifact-id }}
-    runs-on: ${{ vars.OPENCLAW_RELEASE_BUILD_RUNNER || 'ubuntu-24.04-arm' }}
-    timeout-minutes: 115
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup-bun
-        with:
-          bun-version: "1.4.4"
-      - name: Generate provisioning script
-        id: provision
-        run: echo "script=$(bun scripts/openclaw-release/release.ts provision --source . --target darwin-arm64 | tail -1)" >> "$GITHUB_OUTPUT"
-      - name: Provision cross-build toolchain
-        timeout-minutes: 15
-        env:
-          COMMIT: ${{ github.sha }}
-          SCRIPT: ${{ steps.provision.outputs.script }}
-        run: |
-          # Reuse the release build image and its pinned LLVM, Rust and macOS SDK.
-          script="${SCRIPT#"$GITHUB_WORKSPACE"/}"
-          for attempt in 1 2 3 4; do
-            docker rm --force openclaw-native-darwin > /dev/null 2>&1 || true
-            docker run --detach --name openclaw-native-darwin -e CI=true -v "$GITHUB_WORKSPACE:/work" -w /work \
-              docker.io/library/debian:13@sha256:9cc080028c43b27d2074d63a5f9caf7166d731494965616c1a6d2827a004585c \
-              sleep infinity > /dev/null
-            if docker exec -e COMMIT -e SCRIPT="$script" openclaw-native-darwin sh -euc \
-              'sh "$SCRIPT" "$COMMIT" openclaw-native'; then
-              exit 0
-            fi
-            echo "::warning::Provisioning attempt $attempt failed"
-            [ "$attempt" = 4 ] && exit 1
-            sleep $((attempt * 120))
-          done
-      - name: Cross-build macOS arm64 (trimmable release)
-        id: build
-        timeout-minutes: 75
-        run: |
-          docker exec openclaw-native-darwin bash -euo pipefail -c '
-            . /etc/profile.d/bun-ci.sh
-            git config --global --add safe.directory /work
-            bun install --frozen-lockfile
-            bun scripts/build.ts --profile=openclaw-native-darwin-arm64 --timings
-            bun scripts/build.ts --profile=openclaw-native-darwin-arm64 --target=engine-test-programs
-            bun scripts/openclaw-ci/package-darwin.ts
-          '
-      - name: Package native test bundle
-        run: |
-          sudo chown -R "$(id -u):$(id -g)" build/openclaw-ci
-          tar -czf build/openclaw-ci/bun-darwin-arm64.tar.gz -C build/openclaw-ci/darwin-arm64 .
-          (cd build/openclaw-ci && sha256sum bun-darwin-arm64.tar.gz > SHA256SUMS)
-          git rev-parse HEAD > build/openclaw-ci/commit.txt
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        id: bundle
-        with:
-          name: bun-darwin-arm64-${{ github.sha }}-attempt${{ github.run_attempt }}
-          path: |
-            build/openclaw-ci/bun-darwin-arm64.tar.gz
-            build/openclaw-ci/SHA256SUMS
-            build/openclaw-ci/commit.txt
-          retention-days: 7
-          compression-level: 0
-          if-no-files-found: error
-      - name: Upload build diagnostics
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: build-report-darwin-arm64-${{ github.sha }}-attempt${{ github.run_attempt }}
-          path: |
-            build/release/timings.html
-            build/release/ccache.log
-            build/release/bun-profile.trim-work/retained.txt
-            build/release/bun-profile.trim-work/sections.txt
-          retention-days: 7
-      - name: Remove build container
-        if: always()
-        run: docker rm --force openclaw-native-darwin > /dev/null 2>&1 || true
-
-  darwin-arm64:
-    if: github.repository == 'openclaw/bun'
-    needs: build-darwin-arm64
-    runs-on: macos-15
-    timeout-minutes: 115
-    env:
-      PUPPETEER_SKIP_DOWNLOAD: "1"
-      OPENCLAW_CI_PLATFORM: darwin
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: ./.github/actions/setup-bun
-        with:
-          bun-version: "1.4.4"
-      - name: Read toolchain pins
-        id: pins
-        run: |
-          # shellcheck disable=SC2016
-          bun -e 'import { pins } from "./scripts/build/ci-images/spec.ts"; console.log(`node=${pins.nodejs.version}`)' >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: ${{ steps.pins.outputs.node }}
-      - name: Select tests
-        env:
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha || inputs.base_sha }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || (inputs.base_sha && github.sha) }}
-        run: bun scripts/openclaw-ci/tests.ts select
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          artifact-ids: ${{ needs.build-darwin-arm64.outputs.artifact_id }}
-          path: build/openclaw-ci/darwin-bundle
-      - name: Verify and unpack native test bundle
-        id: build
-        run: |
-          test "$(uname -m)" = arm64
-          bundle="$GITHUB_WORKSPACE/build/openclaw-ci/darwin-bundle"
-          test "$(cat "$bundle/commit.txt")" = "$GITHUB_SHA"
-          (cd "$bundle" && shasum -a 256 -c SHA256SUMS)
-          mkdir -p build/release
-          tar -xzf "$bundle/bun-darwin-arm64.tar.gz" -C build/release
-          test "$(./build/release/bun -e 'process.stdout.write(Bun.revision)')" = "$GITHUB_SHA"
-          {
-            echo "JSC=$GITHUB_WORKSPACE/build/release/jsc"
-            echo "TESTAOT=$GITHUB_WORKSPACE/build/release/testaot"
-            echo "AOT_SCHEMA=$GITHUB_WORKSPACE/build/release/aot-engine/ir/AOTSchema.def"
-            echo "AOT_BUILTINS_GENERATED=$GITHUB_WORKSPACE/build/release/aot-engine/builtins/generated"
-            echo "AOT_ENGINE_DIRECTORY=$GITHUB_WORKSPACE/build/release/aot-engine"
-            echo "AOT_ENGINE_TESTS=$GITHUB_WORKSPACE/build/release/aot-engine/tests"
-          } >> "$GITHUB_ENV"
-      - name: Install build dependencies
-        run: bun install --frozen-lockfile
-      - name: Run selected and compatibility tests
-        id: tests
-        timeout-minutes: 20
-        run: |
-          started=$SECONDS
-          timing() { echo "Tests: $((SECONDS - started)) seconds" >> "$GITHUB_STEP_SUMMARY"; }
-          trap timing EXIT
-          ./build/release/bun scripts/openclaw-ci/tests.ts test
-          test -s build/openclaw-ci/results.json
-      - name: Summarize
-        if: always()
-        env:
-          BUILD_OUTCOME: ${{ steps.build.outcome }}
-          TEST_OUTCOME: ${{ steps.tests.outcome }}
-        run: bun scripts/openclaw-ci/tests.ts summary
-      - name: Upload diagnostics
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: build-test-report-darwin-arm64-${{ github.sha }}-attempt${{ github.run_attempt }}
-          path: build/openclaw-ci/*.json
-          retention-days: 7
-
-  native-diagnostics:
-    if: github.repository == 'openclaw/bun' && inputs.diagnostic != '' && inputs.diagnostic != 'none' && !startsWith(inputs.diagnostic, 'shipping-')
-    runs-on: ${{ (inputs.diagnostic == 'trim-linux-source-baseline' || inputs.diagnostic == 'trim-linux-aot-baseline') && 'blacksmith-16vcpu-ubuntu-2404' || startsWith(inputs.diagnostic, 'trim-linux') && 'ubuntu-24.04' || 'macos-15' }}
-    timeout-minutes: ${{ (inputs.diagnostic == 'trim-linux-source-baseline' || inputs.diagnostic == 'trim-linux-aot-baseline') && 115 || 15 }}
-    permissions:
-      contents: read
-      actions: read
-    env:
-      EXPECTED_NATIVE_SHA: ${{ inputs.native_sha }}
-      NATIVE_RUN_ID: ${{ inputs.native_run_id }}
-      NATIVE_ARTIFACT_ID: ${{ inputs.native_artifact_id }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup-bun
-        with:
-          bun-version: "1.4.4"
-      - name: Verify immutable native artifact source
-        env:
-          GH_TOKEN: ${{ github.token }}
-          DIAGNOSTIC: ${{ inputs.diagnostic }}
-        run: |
-          [[ "$EXPECTED_NATIVE_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
-          [[ "$NATIVE_RUN_ID" =~ ^[0-9]+$ && "$NATIVE_ARTIFACT_ID" =~ ^[0-9]+$ ]] || exit 1
-          # PR metadata names the head; producers name their artifact with the built merge SHA.
-          name=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$NATIVE_ARTIFACT_ID" --jq .name)
-          if [[ "$DIAGNOSTIC" = trim-linux-shipping ]]; then
-            test "$name" = release
-          elif [[ "$DIAGNOSTIC" = trim-linux* ]]; then
-            prefix=bun-linux-x64
-          else
-            prefix=bun-darwin-arm64
-          fi
-          if [[ "$DIAGNOSTIC" != trim-linux-shipping ]]; then
-            [[ "$name" =~ ^${prefix}-${EXPECTED_NATIVE_SHA}-attempt[1-9][0-9]*$ ]] || exit 1
-          fi
-          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$NATIVE_ARTIFACT_ID" --jq .workflow_run.id)" = "$NATIVE_RUN_ID"
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          artifact-ids: ${{ inputs.native_artifact_id }}
-          run-id: ${{ inputs.native_run_id }}
-          github-token: ${{ github.token }}
-          path: build/openclaw-ci/native-input
-      - name: Verify and unpack diagnostic executable
-        id: native
-        env:
-          DIAGNOSTIC: ${{ inputs.diagnostic }}
-        run: |
-          if [[ "$DIAGNOSTIC" = trim-linux-shipping ]]; then
-            mkdir -p build/release
-            python3 -c '
-          import json, os, sys
-          from pathlib import Path
-          sys.path.insert(0, "scripts/openclaw-release")
-          from consumers import admit
-          pin = json.loads(Path("scripts/build/deps/webkit-artifacts.json").read_text())["version"]
-          receipt = admit(Path("build/openclaw-ci/native-input"), Path("build/release/bun"),
-              os.environ["EXPECTED_NATIVE_SHA"], pin,
-              "https://github.com/" + os.environ["GITHUB_REPOSITORY"] + "/actions/runs/" + os.environ["NATIVE_RUN_ID"])
-          Path("build/openclaw-ci/shipping-admission.json").write_text(json.dumps(receipt) + "\n")
-          '
-          else
-            cd build/openclaw-ci/native-input
-            test "$(cat commit.txt)" = "$EXPECTED_NATIVE_SHA"
-            if [[ "$DIAGNOSTIC" = trim-linux* ]]; then
-              sha256sum -c SHA256SUMS
-              archive=bun-linux-x64.tar.gz
-            else
-              shasum -a 256 -c SHA256SUMS
-              archive=bun-darwin-arm64.tar.gz
-            fi
-            mkdir -p ../../release
-            tar -xzf "$archive" -C ../../release
-            cd ../../..
-          fi
-          test "$(./build/release/bun -e 'process.stdout.write(Bun.revision)')" = "$EXPECTED_NATIVE_SHA"
-          printf 'native source: %s\nprobe source: %s\n' "$EXPECTED_NATIVE_SHA" "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
-          ./build/release/bun -e 'console.log(JSON.stringify({nativeSource: Bun.revision, probeSource: process.env.GITHUB_SHA, diagnostic: process.env.DIAGNOSTIC}))' > build/openclaw-ci/native-diagnostic.json
-      - name: Checkout frozen upstream baseline
-        if: inputs.diagnostic == 'trim-linux-source-baseline'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: 3f3a9ff87cdccf3d32d7ec6b648c664eddaae840
-          path: baseline
-          persist-credentials: false
-      - name: Read toolchain pins
-        if: inputs.diagnostic == 'trim-linux-source-baseline' || inputs.diagnostic == 'trim-linux-aot-baseline' || inputs.diagnostic == 'trim-linux-runtime'
-        id: pins
-        run: |
-          echo "tree=$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_OUTPUT"
-          # shellcheck disable=SC2016
-          bun -e 'import { locations, pins } from "./scripts/build/ci-images/spec.ts"; console.log(`llvm-directory=${locations.llvm}\nnode=${pins.nodejs.version}\nrust=${pins.rust.channel}`)' >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        if: inputs.diagnostic == 'trim-linux-source-baseline' || inputs.diagnostic == 'trim-linux-aot-baseline' || inputs.diagnostic == 'trim-linux-runtime'
-        with:
-          node-version: ${{ steps.pins.outputs.node }}
-      - name: Install native build tools
-        if: inputs.diagnostic == 'trim-linux-source-baseline' || inputs.diagnostic == 'trim-linux-aot-baseline'
-        timeout-minutes: 15
-        env:
-          LLVM_DIRECTORY: ${{ steps.pins.outputs.llvm-directory }}
-          RUST_TOOLCHAIN: ${{ steps.pins.outputs.rust }}
-        run: |
-          bash scripts/openclaw-ci/install-linux-toolchain.sh
-      - name: Checkout stock AOT Bun baseline
-        if: inputs.diagnostic == 'trim-linux-aot-baseline'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: 2596ac5d391d47804c93a42bdbe615804aa62387
-          path: baseline
-          persist-credentials: false
-      - name: Checkout stock AOT engine baseline
-        if: inputs.diagnostic == 'trim-linux-aot-baseline'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: oven-sh/WebKit
-          ref: 5a61071f79134bf41844e7ea31a8449147d85dd4
-          path: baseline-webkit
-          persist-credentials: false
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /*
-            !/LayoutTests/
-            !/JSTests/
-            !/PerformanceTests/
-            !/Websites/
-            !/ManualTests/
-            !/WebDriverTests/
-      - name: Prepare matched AOT baseline inputs
-        if: inputs.diagnostic == 'trim-linux-aot-baseline'
-        run: |
-          test "$(git -C baseline rev-parse HEAD)" = 2596ac5d391d47804c93a42bdbe615804aa62387
-          test "$(git -C baseline rev-parse 'HEAD^{tree}')" = 7c4f4e8ab1a9b71cf31824847daa45050f255bc9
-          test "$(git -C baseline-webkit rev-parse HEAD)" = 5a61071f79134bf41844e7ea31a8449147d85dd4
-          test "$(git -C baseline-webkit rev-parse 'HEAD^{tree}')" = 5a21495a118101dc8043246d8805babb8ebdcf60
-          test -z "$(git -C baseline status --porcelain)"
-          test -z "$(git -C baseline-webkit status --porcelain)"
-          bun -e '
-            import assert from "node:assert/strict";
-            import { pins } from "./scripts/build/ci-images/spec.ts";
-            import { pins as stock } from "./baseline/scripts/build/ci-images/spec.ts";
-            assert.equal(pins.llvm.version, "23.1.1"); assert.equal(pins.rust.channel, "nightly-2026-09-15");
-            assert.deepEqual(stock.llvm, pins.llvm); assert.deepEqual(stock.rust, pins.rust);
-          '
-          sudo apt-get install -y --no-install-recommends libicu-dev pkg-config ruby perl
-          test "$(pkg-config --modversion icu-uc)" = 74.2
-          icu_root="$RUNNER_TEMP/source-pair-icu"
-          icu_include=$(pkg-config --variable=includedir icu-uc)
-          icu_lib=$(pkg-config --variable=libdir icu-uc)
-          test -s "$icu_include/unicode/utypes.h"
-          for library in libicui18n.a libicuuc.a libicudata.a; do test -s "$icu_lib/$library"; done
-          mkdir -p "$icu_root" build/openclaw-ci/aot-baseline
-          ln -s "$icu_include" "$icu_root/include"
-          ln -s "$icu_lib" "$icu_root/lib"
-          echo "BUN_ICU_ROOT=$icu_root" >> "$GITHUB_ENV"
-          echo "BUN_WEBKIT_PATH=$GITHUB_WORKSPACE/baseline-webkit" >> "$GITHUB_ENV"
-          python3 - <<'PY'
-          import hashlib,json,subprocess
-          from pathlib import Path
-          query=lambda *args: subprocess.check_output(args,text=True).strip()
-          include=Path(query("pkg-config","--variable=includedir","icu-uc"))/"unicode"
-          lib=Path(query("pkg-config","--variable=libdir","icu-uc"))
-          digest=lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
-          headers={p.name:digest(p) for p in sorted(include.iterdir()) if p.is_file()}
-          archives={name:{"path":str(lib/name),"sha256":digest(lib/name)} for name in ["libicui18n.a","libicuuc.a","libicudata.a"]}
-          Path("build/openclaw-ci/aot-baseline/icu.json").write_text(json.dumps({"version":"74.2","headers":headers,"archives":archives},indent=2)+"\n")
-          PY
-      - name: Build unchanged stock AOT source pair
-        if: inputs.diagnostic == 'trim-linux-aot-baseline'
-        timeout-minutes: 75
-        working-directory: baseline
-        env:
-          BUN_BUILD_CACHE_DIR: ${{ github.workspace }}/baseline/.cache/openclaw-build
-          PUPPETEER_SKIP_DOWNLOAD: "1"
         run: |
           unset BUILDKITE_COMMIT GIT_SHA
-          export GITHUB_SHA=2596ac5d391d47804c93a42bdbe615804aa62387
-          bun install --frozen-lockfile
+          export GITHUB_SHA="$EXPECTED_NATIVE_SHA"
+          mkdir -p build/openclaw-ci/aot-baseline
           bun -e '
             import { configOf } from "./scripts/build/configure.ts";
-            const { cfg } = configOf({ profile: "release", overrides: { ci: true, trimmable: true, webkit: "local", webkitVersion: "5a61071f79134bf41844e7ea31a8449147d85dd4" } });
+            const { cfg } = configOf({ profile: "openclaw-native", overrides: { webkit: "local", webkitVersion: process.env.WEBKIT_SOURCE_SHA } });
             const { buildType, ci, lto, trimmable, webkit, webkitVersion, revision, cc, ld, rustToolchain } = cfg;
             if (buildType !== "Release" || !ci || !lto || !trimmable || webkit !== "local" ||
-                revision !== process.env.GITHUB_SHA || webkitVersion !== "5a61071f79134bf41844e7ea31a8449147d85dd4")
-              throw new Error("Unexpected stock AOT baseline configuration");
+                revision !== process.env.EXPECTED_NATIVE_SHA || webkitVersion !== process.env.WEBKIT_SOURCE_SHA)
+              throw new Error("Unexpected diagnostic build configuration");
             console.log(JSON.stringify({ buildType, ci, lto, trimmable, webkit, webkitVersion, revision, cc, ld, rustToolchain }));
-          ' > ../build/openclaw-ci/aot-baseline/upstream-build.json
-          bun scripts/build.ts --profile=release --ci=on --trimmable=on --webkit=local --webkit-version=5a61071f79134bf41844e7ea31a8449147d85dd4 --timings
+          ' > build/openclaw-ci/aot-baseline/probe-build.json
+          bun scripts/build.ts --profile=openclaw-native --webkit=local --webkit-version="$WEBKIT_SOURCE_SHA" --timings -k0
           mkdir -p build/release/bun.trim
           cp build/release/bun-profile.trim/*.txt build/release/bun.trim/
           test -z "$(git status --porcelain --untracked-files=no)"
-          test -z "$(git -C ../baseline-webkit status --porcelain --untracked-files=no)"
-      - name: Compare matched AOT retention and execution
-        if: inputs.diagnostic == 'trim-linux-aot-baseline'
-        run: ./build/release/bun scripts/openclaw-ci/aot-trim-baseline.ts
-      - name: Build unchanged upstream with matched native inputs
-        if: inputs.diagnostic == 'trim-linux-source-baseline'
-        timeout-minutes: 75
-        working-directory: baseline
-        env:
-          # config.ts gives CI revision variables precedence over the checked-out HEAD.
-          UPSTREAM_SHA: 3f3a9ff87cdccf3d32d7ec6b648c664eddaae840
-          BUN_BUILD_CACHE_DIR: ${{ github.workspace }}/baseline/.cache/openclaw-build
-          PUPPETEER_SKIP_DOWNLOAD: "1"
-        run: |
-          unset BUILDKITE_COMMIT GIT_SHA
-          export GITHUB_SHA="$UPSTREAM_SHA"
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          bun install --frozen-lockfile
-          mkdir -p ../build/openclaw-ci/trim-diagnostics
-          bun -e '
-            import { configOf } from "./scripts/build/configure.ts";
-            const { cfg } = configOf({ profile: "release", overrides: { ci: true, trimmable: true } });
-            const { buildType, ci, lto, trimmable, webkit, webkitVersion, revision, cc, ld, rustToolchain } = cfg;
-            if (buildType !== "Release" || !ci || !lto || !trimmable || webkit !== "prebuilt" ||
-                revision !== process.env.GITHUB_SHA || webkitVersion !== "4d45755fed4aeef19e95beb90d3d0c884a2812bd")
-              throw new Error("Unexpected upstream baseline configuration");
-            console.log(JSON.stringify({ buildType, ci, lto, trimmable, webkit, webkitVersion, revision, cc, ld, rustToolchain }));
-          ' > ../build/openclaw-ci/trim-diagnostics/upstream-build.json
-          bun scripts/build.ts --profile=release --ci=on --trimmable=on --timings
-          mkdir -p build/release/bun.trim
-          cp build/release/bun-profile.trim/*.txt build/release/bun.trim/
-          test -z "$(git status --porcelain --untracked-files=no)"
-      - name: Inspect trim witnesses and mapped bytes
-        if: startsWith(inputs.diagnostic, 'trim-linux') && inputs.diagnostic != 'trim-linux-shipping' && inputs.diagnostic != 'trim-linux-cache' && inputs.diagnostic != 'trim-linux-type-stripping' && inputs.diagnostic != 'trim-linux-module-mocks' && inputs.diagnostic != 'trim-linux-runtime' && inputs.diagnostic != 'trim-linux-aot-baseline'
-        env:
-          DIAGNOSTIC: ${{ inputs.diagnostic }}
-        run: |
-          args=()
-          [ "$DIAGNOSTIC" = trim-linux-baseline ] && args+=(--compare-upstream-135015)
-          [ "$DIAGNOSTIC" = trim-linux-source-baseline ] && args+=(--compare-built-upstream)
-          ./build/release/bun scripts/openclaw-ci/trim-diagnostics.ts "${args[@]}"
-      - name: Replay selected runtime regression
-        if: inputs.diagnostic == 'trim-linux-cache' || inputs.diagnostic == 'trim-linux-type-stripping' || inputs.diagnostic == 'trim-linux-module-mocks' || inputs.diagnostic == 'compile-cache-darwin'
-        env:
-          DIAGNOSTIC: ${{ inputs.diagnostic }}
-        run: |
-          set -o pipefail
-          bun install --frozen-lockfile
-          test_files=(test/bundler/compile-node-compile-cache.test.ts)
-          if [ "$DIAGNOSTIC" = trim-linux-type-stripping ]; then
-            test_files=(test/bundler/compile-trim-remove.test.ts)
-          elif [ "$DIAGNOSTIC" = trim-linux-module-mocks ]; then
-            test_files=(
-              test/js/bun/test/mock/mock-module.test.ts
-              test/aot/the-default-of-a-mocked-built-in-module-is-the-mocks.test.ts
-              test/aot/a-commonjs-file-mocked-again-is-seen-by-who-required-it.test.ts
-              test/aot/bun-plugin-in-a-trimmed-executable.test.ts
-            )
-          fi
-          ./build/release/bun --expose-internals test "${test_files[@]}" \
-            --reporter=junit --reporter-outfile=build/openclaw-ci/native-test.xml \
-            2>&1 | tee build/openclaw-ci/native-test.log
-      - name: Prepare focused runtime diagnosis
-        if: inputs.diagnostic == 'trim-linux-runtime'
-        run: ./build/release/bun install --frozen-lockfile
-      - name: Replay module, HTTP, and standard-stream fixes
-        if: inputs.diagnostic == 'trim-linux-runtime'
-        run: |
-          set -euo pipefail
-          timeout --kill-after=5s 300s ./build/release/bun --expose-internals test \
-            test/cli/run/run-aot.test.ts \
-            test/js/node/http/node-http-fast-path-regressions.test.ts \
-            test/js/node/http/node-http-closed-response.test.ts \
-            test/bundler/compile-trim-removed-features-throw.test.ts \
-            --test-name-pattern 'files that are CommonJS only by name|node:http server keeps its behavior|a response closed by Object|dynamic standard-stream construction errors remain catchable' \
-            --reporter=junit --reporter-outfile=build/openclaw-ci/native-test.xml \
-            2>&1 | tee build/openclaw-ci/native-test.log
-      - name: Probe the admitted shipping compile contract
-        if: inputs.diagnostic == 'trim-linux-shipping'
-        run: |
-          bun -e '
-            import { readFileSync } from "node:fs";
-            import { resolve } from "node:path";
-            import { qualifyCompiledRuntime } from "./scripts/openclaw-release/release.ts";
-            const admission = JSON.parse(readFileSync("build/openclaw-ci/shipping-admission.json", "utf8"));
-            qualifyCompiledRuntime(resolve("build/release/bun"), "linux-x64", resolve("build/openclaw-ci/compiled-runtime"),
-              resolve("build/openclaw-ci"), admission.commit, admission.webkit);
-          '
-      - name: Replay native macOS type comparison
-        if: inputs.diagnostic == 'bun-types-darwin'
-        run: |
-          bun install --frozen-lockfile
-          ./build/release/bun test test/integration/bun-types/bun-types.test.ts
-      - name: Check native host evaluator reachability
-        if: inputs.diagnostic == 'aot-evaluators-darwin'
-        run: |
-          export JSC="$GITHUB_WORKSPACE/build/release/jsc"
-          export AOT_SCHEMA="$GITHUB_WORKSPACE/build/release/aot-engine/ir/AOTSchema.def"
-          export AOT_BUILTINS_GENERATED="$GITHUB_WORKSPACE/build/release/aot-engine/builtins/generated"
-          export AOT_ENGINE_DIRECTORY="$GITHUB_WORKSPACE/build/release/aot-engine"
-          export AOT_ENGINE_TESTS="$GITHUB_WORKSPACE/build/release/aot-engine/tests"
-          ./build/release/testaot run \
-            test/aot/engine-tests/valueflow/modules/evaluated-text-does-not-call-private-host-evaluators.ir \
-            test/aot/engine-tests/valueflow/modules/a-private-host-evaluator-that-is-called-still-evaluates-text.ir \
-            --show-output
-      - name: Upload focused diagnostics
+          test -z "$(git -C .openclaw-webkit status --porcelain --untracked-files=no)"
+          ./build/release/bun -e 'if (Bun.revision !== process.env.EXPECTED_NATIVE_SHA || process.versions.webkit !== process.env.WEBKIT_SOURCE_SHA) throw new Error("unadmitted diagnostic source pair")'
+      - name: Trace the exact HTTP class fixture and verify runtime output
+        run: node ../scripts/openclaw-ci/http-access-diagnostic.cjs
+      - name: Upload diagnostic receipts and operation traces
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: native-diagnostic-${{ inputs.diagnostic }}-${{ github.sha }}-attempt${{ github.run_attempt }}
+          name: aot-http-access-${{ github.sha }}-attempt${{ github.run_attempt }}
           path: |
-            build/openclaw-ci/native-diagnostic.json
-            build/openclaw-ci/native-test.xml
-            build/openclaw-ci/native-test.log
-            build/openclaw-ci/shipping-admission.json
-            build/openclaw-ci/compiled-runtime.json
-            build/openclaw-ci/trim-diagnostics/*.json
-            build/openclaw-ci/trim-diagnostics/*.log
-            build/openclaw-ci/trim-diagnostics/*.ir
-            build/openclaw-ci/aot-baseline/*.json
-            build/openclaw-ci/aot-baseline/*.log
-          retention-days: 7
-
-  shipping-diagnostics:
-    if: github.repository == 'openclaw/bun' && startsWith(inputs.diagnostic, 'shipping-') && inputs.diagnostic != 'shipping-consumer-openclaw'
-    runs-on: ${{ inputs.diagnostic == 'shipping-darwin-x64' && 'macos-15-intel' || inputs.diagnostic == 'shipping-darwin-arm64' && 'macos-15' || inputs.diagnostic == 'shipping-windows-arm64' && 'windows-11-arm' || 'ubuntu-24.04' }}
-    timeout-minutes: 30
-    permissions:
-      contents: read
-      actions: read
-    defaults:
-      run:
-        shell: bash
-    env:
-      DIAGNOSTIC: ${{ inputs.diagnostic }}
-      EXPECTED_NATIVE_SHA: ${{ inputs.native_sha }}
-      NATIVE_RUN_ID: ${{ inputs.native_run_id }}
-      NATIVE_ARTIFACT_ID: ${{ inputs.native_artifact_id }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup-bun
-        with:
-          bun-version: "1.4.4"
-      - name: Download the immutable shipping input
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          [[ "$EXPECTED_NATIVE_SHA" = c4ca435840cde345525407e1d260480dccc78467 ]] || exit 1
-          [[ "$NATIVE_RUN_ID" = 42311827376 && "$NATIVE_ARTIFACT_ID" =~ ^[0-9]+$ ]] || exit 1
-          case "$DIAGNOSTIC:$NATIVE_ARTIFACT_ID" in
-            shipping-darwin-arm64:13550938062|shipping-darwin-x64:13550623523|shipping-windows-arm64:13550722605|shipping-layout-linux-x64:13549904823) ;;
-            *) echo 'Unexpected shipping replay artifact' >&2; exit 1 ;;
-          esac
-          mkdir -p build/openclaw-ci/shipping-input
-          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$NATIVE_ARTIFACT_ID" > build/openclaw-ci/shipping-input/artifact.json
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$NATIVE_RUN_ID" > build/openclaw-ci/shipping-input/run.json
-          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$NATIVE_ARTIFACT_ID/zip" > build/openclaw-ci/shipping-input/artifact.zip
-      - name: Checkout the executable's exact qualification source
-        if: inputs.diagnostic != 'shipping-layout-linux-x64'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ inputs.native_sha }}
-          path: native-source
-          persist-credentials: false
-      - name: Setup the native Node.js reference
-        if: inputs.diagnostic != 'shipping-layout-linux-x64'
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: "26.12.1"
-      - name: Replay qualification or inspect the linked layout
-        run: bun scripts/openclaw-ci/shipping-diagnostics.ts
-      - name: Upload replay evidence
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: shipping-diagnostic-${{ inputs.diagnostic }}-${{ github.sha }}-attempt${{ github.run_attempt }}
-          path: build/openclaw-ci/shipping-diagnostics/
+            source/build/openclaw-ci/*.json
+            source/build/openclaw-ci/aot-baseline/*.json
+            source/build/openclaw-ci/aot-baseline/*.log
+            source/build/openclaw-ci/receiver-oracle/node-class-guards/*.json
+            source/build/openclaw-ci/receiver-oracle/node-class-guards/*.log
+            source/build/release/timings.html
           if-no-files-found: error
           retention-days: 7
-
-  consumer-diagnostics:
-    if: github.repository == 'openclaw/bun' && inputs.diagnostic == 'shipping-consumer-openclaw'
-    runs-on: blacksmith-32vcpu-ubuntu-2404
-    timeout-minutes: 120
-    permissions:
-      contents: read
-      actions: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          path: pipeline
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: openclaw/openclaw
-          ref: 7c26e8cccd19b74c3443fb3f0ed6fbf9d7d410a3
-          persist-credentials: false
-          path: consumer/openclaw
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: "24.22.1"
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          artifact-ids: "13597989409"
-          run-id: "42429807742"
-          github-token: ${{ github.token }}
-          path: release
-      - name: Verify the frozen manifest
-        run: |
-          echo '1a7e187e643b25778b959a82b309ad0098b3fb2b99c10a6dac2ae5e0473d49a2  release/manifest.json' | sha256sum --check --strict
-      - name: Diagnose the frozen OpenClaw consumer
-        env:
-          EXPECTED_COMMIT: fa54b248b66ed7eb48217ad759120502be489e97
-          EXPECTED_WEBKIT: 8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6
-          EXPECTED_RUN: https://github.com/openclaw/bun/actions/runs/42429807742
-        run: python3 pipeline/scripts/openclaw-release/consumers.py openclaw release consumer/openclaw "$RUNNER_TEMP/consumer-proof"
-      - name: Upload consumer diagnostics
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: consumer-diagnostic-openclaw-${{ github.sha }}-attempt${{ github.run_attempt }}
-          path: |
-            ${{ runner.temp }}/consumer-proof/*.json
-            ${{ runner.temp }}/consumer-proof/*.log
-            ${{ runner.temp }}/consumer-proof/package/*.json
-            ${{ runner.temp }}/consumer-proof/smoke/
-          if-no-files-found: error
-          retention-days: 14
