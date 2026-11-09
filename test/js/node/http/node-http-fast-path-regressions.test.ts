@@ -178,6 +178,18 @@ describe.concurrent("node:http server keeps its behavior on keep-alive connectio
     timeout,
   );
 
+  test.each(["proxy-response-end", "inherited-response-end"])(
+    "%s releases the connection for the next request",
+    async scenario => {
+      expect(await run(scenario, [warmUp, ...threeRequests()])).toMatchObject({
+        responses: [ok, ok, ok, ok],
+        stderr: "",
+        exitCode: 0,
+      });
+    },
+    timeout,
+  );
+
   test(
     "writeHead() throws ERR_HTTP_HEADERS_SENT once res._header is assigned",
     async () => {

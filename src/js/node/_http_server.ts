@@ -4191,9 +4191,14 @@ function emitResponseFinished(res, callback) {
   } finally {
     // The finish listener can be removed or throw before detaching. Native
     // completion must still release this response's connection association.
-    if (isNodeHTTPServerSocket(socket) && socket._httpMessage === res) {
-      res.detachSocket(socket);
-      detached = true;
+    if (isNodeHTTPServerSocket(socket)) {
+      const assigned = socket._httpMessage;
+      // A Proxy or inheritor can finish the same native response with a
+      // different receiver. Release the socket's owner for that request only.
+      if (assigned === res || (assigned && res[kHandle] && assigned[kHandle] === res[kHandle])) {
+        assigned.detachSocket(socket);
+        detached = true;
+      }
     }
   }
   if (detached) advanceResponsePipeline(socket.server, socket);

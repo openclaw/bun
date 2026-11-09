@@ -102,6 +102,16 @@ const scenarios: Record<string, Scenario> = {
       res.end("ok");
     },
   },
+  "proxy-response-end": {
+    handle(req, res) {
+      new Proxy(res, {}).end("ok");
+    },
+  },
+  "inherited-response-end": {
+    handle(req, res) {
+      Object.create(res).end("ok");
+    },
+  },
   "assigned-header-text": {
     handle(req, res, log) {
       res._header = "HTTP/1.1 299 Mine\r\nContent-Length: 2\r\n\r\n";
