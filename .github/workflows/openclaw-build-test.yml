@@ -776,6 +776,30 @@ jobs:
       - name: Prepare focused runtime diagnosis
         if: inputs.diagnostic == 'trim-linux-runtime'
         run: ./build/release/bun install --frozen-lockfile
+      - name: Replay HTTPS validation in ordinary and AOT modes
+        if: inputs.diagnostic == 'trim-linux-runtime'
+        run: |
+          set -euo pipefail
+          timeout --kill-after=5s 300s ./build/release/bun --expose-internals test \
+            test/js/node/http/node-https-server.test.ts \
+            --test-name-pattern '^setSecureContext validates options before its receiver' \
+            --reporter=junit --reporter-outfile=build/openclaw-ci/native-https-test.xml \
+            2>&1 | tee build/openclaw-ci/native-https-test.log
+      - name: Replay HTTP reflection and accessor observations
+        if: inputs.diagnostic == 'trim-linux-runtime'
+        run: |
+          set -euo pipefail
+          timeout --kill-after=5s 300s ./build/release/bun --expose-internals test \
+            test/js/node/http/node-http-accessors-added-between-a-socket-and-their-owner.test.ts \
+            test/js/node/http/node-http-replaced-accessors-of-a-socket.test.ts \
+            test/js/node/http/node-http-replaced-accessors.test.ts \
+            test/js/node/http/node-http-own-keys-through-an-exchange.test.ts \
+            test/js/node/http/node-http-own-accessors-on-an-exchange.test.ts \
+            test/js/node/http/node-http-proxy-traps.test.ts \
+            test/js/node/http/node-http-state-through-an-heir-and-a-proxy.test.ts \
+            test/js/node/http/node-http-receivers-that-are-no-messages.test.ts \
+            --reporter=junit --reporter-outfile=build/openclaw-ci/native-http-test.xml \
+            2>&1 | tee build/openclaw-ci/native-http-test.log
       - name: Replay module, HTTP, and standard-stream fixes
         if: inputs.diagnostic == 'trim-linux-runtime'
         run: |
@@ -825,6 +849,10 @@ jobs:
             build/openclaw-ci/native-diagnostic.json
             build/openclaw-ci/native-test.xml
             build/openclaw-ci/native-test.log
+            build/openclaw-ci/native-https-test.xml
+            build/openclaw-ci/native-https-test.log
+            build/openclaw-ci/native-http-test.xml
+            build/openclaw-ci/native-http-test.log
             build/openclaw-ci/shipping-admission.json
             build/openclaw-ci/compiled-runtime.json
             build/openclaw-ci/trim-diagnostics/*.json
