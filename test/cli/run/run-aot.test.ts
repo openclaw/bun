@@ -236,7 +236,7 @@ describe.skipIf(!supported)("bun run --aot", () => {
   });
 
   test.concurrent("__esModule of a module namespace object can be set", async () => {
-    const { stdout } = await expectSameAsBunRun(
+    const { stdout, stderr } = await expectSameAsBunRun(
       {
         "entry.ts": `
           import * as Self from "./entry.ts";
@@ -260,7 +260,7 @@ describe.skipIf(!supported)("bun run --aot", () => {
       },
       "entry.ts",
     );
-    expect(stdout).toStartWith(",true,,true,,true, true a\ntrue true\nTypeError: ");
+    expect(stdout, stderr).toStartWith(",true,,true,,true, true a\ntrue true\nTypeError: ");
   });
 
   test.concurrent(

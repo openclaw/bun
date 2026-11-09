@@ -638,19 +638,17 @@ jobs:
             sudo apt-get update -qq
             sudo apt-get install -y --no-install-recommends strace
           fi
-      - name: Replay failing AOT and IPC cases in separate test processes
+      - name: Replay failing AOT cases in separate test processes
         if: inputs.diagnostic == 'trim-linux-runtime'
         run: |
           set -o pipefail
           test_files=(
             aot/a-commonjs-file-mocked-again-is-seen-by-who-required-it.test.ts
             cli/run/run-aot.test.ts
-            js/bun/spawn/spawn.ipc.test.ts
           )
           patterns=(
             'a later CommonJS mock'
             '__esModule of a module namespace object can be set|stack traces'
-            'ipc works when preceded by a non-pipe extra stdio slot'
           )
           printf '[' > build/openclaw-ci/runtime-results.json
           separator=
@@ -678,13 +676,13 @@ jobs:
             const expected = [
               "aot/a-commonjs-file-mocked-again-is-seen-by-who-required-it.test.ts",
               "cli/run/run-aot.test.ts",
-              "js/bun/spawn/spawn.ipc.test.ts",
             ];
             assert.deepEqual(results.map(result => result.testPath.replace(/^test\//, "")).sort(), expected.sort());
           '
       - name: Trace the two native-addon fatal paths
         if: always() && inputs.diagnostic == 'trim-linux-runtime' && steps.native.outcome == 'success' && steps.runtime-deps.outcome == 'success'
         run: |
+          cat /proc/sys/kernel/core_pattern > build/openclaw-ci/core-pattern.txt
           ulimit -c 0
           set +e
           timeout --kill-after=5s 90s strace -ff -tt -s 256 -e trace=write,read,futex,process,network \
@@ -741,6 +739,7 @@ jobs:
             build/openclaw-ci/runtime-results.json
             build/openclaw-ci/runtime-test.log
             build/openclaw-ci/fatal-status.json
+            build/openclaw-ci/core-pattern.txt
             build/openclaw-ci/fatal-*.log*
             build/openclaw-ci/shipping-admission.json
             build/openclaw-ci/compiled-runtime.json
