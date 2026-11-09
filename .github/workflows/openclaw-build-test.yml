@@ -51,6 +51,7 @@ on:
             compile-cache-darwin,
             trim-linux-baseline,
             trim-linux-source-baseline,
+            trim-linux-aot-baseline,
             trim-linux-shipping,
             bun-types-darwin,
             aot-evaluators-darwin,
@@ -519,8 +520,8 @@ jobs:
 
   native-diagnostics:
     if: github.repository == 'openclaw/bun' && inputs.diagnostic != '' && inputs.diagnostic != 'none' && !startsWith(inputs.diagnostic, 'shipping-')
-    runs-on: ${{ inputs.diagnostic == 'trim-linux-source-baseline' && 'blacksmith-16vcpu-ubuntu-2404' || startsWith(inputs.diagnostic, 'trim-linux') && 'ubuntu-24.04' || 'macos-15' }}
-    timeout-minutes: ${{ inputs.diagnostic == 'trim-linux-source-baseline' && 115 || 15 }}
+    runs-on: ${{ (inputs.diagnostic == 'trim-linux-source-baseline' || inputs.diagnostic == 'trim-linux-aot-baseline') && 'blacksmith-16vcpu-ubuntu-2404' || startsWith(inputs.diagnostic, 'trim-linux') && 'ubuntu-24.04' || 'macos-15' }}
+    timeout-minutes: ${{ (inputs.diagnostic == 'trim-linux-source-baseline' || inputs.diagnostic == 'trim-linux-aot-baseline') && 115 || 15 }}
     permissions:
       contents: read
       actions: read
@@ -604,24 +605,115 @@ jobs:
           path: baseline
           persist-credentials: false
       - name: Read toolchain pins
-        if: inputs.diagnostic == 'trim-linux-source-baseline' || inputs.diagnostic == 'trim-linux-runtime'
+        if: inputs.diagnostic == 'trim-linux-source-baseline' || inputs.diagnostic == 'trim-linux-aot-baseline' || inputs.diagnostic == 'trim-linux-runtime'
         id: pins
         run: |
           echo "tree=$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_OUTPUT"
           # shellcheck disable=SC2016
           bun -e 'import { locations, pins } from "./scripts/build/ci-images/spec.ts"; console.log(`llvm-directory=${locations.llvm}\nnode=${pins.nodejs.version}\nrust=${pins.rust.channel}`)' >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        if: inputs.diagnostic == 'trim-linux-source-baseline' || inputs.diagnostic == 'trim-linux-runtime'
+        if: inputs.diagnostic == 'trim-linux-source-baseline' || inputs.diagnostic == 'trim-linux-aot-baseline' || inputs.diagnostic == 'trim-linux-runtime'
         with:
           node-version: ${{ steps.pins.outputs.node }}
       - name: Install native build tools
-        if: inputs.diagnostic == 'trim-linux-source-baseline'
+        if: inputs.diagnostic == 'trim-linux-source-baseline' || inputs.diagnostic == 'trim-linux-aot-baseline'
         timeout-minutes: 15
         env:
           LLVM_DIRECTORY: ${{ steps.pins.outputs.llvm-directory }}
           RUST_TOOLCHAIN: ${{ steps.pins.outputs.rust }}
         run: |
           bash scripts/openclaw-ci/install-linux-toolchain.sh
+      - name: Checkout stock AOT Bun baseline
+        if: inputs.diagnostic == 'trim-linux-aot-baseline'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 2596ac5d391d47804c93a42bdbe615804aa62387
+          path: baseline
+          persist-credentials: false
+      - name: Checkout stock AOT engine baseline
+        if: inputs.diagnostic == 'trim-linux-aot-baseline'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: oven-sh/WebKit
+          ref: 5a61071f79134bf41844e7ea31a8449147d85dd4
+          path: baseline-webkit
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*
+            !/LayoutTests/
+            !/JSTests/
+            !/PerformanceTests/
+            !/Websites/
+            !/ManualTests/
+            !/WebDriverTests/
+      - name: Prepare matched AOT baseline inputs
+        if: inputs.diagnostic == 'trim-linux-aot-baseline'
+        run: |
+          test "$(git -C baseline rev-parse HEAD)" = 2596ac5d391d47804c93a42bdbe615804aa62387
+          test "$(git -C baseline rev-parse 'HEAD^{tree}')" = 7c4f4e8ab1a9b71cf31824847daa45050f255bc9
+          test "$(git -C baseline-webkit rev-parse HEAD)" = 5a61071f79134bf41844e7ea31a8449147d85dd4
+          test "$(git -C baseline-webkit rev-parse 'HEAD^{tree}')" = 5a21495a118101dc8043246d8805babb8ebdcf60
+          test -z "$(git -C baseline status --porcelain)"
+          test -z "$(git -C baseline-webkit status --porcelain)"
+          bun -e '
+            import assert from "node:assert/strict";
+            import { pins } from "./scripts/build/ci-images/spec.ts";
+            import { pins as stock } from "./baseline/scripts/build/ci-images/spec.ts";
+            assert.equal(pins.llvm.version, "23.1.1"); assert.equal(pins.rust.channel, "nightly-2026-09-15");
+            assert.deepEqual(stock.llvm, pins.llvm); assert.deepEqual(stock.rust, pins.rust);
+          '
+          sudo apt-get install -y --no-install-recommends libicu-dev pkg-config ruby perl
+          test "$(pkg-config --modversion icu-uc)" = 74.2
+          icu_root="$RUNNER_TEMP/source-pair-icu"
+          icu_include=$(pkg-config --variable=includedir icu-uc)
+          icu_lib=$(pkg-config --variable=libdir icu-uc)
+          test -s "$icu_include/unicode/utypes.h"
+          for library in libicui18n.a libicuuc.a libicudata.a; do test -s "$icu_lib/$library"; done
+          mkdir -p "$icu_root" build/openclaw-ci/aot-baseline
+          ln -s "$icu_include" "$icu_root/include"
+          ln -s "$icu_lib" "$icu_root/lib"
+          echo "BUN_ICU_ROOT=$icu_root" >> "$GITHUB_ENV"
+          echo "BUN_WEBKIT_PATH=$GITHUB_WORKSPACE/baseline-webkit" >> "$GITHUB_ENV"
+          python3 - <<'PY'
+          import hashlib,json,subprocess
+          from pathlib import Path
+          query=lambda *args: subprocess.check_output(args,text=True).strip()
+          include=Path(query("pkg-config","--variable=includedir","icu-uc"))/"unicode"
+          lib=Path(query("pkg-config","--variable=libdir","icu-uc"))
+          digest=lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
+          headers={p.name:digest(p) for p in sorted(include.iterdir()) if p.is_file()}
+          archives={name:{"path":str(lib/name),"sha256":digest(lib/name)} for name in ["libicui18n.a","libicuuc.a","libicudata.a"]}
+          Path("build/openclaw-ci/aot-baseline/icu.json").write_text(json.dumps({"version":"74.2","headers":headers,"archives":archives},indent=2)+"\n")
+          PY
+      - name: Build unchanged stock AOT source pair
+        if: inputs.diagnostic == 'trim-linux-aot-baseline'
+        timeout-minutes: 75
+        working-directory: baseline
+        env:
+          BUN_BUILD_CACHE_DIR: ${{ github.workspace }}/baseline/.cache/openclaw-build
+          PUPPETEER_SKIP_DOWNLOAD: "1"
+        run: |
+          unset BUILDKITE_COMMIT GIT_SHA
+          export GITHUB_SHA=2596ac5d391d47804c93a42bdbe615804aa62387
+          bun install --frozen-lockfile
+          bun -e '
+            import { configOf } from "./scripts/build/configure.ts";
+            const { cfg } = configOf({ profile: "release", overrides: { ci: true, trimmable: true, webkit: "local", webkitVersion: "5a61071f79134bf41844e7ea31a8449147d85dd4" } });
+            const { buildType, ci, lto, trimmable, webkit, webkitVersion, revision, cc, ld, rustToolchain } = cfg;
+            if (buildType !== "Release" || !ci || !lto || !trimmable || webkit !== "local" ||
+                revision !== process.env.GITHUB_SHA || webkitVersion !== "5a61071f79134bf41844e7ea31a8449147d85dd4")
+              throw new Error("Unexpected stock AOT baseline configuration");
+            console.log(JSON.stringify({ buildType, ci, lto, trimmable, webkit, webkitVersion, revision, cc, ld, rustToolchain }));
+          ' > ../build/openclaw-ci/aot-baseline/upstream-build.json
+          bun scripts/build.ts --profile=release --ci=on --trimmable=on --webkit=local --webkit-version=5a61071f79134bf41844e7ea31a8449147d85dd4 --timings
+          mkdir -p build/release/bun.trim
+          cp build/release/bun-profile.trim/*.txt build/release/bun.trim/
+          test -z "$(git status --porcelain --untracked-files=no)"
+          test -z "$(git -C ../baseline-webkit status --porcelain --untracked-files=no)"
+      - name: Compare matched AOT retention and execution
+        if: inputs.diagnostic == 'trim-linux-aot-baseline'
+        run: ./build/release/bun scripts/openclaw-ci/aot-trim-baseline.ts
       - name: Build unchanged upstream with matched native inputs
         if: inputs.diagnostic == 'trim-linux-source-baseline'
         timeout-minutes: 75
@@ -651,7 +743,7 @@ jobs:
           cp build/release/bun-profile.trim/*.txt build/release/bun.trim/
           test -z "$(git status --porcelain --untracked-files=no)"
       - name: Inspect trim witnesses and mapped bytes
-        if: startsWith(inputs.diagnostic, 'trim-linux') && inputs.diagnostic != 'trim-linux-shipping' && inputs.diagnostic != 'trim-linux-cache' && inputs.diagnostic != 'trim-linux-type-stripping' && inputs.diagnostic != 'trim-linux-module-mocks' && inputs.diagnostic != 'trim-linux-runtime'
+        if: startsWith(inputs.diagnostic, 'trim-linux') && inputs.diagnostic != 'trim-linux-shipping' && inputs.diagnostic != 'trim-linux-cache' && inputs.diagnostic != 'trim-linux-type-stripping' && inputs.diagnostic != 'trim-linux-module-mocks' && inputs.diagnostic != 'trim-linux-runtime' && inputs.diagnostic != 'trim-linux-aot-baseline'
         env:
           DIAGNOSTIC: ${{ inputs.diagnostic }}
         run: |
@@ -683,12 +775,15 @@ jobs:
       - name: Prepare focused runtime diagnosis
         if: inputs.diagnostic == 'trim-linux-runtime'
         run: ./build/release/bun install --frozen-lockfile
-      - name: Replay trim retention floors with compiler reports
+      - name: Replay module, HTTP, and standard-stream fixes
         if: inputs.diagnostic == 'trim-linux-runtime'
         run: |
           set -euo pipefail
-          timeout --kill-after=5s 100s ./build/release/bun --expose-internals test \
-            test/bundler/compile-trim-by-use.test.ts --test-name-pattern 'what is reached' \
+          timeout --kill-after=5s 300s ./build/release/bun --expose-internals test \
+            test/cli/run/run-aot.test.ts \
+            test/js/node/http/node-http-fast-path-regressions.test.ts \
+            test/bundler/compile-trim-removed-features-throw.test.ts \
+            --test-name-pattern 'files that are CommonJS only by name|node:http server keeps its behavior|dynamic standard-stream construction errors remain catchable' \
             --reporter=junit --reporter-outfile=build/openclaw-ci/native-test.xml \
             2>&1 | tee build/openclaw-ci/native-test.log
       - name: Probe the admitted shipping compile contract
@@ -733,6 +828,8 @@ jobs:
             build/openclaw-ci/trim-diagnostics/*.json
             build/openclaw-ci/trim-diagnostics/*.log
             build/openclaw-ci/trim-diagnostics/*.ir
+            build/openclaw-ci/aot-baseline/*.json
+            build/openclaw-ci/aot-baseline/*.log
           retention-days: 7
 
   shipping-diagnostics:
