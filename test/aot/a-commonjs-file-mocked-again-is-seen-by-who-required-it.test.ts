@@ -71,6 +71,7 @@ export const keys = () => Object.keys(all).join();
   });
   const seenWith = async (env: Record<string, string>, ...flags: string[]) => {
     const { stdout, stderr, exitCode } = await run([bunExe(), "test", ...flags], String(dir), { ...bunEnv, ...env });
+    if (exitCode !== 0) console.error("mock child failed", flags, exitCode, stdout, stderr);
     return { seen: (stdout + "\n" + stderr).split("\n").filter(line => line.startsWith("SEEN ")), exitCode };
   };
   const [plain, oneProgram, layers] = await Promise.all([

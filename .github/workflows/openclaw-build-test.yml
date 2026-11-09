@@ -47,6 +47,7 @@ on:
             trim-linux-cache,
             trim-linux-type-stripping,
             trim-linux-module-mocks,
+            trim-linux-runtime,
             compile-cache-darwin,
             trim-linux-baseline,
             trim-linux-source-baseline,
@@ -510,6 +511,7 @@ jobs:
           github-token: ${{ github.token }}
           path: build/openclaw-ci/native-input
       - name: Verify and unpack diagnostic executable
+        id: native
         env:
           DIAGNOSTIC: ${{ inputs.diagnostic }}
         run: |
@@ -551,14 +553,14 @@ jobs:
           path: baseline
           persist-credentials: false
       - name: Read toolchain pins
-        if: inputs.diagnostic == 'trim-linux-source-baseline'
+        if: inputs.diagnostic == 'trim-linux-source-baseline' || inputs.diagnostic == 'trim-linux-runtime'
         id: pins
         run: |
           echo "tree=$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_OUTPUT"
           # shellcheck disable=SC2016
           bun -e 'import { locations, pins } from "./scripts/build/ci-images/spec.ts"; console.log(`llvm-directory=${locations.llvm}\nnode=${pins.nodejs.version}\nrust=${pins.rust.channel}`)' >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        if: inputs.diagnostic == 'trim-linux-source-baseline'
+        if: inputs.diagnostic == 'trim-linux-source-baseline' || inputs.diagnostic == 'trim-linux-runtime'
         with:
           node-version: ${{ steps.pins.outputs.node }}
       - name: Install native build tools
@@ -598,7 +600,7 @@ jobs:
           cp build/release/bun-profile.trim/*.txt build/release/bun.trim/
           test -z "$(git status --porcelain --untracked-files=no)"
       - name: Inspect trim witnesses and mapped bytes
-        if: startsWith(inputs.diagnostic, 'trim-linux') && inputs.diagnostic != 'trim-linux-shipping' && inputs.diagnostic != 'trim-linux-cache' && inputs.diagnostic != 'trim-linux-type-stripping' && inputs.diagnostic != 'trim-linux-module-mocks'
+        if: startsWith(inputs.diagnostic, 'trim-linux') && inputs.diagnostic != 'trim-linux-shipping' && inputs.diagnostic != 'trim-linux-cache' && inputs.diagnostic != 'trim-linux-type-stripping' && inputs.diagnostic != 'trim-linux-module-mocks' && inputs.diagnostic != 'trim-linux-runtime'
         env:
           DIAGNOSTIC: ${{ inputs.diagnostic }}
         run: |
@@ -627,6 +629,57 @@ jobs:
           ./build/release/bun --expose-internals test "${test_files[@]}" \
             --reporter=junit --reporter-outfile=build/openclaw-ci/native-test.xml \
             2>&1 | tee build/openclaw-ci/native-test.log
+      - name: Prepare focused runtime diagnosis
+        if: inputs.diagnostic == 'trim-linux-runtime'
+        id: runtime-deps
+        run: |
+          bun install --frozen-lockfile
+          if ! command -v strace >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends strace
+          fi
+      - name: Replay AOT and IPC failures in isolated test processes
+        if: inputs.diagnostic == 'trim-linux-runtime'
+        run: |
+          set -o pipefail
+          node scripts/runner.node.ts --exec-path "$PWD/build/release/bun" --vendor=false --retries=0 \
+            --results-json build/openclaw-ci/runtime-results.json \
+            --include aot/a-commonjs-file-mocked-again-is-seen-by-who-required-it.test.ts \
+            --include cli/run/run-aot.test.ts \
+            --include js/bun/spawn/spawn.ipc.test.ts \
+            2>&1 | tee build/openclaw-ci/runtime-test.log
+      - name: Verify all focused runtime files were exercised
+        if: always() && inputs.diagnostic == 'trim-linux-runtime' && steps.native.outcome == 'success' && steps.runtime-deps.outcome == 'success'
+        run: |
+          node -e '
+            const assert = require("node:assert/strict");
+            const results = require("./build/openclaw-ci/runtime-results.json");
+            const expected = [
+              "aot/a-commonjs-file-mocked-again-is-seen-by-who-required-it.test.ts",
+              "cli/run/run-aot.test.ts",
+              "js/bun/spawn/spawn.ipc.test.ts",
+            ];
+            assert.deepEqual(results.map(result => result.testPath.replace(/^test\//, "")).sort(), expected.sort());
+          '
+      - name: Trace the two native-addon fatal paths
+        if: always() && inputs.diagnostic == 'trim-linux-runtime' && steps.native.outcome == 'success' && steps.runtime-deps.outcome == 'success'
+        run: |
+          ulimit -c 0
+          set +e
+          timeout --kill-after=5s 90s strace -ff -tt -s 256 -e trace=write,read,futex,process,network \
+            -o build/openclaw-ci/fatal-dlopen.log ./build/release/bun --expose-internals test \
+            test/js/node/process/dlopen-duplicate-load.test.ts --test-name-pattern 'in a plain load' \
+            > build/openclaw-ci/fatal-dlopen-test.log 2>&1
+          dlopen_status=$?
+          timeout --kill-after=5s 90s strace -ff -tt -s 256 -e trace=write,read,futex,process,network \
+            -o build/openclaw-ci/fatal-uv.log ./build/release/bun --expose-internals test \
+            test/napi/uv_stub.test.ts --test-name-pattern 'unsupported: uv_accept$' \
+            > build/openclaw-ci/fatal-uv-test.log 2>&1
+          uv_status=$?
+          set -e
+          printf '{"dlopenExitCode":%s,"uvExitCode":%s,"diagnosticDeadlineSeconds":90}\n' \
+            "$dlopen_status" "$uv_status" > build/openclaw-ci/fatal-status.json
+          test "$dlopen_status" -eq 0 && test "$uv_status" -eq 0
       - name: Probe the admitted shipping compile contract
         if: inputs.diagnostic == 'trim-linux-shipping'
         run: |
@@ -664,6 +717,10 @@ jobs:
             build/openclaw-ci/native-diagnostic.json
             build/openclaw-ci/native-test.xml
             build/openclaw-ci/native-test.log
+            build/openclaw-ci/runtime-results.json
+            build/openclaw-ci/runtime-test.log
+            build/openclaw-ci/fatal-status.json
+            build/openclaw-ci/fatal-*.log*
             build/openclaw-ci/shipping-admission.json
             build/openclaw-ci/compiled-runtime.json
             build/openclaw-ci/trim-diagnostics/*.json
