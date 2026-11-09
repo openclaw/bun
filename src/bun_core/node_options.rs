@@ -587,8 +587,10 @@ fn fail_requires_argument(flag: &[u8]) -> ! {
 #[cold]
 #[inline(never)]
 fn fail_tokenize(detail: &str) -> ! {
-    let _ = crate::output::File::stderr()
-        .write_fmt(format_args!("error: invalid value for NODE_OPTIONS ({})\n", detail));
+    let _ = crate::output::File::stderr().write_fmt(format_args!(
+        "error: invalid value for NODE_OPTIONS ({})\n",
+        detail
+    ));
     crate::Global::exit(9);
 }
 
