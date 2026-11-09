@@ -567,29 +567,28 @@ fn supported(flag: &[u8]) -> Option<(&'static [u8], &'static Supported)> {
 #[cold]
 #[inline(never)]
 fn warn_not_allowed(flag: &[u8]) {
-    crate::warn!(
-        "{} is not allowed in NODE_OPTIONS (ignored)",
+    // argv filtering can run before the thread-local output Source is initialized.
+    let _ = crate::output::File::stderr().write_fmt(format_args!(
+        "warn: {} is not allowed in NODE_OPTIONS (ignored)\n",
         crate::BStr::new(flag),
-    );
+    ));
 }
 
 #[cold]
 #[inline(never)]
 fn fail_requires_argument(flag: &[u8]) -> ! {
-    crate::output::err_generic(
-        "{} requires an argument",
-        format_args!("{}", crate::BStr::new(flag)),
-    );
+    let _ = crate::output::File::stderr().write_fmt(format_args!(
+        "error: {} requires an argument\n",
+        crate::BStr::new(flag),
+    ));
     crate::Global::exit(9);
 }
 
 #[cold]
 #[inline(never)]
 fn fail_tokenize(detail: &str) -> ! {
-    crate::output::err_generic(
-        "invalid value for NODE_OPTIONS ({})",
-        format_args!("{}", detail),
-    );
+    let _ = crate::output::File::stderr()
+        .write_fmt(format_args!("error: invalid value for NODE_OPTIONS ({})\n", detail));
     crate::Global::exit(9);
 }
 
