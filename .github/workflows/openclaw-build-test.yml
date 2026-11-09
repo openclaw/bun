@@ -638,16 +638,37 @@ jobs:
             sudo apt-get update -qq
             sudo apt-get install -y --no-install-recommends strace
           fi
-      - name: Replay AOT and IPC failures in isolated test processes
+      - name: Replay failing AOT and IPC cases in separate test processes
         if: inputs.diagnostic == 'trim-linux-runtime'
         run: |
           set -o pipefail
-          node scripts/runner.node.ts --exec-path "$PWD/build/release/bun" --vendor=false --retries=0 \
-            --results-json build/openclaw-ci/runtime-results.json \
-            --include aot/a-commonjs-file-mocked-again-is-seen-by-who-required-it.test.ts \
-            --include cli/run/run-aot.test.ts \
-            --include js/bun/spawn/spawn.ipc.test.ts \
-            2>&1 | tee build/openclaw-ci/runtime-test.log
+          test_files=(
+            aot/a-commonjs-file-mocked-again-is-seen-by-who-required-it.test.ts
+            cli/run/run-aot.test.ts
+            js/bun/spawn/spawn.ipc.test.ts
+          )
+          patterns=(
+            'a later CommonJS mock'
+            '__esModule of a module namespace object can be set|stack traces'
+            'ipc works when preceded by a non-pipe extra stdio slot'
+          )
+          printf '[' > build/openclaw-ci/runtime-results.json
+          separator=
+          failed=0
+          for i in "${!test_files[@]}"; do
+            set +e
+            timeout --kill-after=5s 90s ./build/release/bun --expose-internals test \
+              "test/${test_files[$i]}" --test-name-pattern "${patterns[$i]}" \
+              2>&1 | tee -a build/openclaw-ci/runtime-test.log
+            status=$?
+            set -e
+            printf '%s{"testPath":"%s","exitCode":%s,"diagnosticDeadlineSeconds":90}' \
+              "$separator" "${test_files[$i]}" "$status" >> build/openclaw-ci/runtime-results.json
+            separator=,
+            if [ "$status" -ne 0 ]; then failed=1; fi
+          done
+          printf ']\n' >> build/openclaw-ci/runtime-results.json
+          exit "$failed"
       - name: Verify all focused runtime files were exercised
         if: always() && inputs.diagnostic == 'trim-linux-runtime' && steps.native.outcome == 'success' && steps.runtime-deps.outcome == 'success'
         run: |
