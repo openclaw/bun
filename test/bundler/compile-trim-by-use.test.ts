@@ -218,7 +218,7 @@ const files = {
       "tsconfig.json": `{ "compilerOptions": { "types": ["bun"] } }`,
     });
     const env = { ...bunEnv, FOLDER: folder };
-    const trimmed = (entry: string, ...flags: string[]) => build(entry, "--aot", "--trim", ...flags);
+    const trimmed = (entry: string, ...flags: string[]) => build(entry, "--aot", "--trim", "--explain=trim", ...flags);
     const without = (entry: string, ...removed: string[]) => trimmed(entry, ...withoutFeatures(removed));
     const started = (built: Build, ...args: string[]) => run([built.executable, ...args], folder, env);
     const plain = (entry: string) => run([bunExe(), entry], folder, env);
@@ -377,7 +377,8 @@ const files = {
     });
 
     test("a Bun.serve route with the style option doesn't count as a use of the bundler, and throws a catchable error: what is reached", async () => {
-      expect(removedFrom(await trimmed("styled-route.ts")).length).toBeGreaterThanOrEqual(atLeastOnLinux(110));
+      const built = await trimmed("styled-route.ts");
+      expect(removedFrom(built).length, built.stderr).toBeGreaterThanOrEqual(atLeastOnLinux(110));
     });
 
     test.failing(
@@ -397,7 +398,8 @@ const files = {
     });
 
     test("a server whose options ask for neither has no bundler and no transpiler: what is reached", async () => {
-      expect(removedFrom(await trimmed("serves.ts")).length).toBeGreaterThanOrEqual(atLeastOnLinux(110));
+      const built = await trimmed("serves.ts");
+      expect(removedFrom(built).length, built.stderr).toBeGreaterThanOrEqual(atLeastOnLinux(110));
     });
 
     test.failing(
@@ -417,7 +419,8 @@ const files = {
     });
 
     test("reload() never needs the development server, whatever its routes ask for: what is reached", async () => {
-      expect(removedFrom(await trimmed("reloads.ts")).length).toBeGreaterThanOrEqual(atLeastOnLinux(110));
+      const built = await trimmed("reloads.ts");
+      expect(removedFrom(built).length, built.stderr).toBeGreaterThanOrEqual(atLeastOnLinux(110));
     });
 
     test.failing(
@@ -457,9 +460,8 @@ const files = {
     });
 
     test("a server that never names bun:test has none of it, whatever names it reads off values nobody knows: what is reached", async () => {
-      expect(removedFrom(await trimmed("serves-values-nobody-knows.ts")).length).toBeGreaterThanOrEqual(
-        atLeastOnLinux(98),
-      );
+      const built = await trimmed("serves-values-nobody-knows.ts");
+      expect(removedFrom(built).length, built.stderr).toBeGreaterThanOrEqual(atLeastOnLinux(98));
     });
 
     test.failing(
