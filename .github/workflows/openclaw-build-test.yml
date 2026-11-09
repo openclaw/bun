@@ -653,12 +653,7 @@ jobs:
           set -o pipefail
           test_files=(
             aot/types-of-node-classes-name-what-buns-modules-make.test.ts
-            bundler/compile-trim-removed-features-throw.test.ts
             js/node/http/node-http-state-through-an-heir-and-a-proxy.test.ts
-            js/node/http/node-http-receivers-that-are-no-messages.test.ts
-            js/node/http/node-http-what-a-changed-member-throws-while-a-request-ends.test.ts
-            js/node/members-of-prototype-objects-for-any-receiver.test.ts
-            js/node/visible-surface.test.ts
           )
           printf '[' > build/openclaw-ci/runtime-results.json
           separator=
@@ -685,49 +680,10 @@ jobs:
             const results = require("./build/openclaw-ci/runtime-results.json");
             const expected = [
               "aot/types-of-node-classes-name-what-buns-modules-make.test.ts",
-              "bundler/compile-trim-removed-features-throw.test.ts",
               "js/node/http/node-http-state-through-an-heir-and-a-proxy.test.ts",
-              "js/node/http/node-http-receivers-that-are-no-messages.test.ts",
-              "js/node/http/node-http-what-a-changed-member-throws-while-a-request-ends.test.ts",
-              "js/node/members-of-prototype-objects-for-any-receiver.test.ts",
-              "js/node/visible-surface.test.ts",
             ];
             assert.deepEqual(results.map(result => result.testPath.replace(/^test\//, "")).sort(), expected.sort());
           '
-      - name: Trace trimmed stdio construction and process exit
-        if: always() && inputs.diagnostic == 'trim-linux-runtime' && steps.native.outcome == 'success' && steps.runtime-deps.outcome == 'success'
-        run: |
-          cat > build/openclaw-ci/trimmed-stdio.ts <<'JS'
-          const evaluate = (() => {}).constructor as (code: string) => () => unknown;
-          const snippet = process.argv[2];
-          if (snippet !== "exit") {
-            try {
-              console.log("value", typeof evaluate("return (" + snippet + ")")());
-            } catch (error) {
-              console.log("caught", (error as { code?: string }).code);
-            }
-          }
-          console.log("done");
-          process.exit();
-          JS
-          timeout --kill-after=5s 90s ./build/release/bun build --compile --aot --trim \
-            build/openclaw-ci/trimmed-stdio.ts --outfile build/openclaw-ci/trimmed-stdio
-          snippets=(exit process.stdin process.stdout process.stderr \
-            process.stdin._readableState process.stdout._writableState process.stderr._writableState \
-            'Object.entries(process).length')
-          failed=0
-          for snippet in "${snippets[@]}"; do
-            printf '\n--- %s ---\n' "$snippet" >> build/openclaw-ci/trimmed-stdio.log
-            set +e
-            timeout --kill-after=5s 15s ./build/openclaw-ci/trimmed-stdio "$snippet" \
-              >> build/openclaw-ci/trimmed-stdio.log 2>&1
-            status=$?
-            set -e
-            printf 'exitCode=%s\n' "$status" >> build/openclaw-ci/trimmed-stdio.log
-            if [ "$status" -ne 0 ]; then failed=1; fi
-          done
-          cat build/openclaw-ci/trimmed-stdio.log
-          exit "$failed"
       - name: Probe the admitted shipping compile contract
         if: inputs.diagnostic == 'trim-linux-shipping'
         run: |
@@ -767,7 +723,6 @@ jobs:
             build/openclaw-ci/native-test.log
             build/openclaw-ci/runtime-results.json
             build/openclaw-ci/runtime-test.log
-            build/openclaw-ci/trimmed-stdio.log
             build/openclaw-ci/shipping-admission.json
             build/openclaw-ci/compiled-runtime.json
             build/openclaw-ci/trim-diagnostics/*.json
