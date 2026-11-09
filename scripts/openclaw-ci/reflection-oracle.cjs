@@ -140,6 +140,148 @@ const env = {
   BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0",
   BUN_DEBUG_QUIET_LOGS: "1",
 };
+// Capture exact current outputs for separately reviewed expectation migrations.
+if (process.argv.includes("--capture-http")) {
+  Object.assign(env, {
+    GITHUB_ACTIONS: "false",
+    CI: "1",
+    BUN_DISABLE_SLOW_FILESYSTEM_WARNING: "1",
+    BUN_CONFIG_HTTP_RETRY_BACKOFF: "1",
+    BUN_INTERNAL_INTERACTIVE_ASSUME_TTY: "1",
+    BUN_FEATURE_FLAG_EXPERIMENTAL_BAKE: "1",
+    BUN_DEBUG_linkerctx: "0",
+    WANTS_LOUD: "0",
+    AGENT: "false",
+  });
+  delete env.JSC_useJIT;
+  delete env.NODE_OPTIONS;
+  delete env.FORCE_COLOR;
+  const binary = resolve("build/release/bun");
+  const http = "test/js/node/http/";
+  const parallel = "test/aot/parallel/node-http/";
+  const targets = [
+    [
+      "added-accessors",
+      http + "node-http-accessors-added-between-a-socket-and-their-owner-fixture.ts",
+      http + "node-http-accessors-added-between-a-socket-and-their-owner.test.ts",
+      true,
+    ],
+    [
+      "socket-accessors",
+      http + "node-http-replaced-accessors-of-a-socket-fixture.ts",
+      http + "node-http-replaced-accessors-of-a-socket.test.ts",
+      true,
+    ],
+    [
+      "response-accessors",
+      http + "node-http-replaced-accessors-fixture.ts",
+      http + "node-http-replaced-accessors.test.ts",
+      true,
+    ],
+    [
+      "own-keys",
+      "test/aot/parallel/library-modules/keys-responses-sockets-emitters-lives.js",
+      http + "node-http-own-keys-through-an-exchange.expected.txt",
+      true,
+    ],
+    [
+      "own-values",
+      http + "node-http-own-values-through-an-exchange-fixture.js",
+      http + "node-http-own-values-through-an-exchange.expected.txt",
+      true,
+    ],
+    ["proxy-traps", parallel + "http-proxy-traps.js", http + "node-http-proxy-traps.expected.txt", false],
+    [
+      "foreign-receivers",
+      parallel + "members-outgoing-messages-receivers.js",
+      http + "node-http-members-of-outgoing-messages-for-receivers-that-are-no-messages.expected.txt",
+      false,
+    ],
+    [
+      "heir-headers",
+      parallel + "headers-of-response-through-proxy-heir.ts",
+      http + "node-http-headers-through-an-heir-and-a-proxy.expected.txt",
+      true,
+    ],
+    [
+      "heir-state",
+      parallel + "state-of-response-through-proxy-and-heir.ts",
+      http + "node-http-state-through-an-heir-and-a-proxy.expected.txt",
+      true,
+    ],
+  ];
+  const receipt = {
+    complete: false,
+    mode: "capture-only",
+    probeSource: process.env.GITHUB_SHA,
+    nativeSource: "56739277f7834a63cdd2ba8fd496672c5ab8f645",
+    engineReceipt: JSON.parse(readFileSync("build/release/engine-source.json", "utf8")),
+    binarySHA256: createHash("sha256").update(readFileSync(binary)).digest("hex"),
+    captures: [],
+  };
+  const save = () => writeFileSync(join(folder, "http-capture.json"), JSON.stringify(receipt, null, 2) + "\n");
+  save();
+  function capture(id, args, target, emptyStderr = true, timeout = 60000) {
+    const child = spawnSync(binary, args, { env, encoding: "utf8", timeout, maxBuffer: 32 * 1024 * 1024 });
+    writeFileSync(join(folder, id + ".stdout.txt"), child.stdout ?? "");
+    writeFileSync(join(folder, id + ".stderr.log"), child.stderr ?? "");
+    const record = {
+      id,
+      args,
+      target,
+      exitCode: child.status,
+      signal: child.signal,
+      error: child.error?.message,
+      stdoutSHA256: createHash("sha256")
+        .update(child.stdout ?? "")
+        .digest("hex"),
+    };
+    receipt.captures.push(record);
+    save();
+    assert(!child.error && !child.signal && child.status === 0, JSON.stringify(record));
+    assert(child.stdout.length > 0, "empty output for " + id);
+    if (emptyStderr) assert.equal(child.stderr, "", id);
+    return child.stdout;
+  }
+  for (const [id, path, target, emptyStderr] of targets) capture(id, [path], target, emptyStderr);
+  const ownFile = http + "node-http-own-accessors-on-an-exchange.test.ts";
+  const ownSource = readFileSync(ownFile, "utf8");
+  const argument = ownSource.indexOf('"-e",');
+  assert(argument >= 0 && ownSource.lastIndexOf('"-e",') === argument);
+  const quote = String.fromCharCode(96);
+  const start = ownSource.indexOf(quote, argument);
+  const end = ownSource.indexOf(quote, start + 1);
+  assert(start > argument && end > start);
+  const literal = ownSource.slice(start, end + 1);
+  assert(!literal.includes("$" + "{"), "unexpected template interpolation");
+  const cooked = Function("return " + literal)();
+  capture("own-accessors", ["-e", cooked], ownFile);
+  receipt.regressionRed = [];
+  for (const aot of [false, true]) {
+    const id = "https-validation-red-" + aot;
+    const pattern = "setSecureContext validates options before its receiver.*AOT: " + aot;
+    const child = spawnSync(
+      binary,
+      ["--expose-internals", "test", "test/js/node/http/node-https-server.test.ts", "--test-name-pattern", pattern],
+      { env, encoding: "utf8", timeout: 60000, maxBuffer: 8 * 1024 * 1024 },
+    );
+    writeFileSync(join(folder, id + ".stdout.txt"), child.stdout ?? "");
+    writeFileSync(join(folder, id + ".stderr.log"), child.stderr ?? "");
+    const record = { aot, exitCode: child.status, signal: child.signal, error: child.error?.message };
+    receipt.regressionRed.push(record);
+    save();
+    const output = (child.stdout ?? "") + (child.stderr ?? "");
+    assert(!child.error && !child.signal && child.status === 1, JSON.stringify(record));
+    assert(output.includes("1 fail") && output.includes("incorrect option validation"), id + " did not reproduce");
+  }
+  const changes = spawnSync("git", ["diff", "--name-only"], { encoding: "utf8" });
+  assert.equal(changes.status, 0);
+  assert.equal(changes.stdout, "", "capture modified tracked source");
+  receipt.complete = true;
+  save();
+  console.log(JSON.stringify({ complete: true, captures: receipt.captures.length }));
+  process.exit(0);
+}
 const summary = {
   complete: false,
   probeSource: process.env.GITHUB_SHA,

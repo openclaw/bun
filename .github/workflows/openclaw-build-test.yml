@@ -1,4 +1,4 @@
-name: OpenClaw receiver oracle (temporary diagnosis)
+name: OpenClaw HTTP surface capture (temporary diagnosis)
 
 on:
   workflow_dispatch:
@@ -47,8 +47,10 @@ jobs:
           tar -xzf bun-linux-x64.tar.gz -C ../../release bun bun.trim engine-source.json
           cd ../../..
           ./build/release/bun -e 'if (Bun.revision !== "56739277f7834a63cdd2ba8fd496672c5ab8f645" || process.versions.webkit !== "651eeaca6e2792378928033b1ae7ac66d6f91eab") throw new Error("unadmitted source pair")'
-      - name: Record complete Node and fork receiver controls
-        run: node scripts/openclaw-ci/reflection-oracle.cjs
+      - name: Capture reviewed HTTP and reflection observations
+        run: |
+          ./build/release/bun install --frozen-lockfile
+          node scripts/openclaw-ci/reflection-oracle.cjs --capture-http
       - name: Upload receiver controls
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
