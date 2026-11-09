@@ -3147,8 +3147,9 @@ function publishResponseFinish(request, response, socket, server) {
 // read pre-detach state, then detach the socket and advance the pipeline.
 function emitResponseFinish() {
   const req = this.req;
-  // req.socket can be cleared by stream cleanup before the response finishes.
-  const socket = req?.socket ?? this.socket;
+  // The response owns this connection; req.socket can be replaced by user
+  // code or cleared by stream cleanup before the response finishes.
+  const socket = this.socket;
   publishResponseFinish(req, this, socket, socket?.server);
   // Node's resOnFinish: dump a body that nobody consumed or resumed.
   if (req && !req._consuming && !req._readableState?.resumeScheduled) {
