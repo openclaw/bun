@@ -2540,9 +2540,6 @@ function emitUpgradeHandoff(server, socket, req, head, hasBody) {
   if (!handled) socket.destroy();
   return handled;
 }
-const kStreamingEnabled = Symbol("kStreamingEnabled");
-// destroySoon() was called: native lets the read that is being parsed reach the request, then closes right behind the FIN.
-const kDestroySoon = Symbol("kDestroySoon");
 // Scratch options object for the builtin ServerResponse (see the dispatcher).
 const scratchResponseOptions: $Node.ServerResponseOptions = {
   [kHandle]: undefined,
@@ -2550,24 +2547,8 @@ const scratchResponseOptions: $Node.ServerResponseOptions = {
   highWaterMark: 0,
   [kRejectNonStandardBodyWrites]: false,
 };
-// Per-socket cached bound abort handler (the socket outlives its requests).
-const kBoundOnAbort = Symbol("kBoundOnAbort");
-// When the keep-alive idle period on a connection started (the last response
-// finish). onResponseFinishHandleSocket records this instead of rescheduling
-// the socket timer on every response; onSocketTimeoutTimerExpired reads it to
-// grant the remaining idle budget when the timer actually fires.
-const kKeepAliveIdleStart = Symbol("keepAliveIdleStart");
-// HTTP/1.1 pipelining (responses queued behind an in-flight response):
-// - `$pipelinedResponses` on the socket: array of queued ServerResponses, in arrival order
-// - on a queued response: { ops, bytes, needDrain, ended, isAncient } while it
-//   is queued (undefined once it owns the socket)
-const kPipelinedQueuedState = Symbol("kPipelinedQueuedState");
-// Node's `state.outgoingData`: bytes buffered across this connection's queued
-// responses. Reads are paused while it is at or above the high water mark.
-const kOutgoingData = Symbol("kOutgoingData");
 // Native WebSocket adoption must wait until responses ahead have drained.
 const kPendingHandoff = Symbol("kPendingHandoff");
-const kStopParsingOnCloseListener = Symbol("kStopParsingOnCloseListener");
 
 // https://github.com/nodejs/node/blob/v26.3.0/lib/_http_server.js (socketOnError)
 const badRequestResponse = Buffer.from(`HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n`, "latin1");
