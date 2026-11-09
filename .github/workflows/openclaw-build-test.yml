@@ -198,7 +198,8 @@ jobs:
           trap timing EXIT
           engine_args=()
           if test -n "$WEBKIT_SOURCE_SHA"; then engine_args+=(--webkit=local "--webkit-version=$WEBKIT_SOURCE_SHA"); fi
-          bun scripts/build.ts --profile=openclaw-native "${engine_args[@]}" --timings
+          # Report independent compilation failures in the same run.
+          bun scripts/build.ts --profile=openclaw-native "${engine_args[@]}" --timings -k0
           if test -n "$WEBKIT_SOURCE_SHA"; then
             bun scripts/build.ts --profile=openclaw-native "${engine_args[@]}" --target=engine-test-programs
           else

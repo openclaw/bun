@@ -497,10 +497,8 @@ impl<'a> Parser<'a> {
         );
         let mut options = core::mem::take(&mut self.options);
         options.features.ts_strip_mode = true;
-        let mut slot = init_p!(Pi<'_>;
-            self.bump, self.log, self.source, self.define, lexer, options);
-        // SAFETY: init_p! returns only after initializing the guarded slot.
-        let p = unsafe { slot.assume_init_mut() };
+        init_p!(let p: Pi<'_> =
+            (self.bump, self.log, self.source, self.define, lexer, options));
         if p.lexer.token == js_lexer::T::THashbang {
             p.lexer.next()?;
         }
