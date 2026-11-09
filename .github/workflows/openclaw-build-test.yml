@@ -5,7 +5,7 @@ on:
     inputs:
       probe:
         type: choice
-        options: [reflection, types, visible, type-receipt, install, selected-suite]
+        options: [reflection, types, visible, type-receipt, install, selected-suite, module-format]
         default: reflection
 
 permissions:
@@ -104,6 +104,11 @@ jobs:
       - name: Compare grouped-runner setup with explicit frozen dependency setup
         if: inputs.probe == 'install'
         run: node scripts/openclaw-ci/install-setup-probe.cjs
+      - name: Compare concurrent and synchronous imported TSX formats
+        if: inputs.probe == 'module-format'
+        run: |
+          ./build/release/bun install --frozen-lockfile
+          node scripts/openclaw-ci/module-format-probe.cjs
       - name: Upload receiver controls
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
