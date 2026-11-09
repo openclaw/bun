@@ -4065,7 +4065,7 @@ impl TestCommand {
                 }
                 if Output::is_github_action()
                     // SAFETY: reporter is caller-owned and remains live through this guard.
-                    && unsafe { (*reporter_ptr).worker_ipc_file_idx.is_none() || (*reporter_ptr).worker_stands_for_one_process }
+                    && unsafe { (*reporter_ptr).worker_ipc_file_idx.is_none() }
                 {
                     pretty_errorln!("<r>\n::endgroup::\n");
                     Output::flush();

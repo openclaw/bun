@@ -368,8 +368,7 @@ pub(crate) fn create_stdio(cx: &mut JsScope<'_>, fd_value: JsLocal<'_>) -> JsRes
         // SAFETY: the started sink is heap-allocated and leaves its context in on_close.
         unsafe { bun_jsc::AbortHandle::arm_owner(sink.as_ptr(), vm.root_context()) };
     }
-    // SAFETY: the new sink is exclusively owned here; to_js takes the wrapper's reference.
-    Ok(unsafe { (*sink.as_ptr()).to_js(global) })
+    Ok(FileSink::to_js(sink, global))
 }
 
 #[unsafe(no_mangle)]
