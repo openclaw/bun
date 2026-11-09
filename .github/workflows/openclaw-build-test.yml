@@ -785,6 +785,33 @@ jobs:
             --test-name-pattern '^borrowed server.close' \
             --reporter=junit --reporter-outfile=build/openclaw-ci/native-borrowed-close-test.xml \
             2>&1 | tee build/openclaw-ci/native-borrowed-close-test.log
+      - name: Replay initialized listener close and abort lifecycles
+        if: inputs.diagnostic == 'trim-linux-runtime'
+        run: |
+          set -euo pipefail
+          timeout --kill-after=5s 300s ./build/release/bun --expose-internals test \
+            test/js/node/http/node-http-server-close-drain.test.ts \
+            test/js/node/http/node-http-server-abort-events.test.ts \
+            --reporter=junit --reporter-outfile=build/openclaw-ci/native-close-lifecycle-test.xml \
+            2>&1 | tee build/openclaw-ci/native-close-lifecycle-test.log
+          timeout --kill-after=5s 300s ./build/release/bun --expose-internals test \
+            test/js/node/http/node-http.test.ts \
+            --test-name-pattern 'already aborted signal|waits for both overlapping listener generations' \
+            --reporter=junit --reporter-outfile=build/openclaw-ci/native-close-generation-test.xml \
+            2>&1 | tee build/openclaw-ci/native-close-generation-test.log
+      - name: Replay shared path and filesystem glob matching
+        if: inputs.diagnostic == 'trim-linux-runtime'
+        run: |
+          set -euo pipefail
+          timeout --kill-after=5s 300s ./build/release/bun --expose-internals test \
+            test/js/node/path/matches-glob.test.ts \
+            test/js/node/fs/glob.test.ts \
+            --reporter=junit --reporter-outfile=build/openclaw-ci/native-glob-test.xml \
+            2>&1 | tee build/openclaw-ci/native-glob-test.log
+          timeout --kill-after=5s 300s ./build/release/bun --expose-internals test \
+            --config=bunfig.node-test.toml ./test/js/node/test/parallel/test-fs-glob.mjs \
+            --reporter=junit --reporter-outfile=build/openclaw-ci/native-glob-parallel-test.xml \
+            2>&1 | tee build/openclaw-ci/native-glob-parallel-test.log
       - name: Replay HTTPS validation in ordinary and AOT modes
         if: inputs.diagnostic == 'trim-linux-runtime'
         run: |
