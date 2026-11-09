@@ -1,6 +1,6 @@
 // What `bun build --compile --aot --trim` keeps and removes for a handful of programs and build options. trim-by-use/ has a program for each part of Bun.
 import { describe, expect, test } from "bun:test";
-import { bunEnv, bunExe, isMacOS, isWindows } from "harness";
+import { bunEnv, bunExe, isLinux, isMacOS, isWindows } from "harness";
 import { readFileSync } from "node:fs";
 import { unsupported } from "../aot/harness/compiler";
 import { run } from "../aot/harness/run";

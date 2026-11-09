@@ -875,7 +875,7 @@ jobs:
           (cd test && ../build/release/bun install --frozen-lockfile)
           timeout --kill-after=5s 300s ./build/release/bun --expose-internals test \
             test/bundler/compile-trim-by-use.test.ts \
-            --test-name-pattern 'what is reached|Bun.serve route with the style option ends by itself|server whose options ask for neither bundler nor transpiler serves|server that calls reload\(\) answers as the whole executable does|server that reads names off values nobody knows answers as it should' \
+            --test-name-pattern 'what is reached|program with a Bun.serve route that has the style option ends by itself|server whose options ask for neither bundler nor transpiler serves|server that calls reload\(\) answers as the whole executable does|server that reads names off values nobody knows answers as it should' \
             --reporter=junit --reporter-outfile=build/openclaw-ci/native-retention-test.xml \
             2>&1 | tee build/openclaw-ci/native-retention-test.log
           timeout --kill-after=5s 300s ./build/release/bun test/aot/run-parallel.ts --jobs=1 --no-erased --root=test \
