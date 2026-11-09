@@ -266,19 +266,22 @@ jobs:
           else
             bun scripts/rust-test.ts -p bun_trim
           fi
-      - name: Test AOT written positions
+      - name: Test AOT written positions and module loading
         if: inputs.webkit_source_sha != ''
         timeout-minutes: 20
         run: |
           BUN_CODEGEN_DIR="$GITHUB_WORKSPACE/build/release/codegen" CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0 \
             CARGO_PROFILE_DEV_OPT_LEVEL=1 CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS='-Cforce-frame-pointers=yes -Zthreads=8' \
             cargo test --no-fail-fast -p bun_aot --lib lower::positions::written::tests
-      - name: Test AOT constructor stacks and namespace writes
+          BUN_CODEGEN_DIR="$GITHUB_WORKSPACE/build/release/codegen" CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0 \
+            CARGO_PROFILE_DEV_OPT_LEVEL=1 CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS='-Cforce-frame-pointers=yes -Zthreads=8' \
+            cargo test --no-fail-fast -p bun_aot --lib load::contents::tests::file_found_for_a_load_is_read_as_that_load_reads_it
+      - name: Test AOT CLI stacks and module semantics
         if: inputs.webkit_source_sha != ''
         timeout-minutes: 5
         run: |
           ./build/release/bun test test/cli/run/run-aot.test.ts \
-            --test-name-pattern '__esModule cannot be added to an imported module namespace|stack traces'
+            --test-name-pattern '__esModule cannot be added to an imported module namespace|stack traces|files that are CommonJS only by name'
       - name: Record Node reflection controls
         if: inputs.webkit_source_sha != ''
         run: |
