@@ -4209,13 +4209,8 @@ unsafe fn get_loader_and_virtual_source<'a>(
             Fs::Path::init(normalized_file_path_from_specifier)
         };
 
-    // A `data:` URL has no file name. What follows its last "." is part of the module's text.
-    let mut loader: Option<Loader> = if path.text.starts_with(b"data:") {
-        None
-    } else {
-        // SAFETY: per fn contract — `transpiler.options` is a value field of the VM.
-        loader_for_path(&path, unsafe { &(*jsc_vm).transpiler.options.loaders })
-    };
+    // SAFETY: per fn contract — `transpiler.options` is a value field of the VM.
+    let mut loader = loader_for_path(&path, unsafe { &(*jsc_vm).transpiler.options.loaders });
     let mut virtual_source: Option<&'a bun_ast::Source<'a>> = None;
     let attribute_loader = type_attribute_str.and_then(Loader::from_string);
     let suffix = match attribute_loader {
