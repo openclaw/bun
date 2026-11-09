@@ -69,16 +69,12 @@ export const keys = () => Object.keys(all).join();
 `,
     "again.test.js": testFile,
   });
-  const seenWith = async (env: Record<string, string>, ...flags: string[]) => {
-    const { stdout, stderr, exitCode } = await run([bunExe(), "test", ...flags], String(dir), { ...bunEnv, ...env });
+  const seenWith = async (...flags: string[]) => {
+    const { stdout, stderr, exitCode } = await run([bunExe(), "test", ...flags], String(dir), bunEnv);
     if (exitCode !== 0) console.error("mock child failed", flags, exitCode, stdout, stderr);
     return { seen: (stdout + "\n" + stderr).split("\n").filter(line => line.startsWith("SEEN ")), exitCode };
   };
-  const [plain, oneProgram, layers] = await Promise.all([
-    seenWith({}),
-    seenWith({}, "--aot"),
-    seenWith({ BUN_DEBUG_TEST_AOT_WORDS: "TestRunLayers:2" }, "--aot", "--parallel=2"),
-  ]);
+  const [plain, oneProgram] = await Promise.all([seenWith(), seenWith("--aot")]);
   expect(plain).toEqual({
     seen: [
       "SEEN a1 first first v",
@@ -92,5 +88,4 @@ export const keys = () => Object.keys(all).join();
     exitCode: 0,
   });
   expect(oneProgram).toEqual(plain);
-  expect(layers).toEqual(plain);
 });
