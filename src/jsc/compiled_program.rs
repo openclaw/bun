@@ -142,7 +142,7 @@ pub extern "C" fn Bun__AOT__onResolveAnswersFor(
     importer: &bun_core::String,
     found: &mut bun_core::String,
 ) -> u8 {
-    use crate::virtual_machine::{ResolveMode, VirtualMachine};
+    use crate::virtual_machine::{OnResolveOptions, ResolveMode, VirtualMachine};
     const DECLINED: u8 = 0;
     const ANSWERED: u8 = 1;
     const THROWN: u8 = 2;
@@ -153,7 +153,10 @@ pub extern "C" fn Bun__AOT__onResolveAnswersFor(
         importer,
         Some(&mut query_of_answer),
         ResolveMode::Esm,
-        false,
+        OnResolveOptions {
+            split_query: true,
+            same_is_no_answer: false,
+        },
     );
     let answer = match answer {
         Ok(None) => return DECLINED,
@@ -196,6 +199,7 @@ fn find_without_plugins(
         importer,
         Some(query),
         ResolveMode::Esm,
+        true,
     );
     Bun__AOT__setPluginsSilent(false);
     // SAFETY: as above.

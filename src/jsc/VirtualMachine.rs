@@ -6570,7 +6570,7 @@ impl VirtualMachine {
                 notes.push(logged.data.clone());
             }
             // The message is that of `bun run`, which finds the file beside the importer. What helps here is another thing.
-            let importer = normalize_source(source_utf8.slice());
+            let importer = source_utf8.slice();
             let folder = match IS_A_FILE_PATH {
                 true => bun_resolver::fs::PathName::init(importer).dir_with_trailing_slash(),
                 false => importer,
