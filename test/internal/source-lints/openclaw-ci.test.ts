@@ -198,26 +198,40 @@ test.each([
 });
 
 test("shared AOT inputs retain the Node runner's first sibling main exactly once", () => {
-  const dir = "test/aot/parallel/packages/exports-conditions/main-and-module-x-default";
+  const dir = "test/aot/parallel/sibling-mains";
+  using fixture = tempDir("openclaw-ci-sibling-mains", {
+    [dir + "/main.mjs"]: "",
+    [dir + "/main.ts"]: "",
+  });
   const names: string[] = JSON.parse(
     execFileSync(
       "node",
       [
         "-p",
         `JSON.stringify(require("node:fs").readdirSync(process.argv[1]).filter(name => ["main.mjs", "main.ts"].includes(name)))`,
-        dir,
+        join(String(fixture), dir),
       ],
       { encoding: "utf8" },
     ),
   );
   expect(names).toHaveLength(2);
   const mains = names.map(name => `${dir}/${name}`);
-  const expected = [...smoke, mains[0]!].sort();
-  for (const entries of [mains, [...mains].reverse()]) {
-    const inventory = [...smoke, ...entries];
-    expect(selectTests([parallelConfig], inventory, false)).toEqual(expected);
-    expect(selectTests([mains[1]!], inventory, false)).toEqual(expected);
-  }
+  const selector = resolve(import.meta.dir, "../../../scripts/openclaw-ci/tests.ts");
+  const selected = JSON.parse(
+    execFileSync(
+      bunExe(),
+      [
+        "--eval",
+        `import { selectTests, smoke } from ${JSON.stringify(selector)};
+         const mains = ${JSON.stringify(mains)};
+         console.log(JSON.stringify([mains, [...mains].reverse()].flatMap(entries =>
+           [${JSON.stringify(parallelConfig)}, mains[1]].map(changed =>
+             selectTests([changed], [...smoke, ...entries], false)))));`,
+      ],
+      { cwd: String(fixture), encoding: "utf8", env: bunEnv },
+    ),
+  );
+  expect(selected).toEqual(Array.from({ length: 4 }, () => [...smoke, mains[0]!].sort()));
 });
 
 test("JS and native Node modules select their adjacent tests", () => {

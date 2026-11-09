@@ -192,7 +192,11 @@ impl Locked {
 
     #[cfg(not(any(windows, target_os = "macos")))]
     fn all_watchers(&self) -> impl Iterator<Item = *mut PathWatcher> + '_ {
-        self.watchers.values().iter().chain(self.retired.iter()).copied()
+        self.watchers
+            .values()
+            .iter()
+            .chain(self.retired.iter())
+            .copied()
     }
 
     /// A failed reader must notify retired watchers as well as current roots.
@@ -608,8 +612,6 @@ pub(crate) fn watch(
         }
         return Ok(Some(watcher));
     }
-
-
 }
 
 // ────────────────────────────────────────────────────────────────────────────────
@@ -1480,8 +1482,6 @@ impl PathWatcherManager {
         self.platform_fd.get()
     }
 }
-
-
 
 #[cfg(target_os = "freebsd")]
 impl Kqueue {

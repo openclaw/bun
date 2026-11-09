@@ -4613,7 +4613,7 @@ impl<'a> Resolver<'a> {
                     is_node_module: true,
                     package_json: Some(
                         self.package_json_for_resolution(&resolved_dir_info)
-                                .unwrap_or(package_json),
+                            .unwrap_or(package_json),
                     ),
                     module_type,
                     ..Default::default()

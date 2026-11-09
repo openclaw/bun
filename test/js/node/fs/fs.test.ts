@@ -4,7 +4,6 @@ import {
   bunExe,
   gc,
   getMaxFD,
-  isASAN,
   isBroken,
   isDebug,
   isFreeBSD,

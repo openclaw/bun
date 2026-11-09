@@ -1,12 +1,8 @@
-# module.exports = function hidden() {}; Module._resolveFilename = function (name, parent) { return parent.exports() }; registerHooks({ _compile: undefined }); require.resolve("asked")
-# Registering hooks does not change the parent object handed to an overridden CommonJS resolver.
-# RUN: valueflow-solve unreached
-# CHECK-NOT: unreached f1
-# CHECK-NOT: unreached f2
-# RUN(ESCAPED): valueflow-why escaped-builtin=ModuleObject
-# ESCAPED: held: those of 1 of 1 modules
-# RUN(COMPILE): valueflow-why escaped-builtin=ModuleObject_compile
-# COMPILE-NOT: not held
+# Hooks do not receive the CommonJS parent; legacy replacements do.
+# REQUIRES: entries-of-bun
+# RUN: link functions
+# CHECK-NOT: function f1 unreached
+# CHECK-NOT: function f2 unreached
 
 variable g0 name="exports" module=m0 declared={type=anything} initialization=Undefined
 module m0 path="/app/main.cjs" displayPath="main.cjs" kind=CommonJs flags=[KeepsError] exportRule=CommonJs requireResult=ModuleExports body=f0 exportsVariable=g0

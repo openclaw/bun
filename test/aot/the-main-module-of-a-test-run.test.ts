@@ -2,9 +2,9 @@ import { expect } from "bun:test";
 import { bunEnv, bunExe, isWindows, tempDir } from "harness";
 import { join } from "node:path";
 import { canTrim } from "../bundler/compile-trim-features";
+import { afterAll } from "./harness/default-timeout";
 import { run } from "./harness/run";
 import { withoutDebugInformation } from "./harness/without-debug-information";
-import { afterAll } from "./harness/default-timeout";
 // Serial builds share the suite's native compiler budget.
 import { beforeAll, testOneByOne as test } from "./supported";
 

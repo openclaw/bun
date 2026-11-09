@@ -249,7 +249,13 @@ impl Build<'_> {
         deferred_exports: &DeferredExports,
         mocked_library_modules: &[RuntimeModule],
     ) -> BoundGraph {
-        self.bind_project_with_hooks(loaded, project, deferred_exports, mocked_library_modules, false)
+        self.bind_project_with_hooks(
+            loaded,
+            project,
+            deferred_exports,
+            mocked_library_modules,
+            false,
+        )
     }
 
     fn bind_project_with_hooks(
@@ -408,7 +414,11 @@ impl Build<'_> {
                     // Namespace binding precedes reach. Rebind once with the learned fact
                     // before publishing diagnostics or keeping exports of the original answers.
                     return self.bind_project_with_hooks(
-                        loaded, project, deferred_exports, mocked_library_modules, true,
+                        loaded,
+                        project,
+                        deferred_exports,
+                        mocked_library_modules,
+                        true,
                     );
                 }
                 let held = program_files.into_iter();

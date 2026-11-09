@@ -2031,11 +2031,15 @@ impl<'a, 's> FileScan<'a, 's> {
                 &mut SmallVec::new(),
             ));
             // A computed member of Module may be registerHooks even when its key is unknown.
-            let computed = self.hir.member_key(self.hir.skip_type_assertions(expression))
+            let computed = self
+                .hir
+                .member_key(self.hir.skip_type_assertions(expression))
                 .is_some_and(|(holder, key)| {
                     matches!(key, MemberKey::Computed(_))
-                        && self.find_builtin_behind(source, holder, &mut SmallVec::new())
-                            .map(table::canonical_id) == Some(BuiltinId::NodeModule)
+                        && self
+                            .find_builtin_behind(source, holder, &mut SmallVec::new())
+                            .map(table::canonical_id)
+                            == Some(BuiltinId::NodeModule)
                 });
             if named || computed {
                 self.add_interest(

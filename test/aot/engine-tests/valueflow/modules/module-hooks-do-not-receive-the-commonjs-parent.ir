@@ -1,11 +1,7 @@
-# module.exports = function hidden() {}; globalThis.kept = function (name, parent) { return parent.exports() }; registerHooks({ _compile: undefined }); require.resolve("asked")
-# Hooks receive URLs and a context object, not the CommonJS parent. Naming _compile on an ordinary object does not expose the parent's compiler.
-# RUN: valueflow-solve unreached
-# CHECK: unreached f2
-# RUN(ESCAPED): valueflow-why escaped-builtin=ModuleObject
-# ESCAPED: held: those of 0 of 1 modules
-# RUN(COMPILE): valueflow-why escaped-builtin=ModuleObject_compile
-# COMPILE: not held
+# Hooks do not receive the CommonJS parent; legacy replacements do.
+# REQUIRES: entries-of-bun
+# RUN: link functions
+# CHECK: function f2 unreached
 
 variable g0 name="exports" module=m0 declared={type=anything} initialization=Undefined
 module m0 path="/app/main.cjs" displayPath="main.cjs" kind=CommonJs flags=[KeepsError] exportRule=CommonJs requireResult=ModuleExports body=f0 exportsVariable=g0

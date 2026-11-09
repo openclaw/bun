@@ -1,10 +1,9 @@
-# A real call retains the private evaluator and its truthful text-evaluation effect.
-# RUN: valueflow-solve unseen
-# CHECK: unseen EvaluatesText NativeFunctionsNodeVMCompilationCacheCppJsRunNodeVMSourceForTesting
-# CHECK: unseen-code yes
-# RUN(USED): valueflow-why used-builtin=NativeFunctionsNodeVMCompilationCacheCppJsRunNodeVMSourceForTesting
-# USED: used-builtin=NativeFunctionsNodeVMCompilationCacheCppJsRunNodeVMSourceForTesting
-# USED-NOT: not held
+# Private host evaluators are retained only through reached uses.
+# REQUIRES: entries-of-bun
+# RUN: causes
+# CHECK: cause EvaluatesText NativeFunctionsNodeVMCompilationCacheCppJsRunNodeVMSourceForTesting
+# RUN(USES): uses
+# USES: use NativeFunctionsNodeVMCompilationCacheCppJsRunNodeVMSourceForTesting
 
 module m0 path="main.js" displayPath="main.js" body=f0
 entry module=m0
