@@ -16,7 +16,7 @@ const warmUp = get("/warm-up");
 
 type Step = string | { untilClose: string };
 
-async function run(scenario: string, steps: Step[]) {
+async function run(scenario: string, steps: Step[], prefix = "") {
   await using server = Bun.spawn({
     cmd: [bunExe(), fixture, scenario],
     env: bunEnv,
@@ -41,7 +41,7 @@ async function run(scenario: string, steps: Step[]) {
     using connection = await RawHttpConnection.connect(port);
     for (const step of steps) {
       if (typeof step === "string") {
-        responses.push(await connection.request(step));
+        responses.push(await connection.request(step, { prefix }));
       } else {
         connection.send(step.untilClose);
         responses.push(await connection.readUntilClose());
@@ -193,7 +193,7 @@ describe.concurrent("node:http server keeps its behavior on keep-alive connectio
   test(
     "a Proxy socket writes bytes before each response on the connection",
     async () => {
-      expect(await run("proxy-socket-write", threeRequests())).toMatchObject({
+      expect(await run("proxy-socket-write", threeRequests(), "RAW")).toMatchObject({
         responses: ["RAW" + ok, "RAW" + ok, "RAW" + ok],
         log: [
           ["write", null],

@@ -15,10 +15,10 @@ function chunkedBodyEnd(buffer: string, start: number): number | undefined {
   }
 }
 
-function responseEnd(buffer: string, hasNoBody: boolean): number | undefined {
+function responseEnd(buffer: string, hasNoBody: boolean, prefixLength: number): number | undefined {
   const headEnd = buffer.indexOf("\r\n\r\n");
   if (headEnd < 0) return undefined;
-  const head = buffer.slice(0, headEnd);
+  const head = buffer.slice(prefixLength, headEnd);
   const bodyStart = headEnd + 4;
   const status = Number(head.slice(9, 12));
   if (hasNoBody || status < 200 || status === 204 || status === 304) return bodyStart;
@@ -74,9 +74,11 @@ export class RawHttpConnection {
     this.#socket.write(text, "latin1");
   }
 
-  async readResponse({ hasNoBody = false } = {}): Promise<string> {
+  async readResponse({ hasNoBody = false, prefix = "" } = {}): Promise<string> {
     while (true) {
-      const end = responseEnd(this.#buffer, hasNoBody);
+      if (this.#buffer.length >= prefix.length && !this.#buffer.startsWith(prefix))
+        throw new Error(`Expected response prefix ${JSON.stringify(prefix)}`);
+      const end = this.#buffer.length < prefix.length ? undefined : responseEnd(this.#buffer, hasNoBody, prefix.length);
       if (end !== undefined) {
         const response = this.#buffer.slice(0, end);
         this.#buffer = this.#buffer.slice(end);
@@ -96,7 +98,7 @@ export class RawHttpConnection {
     return maskDate(this.#buffer);
   }
 
-  async request(text: string, options?: { hasNoBody?: boolean }) {
+  async request(text: string, options?: { hasNoBody?: boolean; prefix?: string }) {
     this.send(text);
     return await this.readResponse(options);
   }
