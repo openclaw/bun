@@ -1210,7 +1210,6 @@ Server.prototype.address = function (this: $Node.HttpServer) {
 };
 
 Server.prototype[setSecureContextSymbol] = function (this: $Node.HttpServer, options: $Node.HttpServerOptions) {
-  validateObject(options, "options");
   const current = this[tlsSymbol];
   if (!current) {
     throw $ERR_INVALID_ARG_VALUE("options", options, "server is not configured for TLS");
