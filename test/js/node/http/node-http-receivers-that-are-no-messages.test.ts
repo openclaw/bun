@@ -36,7 +36,8 @@ test("the accessors of a response answer for a plain object and for the prototyp
     writableLength: ["number", "number"],
     writableNeedDrain: ["boolean", "boolean"],
     writableHighWaterMark: ["number", "number"],
-    writableCorked: ["number", "number"],
+    // Like Node, an uninitialized receiver has no cork count.
+    writableCorked: ["undefined", "undefined"],
   });
 });
 
