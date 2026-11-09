@@ -646,7 +646,15 @@ jobs:
         if: inputs.diagnostic == 'trim-linux-runtime'
         id: runtime-deps
         run: |
-          bun install --frozen-lockfile
+          ./build/release/bun install --frozen-lockfile
+          node -e '
+            const assert = require("node:assert/strict");
+            const path = require("node:path");
+            const fs = require("node:fs");
+            const manifest = require.resolve("@types/node/package.json", { paths: [path.resolve("packages/bun-types")] });
+            assert.ok(fs.existsSync(path.join(path.dirname(manifest), "http.d.ts")));
+            console.log("Node declarations: " + require(manifest).version);
+          '
       - name: Replay unresolved runtime owners in separate test processes
         if: inputs.diagnostic == 'trim-linux-runtime'
         run: |
@@ -654,14 +662,19 @@ jobs:
           test_files=(
             aot/types-of-node-classes-name-what-buns-modules-make.test.ts
             js/node/http/node-http-state-through-an-heir-and-a-proxy.test.ts
+            js/node/http/node-http-fast-path-regressions.test.ts
           )
           printf '[' > build/openclaw-ci/runtime-results.json
           separator=
           failed=0
           for i in "${!test_files[@]}"; do
+            args=()
+            if [ "${test_files[$i]}" = js/node/http/node-http-fast-path-regressions.test.ts ]; then
+              args+=(--test-name-pattern '(proxy-response-end|inherited-response-end) releases')
+            fi
             set +e
             timeout --kill-after=5s 90s ./build/release/bun --expose-internals test \
-              "test/${test_files[$i]}" \
+              "test/${test_files[$i]}" "${args[@]}" \
               2>&1 | tee -a build/openclaw-ci/runtime-test.log
             status=$?
             set -e
@@ -681,6 +694,7 @@ jobs:
             const expected = [
               "aot/types-of-node-classes-name-what-buns-modules-make.test.ts",
               "js/node/http/node-http-state-through-an-heir-and-a-proxy.test.ts",
+              "js/node/http/node-http-fast-path-regressions.test.ts",
             ];
             assert.deepEqual(results.map(result => result.testPath.replace(/^test\//, "")).sort(), expected.sort());
           '
