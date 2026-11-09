@@ -5,7 +5,7 @@ on:
     inputs:
       probe:
         type: choice
-        options: [reflection, types, visible, type-receipt]
+        options: [reflection, types, visible, type-receipt, install]
         default: reflection
 
 permissions:
@@ -66,6 +66,9 @@ jobs:
         run: |
           ./build/release/bun install --frozen-lockfile
           node scripts/openclaw-ci/node-class-guard-probe.cjs
+      - name: Compare grouped-runner setup with explicit frozen dependency setup
+        if: inputs.probe == 'install'
+        run: node scripts/openclaw-ci/install-setup-probe.cjs
       - name: Upload receiver controls
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
