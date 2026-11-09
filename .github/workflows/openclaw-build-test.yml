@@ -48,6 +48,7 @@ on:
             trim-linux-type-stripping,
             trim-linux-module-mocks,
             trim-linux-runtime,
+            trim-linux-runtime-rest,
             compile-cache-darwin,
             trim-linux-baseline,
             trim-linux-source-baseline,
@@ -744,7 +745,7 @@ jobs:
           cp build/release/bun-profile.trim/*.txt build/release/bun.trim/
           test -z "$(git status --porcelain --untracked-files=no)"
       - name: Inspect trim witnesses and mapped bytes
-        if: startsWith(inputs.diagnostic, 'trim-linux') && inputs.diagnostic != 'trim-linux-shipping' && inputs.diagnostic != 'trim-linux-cache' && inputs.diagnostic != 'trim-linux-type-stripping' && inputs.diagnostic != 'trim-linux-module-mocks' && inputs.diagnostic != 'trim-linux-runtime' && inputs.diagnostic != 'trim-linux-aot-baseline'
+        if: startsWith(inputs.diagnostic, 'trim-linux') && inputs.diagnostic != 'trim-linux-shipping' && inputs.diagnostic != 'trim-linux-cache' && inputs.diagnostic != 'trim-linux-type-stripping' && inputs.diagnostic != 'trim-linux-module-mocks' && !startsWith(inputs.diagnostic, 'trim-linux-runtime') && inputs.diagnostic != 'trim-linux-aot-baseline'
         env:
           DIAGNOSTIC: ${{ inputs.diagnostic }}
         run: |
@@ -774,8 +775,10 @@ jobs:
             --reporter=junit --reporter-outfile=build/openclaw-ci/native-test.xml \
             2>&1 | tee build/openclaw-ci/native-test.log
       - name: Prepare focused runtime diagnosis
-        if: inputs.diagnostic == 'trim-linux-runtime'
-        run: ./build/release/bun install --frozen-lockfile
+        if: startsWith(inputs.diagnostic, 'trim-linux-runtime')
+        run: |
+          ./build/release/bun install --frozen-lockfile
+          (cd test && ../build/release/bun install --frozen-lockfile)
       - name: Replay borrowed close without uninitialized listener drains
         if: inputs.diagnostic == 'trim-linux-runtime'
         run: |
@@ -794,13 +797,17 @@ jobs:
             test/js/node/http/node-http-server-abort-events.test.ts \
             --reporter=junit --reporter-outfile=build/openclaw-ci/native-close-lifecycle-test.xml \
             2>&1 | tee build/openclaw-ci/native-close-lifecycle-test.log
+      - name: Replay aborted and overlapping listener generations
+        if: startsWith(inputs.diagnostic, 'trim-linux-runtime')
+        run: |
+          set -euo pipefail
           timeout --kill-after=5s 300s ./build/release/bun --expose-internals test \
             test/js/node/http/node-http.test.ts \
             --test-name-pattern 'already aborted signal|waits for both overlapping listener generations' \
             --reporter=junit --reporter-outfile=build/openclaw-ci/native-close-generation-test.xml \
             2>&1 | tee build/openclaw-ci/native-close-generation-test.log
       - name: Replay shared path and filesystem glob matching
-        if: inputs.diagnostic == 'trim-linux-runtime'
+        if: startsWith(inputs.diagnostic, 'trim-linux-runtime')
         run: |
           set -euo pipefail
           timeout --kill-after=5s 300s ./build/release/bun --expose-internals test \
@@ -813,7 +820,7 @@ jobs:
             --reporter=junit --reporter-outfile=build/openclaw-ci/native-glob-parallel-test.xml \
             2>&1 | tee build/openclaw-ci/native-glob-parallel-test.log
       - name: Replay HTTPS validation in ordinary and AOT modes
-        if: inputs.diagnostic == 'trim-linux-runtime'
+        if: startsWith(inputs.diagnostic, 'trim-linux-runtime')
         run: |
           set -euo pipefail
           timeout --kill-after=5s 300s ./build/release/bun --expose-internals test \
@@ -822,7 +829,7 @@ jobs:
             --reporter=junit --reporter-outfile=build/openclaw-ci/native-https-test.xml \
             2>&1 | tee build/openclaw-ci/native-https-test.log
       - name: Replay HTTP reflection and accessor observations
-        if: inputs.diagnostic == 'trim-linux-runtime'
+        if: startsWith(inputs.diagnostic, 'trim-linux-runtime')
         run: |
           set -euo pipefail
           timeout --kill-after=5s 300s ./build/release/bun --expose-internals test \
@@ -837,7 +844,7 @@ jobs:
             --reporter=junit --reporter-outfile=build/openclaw-ci/native-http-test.xml \
             2>&1 | tee build/openclaw-ci/native-http-test.log
       - name: Replay module, HTTP, and standard-stream fixes
-        if: inputs.diagnostic == 'trim-linux-runtime'
+        if: startsWith(inputs.diagnostic, 'trim-linux-runtime')
         run: |
           set -euo pipefail
           timeout --kill-after=5s 300s ./build/release/bun --expose-internals test \
@@ -885,12 +892,8 @@ jobs:
             build/openclaw-ci/native-diagnostic.json
             build/openclaw-ci/native-test.xml
             build/openclaw-ci/native-test.log
-            build/openclaw-ci/native-borrowed-close-test.xml
-            build/openclaw-ci/native-borrowed-close-test.log
-            build/openclaw-ci/native-https-test.xml
-            build/openclaw-ci/native-https-test.log
-            build/openclaw-ci/native-http-test.xml
-            build/openclaw-ci/native-http-test.log
+            build/openclaw-ci/native-*-test.xml
+            build/openclaw-ci/native-*-test.log
             build/openclaw-ci/shipping-admission.json
             build/openclaw-ci/compiled-runtime.json
             build/openclaw-ci/trim-diagnostics/*.json
