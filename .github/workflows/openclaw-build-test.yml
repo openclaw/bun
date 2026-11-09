@@ -279,6 +279,41 @@ jobs:
         run: |
           ./build/release/bun test test/cli/run/run-aot.test.ts \
             --test-name-pattern '__esModule cannot be added to an imported module namespace|stack traces'
+      - name: Record Node reflection controls
+        if: inputs.webkit_source_sha != ''
+        run: |
+          node > build/openclaw-ci/node-reflection-control.json <<'JS'
+          const http = require("node:http");
+          const names = new Set([
+            "stdin", "stdout", "stderr", "stdio", "resourceLimits", "setSecureContext",
+            "socket", "connection", "headersSent", "writableLength", "writableNeedDrain",
+            "writableHighWaterMark", "writableCorked", "kWriteOperation", "kNativeTLSTransport",
+            "kRealListen", "is_tls",
+          ]);
+          const prototypes = {
+            Writable: require("node:stream").Writable.prototype,
+            Socket: require("node:net").Socket.prototype,
+            Server: http.Server.prototype,
+            ServerResponse: http.ServerResponse.prototype,
+            HTTPSServer: require("node:https").Server.prototype,
+            ChildProcess: require("node:child_process").ChildProcess.prototype,
+            Worker: require("node:worker_threads").Worker.prototype,
+          };
+          const describe = object => Reflect.ownKeys(object).filter(key => names.has(typeof key === "symbol" ? key.description : key)).map(key => {
+            const d = Object.getOwnPropertyDescriptor(object, key);
+            return { key: String(key), configurable: d.configurable, enumerable: d.enumerable,
+              writable: d.writable, get: typeof d.get, set: typeof d.set,
+              kind: typeof d.value, length: typeof d.value === "function" ? d.value.length : undefined };
+          });
+          const response = new http.ServerResponse(new http.IncomingMessage(null));
+          const foreignReceivers = [{}, http.ServerResponse.prototype].map(receiver => {
+            try { const value = Reflect.get(response, "writableCorked", receiver); return { type: typeof value, value }; }
+            catch (error) { return { error: error.name, message: error.message }; }
+          });
+          console.log(JSON.stringify({ node: process.version, prototypes: Object.fromEntries(
+            Object.entries(prototypes).map(([name, object]) => [name, describe(object)])), writableCorked: foreignReceivers }, null, 2));
+          JS
+          cat build/openclaw-ci/node-reflection-control.json
       - name: Run selected and compatibility tests
         id: tests
         timeout-minutes: 20
