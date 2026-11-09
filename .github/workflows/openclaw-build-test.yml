@@ -124,7 +124,7 @@ jobs:
           mkdir -p build/openclaw-ci
           python3 -c 'import json,subprocess; from pathlib import Path; rev=lambda *args: subprocess.check_output(["git",*args],text=True).strip(); Path("build/openclaw-ci/engine-source.json").write_text(json.dumps({"mode":"source", "bun":{"sha":rev("rev-parse","HEAD"),"tree":rev("rev-parse","HEAD^{tree}")},"webkit":{"repository":"openclaw/WebKit","sha":rev("-C",".openclaw-webkit","rev-parse","HEAD"),"tree":rev("-C",".openclaw-webkit","rev-parse","HEAD^{tree}")},"shippingArchiveQualified":False},indent=2)+"\n")'
           echo "BUN_WEBKIT_PATH=$GITHUB_WORKSPACE/.openclaw-webkit" >> "$GITHUB_ENV"
-          echo 'Source-pair qualification uses local WebKit and system ICU; it does not qualify a shipping archive.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Source-pair qualification uses local WebKit and static system ICU; it does not qualify a shipping archive.' >> "$GITHUB_STEP_SUMMARY"
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: "1.4.4"
@@ -145,7 +145,18 @@ jobs:
         run: |
           bash scripts/openclaw-ci/install-linux-toolchain.sh
           if test -n "$WEBKIT_SOURCE_SHA"; then
-            sudo apt-get install -y --no-install-recommends libicu-dev ruby perl
+            sudo apt-get install -y --no-install-recommends libicu-dev pkg-config ruby perl
+            # Trimming reads ICU data from the executable, so use its static input contract.
+            icu_root="$RUNNER_TEMP/source-pair-icu"
+            icu_include=$(pkg-config --variable=includedir icu-uc)
+            icu_lib=$(pkg-config --variable=libdir icu-uc)
+            test -s "$icu_include/unicode/utypes.h"
+            for library in libicui18n.a libicuuc.a libicudata.a; do test -s "$icu_lib/$library"; done
+            mkdir -p "$icu_root"
+            ln -s "$icu_include" "$icu_root/include"
+            ln -s "$icu_lib" "$icu_root/lib"
+            echo "BUN_ICU_ROOT=$icu_root" >> "$GITHUB_ENV"
+            echo "Source-pair ICU: $(pkg-config --modversion icu-uc), static system archives." >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Restore build caches
         id: cache
