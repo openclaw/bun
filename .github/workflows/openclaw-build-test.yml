@@ -5,7 +5,7 @@ on:
     inputs:
       probe:
         type: choice
-        options: [reflection, types, visible, type-receipt, install, selected-suite, module-format]
+        options: [reflection, types, visible, type-receipt, install, selected-suite, module-format, stdio]
         default: reflection
 
 permissions:
@@ -109,6 +109,56 @@ jobs:
         run: |
           ./build/release/bun install --frozen-lockfile
           node scripts/openclaw-ci/module-format-probe.cjs
+      - name: Verify the pre-fix stdio control artifact
+        if: inputs.probe == 'stdio'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(gh api repos/openclaw/bun/actions/artifacts/13657933371 --jq .workflow_run.id)" = 42582282341
+          test "$(gh api repos/openclaw/bun/actions/artifacts/13657933371 --jq .workflow_run.head_sha)" = aa024e5a1d5466098357784d7f6fb159581e1478
+          test "$(gh api repos/openclaw/bun/actions/artifacts/13657933371 --jq .digest)" = sha256:c07a02e7a49a8d2a25be96e2b98539d9e7d94bb6567672a5e96a065733d1dfd6
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: inputs.probe == 'stdio'
+        with:
+          artifact-ids: 13657933371
+          run-id: 42582282341
+          github-token: ${{ github.token }}
+          path: build/openclaw-ci/stdio-control-input
+      - name: Replay original stdio exception identity before and after the repair
+        if: inputs.probe == 'stdio'
+        run: |
+          set -euo pipefail
+          cd build/openclaw-ci/stdio-control-input
+          test "$(cat commit.txt)" = aa024e5a1d5466098357784d7f6fb159581e1478
+          sha256sum -c SHA256SUMS
+          mkdir -p ../../stdio-control
+          tar -xzf bun-linux-x64.tar.gz -C ../../stdio-control bun engine-source.json
+          cd ../../..
+          ./build/stdio-control/bun -e 'if (Bun.revision !== "aa024e5a1d5466098357784d7f6fb159581e1478") throw new Error("unadmitted pre-fix control")'
+          ./build/release/bun install --frozen-lockfile
+          mkdir -p build/openclaw-ci/receiver-oracle/stdio
+          set +e
+          timeout --kill-after=5s 120s ./build/stdio-control/bun test ./test/js/node/process/process-stdio.test.ts --test-name-pattern 'preserves a constructor exception' --reporter=junit --reporter-outfile=build/openclaw-ci/receiver-oracle/stdio/before.xml > build/openclaw-ci/receiver-oracle/stdio/before.log 2>&1
+          before=$?
+          timeout --kill-after=5s 120s ./build/release/bun test ./test/js/node/process/process-stdio.test.ts --test-name-pattern 'preserves a constructor exception' --reporter=junit --reporter-outfile=build/openclaw-ci/receiver-oracle/stdio/after.xml > build/openclaw-ci/receiver-oracle/stdio/after.log 2>&1
+          after=$?
+          set -e
+          cat build/openclaw-ci/receiver-oracle/stdio/before.log
+          cat build/openclaw-ci/receiver-oracle/stdio/after.log
+          printf '{"before":%s,"after":%s}\n' "$before" "$after" > build/openclaw-ci/receiver-oracle/stdio/status.json
+          test "$before" = 1
+          test "$after" = 0
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          folder=Path('build/openclaw-ci/receiver-oracle/stdio')
+          for label in ('before','after'):
+              rows=[row for row in ET.parse(folder/(label+'.xml')).iter('testcase') if 'preserves a constructor exception' in row.get('name','')]
+              assert len(rows)==3, (label,len(rows))
+              assert all(row.find('skipped') is None for row in rows)
+              assert all((row.find('failure') is not None)==(label=='before') for row in rows)
+          print('All three original-exception identity regressions fail before and pass after the repair.')
+          PY
       - name: Upload receiver controls
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
