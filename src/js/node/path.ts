@@ -80,7 +80,7 @@ posix.win32 = win32.win32 = win32;
 posix.posix = posix;
 
 function matchesGlob(isWindows: boolean, path: string, pattern: string) {
-  return require("internal/fs/glob").matchGlobPattern(path, pattern, isWindows);
+  return require("internal/fs/glob-matcher").matchGlobPattern(path, pattern, isWindows);
 }
 
 posix.matchesGlob = matchesGlob.bind(null, false);
