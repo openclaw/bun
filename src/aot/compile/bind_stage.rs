@@ -354,7 +354,6 @@ impl Build<'_> {
             graph.set_answers_for_names_itself();
         }
         steps.end_with(|| format!("{project_name}: bind modules"));
-        let files = view.files();
         let left_out = match project {
             ProjectId::Application if graph.errors().is_empty() => {
                 let files_are_named_out_of_sight = !self.options.load.runs_tests

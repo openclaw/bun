@@ -1084,18 +1084,10 @@ bool ModuleHookFetchScope::rejectConflictImpl(Zig::GlobalObject* globalObject, J
     return true;
 }
 
-static JSC::JSValue callCustomizationHooksExport(Zig::GlobalObject* globalObject, ASCIILiteral exportName, JSC::MarkedArgumentBuffer& args)
+static JSC::JSValue callCustomizationHooksExport(Zig::GlobalObject* globalObject, JSC::JSValue fn, JSC::MarkedArgumentBuffer& args)
 {
     auto& vm = JSC::getVM(globalObject);
     auto scope = DECLARE_THROW_SCOPE(vm);
-    JSValue mod = BUN_REQUIRE_INTERNAL_MODULE(globalObject, InternalModulesCustomizationHooks, "node:module.registerHooks",
-        "runResolveHooksBun"_s, "runLoadHooksBun"_s, "canLoadCompiledModule"_s, "getResolvedImportAttributes"_s, "discardResolvedContext"_s, "getResolvedBuiltin"_s);
-    RETURN_IF_EXCEPTION(scope, {});
-    JSObject* modObject = mod.getObject();
-    if (!modObject) [[unlikely]]
-        return JSC::jsUndefined();
-    JSValue fn = modObject->get(globalObject, JSC::Identifier::fromString(vm, exportName));
-    RETURN_IF_EXCEPTION(scope, {});
     JSC::CallData callData = JSC::getCallData(fn);
     if (callData.type == JSC::CallData::Type::None) [[unlikely]]
         return JSC::jsUndefined();
@@ -1114,7 +1106,9 @@ bool moduleHooksAllowCompiledModule(Zig::GlobalObject* globalObject, const Strin
     args.append(jsString(vm, path));
     args.append(jsBoolean(isCommonJSRequire));
     ASSERT(!args.hasOverflowed());
-    JSValue result = callCustomizationHooksExport(globalObject, "canLoadCompiledModule"_s, args);
+    JSValue fn = BUN_REQUIRE_INTERNAL_MODULE(globalObject, InternalModulesCustomizationHooks, "node:module.registerHooks", "canLoadCompiledModule"_s);
+    RETURN_IF_EXCEPTION(scope, false);
+    JSValue result = callCustomizationHooksExport(globalObject, fn, args);
     RETURN_IF_EXCEPTION(scope, false);
     return result.isTrue();
 }
@@ -1136,7 +1130,9 @@ extern "C" [[ZIG_EXPORT(zero_is_throw)]] JSC::EncodedJSValue Bun__runModuleResol
     args.append(JSC::JSValue::decode(importAttributes));
     args.append(JSC::jsBoolean(resolveOnly));
     ASSERT(!args.hasOverflowed());
-    JSValue result = callCustomizationHooksExport(globalObject, "runResolveHooksBun"_s, args);
+    JSValue fn = BUN_REQUIRE_INTERNAL_MODULE(globalObject, InternalModulesCustomizationHooks, "node:module.registerHooks", "runResolveHooksBun"_s);
+    RETURN_IF_EXCEPTION(scope, {});
+    JSValue result = callCustomizationHooksExport(globalObject, fn, args);
     RETURN_IF_EXCEPTION(scope, {});
     return JSC::JSValue::encode(result);
 }
@@ -1149,7 +1145,9 @@ RefPtr<JSC::ScriptFetchParameters> moduleHooksFetchParameters(Zig::GlobalObject*
     args.append(Bun::toJS(globalObject, *key));
     RETURN_IF_EXCEPTION(scope, nullptr);
     ASSERT(!args.hasOverflowed());
-    auto attributes = callCustomizationHooksExport(globalObject, "getResolvedImportAttributes"_s, args);
+    JSValue fn = BUN_REQUIRE_INTERNAL_MODULE(globalObject, InternalModulesCustomizationHooks, "node:module.registerHooks", "getResolvedImportAttributes"_s);
+    RETURN_IF_EXCEPTION(scope, nullptr);
+    auto attributes = callCustomizationHooksExport(globalObject, fn, args);
     RETURN_IF_EXCEPTION(scope, nullptr);
     if (!attributes.isObject())
         return original;
@@ -1178,7 +1176,9 @@ void validateModuleHooksStaticAttributes(Zig::GlobalObject* globalObject, const 
     args.append(Bun::toJS(globalObject, *key));
     RETURN_IF_EXCEPTION(scope, );
     ASSERT(!args.hasOverflowed());
-    auto attributes = callCustomizationHooksExport(globalObject, "getResolvedImportAttributes"_s, args);
+    JSValue fn = BUN_REQUIRE_INTERNAL_MODULE(globalObject, InternalModulesCustomizationHooks, "node:module.registerHooks", "getResolvedImportAttributes"_s);
+    RETURN_IF_EXCEPTION(scope, );
+    auto attributes = callCustomizationHooksExport(globalObject, fn, args);
     RETURN_IF_EXCEPTION(scope, );
     if (!attributes.isObject())
         return;
@@ -1200,7 +1200,9 @@ extern "C" void Bun__discardModuleResolveContext(Zig::GlobalObject* globalObject
     args.append(Bun::toJS(globalObject, *key));
     RETURN_IF_EXCEPTION(scope, );
     ASSERT(!args.hasOverflowed());
-    callCustomizationHooksExport(globalObject, "discardResolvedContext"_s, args);
+    JSValue fn = BUN_REQUIRE_INTERNAL_MODULE(globalObject, InternalModulesCustomizationHooks, "node:module.registerHooks", "discardResolvedContext"_s);
+    RETURN_IF_EXCEPTION(scope, );
+    callCustomizationHooksExport(globalObject, fn, args);
     RETURN_IF_EXCEPTION(scope, );
 }
 
@@ -1211,7 +1213,9 @@ extern "C" [[ZIG_EXPORT(zero_is_throw)]] JSC::EncodedJSValue Bun__getModuleHooks
     JSC::MarkedArgumentBuffer args;
     args.append(Bun::toJS(globalObject, *path));
     RETURN_IF_EXCEPTION(scope, {});
-    auto result = callCustomizationHooksExport(globalObject, "getResolvedBuiltin"_s, args);
+    JSValue fn = BUN_REQUIRE_INTERNAL_MODULE(globalObject, InternalModulesCustomizationHooks, "node:module.registerHooks", "getResolvedBuiltin"_s);
+    RETURN_IF_EXCEPTION(scope, {});
+    auto result = callCustomizationHooksExport(globalObject, fn, args);
     RETURN_IF_EXCEPTION(scope, {});
     return JSC::JSValue::encode(result);
 }
@@ -1230,7 +1234,9 @@ extern "C" [[ZIG_EXPORT(zero_is_throw)]] JSC::EncodedJSValue Bun__runModuleLoadH
     args.append(JSC::jsNumber(moduleTypeHint));
     args.append(JSC::jsBoolean(isCommonJSRequire));
     ASSERT(!args.hasOverflowed());
-    JSValue result = callCustomizationHooksExport(globalObject, "runLoadHooksBun"_s, args);
+    JSValue fn = BUN_REQUIRE_INTERNAL_MODULE(globalObject, InternalModulesCustomizationHooks, "node:module.registerHooks", "runLoadHooksBun"_s);
+    RETURN_IF_EXCEPTION(scope, {});
+    JSValue result = callCustomizationHooksExport(globalObject, fn, args);
     RETURN_IF_EXCEPTION(scope, {});
     if (!result.isUndefined() && Bun::ModuleHookFetchScope::rejectBuiltinOverride(globalObject, path, isCommonJSRequire))
         return {};

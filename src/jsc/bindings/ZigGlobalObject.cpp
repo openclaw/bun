@@ -4324,7 +4324,7 @@ static JSPromise* importResolvedModule(Zig::GlobalObject* globalObject, JSModule
         if (scope.exception()) [[unlikely]]
             return JSC::JSPromise::rejectedPromiseWithCaughtException(globalObject, scope);
 #if ENABLE(AOT)
-        if (imported && globalObject->m_lazyTestModuleObject.isInitialized()) [[unlikely]] {
+        if (imported && globalObject->hasTestModuleObject()) [[unlikely]] {
             Bun::didStartDynamicImport(globalObject, imported, std::exchange(globalObject->onLoadPlugins.keyOfImportCall, {}));
             RETURN_IF_EXCEPTION(scope, nullptr);
         }
