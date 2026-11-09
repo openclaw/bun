@@ -199,7 +199,7 @@ describe("compile/aot/types of node's classes", () => {
           .split("\n")
           .filter(line => line.startsWith("{"))
           .map(line => JSON.parse(line));
-        expect(report.accesses.byName).toBe(0);
+        expect(report.accesses.byName, build.stdout).toBe(0);
         expect(report.accesses.tested + report.accesses.free).toBeGreaterThan(0);
         const plain = await spawned([bunExe(), "main.ts"], folder, bunEnv);
         expect(plain.exitCode).toBe(0);

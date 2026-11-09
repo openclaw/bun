@@ -10,7 +10,7 @@ async function expectOutput(program: string, expected: string) {
     stderr: "pipe",
   });
   const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
-  expect(stderr).toBe("");
+  expect(stderr, stdout).toBe("");
   expect(stdout.split("\n")).toEqual((await Bun.file(join(import.meta.dir, expected)).text()).split("\n"));
   expect(exitCode).toBe(0);
 }
