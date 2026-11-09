@@ -107,6 +107,21 @@ const scenarios: Record<string, Scenario> = {
       new Proxy(res, {}).end("ok");
     },
   },
+  "proxy-socket-write": {
+    handle(req, res, log) {
+      new Proxy(req.socket, {}).write("RAW", error => log("write", error?.code ?? null));
+      res.end("ok");
+    },
+  },
+  "proxy-socket-corked-response": {
+    handle(req, res, log) {
+      res.socket = new Proxy(req.socket, {});
+      res.cork();
+      res.write("o", error => log("write", error?.code ?? null));
+      res.uncork();
+      res.end("k");
+    },
+  },
   "inherited-response-end": {
     handle(req, res) {
       Object.create(res).end("ok");

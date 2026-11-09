@@ -2546,16 +2546,19 @@ function getNodeHTTPServerSocket() {
     }
 
     _write(_chunk, _encoding, _callback) {
+      const handle = this[kHandle];
+      // A Proxy can write through this socket; its native owner holds the drain state.
+      const owner = handle?.duplex ?? this;
       if (_encoding === kWriteOperation) {
         const response = _chunk.response;
         const done = error => {
-          if (this.#pendingResponseCallback !== done) return;
-          this.#pendingResponseCallback = null;
+          if (owner.#pendingResponseCallback !== done) return;
+          owner.#pendingResponseCallback = null;
           response[kResumeResponseSocketWrite] = undefined;
           _callback(error);
           if (!hasResponseSocketWork(this)) scheduleWriteAccountingFlush(response);
         };
-        this.#pendingResponseCallback = done;
+        owner.#pendingResponseCallback = done;
         const resume = () => {
           response[kResumeResponseSocketWrite] = undefined;
           try {
@@ -2568,7 +2571,6 @@ function getNodeHTTPServerSocket() {
         else resume();
         return;
       }
-      const handle = this[kHandle];
       const done = error => {
         _callback(error);
         const response = this._httpMessage;
@@ -2578,12 +2580,12 @@ function getNodeHTTPServerSocket() {
       this._unrefTimer();
       try {
         if (handle) {
-          handle.ondrain ??= this.#onDrain.bind(this);
+          handle.ondrain ??= owner.#onDrain.bind(owner);
           const flushed = handle.write(_chunk, _encoding);
           if (!flushed && handle.ondrain) {
             // Streaming mode (CONNECT tunnels): wait for the native drain
             // callback before completing the write.
-            this.#pendingCallback = done;
+            owner.#pendingCallback = done;
             return false;
           }
         }

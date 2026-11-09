@@ -191,6 +191,41 @@ describe.concurrent("node:http server keeps its behavior on keep-alive connectio
   );
 
   test(
+    "a Proxy socket writes bytes before each response on the connection",
+    async () => {
+      expect(await run("proxy-socket-write", threeRequests())).toMatchObject({
+        responses: ["RAW" + ok, "RAW" + ok, "RAW" + ok],
+        log: [
+          ["write", null],
+          ["write", null],
+          ["write", null],
+        ],
+        stderr: "",
+        exitCode: 0,
+      });
+    },
+    timeout,
+  );
+
+  test(
+    "a Proxy socket uncorks queued response writes on the connection",
+    async () => {
+      const chunked = chunkedOk.replace("2\r\nok\r\n", "1\r\no\r\n1\r\nk\r\n");
+      expect(await run("proxy-socket-corked-response", threeRequests())).toMatchObject({
+        responses: [chunked, chunked, chunked],
+        log: [
+          ["write", null],
+          ["write", null],
+          ["write", null],
+        ],
+        stderr: "",
+        exitCode: 0,
+      });
+    },
+    timeout,
+  );
+
+  test(
     "writeHead() throws ERR_HTTP_HEADERS_SENT once res._header is assigned",
     async () => {
       expect(await run("assigned-header-text", [warmUp, get("/")])).toEqual({
