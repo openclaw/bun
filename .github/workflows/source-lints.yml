@@ -3,7 +3,7 @@ name: source-lints
 permissions:
   contents: read
 
-# Source-tree lints and build-script unit tests from test/internal/source-lints/.
+# Source-tree lints, AOT module consistency, and build-script unit tests.
 # These never touch the built bun binary (no bun:internal-for-testing, no
 # bunExe() spawns), so they can run against a released bun immediately on push
 # instead of waiting for build-bun in every Buildkite test lane.
@@ -18,6 +18,7 @@ on:
       - "src/**/*.bind.ts"
       - "src/codegen/**"
       - "src/js/**/*.ts"
+      - "src/js/**/*.js"
       - "src/jsc/bindings/**"
       - "packages/bun-types/redis.d.ts"
       - "scripts/build/**"
@@ -35,6 +36,7 @@ on:
       - "test/tsconfig.json"
       - "test/_util/**"
       - "test/internal/source-lints/**"
+      - "test/internal/second-texts-of-modules.test.ts"
       - "test/aot/**"
       - ".gitignore"
       - ".prettierignore"
@@ -49,6 +51,7 @@ on:
       - "src/**/*.bind.ts"
       - "src/codegen/**"
       - "src/js/**/*.ts"
+      - "src/js/**/*.js"
       - "src/jsc/bindings/**"
       - "packages/bun-types/redis.d.ts"
       - "scripts/build/**"
@@ -66,6 +69,7 @@ on:
       - "test/tsconfig.json"
       - "test/_util/**"
       - "test/internal/source-lints/**"
+      - "test/internal/second-texts-of-modules.test.ts"
       - "test/aot/**"
       - ".gitignore"
       - ".prettierignore"
@@ -98,7 +102,7 @@ jobs:
       # paths, or `harness` (resolved via test/tsconfig.json `paths`), so a
       # bare checkout is sufficient.
       - name: Run source lints
-        run: bun test test/internal/source-lints/
+        run: bun test test/internal/source-lints/ test/internal/second-texts-of-modules.test.ts
       - name: Test upstream sync automation
         run: node --test .github/scripts/sync-upstream.test.cjs
       - name: Test release asset admission

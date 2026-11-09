@@ -1,5 +1,5 @@
 // What the compiler reads in place of src/js/node/tty.ts, which `bun run` evaluates. The two do the same.
-// Written against that file with the SHA-256 c39a1da3a2d3a0eb8c52983b287e1ece0f9afe418dedb34114a3bdd865ae6c47.
+// Written against that file with the SHA-256 8737fcc78136fe3ea2ff612f46484af0bb50cb57c559f53f4fce9fb72a5e2178.
 // When that file changes, bring the change here and write the new hash: test/internal/second-texts-of-modules.test.ts.
 // Hardcoded module "node:tty"
 

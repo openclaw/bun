@@ -1,5 +1,5 @@
 // What the compiler reads in place of src/js/node/https.ts, which `bun run` evaluates. The two do the same.
-// Written against that file with the SHA-256 d4a2b2667ebcb1831e65f89ad9d4c17713a47f4d3d52a711e00402d9165ead13.
+// Written against that file with the SHA-256 b7f4366bd5d4606c624369959c5959d9da7ce7465e977b8a44ef9a638d65fdfb.
 // When that file changes, bring the change here and write the new hash: test/internal/second-texts-of-modules.test.ts.
 
 // Hardcoded module "node:https"
