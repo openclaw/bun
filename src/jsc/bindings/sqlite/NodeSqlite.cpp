@@ -826,7 +826,7 @@ bool JSDatabaseSync::open(JSGlobalObject* globalObject, ThrowScope& scope)
     auto utf8 = tryUTF8(globalObject, scope, m_location);
     RETURN_IF_EXCEPTION(scope, false);
     auto* global = defaultGlobalObject(globalObject);
-    JSValue queryState = BUN_REQUIRE_INTERNAL_MODULE(global, InternalSqlite, "node:sqlite", "publisher"_s);
+    JSValue queryPublisher = BUN_REQUIRE_INTERNAL_MODULE(global, InternalSqlite, "node:sqlite", "publisher"_s);
     RETURN_IF_EXCEPTION(scope, false);
     sqlite3* db = nullptr;
     int r = sqlite3_open_v2(utf8.legacyCStringPointer(), &db, flags, nullptr);
@@ -900,7 +900,7 @@ bool JSDatabaseSync::open(JSGlobalObject* globalObject, ThrowScope& scope)
         }
     }
 
-    setQueryPublisher(queryState.getObject()->getDirect(vm, Identifier::fromString(vm, "publisher"_s)).getObject());
+    setQueryPublisher(queryPublisher.getObject());
     return true;
 }
 
