@@ -4158,9 +4158,8 @@ ServerResponse.prototype.end = function (chunk, encoding, callback, token = unde
   this._header = " ";
   this[kCorked] = 0;
   // The socket is NOT detached here: like Node.js, res.socket stays assigned
-  // until the response 'finish' machinery runs (the dispatcher detaches it
-  // right after a synchronously-finished handler returns, or via its 'finish'
-  // listener otherwise), so handlers can still reach res.socket after end().
+  // until the response 'finish' machinery runs, so handlers can still reach
+  // res.socket after end().
   this.finished = true;
   process.nextTick(markResponseEndedNT, this);
   this.emit("prefinish");
@@ -4184,7 +4183,19 @@ function queueResponseFinished(res, callback) {
 // 'close' is queued before the 'finish' listeners run, like Node.js's resOnFinish does.
 function emitResponseFinished(res, callback) {
   process.nextTick(emitCloseNT, res);
-  res.emit("finish");
+  const socket = res[kSocket];
+  let detached = false;
+  try {
+    res.emit("finish");
+  } finally {
+    // The finish listener can be removed or throw before detaching. Native
+    // completion must still release this response's connection association.
+    if (isNodeHTTPServerSocket(socket) && socket._httpMessage === res) {
+      res.detachSocket(socket);
+      detached = true;
+    }
+  }
+  if (detached) advanceResponsePipeline(socket.server, socket);
   if (callback) {
     try {
       callback();

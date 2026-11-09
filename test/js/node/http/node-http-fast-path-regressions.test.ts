@@ -164,11 +164,12 @@ describe.concurrent("node:http server keeps its behavior on keep-alive connectio
     timeout,
   );
 
-  test(
-    "res._events = undefined after an earlier request on the connection",
-    async () => {
-      expect(await run("undefined-response-events", [warmUp, ...threeRequests()])).toMatchObject({
+  test.each(["undefined-response-events", "replaced-response-events", "removed-response-finish-listeners"])(
+    "%s after an earlier request on the connection",
+    async scenario => {
+      expect(await run(scenario, [warmUp, ...threeRequests()])).toMatchObject({
         responses: [ok, ok, ok, ok],
+        log: scenario === "undefined-response-events" ? [] : [["user finish"], ["user finish"], ["user finish"]],
         responsesDestroyed: [true, true, true],
         stderr: "",
         exitCode: 0,
@@ -467,15 +468,11 @@ describe.concurrent("node:http server keeps its behavior on keep-alive connectio
   );
 
   test(
-    "res.removeAllListeners() after the body was read: the socket stays assigned to the response",
+    "res.removeAllListeners() after the body was read: the connection remains reusable",
     async () => {
       expect(
         await run("remove-all-listeners-after-body", [post("/", "hello"), post("/", "hello"), post("/", "hello")]),
-      ).toEqual({
-        responses: [ok, "HTTP/1.1 200 OK\r\nDate: <date>\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n", "closed"],
-        stderr: expect.stringContaining('code: "ERR_HTTP_SOCKET_ASSIGNED"'),
-        exitCode: 1,
-      });
+      ).toEqual(threeOk);
     },
     timeout,
   );

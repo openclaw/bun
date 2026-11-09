@@ -89,6 +89,19 @@ const scenarios: Record<string, Scenario> = {
       res.end("ok");
     },
   },
+  "replaced-response-events": {
+    handle(req, res, log) {
+      res._events = { finish: () => log("user finish") };
+      res.end("ok");
+    },
+  },
+  "removed-response-finish-listeners": {
+    handle(req, res, log) {
+      res.removeAllListeners("finish");
+      res.on("finish", () => log("user finish"));
+      res.end("ok");
+    },
+  },
   "assigned-header-text": {
     handle(req, res, log) {
       res._header = "HTTP/1.1 299 Mine\r\nContent-Length: 2\r\n\r\n";
