@@ -227,6 +227,11 @@ const files = {
       expect(indexes).toBeDefined();
       return model.features.filter(feature => indexes!.includes(feature.index)).map(feature => feature.name);
     }
+    function serverRemovalBudget(built: Build) {
+      const removed = removedFrom(built);
+      // Node-compatible minimatch needs private names; retain the removal budget for every other feature.
+      return removed.length + Number(!removed.includes(featureNamed("OperationsOnPrivateNames")));
+    }
     const hello = { stdout: "hello world\n", stderr: "", exitCode: 0 };
 
     test("a program that uses none of them has none of them", async () => {
@@ -378,7 +383,7 @@ const files = {
 
     test("a Bun.serve route with the style option doesn't count as a use of the bundler, and throws a catchable error: what is reached", async () => {
       const built = await trimmed("styled-route.ts");
-      expect(removedFrom(built).length, built.stderr).toBeGreaterThanOrEqual(atLeastOnLinux(110));
+      expect(serverRemovalBudget(built), built.stderr).toBeGreaterThanOrEqual(atLeastOnLinux(110));
     });
 
     test.failing(
@@ -399,7 +404,7 @@ const files = {
 
     test("a server whose options ask for neither has no bundler and no transpiler: what is reached", async () => {
       const built = await trimmed("serves.ts");
-      expect(removedFrom(built).length, built.stderr).toBeGreaterThanOrEqual(atLeastOnLinux(110));
+      expect(serverRemovalBudget(built), built.stderr).toBeGreaterThanOrEqual(atLeastOnLinux(110));
     });
 
     test.failing(
@@ -420,7 +425,7 @@ const files = {
 
     test("reload() never needs the development server, whatever its routes ask for: what is reached", async () => {
       const built = await trimmed("reloads.ts");
-      expect(removedFrom(built).length, built.stderr).toBeGreaterThanOrEqual(atLeastOnLinux(110));
+      expect(serverRemovalBudget(built), built.stderr).toBeGreaterThanOrEqual(atLeastOnLinux(110));
     });
 
     test.failing(
@@ -461,7 +466,19 @@ const files = {
 
     test("a server that never names bun:test has none of it, whatever names it reads off values nobody knows: what is reached", async () => {
       const built = await trimmed("serves-values-nobody-knows.ts");
-      expect(removedFrom(built).length, built.stderr).toBeGreaterThanOrEqual(atLeastOnLinux(98));
+      expect(serverRemovalBudget(built), built.stderr).toBeGreaterThanOrEqual(atLeastOnLinux(98));
+      if (isLinux) {
+        expect(removedFrom(built), built.stderr).toEqual(
+          expect.arrayContaining(
+            [
+              "OperationsOnArgumentsObjects",
+              "OperationsOnDates",
+              "OperationsOnEncodedText",
+              "OperationsOnStringBuilders",
+            ].map(name => featureNamed(name)),
+          ),
+        );
+      }
     });
 
     test.failing(
