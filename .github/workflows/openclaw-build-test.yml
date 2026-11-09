@@ -49,6 +49,7 @@ on:
             trim-linux-module-mocks,
             trim-linux-runtime,
             trim-linux-runtime-rest,
+            trim-linux-reflection,
             compile-cache-darwin,
             trim-linux-baseline,
             trim-linux-source-baseline,
@@ -745,7 +746,7 @@ jobs:
           cp build/release/bun-profile.trim/*.txt build/release/bun.trim/
           test -z "$(git status --porcelain --untracked-files=no)"
       - name: Inspect trim witnesses and mapped bytes
-        if: startsWith(inputs.diagnostic, 'trim-linux') && inputs.diagnostic != 'trim-linux-shipping' && inputs.diagnostic != 'trim-linux-cache' && inputs.diagnostic != 'trim-linux-type-stripping' && inputs.diagnostic != 'trim-linux-module-mocks' && !startsWith(inputs.diagnostic, 'trim-linux-runtime') && inputs.diagnostic != 'trim-linux-aot-baseline'
+        if: startsWith(inputs.diagnostic, 'trim-linux') && inputs.diagnostic != 'trim-linux-shipping' && inputs.diagnostic != 'trim-linux-cache' && inputs.diagnostic != 'trim-linux-type-stripping' && inputs.diagnostic != 'trim-linux-module-mocks' && !startsWith(inputs.diagnostic, 'trim-linux-runtime') && inputs.diagnostic != 'trim-linux-reflection' && inputs.diagnostic != 'trim-linux-aot-baseline'
         env:
           DIAGNOSTIC: ${{ inputs.diagnostic }}
         run: |
@@ -853,6 +854,16 @@ jobs:
             test/js/node/http/node-http-closed-response.test.ts \
             test/bundler/compile-trim-removed-features-throw.test.ts \
             --test-name-pattern 'files that are CommonJS only by name|node:http server keeps its behavior|a response closed by Object|dynamic standard-stream construction errors remain catchable' \
+            --reporter=junit --reporter-outfile=build/openclaw-ci/native-test.xml \
+            2>&1 | tee build/openclaw-ci/native-test.log
+      - name: Replay reviewed prototype and visible surface expectations
+        if: inputs.diagnostic == 'trim-linux-reflection'
+        run: |
+          set -euo pipefail
+          ./build/release/bun install --frozen-lockfile
+          timeout --kill-after=5s 300s ./build/release/bun --expose-internals test \
+            test/js/node/members-of-prototype-objects-for-any-receiver.test.ts \
+            test/js/node/visible-surface.test.ts \
             --reporter=junit --reporter-outfile=build/openclaw-ci/native-test.xml \
             2>&1 | tee build/openclaw-ci/native-test.log
       - name: Probe the admitted shipping compile contract
