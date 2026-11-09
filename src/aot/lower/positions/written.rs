@@ -130,7 +130,12 @@ mod tests {
   new (new a.Inner)();
 }
 ";
-        let texts = ["new a.Plain", "new a.Called", "new a.Inner", "new (new a.Inner)"];
+        let texts = [
+            "new a.Plain",
+            "new a.Called",
+            "new a.Inner",
+            "new (new a.Inner)",
+        ];
         let expected = texts.map(|text| offset_of(source, text));
         assert_eq!(reported_positions(source, Opcode::Construct), expected);
     }
