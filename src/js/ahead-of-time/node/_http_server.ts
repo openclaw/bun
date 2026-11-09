@@ -1147,7 +1147,8 @@ Server.prototype.close = function (this: $Node.HttpServer, optionalCallback?: (e
   http1Fallback?.closeIdleHttp1Connections(this);
   if (!server) {
     if (typeof optionalCallback === "function") process.nextTick(optionalCallback, $ERR_SERVER_NOT_RUNNING());
-    if (!this[kPendingDrainClose]) {
+    // Borrowed close() on a prototype heir has no listener bookkeeping to drain.
+    if (!this[kPendingDrainClose] && this[kPendingCloseGenerations]) {
       this[kPendingDrainClose] = true;
       process.nextTick(emitCloseServer, this);
     }
