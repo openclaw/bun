@@ -55,13 +55,13 @@ test.each(modules)(
       env: bunEnv,
       cwd: String(dir),
       stdout: "pipe",
-      stderr: "ignore",
+      stderr: "pipe",
     });
-    const [stdout, exitCode] = await Promise.all([proc.stdout.text(), proc.exited]);
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect(exitCode, stderr).toBe(0);
     // On Windows setRawMode() goes through the handle of the stream, elsewhere through the file descriptor.
     if (isWindows && id === "node:tty") expect(stdout).toMatchSnapshot("on Windows");
     else expect(stdout).toMatchSnapshot();
-    expect(exitCode).toBe(0);
   },
   60_000,
 );

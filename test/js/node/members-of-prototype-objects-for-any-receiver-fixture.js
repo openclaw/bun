@@ -182,7 +182,9 @@ process.on("unhandledRejection", error => lines.push(`later, a rejection: ${text
 
 function visitModule(id) {
   visit(require(id), id, 0);
-  (makers[id]?.() ?? []).forEach((made, index) => addLevelsFrom(Object.getPrototypeOf(made), `what is above object ${index}`));
+  (makers[id]?.() ?? []).forEach((made, index) => {
+    if (made != null) addLevelsFrom(Object.getPrototypeOf(made), `what is above object ${index}`);
+  });
 }
 passedOver.forEach(visitModule);
 for (const level of levels.keys()) notOfTheLibrary.add(level);
