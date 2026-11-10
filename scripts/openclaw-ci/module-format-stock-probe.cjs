@@ -9,7 +9,7 @@ const binary = resolve("build/release/bun");
 const folder = resolve("../build/openclaw-ci/module-format-stock");
 mkdirSync(folder, { recursive: true });
 const receipt = {
-  nativeSource: "72e01da726087318dae55b808a6b5e6bb543bb2f",
+  nativeSource: "48776a6de93af998c6fdedd12e770cef8f528502",
   engineSource: "5a61071f79134bf41844e7ea31a8449147d85dd4",
   controllerSource: process.env.GITHUB_SHA,
   executableSHA256: createHash("sha256").update(readFileSync(binary)).digest("hex"),
@@ -93,4 +93,5 @@ assert.match(plainImport.stdout, /^(true|false) string\n$/);
 assert.match(aotImport.stdout, /^(true|false) string\n$/);
 assert.equal(plainRequire.stdout, "true string\n");
 assert.equal(aotRequire.stdout, plainRequire.stdout);
-// Import parity is the measured unknown, recorded above rather than assumed from fork-native evidence.
+assert.equal(receipt.importMatches, true, "in-place AOT must preserve ordinary concurrent import format");
+assert.equal(plainImport.stdout, "false string\n");

@@ -1,4 +1,4 @@
-name: OpenClaw stock module-format reproduction
+name: OpenClaw upstream import-format qualification
 
 on:
   workflow_dispatch:
@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: stock-module-format-${{ github.ref }}
+  group: upstream-import-format-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -31,7 +31,7 @@ jobs:
       BUN_BUILD_CACHE_DIR: ${{ github.workspace }}/source/baseline/.cache/stock-build
       PUPPETEER_SKIP_DOWNLOAD: "1"
       WEBKIT_SOURCE_SHA: ${{ inputs.webkit_source_sha }}
-      EXPECTED_NATIVE_SHA: 72e01da726087318dae55b808a6b5e6bb543bb2f
+      EXPECTED_NATIVE_SHA: 48776a6de93af998c6fdedd12e770cef8f528502
     steps:
       - name: Validate source-pair request
         working-directory: .
@@ -51,7 +51,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: 72e01da726087318dae55b808a6b5e6bb543bb2f
+          ref: 48776a6de93af998c6fdedd12e770cef8f528502
           path: source/baseline
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -78,7 +78,7 @@ jobs:
           mkdir -p build/openclaw-ci
           python3 -c 'import json,subprocess; from pathlib import Path; rev=lambda *args: subprocess.check_output(["git",*args],text=True).strip(); Path("build/openclaw-ci/engine-source.json").write_text(json.dumps({"mode":"source", "bun":{"sha":rev("-C","baseline","rev-parse","HEAD"),"tree":rev("-C","baseline","rev-parse","HEAD^{tree}")},"webkit":{"repository":"oven-sh/WebKit","sha":rev("-C",".openclaw-webkit","rev-parse","HEAD"),"tree":rev("-C",".openclaw-webkit","rev-parse","HEAD^{tree}")},"shippingArchiveQualified":False},indent=2)+"\n")'
           echo "BUN_WEBKIT_PATH=$GITHUB_WORKSPACE/source/.openclaw-webkit" >> "$GITHUB_ENV"
-          echo 'Exact stock module-format reproduction only; this does not qualify shipping or the full suite.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Exact upstream import-format qualification only; this does not qualify shipping or the full suite.' >> "$GITHUB_STEP_SUMMARY"
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: "1.4.4"
@@ -137,21 +137,21 @@ jobs:
             source/baseline/build/release/rust-target
             ~/.cargo/registry
             ~/.cargo/git
-          key: stock-module-format-72e01da726087318dae55b808a6b5e6bb543bb2f-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', 'bun.lock', 'test/bun.lock', 'rust-toolchain.toml', 'scripts/build/**', 'scripts/build.ts', '.github/workflows/openclaw-build-test.yml') }}-${{ steps.pins.outputs.tree }}-${{ inputs.webkit_source_sha || 'pinned' }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: upstream-import-format-48776a6de93af998c6fdedd12e770cef8f528502-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', 'bun.lock', 'test/bun.lock', 'rust-toolchain.toml', 'scripts/build/**', 'scripts/build.ts', '.github/workflows/openclaw-build-test.yml') }}-${{ steps.pins.outputs.tree }}-${{ inputs.webkit_source_sha || 'pinned' }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            stock-module-format-72e01da726087318dae55b808a6b5e6bb543bb2f-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', 'bun.lock', 'test/bun.lock', 'rust-toolchain.toml', 'scripts/build/**', 'scripts/build.ts', '.github/workflows/openclaw-build-test.yml') }}-${{ steps.pins.outputs.tree }}-${{ inputs.webkit_source_sha || 'pinned' }}-
+            upstream-import-format-48776a6de93af998c6fdedd12e770cef8f528502-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', 'bun.lock', 'test/bun.lock', 'rust-toolchain.toml', 'scripts/build/**', 'scripts/build.ts', '.github/workflows/openclaw-build-test.yml') }}-${{ steps.pins.outputs.tree }}-${{ inputs.webkit_source_sha || 'pinned' }}-
       - name: Install frozen source and baseline type dependencies
         run: |
           test "$(git rev-parse HEAD)" = 2d5e55119fb50ee5d79af2552703193ef7b0f46f
           test "$(git -C baseline rev-parse HEAD)" = "$EXPECTED_NATIVE_SHA"
-          test "$(git -C baseline rev-parse 'HEAD^{tree}')" = b46490e65318f6894e9626aa0c61dc90473ab240
+          test "$(git -C baseline rev-parse 'HEAD^{tree}')" = 6d559a374a3d7ac136f4b2d3e926ed712d1f34d9
           test "$(git -C .openclaw-webkit rev-parse 'HEAD^{tree}')" = 5a21495a118101dc8043246d8805babb8ebdcf60
           bun install --frozen-lockfile
           (cd baseline && bun install --frozen-lockfile)
       - name: Verify identical stock and provisioning toolchain pins
         run: |
           bun -e 'import { strict as assert } from "node:assert"; import { pins } from "./scripts/build/ci-images/spec.ts"; import { pins as stock } from "./baseline/scripts/build/ci-images/spec.ts"; assert.deepEqual(stock.llvm,pins.llvm); assert.deepEqual(stock.rust,pins.rust)'
-      - name: Build the unchanged stock source pair
+      - name: Build the reviewed upstream source pair
         timeout-minutes: 75
         run: |
           unset BUILDKITE_COMMIT GIT_SHA
@@ -172,20 +172,46 @@ jobs:
           cp build/release/bun-profile.trim/*.txt build/release/bun.trim/
           test -z "$(git status --porcelain --untracked-files=no)"
           test -z "$(git -C ../.openclaw-webkit status --porcelain --untracked-files=no)"
-      - name: Reproduce imported TSX against the exact stock executable
+      - name: Verify imported TSX parity against the reviewed executable
         working-directory: source/baseline
         run: node ../../scripts/openclaw-ci/module-format-stock-probe.cjs
-      - name: Compare the byte-identical HTTP class fixture on stock
-        run: node ../scripts/openclaw-ci/http-access-stock-control.cjs
-      - name: Upload stock reproduction receipts
+      - name: Check the changed Rust source format
+        working-directory: source/baseline
+        run: rustfmt --edition 2024 --check src/sema/resolve/code/search.rs src/aot/load/contents/tests.rs
+      - name: Verify module-load analysis including the inverse extension case
+        working-directory: source/baseline
+        timeout-minutes: 20
+        run: |
+          BUN_CODEGEN_DIR="$GITHUB_WORKSPACE/source/baseline/build/release/codegen" CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0 \
+            CARGO_PROFILE_DEV_OPT_LEVEL=1 CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS='-Cforce-frame-pointers=yes -Zthreads=8' \
+            cargo test --no-fail-fast -p bun_aot --lib load::contents::tests::file_found_for_a_load_is_read_as_that_load_reads_it
+      - name: Run the owning CLI parity and evaluation-order regressions
+        working-directory: source/baseline
+        timeout-minutes: 10
+        run: |
+          ./build/release/bun install --frozen-lockfile
+          (cd test && ../build/release/bun install --frozen-lockfile)
+          mkdir -p ../build/openclaw-ci/module-format-stock
+          ./build/release/bun test ./test/cli/run/run-aot.test.ts \
+            --test-name-pattern 'in-place \.(jsx|tsx) module format matches the runtime|files that are CommonJS only by name' \
+            --reporter=junit --reporter-outfile=../build/openclaw-ci/module-format-stock/cli.xml
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          rows=[r for r in ET.parse('../build/openclaw-ci/module-format-stock/cli.xml').iter('testcase') if r.find('skipped') is None]
+          assert len(rows)==16,len(rows)
+          assert all(r.find('failure') is None for r in rows)
+          print('All six JSX/TSX parity/order/require cases and ten existing CommonJS cases pass.')
+          PY
+      - name: Upload upstream import qualification receipts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: stock-module-format-${{ github.sha }}-attempt${{ github.run_attempt }}
+          name: upstream-import-format-${{ github.sha }}-attempt${{ github.run_attempt }}
           path: |
             source/build/openclaw-ci/*.json
             source/build/openclaw-ci/aot-baseline/*.json
             source/build/openclaw-ci/aot-baseline/*.log
+            source/build/openclaw-ci/module-format-stock/*.xml
             source/build/openclaw-ci/module-format-stock/*.json
             source/build/openclaw-ci/module-format-stock/*.log
             source/build/openclaw-ci/receiver-oracle/node-class-guards/*.json
