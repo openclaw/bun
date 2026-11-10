@@ -31,7 +31,7 @@ jobs:
       BUN_BUILD_CACHE_DIR: ${{ github.workspace }}/source/baseline/.cache/stock-build
       PUPPETEER_SKIP_DOWNLOAD: "1"
       WEBKIT_SOURCE_SHA: ${{ inputs.webkit_source_sha }}
-      EXPECTED_NATIVE_SHA: 48776a6de93af998c6fdedd12e770cef8f528502
+      EXPECTED_NATIVE_SHA: ecebf1d0165be75580864a41da9240436ff0e974
     steps:
       - name: Validate source-pair request
         working-directory: .
@@ -51,7 +51,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: 48776a6de93af998c6fdedd12e770cef8f528502
+          ref: ecebf1d0165be75580864a41da9240436ff0e974
           path: source/baseline
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -137,14 +137,14 @@ jobs:
             source/baseline/build/release/rust-target
             ~/.cargo/registry
             ~/.cargo/git
-          key: upstream-import-format-48776a6de93af998c6fdedd12e770cef8f528502-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', 'bun.lock', 'test/bun.lock', 'rust-toolchain.toml', 'scripts/build/**', 'scripts/build.ts', '.github/workflows/openclaw-build-test.yml') }}-${{ steps.pins.outputs.tree }}-${{ inputs.webkit_source_sha || 'pinned' }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: upstream-import-format-ecebf1d0165be75580864a41da9240436ff0e974-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', 'bun.lock', 'test/bun.lock', 'rust-toolchain.toml', 'scripts/build/**', 'scripts/build.ts', '.github/workflows/openclaw-build-test.yml') }}-${{ steps.pins.outputs.tree }}-${{ inputs.webkit_source_sha || 'pinned' }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            upstream-import-format-48776a6de93af998c6fdedd12e770cef8f528502-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', 'bun.lock', 'test/bun.lock', 'rust-toolchain.toml', 'scripts/build/**', 'scripts/build.ts', '.github/workflows/openclaw-build-test.yml') }}-${{ steps.pins.outputs.tree }}-${{ inputs.webkit_source_sha || 'pinned' }}-
+            upstream-import-format-ecebf1d0165be75580864a41da9240436ff0e974-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', 'bun.lock', 'test/bun.lock', 'rust-toolchain.toml', 'scripts/build/**', 'scripts/build.ts', '.github/workflows/openclaw-build-test.yml') }}-${{ steps.pins.outputs.tree }}-${{ inputs.webkit_source_sha || 'pinned' }}-
       - name: Install frozen source and baseline type dependencies
         run: |
           test "$(git rev-parse HEAD)" = 2d5e55119fb50ee5d79af2552703193ef7b0f46f
           test "$(git -C baseline rev-parse HEAD)" = "$EXPECTED_NATIVE_SHA"
-          test "$(git -C baseline rev-parse 'HEAD^{tree}')" = 6d559a374a3d7ac136f4b2d3e926ed712d1f34d9
+          test "$(git -C baseline rev-parse 'HEAD^{tree}')" = c36c28e521bb6a32175f1b0adaea8bd195328bd3
           test "$(git -C .openclaw-webkit rev-parse 'HEAD^{tree}')" = 5a21495a118101dc8043246d8805babb8ebdcf60
           bun install --frozen-lockfile
           (cd baseline && bun install --frozen-lockfile)

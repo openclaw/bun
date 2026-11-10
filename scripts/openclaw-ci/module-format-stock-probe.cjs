@@ -9,7 +9,7 @@ const binary = resolve("build/release/bun");
 const folder = resolve("../build/openclaw-ci/module-format-stock");
 mkdirSync(folder, { recursive: true });
 const receipt = {
-  nativeSource: "48776a6de93af998c6fdedd12e770cef8f528502",
+  nativeSource: "ecebf1d0165be75580864a41da9240436ff0e974",
   engineSource: "5a61071f79134bf41844e7ea31a8449147d85dd4",
   controllerSource: process.env.GITHUB_SHA,
   executableSHA256: createHash("sha256").update(readFileSync(binary)).digest("hex"),
