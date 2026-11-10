@@ -1,4 +1,4 @@
-name: OpenClaw matcher reachability (temporary diagnosis)
+name: OpenClaw stock module-format reproduction
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ on:
         options: [linux-x64]
         default: linux-x64
       webkit_source_sha:
-        description: Diagnostic engine commit with temporary operation-origin logging
+        description: Exact stock engine 5a61071f79134bf41844e7ea31a8449147d85dd4
         type: string
         required: true
 
@@ -16,11 +16,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: aot-glob-matcher-${{ github.ref }}
+  group: stock-module-format-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  operation-origins:
+  module-format:
     runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 100
     defaults:
@@ -28,10 +28,10 @@ jobs:
         shell: bash
         working-directory: source
     env:
-      BUN_BUILD_CACHE_DIR: ${{ github.workspace }}/.cache/openclaw-build
+      BUN_BUILD_CACHE_DIR: ${{ github.workspace }}/source/baseline/.cache/stock-build
       PUPPETEER_SKIP_DOWNLOAD: "1"
       WEBKIT_SOURCE_SHA: ${{ inputs.webkit_source_sha }}
-      EXPECTED_NATIVE_SHA: 2d5e55119fb50ee5d79af2552703193ef7b0f46f
+      EXPECTED_NATIVE_SHA: 72e01da726087318dae55b808a6b5e6bb543bb2f
     steps:
       - name: Validate source-pair request
         working-directory: .
@@ -40,10 +40,9 @@ jobs:
           PLATFORM: ${{ inputs.platform }}
         run: |
           test "$PLATFORM" = linux-x64
-          [[ "$WEBKIT_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$WEBKIT_SOURCE_SHA" = 5a61071f79134bf41844e7ea31a8449147d85dd4
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -52,13 +51,13 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: 2596ac5d391d47804c93a42bdbe615804aa62387
+          ref: 72e01da726087318dae55b808a6b5e6bb543bb2f
           path: source/baseline
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: inputs.webkit_source_sha != ''
         with:
-          repository: openclaw/WebKit
+          repository: oven-sh/WebKit
           ref: ${{ inputs.webkit_source_sha }}
           path: source/.openclaw-webkit
           persist-credentials: false
@@ -77,9 +76,9 @@ jobs:
           test "$(git -C .openclaw-webkit rev-parse HEAD)" = "$WEBKIT_SOURCE_SHA"
           test -z "$(git -C .openclaw-webkit status --porcelain)"
           mkdir -p build/openclaw-ci
-          python3 -c 'import json,subprocess; from pathlib import Path; rev=lambda *args: subprocess.check_output(["git",*args],text=True).strip(); Path("build/openclaw-ci/engine-source.json").write_text(json.dumps({"mode":"source", "bun":{"sha":rev("rev-parse","HEAD"),"tree":rev("rev-parse","HEAD^{tree}")},"webkit":{"repository":"openclaw/WebKit","sha":rev("-C",".openclaw-webkit","rev-parse","HEAD"),"tree":rev("-C",".openclaw-webkit","rev-parse","HEAD^{tree}")},"shippingArchiveQualified":False},indent=2)+"\n")'
+          python3 -c 'import json,subprocess; from pathlib import Path; rev=lambda *args: subprocess.check_output(["git",*args],text=True).strip(); Path("build/openclaw-ci/engine-source.json").write_text(json.dumps({"mode":"source", "bun":{"sha":rev("-C","baseline","rev-parse","HEAD"),"tree":rev("-C","baseline","rev-parse","HEAD^{tree}")},"webkit":{"repository":"oven-sh/WebKit","sha":rev("-C",".openclaw-webkit","rev-parse","HEAD"),"tree":rev("-C",".openclaw-webkit","rev-parse","HEAD^{tree}")},"shippingArchiveQualified":False},indent=2)+"\n")'
           echo "BUN_WEBKIT_PATH=$GITHUB_WORKSPACE/source/.openclaw-webkit" >> "$GITHUB_ENV"
-          echo 'Temporary operation-origin diagnosis only; this does not qualify shipping or the full suite.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Exact stock module-format reproduction only; this does not qualify shipping or the full suite.' >> "$GITHUB_STEP_SUMMARY"
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: "1.4.4"
@@ -134,49 +133,63 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
-            .cache/openclaw-build
-            build/release/rust-target
+            source/baseline/.cache/stock-build
+            source/baseline/build/release/rust-target
             ~/.cargo/registry
             ~/.cargo/git
-          key: openclaw-native-x64-v1-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', 'bun.lock', 'test/bun.lock', 'rust-toolchain.toml', 'scripts/build/**', 'scripts/build.ts', '.github/workflows/openclaw-build-test.yml') }}-${{ steps.pins.outputs.tree }}-${{ inputs.webkit_source_sha || 'pinned' }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: stock-module-format-72e01da726087318dae55b808a6b5e6bb543bb2f-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', 'bun.lock', 'test/bun.lock', 'rust-toolchain.toml', 'scripts/build/**', 'scripts/build.ts', '.github/workflows/openclaw-build-test.yml') }}-${{ steps.pins.outputs.tree }}-${{ inputs.webkit_source_sha || 'pinned' }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            openclaw-native-x64-v1-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', 'bun.lock', 'test/bun.lock', 'rust-toolchain.toml', 'scripts/build/**', 'scripts/build.ts', '.github/workflows/openclaw-build-test.yml') }}-${{ steps.pins.outputs.tree }}-${{ inputs.webkit_source_sha || 'pinned' }}-
+            stock-module-format-72e01da726087318dae55b808a6b5e6bb543bb2f-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', 'bun.lock', 'test/bun.lock', 'rust-toolchain.toml', 'scripts/build/**', 'scripts/build.ts', '.github/workflows/openclaw-build-test.yml') }}-${{ steps.pins.outputs.tree }}-${{ inputs.webkit_source_sha || 'pinned' }}-
       - name: Install frozen source and baseline type dependencies
         run: |
-          test "$(git rev-parse HEAD)" = "$EXPECTED_NATIVE_SHA"
+          test "$(git rev-parse HEAD)" = 2d5e55119fb50ee5d79af2552703193ef7b0f46f
+          test "$(git -C baseline rev-parse HEAD)" = "$EXPECTED_NATIVE_SHA"
+          test "$(git -C baseline rev-parse 'HEAD^{tree}')" = b46490e65318f6894e9626aa0c61dc90473ab240
+          test "$(git -C .openclaw-webkit rev-parse 'HEAD^{tree}')" = 5a21495a118101dc8043246d8805babb8ebdcf60
           bun install --frozen-lockfile
           (cd baseline && bun install --frozen-lockfile)
-      - name: Build the frozen source with the diagnostic engine
+      - name: Verify identical stock and provisioning toolchain pins
+        run: |
+          bun -e 'import { strict as assert } from "node:assert"; import { pins } from "./scripts/build/ci-images/spec.ts"; import { pins as stock } from "./baseline/scripts/build/ci-images/spec.ts"; assert.deepEqual(stock.llvm,pins.llvm); assert.deepEqual(stock.rust,pins.rust)'
+      - name: Build the unchanged stock source pair
         timeout-minutes: 75
         run: |
           unset BUILDKITE_COMMIT GIT_SHA
           export GITHUB_SHA="$EXPECTED_NATIVE_SHA"
-          mkdir -p build/openclaw-ci/aot-baseline
+          cd baseline
+          mkdir -p ../build/openclaw-ci/aot-baseline
           bun -e '
             import { configOf } from "./scripts/build/configure.ts";
-            const { cfg } = configOf({ profile: "openclaw-native", overrides: { webkit: "local", webkitVersion: process.env.WEBKIT_SOURCE_SHA } });
+            const { cfg } = configOf({ profile: "release", overrides: { ci: true, trimmable: true, webkit: "local", webkitVersion: process.env.WEBKIT_SOURCE_SHA } });
             const { buildType, ci, lto, trimmable, webkit, webkitVersion, revision, cc, ld, rustToolchain } = cfg;
             if (buildType !== "Release" || !ci || !lto || !trimmable || webkit !== "local" ||
                 revision !== process.env.EXPECTED_NATIVE_SHA || webkitVersion !== process.env.WEBKIT_SOURCE_SHA)
-              throw new Error("Unexpected diagnostic build configuration");
+              throw new Error("Unexpected stock reproduction build configuration");
             console.log(JSON.stringify({ buildType, ci, lto, trimmable, webkit, webkitVersion, revision, cc, ld, rustToolchain }));
-          ' > build/openclaw-ci/aot-baseline/probe-build.json
-          bun scripts/build.ts --profile=openclaw-native --webkit=local --webkit-version="$WEBKIT_SOURCE_SHA" --timings -k0
+          ' > ../build/openclaw-ci/aot-baseline/probe-build.json
+          bun scripts/build.ts --profile=release --ci=on --trimmable=on --webkit=local --webkit-version="$WEBKIT_SOURCE_SHA" --timings
           mkdir -p build/release/bun.trim
           cp build/release/bun-profile.trim/*.txt build/release/bun.trim/
           test -z "$(git status --porcelain --untracked-files=no)"
-          test -z "$(git -C .openclaw-webkit status --porcelain --untracked-files=no)"
-      - name: Trace the two matched compile and runtime flows
-        run: bun ../scripts/openclaw-ci/aot-trim-baseline.ts --operation-origins
-      - name: Upload diagnostic receipts and operation traces
+          test -z "$(git -C ../.openclaw-webkit status --porcelain --untracked-files=no)"
+      - name: Reproduce imported TSX against the exact stock executable
+        working-directory: source/baseline
+        run: node ../../scripts/openclaw-ci/module-format-stock-probe.cjs
+      - name: Compare the byte-identical HTTP class fixture on stock
+        run: node ../scripts/openclaw-ci/http-access-stock-control.cjs
+      - name: Upload stock reproduction receipts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: aot-glob-matcher-${{ github.sha }}-attempt${{ github.run_attempt }}
+          name: stock-module-format-${{ github.sha }}-attempt${{ github.run_attempt }}
           path: |
             source/build/openclaw-ci/*.json
             source/build/openclaw-ci/aot-baseline/*.json
             source/build/openclaw-ci/aot-baseline/*.log
-            source/build/release/timings.html
+            source/build/openclaw-ci/module-format-stock/*.json
+            source/build/openclaw-ci/module-format-stock/*.log
+            source/build/openclaw-ci/receiver-oracle/node-class-guards/*.json
+            source/build/openclaw-ci/receiver-oracle/node-class-guards/*.log
+            source/baseline/build/release/timings.html
           if-no-files-found: error
           retention-days: 7
