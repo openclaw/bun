@@ -98,6 +98,7 @@ jobs:
           RUST_TOOLCHAIN: ${{ steps.pins.outputs.rust }}
         run: |
           bash scripts/openclaw-ci/install-linux-toolchain.sh
+          rustup component add rustfmt --toolchain "$RUST_TOOLCHAIN"
           if test -n "$WEBKIT_SOURCE_SHA"; then
             sudo apt-get install -y --no-install-recommends libicu-dev pkg-config ruby perl
             # Trimming reads ICU data from the executable, so use its static input contract.
