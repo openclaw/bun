@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Allow stdout and stderr to initialize again after a replaced stream constructor throws, deferring native sink acquisition until the constructor consumes its options.
+
 - Fetch checksum-verified CI release assets through GitHub's public API when browser download routes fail, stage the pinned native LLVM archive, and seed the native engine's existing checksum-keyed prefetch cache.
 
 - Give OpenClaw's full standalone AOT consumer qualification a dedicated high-memory runner after measured memory pressure, while keeping Birdclaw on its existing hosted runner.
