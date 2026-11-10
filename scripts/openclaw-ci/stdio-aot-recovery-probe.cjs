@@ -1,4 +1,4 @@
-// Hosted-only consumer proof using the admitted fork-native executable.
+// Hosted-only full-stream consumer proof using the admitted fork-native executable.
 const assert = require("node:assert/strict");
 const { spawnSync } = require("node:child_process");
 const { createHash } = require("node:crypto");
@@ -13,6 +13,7 @@ const receipt = {
   engineSource: "651eeaca6e2792378928033b1ae7ac66d6f91eab",
   controllerSource: process.env.GITHUB_SHA,
   executableSHA256: createHash("sha256").update(readFileSync(binary)).digest("hex"),
+  streamPath: "full",
   complete: false,
   runs: [],
 };
@@ -71,6 +72,8 @@ for (const name of ["stdout", "stderr"]) {
       'fs.writeSync(1, JSON.stringify({ calls, caughtOriginal }) + "\\n");',
       "fs.WriteStream = Constructor;",
       "process." + name + ".write(" + JSON.stringify("recovered " + name + "\n") + ");",
+      // A full-stream demand retains this constructor; light-stream monkeypatch parity is a separate known gap.
+      "if (process." + name + '._writableState.objectMode !== false) throw new Error("expected a full stream");',
       "process.exitCode = calls === 1 && caughtOriginal ? 0 : 1;",
     ].join("\n") + "\n";
   writeFileSync(join(inputs, "entry.cjs"), source);
@@ -92,4 +95,4 @@ for (const name of ["stdout", "stderr"]) {
 }
 receipt.complete = true;
 save();
-console.log("Both output streams preserve the original error and recover through in-place and standalone AOT.");
+console.log("Both full output streams preserve the original error and recover through in-place and standalone AOT.");

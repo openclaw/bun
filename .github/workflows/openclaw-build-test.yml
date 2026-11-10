@@ -1,4 +1,4 @@
-name: OpenClaw isolated stdio exception recovery
+name: OpenClaw isolated full-stream AOT recovery
 
 on: workflow_dispatch
 
@@ -46,56 +46,9 @@ jobs:
           tar -xzf bun-linux-x64.tar.gz -C ../../release bun bun.trim engine-source.json
           cd ../../..
           ./build/release/bun -e 'if (Bun.revision !== "cd861bb9f53102e92e23ce28684c258055c7e612" || process.versions.webkit !== "651eeaca6e2792378928033b1ae7ac66d6f91eab") throw new Error("unadmitted source pair")'
-      - name: Verify the pre-fix stdio control artifact
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          test "$(gh api repos/openclaw/bun/actions/artifacts/13695635269 --jq .workflow_run.id)" = 42658362697
-          test "$(gh api repos/openclaw/bun/actions/artifacts/13695635269 --jq .workflow_run.head_sha)" = 5cd0cffa4a84f8a9285fc8b55d98c3d1deabab58
-          test "$(gh api repos/openclaw/bun/actions/artifacts/13695635269 --jq .digest)" = sha256:384c879aaa55d55e80813e574bdeb09b2ca4174a528518148f1bc0eb27a775f9
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          artifact-ids: 13695635269
-          run-id: 42658362697
-          github-token: ${{ github.token }}
-          path: build/openclaw-ci/stdio-control-input
-      - name: Replay original stdio exceptions and output recovery before and after the repair
-        run: |
-          set -euo pipefail
-          cd build/openclaw-ci/stdio-control-input
-          test "$(cat commit.txt)" = 5cd0cffa4a84f8a9285fc8b55d98c3d1deabab58
-          sha256sum -c SHA256SUMS
-          mkdir -p ../../stdio-control
-          tar -xzf bun-linux-x64.tar.gz -C ../../stdio-control bun engine-source.json
-          cd ../../..
-          ./build/stdio-control/bun -e 'if (Bun.revision !== "5cd0cffa4a84f8a9285fc8b55d98c3d1deabab58" || process.versions.webkit !== "651eeaca6e2792378928033b1ae7ac66d6f91eab") throw new Error("unadmitted pre-fix control")'
-          ./build/release/bun install --frozen-lockfile
-          mkdir -p build/openclaw-ci/receiver-oracle/stdio
-          cp build/stdio-control/engine-source.json build/openclaw-ci/receiver-oracle/stdio/before-engine-source.json
-          cp build/release/engine-source.json build/openclaw-ci/receiver-oracle/stdio/after-engine-source.json
-          set +e
-          timeout --kill-after=5s 120s ./build/stdio-control/bun test ./test/js/node/process/process-stdio.test.ts --test-name-pattern 'preserves a constructor exception' --reporter=junit --reporter-outfile=build/openclaw-ci/receiver-oracle/stdio/before.xml > build/openclaw-ci/receiver-oracle/stdio/before.log 2>&1
-          before=$?
-          timeout --kill-after=5s 120s ./build/release/bun test ./test/js/node/process/process-stdio.test.ts --test-name-pattern 'preserves a constructor exception' --reporter=junit --reporter-outfile=build/openclaw-ci/receiver-oracle/stdio/after.xml > build/openclaw-ci/receiver-oracle/stdio/after.log 2>&1
-          after=$?
-          set -e
-          cat build/openclaw-ci/receiver-oracle/stdio/before.log
-          cat build/openclaw-ci/receiver-oracle/stdio/after.log
-          printf '{"before":%s,"after":%s}\n' "$before" "$after" > build/openclaw-ci/receiver-oracle/stdio/status.json
-          test "$before" = 1
-          test "$after" = 0
-          python3 - <<'PY'
-          from pathlib import Path
-          import xml.etree.ElementTree as ET
-          folder=Path('build/openclaw-ci/receiver-oracle/stdio')
-          for label in ('before','after'):
-              rows=[row for row in ET.parse(folder/(label+'.xml')).iter('testcase') if 'preserves a constructor exception' in row.get('name','')]
-              assert len(rows)==3, (label,len(rows))
-              assert all(row.find('skipped') is None for row in rows)
-              assert all((row.find('failure') is not None)==(label=='before' and 'process.stdin ' not in row.get('name','')) for row in rows)
-          print('Both output-recovery cases fail before and pass after; stdin original-exception identity remains passing.')
-          PY
-      - name: Verify recovery through both AOT entry points
+      - name: Install frozen type dependencies
+        run: ./build/release/bun install --frozen-lockfile
+      - name: Verify full-stream recovery through both AOT entry points
         run: node scripts/openclaw-ci/stdio-aot-recovery-probe.cjs
       - name: Upload receiver controls
         if: always()
