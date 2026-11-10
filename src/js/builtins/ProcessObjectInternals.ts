@@ -79,9 +79,13 @@ export function getStdioWriteStream(
   } else {
     const fs = require("node:fs");
     const createStdioSink = $bindgen("FileSink.bind.ts", "createStdio");
+    // A replaced constructor may throw before reading options. The real one reads $fastPath twice.
+    let sink: $Node.FileSink | undefined;
     const fsStream: StdioSinkWriteStream = new fs.WriteStream(null, {
       autoClose: false,
-      $fastPath: createStdioSink(fd),
+      get $fastPath() {
+        return (sink ??= createStdioSink(fd));
+      },
     });
     stream = fsStream;
     stream.readable = false;
