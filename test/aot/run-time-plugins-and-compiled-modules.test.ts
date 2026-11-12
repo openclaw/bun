@@ -2,7 +2,7 @@
 // What a build finds in one test file holds for the whole run: a computed import opens it to code that no build has seen, and a plugin lets every file load again. So only the
 // cases of which a build finds the same share a run, as folders of one project: the two that register a plugin. Such a run compiles much of Bun's own library, whatever it holds.
 import { expect } from "bun:test";
-import { bunEnv, bunExe, tempDir } from "harness";
+import { bunEnv, bunExe, isWindows, tempDir } from "harness";
 import { join } from "node:path";
 import { run } from "./harness/run";
 import { describe, test } from "./supported";
@@ -81,6 +81,43 @@ describe.concurrent("plugins registered at run time", () => {
       timeout,
     );
   }
+
+  test("extensionless SDK imports in external modules reach runtime resolution hooks", async () => {
+    using dir = tempDir("aot-external-plugin-alias", {
+      "tsconfig.json": tsconfig,
+      "bunfig.toml": '[install]\nauto = "disable"\n',
+      "sdk.cjs": `exports.value = 42;`,
+      "external.mjs": `import { value } from "uninstalled-package/sdk"; export { value };`,
+      "main.ts": String.raw`
+        import { createRequire } from "node:module";
+        import { join } from "node:path";
+        Bun.plugin({
+          name: "external-sdk-alias",
+          setup(build) {
+            build.onResolve({ filter: /^uninstalled-package\/sdk$/ }, () => ({
+              path: join(process.cwd(), "sdk.cjs"), namespace: "file",
+            }));
+          },
+        });
+        console.log(createRequire(import.meta.url)("./external.mjs").value);
+      `,
+    });
+    const folder = String(dir);
+    expect(await run([bunExe(), "main.ts"], folder, bunEnv)).toEqual({ stdout: "42\n", stderr: "", exitCode: 0 });
+    const executable = join(folder, isWindows ? "program.exe" : "program");
+    const build = await run(
+      [bunExe(), "build", "--compile", "--aot", "--external=./external.mjs", "main.ts", "--outfile", executable],
+      folder,
+      bunEnv,
+    );
+    expect(build.exitCode).toBe(0);
+    // The new value proves the external ESM still loads from disk after compilation.
+    await Bun.write(
+      join(folder, "external.mjs"),
+      `import { value as resolved } from "uninstalled-package/sdk"; export const value = resolved + 1;`,
+    );
+    expect(await run([executable], folder, bunEnv)).toEqual({ stdout: "43\n", stderr: "", exitCode: 0 });
+  });
 });
 
 describe.concurrent("plugins that load files of a test run", () => {
