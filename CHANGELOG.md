@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Restore macOS file-watcher compilation after the event-loop API migration, using the public loop accessor and platform-scoped descriptor imports.
+
 - Allow stdout and stderr to initialize again after a replaced stream constructor throws, deferring native sink acquisition until the constructor consumes its options.
 
 - Fetch checksum-verified CI release assets through GitHub's public API when browser download routes fail, stage the pinned native LLVM archive, and seed the native engine's existing checksum-keyed prefetch cache.

@@ -30,8 +30,8 @@ impl DarwinFileWatch {
     }
 
     pub(crate) fn arm(&self, ctx: EventLoopCtx) -> Result<()> {
-        // SAFETY: owned live poll; registration cannot enter JS or re-enter this owner.
-        unsafe { (*self.poll.as_ptr()).register(ctx.platform_event_loop(), Flags::Vnode, true) }
+        // SAFETY: owned live poll and owning event loop; registration cannot enter JS or re-enter this owner.
+        unsafe { (*self.poll.as_ptr()).register(&*ctx.loop_(), Flags::Vnode, true) }
     }
 }
 
