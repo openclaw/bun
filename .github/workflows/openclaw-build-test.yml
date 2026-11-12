@@ -50,6 +50,47 @@ jobs:
         run: ./build/release/bun install --frozen-lockfile
       - name: Verify the compiled external ESM plugin-alias boundary
         run: node scripts/openclaw-ci/external-plugin-alias-probe.cjs
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 3666c0447f09eab9a1baaadfc94f10060f2a9dec
+          path: alias-source
+          persist-credentials: false
+      - name: Run the restored regression through its current test harness
+        working-directory: alias-source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 3666c0447f09eab9a1baaadfc94f10060f2a9dec
+          binary="$GITHUB_WORKSPACE/build/release/bun"
+          report="$GITHUB_WORKSPACE/build/openclaw-ci/external-plugin-alias"
+          "$binary" install --frozen-lockfile
+          set +e
+          timeout --kill-after=5s 240s "$binary" test test/aot/run-time-plugins-and-compiled-modules.test.ts -t 'extensionless SDK imports in external modules reach runtime resolution hooks' > "$report/regression.log" 2>&1
+          result=$?
+          set -e
+          cat "$report/regression.log"
+          export ALIAS_REGRESSION_EXIT="$result"
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib,re
+          root=pathlib.Path(os.environ['GITHUB_WORKSPACE'])
+          report=root/'build/openclaw-ci/external-plugin-alias'
+          test=root/'alias-source/test/aot/run-time-plugins-and-compiled-modules.test.ts'
+          log=(report/'regression.log').read_text()
+          text=re.sub(r'\x1b\[[0-9;]*m','',log)
+          passed=(os.environ['ALIAS_REGRESSION_EXIT']=='0'
+                  and re.search(r'^\s*1 pass\b',text,re.M)
+                  and re.search(r'^\s*0 fail\b',text,re.M)
+                  and not re.search(r'^\s*[1-9][0-9]* (?:skip|todo)\b',text,re.M))
+          receipt={'source':'3666c0447f09eab9a1baaadfc94f10060f2a9dec',
+                   'controllerSource':os.environ['GITHUB_SHA'],
+                   'nativeSource':'cd861bb9f53102e92e23ce28684c258055c7e612',
+                   'engineSource':'651eeaca6e2792378928033b1ae7ac66d6f91eab',
+                   'testSHA256':hashlib.sha256(test.read_bytes()).hexdigest(),
+                   'logSHA256':hashlib.sha256((report/'regression.log').read_bytes()).hexdigest(),
+                   'exitCode':int(os.environ['ALIAS_REGRESSION_EXIT']),
+                   'passed':bool(passed),'shippingArchiveQualified':False}
+          (report/'regression.json').write_text(json.dumps(receipt,indent=2)+'\n')
+          assert passed,'restored SDK alias regression must run once without skips or failures'
+          PY
       - name: Upload plugin-alias proof
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
