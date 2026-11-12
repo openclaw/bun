@@ -1,18 +1,19 @@
-name: OpenClaw canonical archive transport
+name: OpenClaw external plugin alias qualification
 
 on: workflow_dispatch
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
-  group: archive-transport-${{ github.ref }}
+  group: external-plugin-alias-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  transport:
-    runs-on: blacksmith-2vcpu-ubuntu-2404
-    timeout-minutes: 8
+  plugin-alias:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     defaults:
       run:
         shell: bash
@@ -20,53 +21,41 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          sparse-checkout: .github/workflows
-      - name: Verify canonical release assets through BuildKit
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "26.12.1"
+      - name: Verify the admitted native source and immutable artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
-          report="$GITHUB_WORKSPACE/build/archive-transport"
-          inputs="$RUNNER_TEMP/archive-transport"
-          mkdir -p "$report" "$inputs/empty"
-          docker buildx version
-          cat > "$inputs/Dockerfile" <<'DOCKER'
-          FROM scratch
-          ADD --checksum=sha256:eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3 https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-1.5.7.tar.gz /zstd.tar.gz
-          ADD --checksum=sha256:06fa63ecb521048f8082f12ad988f6b678d90cbd88aafce24cbc94902b191d99 https://github.com/unicode-org/icu/releases/download/release-79.1/icu4c-79.1-sources.tgz /icu.tgz
-          ADD --checksum=sha256:d7b1528432b69fe4fc924b29bf17729ec1eac1e2a9f6ff3384059ae71743d00c https://github.com/oven-sh/WebKit/releases/download/compiler-rt-windows-23.1.1/clang_rt.asan_dynamic-x86_64.lib /asan.lib
-          DOCKER
-          set +e
-          timeout --kill-after=5s 180s docker buildx build --no-cache --progress=plain --file "$inputs/Dockerfile" --output "type=local,dest=$inputs/output" "$inputs/empty" > "$report/buildkit.log" 2>&1
-          result=$?
-          set -e
-          cat "$report/buildkit.log"
-          export ARCHIVE_TRANSPORT_RESULT="$result"
-          python3 - <<'PY'
-          import hashlib,json,os,pathlib
-          source=pathlib.Path(os.environ['RUNNER_TEMP'])/'archive-transport/output'
-          expected={
-              'zstd.tar.gz':('eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3',2434947),
-              'icu.tgz':('06fa63ecb521048f8082f12ad988f6b678d90cbd88aafce24cbc94902b191d99',28162455),
-              'asan.lib':('d7b1528432b69fe4fc924b29bf17729ec1eac1e2a9f6ff3384059ae71743d00c',110938),
-          }
-          rows=[]
-          for name,(digest,size) in expected.items():
-              path=source/name
-              rows.append({'name':name,'present':path.is_file(),'expectedSHA256':digest,'expectedBytes':size,
-                           **({'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'bytes':path.stat().st_size} if path.is_file() else {})})
-          passed=os.environ['ARCHIVE_TRANSPORT_RESULT']=='0' and all(row['present'] and row['sha256']==row['expectedSHA256'] and row['bytes']==row['expectedBytes'] for row in rows)
-          receipt={'controllerSource':os.environ['GITHUB_SHA'],'engineRecipeSource':'651eeaca6e2792378928033b1ae7ac66d6f91eab','buildkitExit':int(os.environ['ARCHIVE_TRANSPORT_RESULT']),'complete':passed,'shippingArchiveQualified':False,'assets':rows}
-          report=pathlib.Path(os.environ['GITHUB_WORKSPACE'])/'build/archive-transport/receipt.json'
-          report.write_text(json.dumps(receipt,indent=2)+'\n')
-          print(json.dumps(receipt))
-          assert passed, 'canonical asset transport is not restored'
-          PY
-      - name: Retain only transport receipt and log
+          test "$(gh api repos/openclaw/bun/actions/artifacts/13753314663 --jq .workflow_run.id)" = 42793326534
+          test "$(gh api repos/openclaw/bun/actions/artifacts/13753314663 --jq .workflow_run.head_sha)" = cd861bb9f53102e92e23ce28684c258055c7e612
+          test "$(gh api repos/openclaw/bun/actions/artifacts/13753314663 --jq .digest)" = sha256:993294f9721a2984f1698ca10ecc6dbb84fd3f91eb9fc066f5eff8ea8a366236
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: 13753314663
+          run-id: 42793326534
+          github-token: ${{ github.token }}
+          path: build/openclaw-ci/native-input
+      - name: Verify and unpack the admitted executable
+        run: |
+          cd build/openclaw-ci/native-input
+          test "$(cat commit.txt)" = cd861bb9f53102e92e23ce28684c258055c7e612
+          sha256sum -c SHA256SUMS
+          mkdir -p ../../release
+          tar -xzf bun-linux-x64.tar.gz -C ../../release bun bun.trim engine-source.json
+          cd ../../..
+          ./build/release/bun -e 'if (Bun.revision !== "cd861bb9f53102e92e23ce28684c258055c7e612" || process.versions.webkit !== "651eeaca6e2792378928033b1ae7ac66d6f91eab") throw new Error("unadmitted source pair")'
+      - name: Install frozen type dependencies
+        run: ./build/release/bun install --frozen-lockfile
+      - name: Verify the compiled external ESM plugin-alias boundary
+        run: node scripts/openclaw-ci/external-plugin-alias-probe.cjs
+      - name: Upload plugin-alias proof
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: archive-transport-${{ github.sha }}-attempt${{ github.run_attempt }}
+          name: external-plugin-alias-${{ github.sha }}-attempt${{ github.run_attempt }}
           path: |
-            build/archive-transport/receipt.json
-            build/archive-transport/buildkit.log
+            build/openclaw-ci/external-plugin-alias/
           if-no-files-found: error
           retention-days: 7
