@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Recognize the AOT rewrite import when selecting fork CI coverage, excluding unchanged upstream files while retaining fork repairs and nightly suites.
+
 - Restore macOS file-watcher compilation after the event-loop API migration, using the public loop accessor and platform-scoped descriptor imports.
 
 - Allow stdout and stderr to initialize again after a replaced stream constructor throws, deferring native sink acquisition until the constructor consumes its options.

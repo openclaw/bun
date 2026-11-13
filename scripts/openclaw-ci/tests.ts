@@ -256,7 +256,8 @@ function upstreamParents(base: string, head: string): string[] {
   for (const merge of (merges[0] ?? "").trim().split("\n").filter(Boolean)) {
     const [commit, , ...incoming] = merge.split(" ");
     const message = git("show", "-s", "--format=%B", commit!)[0] ?? "";
-    const markers = message.split("\n").filter(line => line.startsWith("Bun-Upstream:"));
+    const lines = message.split("\n");
+    const markers = lines.filter(line => line.startsWith("Bun-Upstream:"));
     let imported: string[];
     if (markers.length) {
       const parent = /^Bun-Upstream: ([0-9a-f]{40})$/.exec(markers[0]!)?.[1];
@@ -264,10 +265,12 @@ function upstreamParents(base: string, head: string): string[] {
         throw new Error(`Invalid Bun-Upstream parent in merge ${commit}`);
       imported = [parent];
     } else {
-      // Earlier manual imports named the actual incoming parent in their subject.
-      const prefix = /^chore\(sync\): merge upstream Bun (?:at|through) ([0-9a-f]{10,40})$/.exec(
-        message.split("\n")[0]!,
-      )?.[1];
+      // Earlier manual imports named the incoming parent in the subject or first body line.
+      const prefix =
+        /^chore\(sync\): merge upstream Bun (?:at|through) ([0-9a-f]{10,40})$/.exec(lines[0]!)?.[1] ??
+        (lines[0] === "chore(upstream): merge AOT compiler rewrite"
+          ? /^Merge oven-sh\/bun ([0-9a-f]{40})\b/.exec(lines.slice(1).find(line => line.trim()) ?? "")?.[1]
+          : undefined);
       imported = prefix ? incoming.filter(parent => parent.startsWith(prefix)) : [];
       if (imported.length !== 1) continue;
     }
