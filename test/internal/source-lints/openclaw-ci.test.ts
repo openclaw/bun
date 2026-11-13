@@ -314,7 +314,7 @@ test("CLI diff selects owners at both ends of a moved fixture", () => {
   expect(output).toContain(`Changed files: 2. Fork-delta files: 2. Selected tests: ${selected.length}.`);
 });
 
-test.each(["none", "main", "repair", "invalid"])("sync coverage after fork merge: %s", laterMerge => {
+test.each(["none", "main", "repair", "rewrite", "invalid"])("sync coverage after fork merge: %s", laterMerge => {
   const pure = "test/js/custom/upstream.test.ts";
   const resolved = "test/js/custom/resolved.test.ts";
   using dir = tempDir(
@@ -362,7 +362,9 @@ test.each(["none", "main", "repair", "invalid"])("sync coverage after fork merge
       ? `chore(sync): merge upstream Bun at ${upstream.slice(0, 10)}`
       : laterMerge === "main"
         ? `chore(sync): merge upstream Bun through ${upstream.slice(0, 10)}`
-        : `resolve upstream merge\n\nBun-Upstream: ${laterMerge === "invalid" ? "0".repeat(40) : upstream}`;
+        : laterMerge === "rewrite"
+          ? `chore(upstream): merge AOT compiler rewrite\n\nMerge oven-sh/bun ${upstream} while preserving imported history and fork contracts.`
+          : `resolve upstream merge\n\nBun-Upstream: ${laterMerge === "invalid" ? "0".repeat(40) : upstream}`;
   git("commit", "--quiet", "-m", message);
   if (laterMerge === "main") {
     git("checkout", "--quiet", "fork-main");
@@ -372,7 +374,7 @@ test.each(["none", "main", "repair", "invalid"])("sync coverage after fork merge
     base = git("rev-parse", "HEAD");
     git("checkout", "--quiet", "sync");
     git("merge", "--quiet", "--no-ff", "-m", "merge fork main", "fork-main");
-  } else if (laterMerge === "repair") {
+  } else if (laterMerge === "repair" || laterMerge === "rewrite") {
     git("checkout", "--quiet", "-b", "repair");
     write("repair.txt", "fork repair\n");
     git("add", ".");
@@ -401,7 +403,7 @@ test.each(["none", "main", "repair", "invalid"])("sync coverage after fork merge
   const selected = JSON.parse(readFileSync(join(String(dir), "build/openclaw-ci/selected.json"), "utf8"));
   expect(selected).toEqual([...smoke, ...broader, resolved].sort());
   expect(output).toContain(`Upstream parents (newest first): \`${upstream}\`.`);
-  const counts = laterMerge === "repair" ? [3, 2] : [2, 1];
+  const counts = laterMerge === "repair" || laterMerge === "rewrite" ? [3, 2] : [2, 1];
   const coverage = `Changed files: ${counts[0]}. Fork-delta files: ${counts[1]}. Selected tests: ${selected.length}.`;
   expect(output).toContain(coverage);
   expect(readFileSync(join(String(dir), "summary.md"), "utf8")).toContain(coverage);
