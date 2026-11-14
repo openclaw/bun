@@ -1196,7 +1196,7 @@ Server.prototype[kRealListen] = function (tls, port, host, socketPath, reusePort
             server.requireHostHeader &&
             (dispatchBits & DISPATCH_HAS_HOST) === 0 &&
             http_req.httpVersionMajor === 1 &&
-            http_req.httpVersionMinor >= 1
+            (http_req.httpVersionMinor ?? 0) >= 1
           ) {
             // The native parser skips its Host check for Upgrade requests; one dispatched normally still needs it.
             rejectMissingHost = true;

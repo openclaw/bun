@@ -1,5 +1,5 @@
 // What the compiler reads in place of src/js/node/_http_server.ts, which `bun run` evaluates. The two do the same.
-// Written against that file with the SHA-256 57ebe23d0d9f88bec7b216992ee482d1c076aa4b3509ad1ee9be54647f32f877.
+// Written against that file with the SHA-256 d8dc1925e07d5ce20fb633a2ac27301d4cbe2efc53bdf7e3dc3238abc77c7ae3.
 // When that file changes, bring the change here and write the new hash: test/internal/second-texts-of-modules.test.ts.
 
 // Hardcoded module "node:_http_server"
@@ -1698,7 +1698,7 @@ Server.prototype[kRealListen] = function (
           server.requireHostHeader &&
           (dispatchBits & DispatchBits.has_host) === 0 &&
           http_req.httpVersionMajor === 1 &&
-          http_req.httpVersionMinor >= 1
+          (http_req.httpVersionMinor ?? 0) >= 1
         ) {
           // The native parser skips its Host check for Upgrade requests; one dispatched normally still needs it.
           rejectMissingHost = true;
