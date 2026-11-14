@@ -5103,13 +5103,6 @@ Object.defineProperty(ServerResponse.prototype, "headers", {
   },
 });
 
-function waitsItsTurn(res: $Node.ServerResponse): boolean {
-  const exchange = res.$exchange;
-  return exchange !== undefined && exchange.response === res
-    ? (exchange.flags & ExchangeFlags.waits_its_turn) !== 0
-    : res[kPipelinedQueuedState] !== undefined;
-}
-
 Object.defineProperty(ServerResponse.prototype, "socket", {
   get(this: $Node.ServerResponse) {
     return this[fakeSocketSymbol] ?? null;
