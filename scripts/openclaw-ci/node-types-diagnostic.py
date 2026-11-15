@@ -30,6 +30,19 @@ old_program = template(original, "program")
 assert program.count('res.end("hello");') == 1, "response fixture changed"
 streamed_program = program.replace('res.end("hello");',
     'for (let index = 0; index < 5; index++) res.write("hello"[index]);\n  res.end();')
+echo_program = '''import type { IncomingMessage, ServerResponse } from "node:http";
+import { exercise } from "exercise";
+function answer(req: IncomingMessage, res: ServerResponse): void {
+  res.end(req.url);
+}
+exercise(answer);
+'''
+assert exercise.count('createServer((req, res) => answer(req, res))') == 1
+echo_exercise = exercise.replace('createServer((req, res) => answer(req, res))', '''createServer((req, res) => {
+    res.statusCode = req.method === "GET" && req.url === "/text" ? 200 : 404;
+    res.setHeader("content-type", "text/plain");
+    answer(req, res);
+  })''')
 env = {**os.environ, "BUN_FEATURE_FLAG_INTERNAL_FOR_TESTING": "1",
        "BUN_GARBAGE_COLLECTOR_LEVEL": "1", "BUN_JSC_randomIntegrityAuditRate": "1.0",
        "BUN_ENABLE_CRASH_REPORTING": "0", "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
@@ -58,6 +71,7 @@ for label, source, dependency, strict in [
     ("split-strict-dependency", program, exercise, True),
     ("original-single-file", old_program, None, False),
     ("split-streamed-response", streamed_program, exercise, False),
+    ("split-request-echo", echo_program, echo_exercise, False),
 ]:
     with tempfile.TemporaryDirectory(prefix="node-types-") as temporary:
         folder = Path(temporary)
@@ -90,7 +104,8 @@ for label, source, dependency, strict in [
                   and (cause.get("line"), cause.get("column")) in positions]
         plain = run([str(binary), "main.ts"], folder)
         compiled = run([str(executable)], folder)
-        row = {"variant": label, "sourceSHA256": hashlib.sha256(source.encode()).hexdigest(),
+        expected_output = expected if label != "split-request-echo" else "true false 2 4\n200 text/plain /text\n404 text/plain /other\n"
+        row = {"variant": label, "expectedStdout": expected_output, "sourceSHA256": hashlib.sha256(source.encode()).hexdigest(),
                "reports": reports, "answerCauses": answer, "plain": plain, "compiled": compiled}
         summary["variants"].append(row)
         summary_path.write_text(json.dumps(summary, indent=2) + "\n")
@@ -101,5 +116,5 @@ assert summary["variants"][0]["reports"][0]["accesses"]["byName"] == 5, "origina
 summary["complete"] = True
 summary_path.write_text(json.dumps(summary, indent=2) + "\n")
 for row in summary["variants"]:
-    assert row["plain"]["stdout"] == expected and row["plain"]["exitCode"] == 0, row["variant"] + " interpreter behavior changed"
+    assert row["plain"]["stdout"] == row["expectedStdout"] and row["plain"]["exitCode"] == 0, row["variant"] + " interpreter behavior changed"
     assert row["compiled"] == row["plain"], row["variant"] + " compiled behavior differs"
