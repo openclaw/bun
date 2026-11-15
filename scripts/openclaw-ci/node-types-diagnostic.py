@@ -27,6 +27,9 @@ def template(source, name):
 program = template(current, "program")
 exercise = template(current, "exercise")
 old_program = template(original, "program")
+assert program.count('res.end("hello");') == 1, "response fixture changed"
+streamed_program = program.replace('res.end("hello");',
+    'for (let index = 0; index < 5; index++) res.write("hello"[index]);\n  res.end();')
 env = {**os.environ, "BUN_FEATURE_FLAG_INTERNAL_FOR_TESTING": "1",
        "BUN_GARBAGE_COLLECTOR_LEVEL": "1", "BUN_JSC_randomIntegrityAuditRate": "1.0",
        "BUN_ENABLE_CRASH_REPORTING": "0", "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
@@ -54,6 +57,7 @@ for label, source, dependency, strict in [
     ("split", program, exercise, False),
     ("split-strict-dependency", program, exercise, True),
     ("original-single-file", old_program, None, False),
+    ("split-streamed-response", streamed_program, exercise, False),
 ]:
     with tempfile.TemporaryDirectory(prefix="node-types-") as temporary:
         folder = Path(temporary)
