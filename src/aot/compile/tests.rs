@@ -961,7 +961,8 @@ fn runtime_files_are_checked_and_lowered_with_their_types() {
 #[ignore = "requires the hosted Node type diagnostic fixture"]
 fn node_http_parameter_layout_diagnostic() {
     let directory = std::env::var("OPENCLAW_NODE_TYPES_DIRECTORY").expect("hosted diagnostic fixture");
-    let project = TestProject::on_disk(directory.as_bytes(), &["main.ts"]);
+    let mut project = TestProject::on_disk(directory.as_bytes(), &["main.ts"]);
+    project.builds_executable = true;
     run_build(&project, BUNDLED_LIBS, &WithoutServices, |build| {
         with_bound_build(build, |build, loaded, bound| {
             let application = &loaded.projects.application;
@@ -987,6 +988,13 @@ fn node_http_parameter_layout_diagnostic() {
                     &|checker, file| {
                         let parameters = files.hir(file).params.len();
                         checker.with_queries(file, &inputs.query_inputs(), |queries| {
+                            for index in 0..files.hir(file).fns.len() as u32 {
+                                let function = bun_sema::check::aot::FunctionRef {
+                                    file,
+                                    function: bun_sema::hir::FnId(index),
+                                };
+                                println!("signature {index}: {:?}", queries.function_signature(function));
+                            }
                             for index in 0..parameters as u32 {
                                 let parameter = bun_sema::hir::ParamId(index);
                                 let checked = queries.parameter_type(parameter);
@@ -1006,6 +1014,20 @@ fn node_http_parameter_layout_diagnostic() {
         }).expect("load and bind the existing HTTP fixture");
         Ok(())
     });
+    let (result, log) = link_project(&project, &WithoutServices);
+    let linked = expect_success(result, &log);
+    let mut text = String::new();
+    for (index, function) in linked.program.functions.iter().enumerate() {
+        if linked.summary.texts.origin(function.module) == ModuleOrigin::Program {
+            print_function(
+                linked.program.name_tables(),
+                FunctionId::new(index),
+                function,
+                &mut text,
+            );
+        }
+    }
+    println!("frontend program IR:\n{text}");
 }
 
 fn count_lowered_files_of_bun(source: &str) -> usize {
