@@ -392,7 +392,7 @@ static void unset_cloexec(int fd)
     fcntl(fd, F_SETFD, flags);
 }
 
-#if OS(LINUX)
+#if OS(LINUX) || OS(DARWIN)
 #include <dirent.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/Vector.h>
@@ -405,7 +405,11 @@ static WTF::Vector<int>& inheritedFileDescriptors()
 
 extern "C" void bun_remember_inherited_file_descriptors()
 {
+#if OS(DARWIN)
+    DIR* directory = opendir("/dev/fd");
+#else
     DIR* directory = opendir("/proc/self/fd");
+#endif
     if (!directory)
         return;
     while (struct dirent* entry = readdir(directory)) {
@@ -431,7 +435,7 @@ extern "C" void on_before_reload_process_posix([[maybe_unused]] bool closeInheri
     if (closeInheritedFileDescriptors)
         bun_close_range(3, ~0U, CLOSE_RANGE_CLOEXEC);
 #endif
-#if OS(LINUX)
+#if OS(LINUX) || OS(DARWIN)
     if (!closeInheritedFileDescriptors) {
         for (int fd : inheritedFileDescriptors())
             unset_cloexec(fd);

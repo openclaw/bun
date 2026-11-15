@@ -631,7 +631,7 @@ pub mod stdio {
         pub(crate) safe static bun_is_stdio_null: [AtomicI32; 3];
         /// No preconditions; one-shot stdio fixup at process startup.
         pub(crate) safe fn bun_initialize_process();
-        #[cfg(any(target_os = "linux", target_os = "android"))]
+        #[cfg(any(target_os = "linux", target_os = "android", target_os = "macos"))]
         pub(crate) safe fn bun_remember_inherited_file_descriptors();
         /// No preconditions; restores TTY state on the standard streams.
         #[cfg(not(windows))]
@@ -657,14 +657,14 @@ pub mod stdio {
     }
 
     /// With one of these flags `bun run` and `bun test` compile the program and then replace this process with one that runs it (`exec_self`).
-    #[cfg(any(target_os = "linux", target_os = "android"))]
+    #[cfg(any(target_os = "linux", target_os = "android", target_os = "macos"))]
     fn compiles_in_place(arg: &[u8]) -> bool {
         matches!(arg, b"--aot" | b"--debug-aot")
     }
 
     pub fn init() {
         // `bun_initialize_process` marks every inherited descriptor close-on-exec, as Bun's own are.
-        #[cfg(any(target_os = "linux", target_os = "android"))]
+        #[cfg(any(target_os = "linux", target_os = "android", target_os = "macos"))]
         if super::argv().any(compiles_in_place) {
             bun_remember_inherited_file_descriptors();
         }

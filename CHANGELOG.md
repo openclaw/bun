@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve inherited file descriptors across `--aot` execution on macOS.
+
 - Pin immutable WebKit release `3357f9d63e6dd87a53f2aade723482130a55c0cd` and its matching AOT generators after Linux and Darwin Bun qualification and Windows ARM64 engine checks.
 
 - Recognize the AOT rewrite import when selecting fork CI coverage, excluding unchanged upstream files while retaining fork repairs and nightly suites.

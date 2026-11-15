@@ -351,7 +351,7 @@ extern "C" fn bun_initialize_process() {
     }
 }
 
-#[cfg(any(target_os = "linux", target_os = "android"))]
+#[cfg(any(target_os = "linux", target_os = "android", target_os = "macos"))]
 #[unsafe(no_mangle)]
 #[linkage = "weak"]
 extern "C" fn bun_remember_inherited_file_descriptors() {}
