@@ -43,6 +43,10 @@ echo_exercise = exercise.replace('createServer((req, res) => answer(req, res))',
     res.setHeader("content-type", "text/plain");
     answer(req, res);
   })''')
+returning_echo = echo_program.replace('): void {\n  res.end(req.url);', ') {\n  return res.end(req.url);')
+streaming_echo = echo_program.replace('res.end(req.url);',
+    'for (let index = 0; index < 2; index++) res.write(req.url);')
+streaming_exercise = echo_exercise.replace('    answer(req, res);', '    answer(req, res);\n    res.end();')
 env = {**os.environ, "BUN_FEATURE_FLAG_INTERNAL_FOR_TESTING": "1",
        "BUN_GARBAGE_COLLECTOR_LEVEL": "1", "BUN_JSC_randomIntegrityAuditRate": "1.0",
        "BUN_ENABLE_CRASH_REPORTING": "0", "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
@@ -72,6 +76,8 @@ for label, source, dependency, strict in [
     ("original-single-file", old_program, None, False),
     ("split-streamed-response", streamed_program, exercise, False),
     ("split-request-echo", echo_program, echo_exercise, False),
+    ("split-returning-echo", returning_echo, echo_exercise, False),
+    ("split-streaming-echo", streaming_echo, streaming_exercise, False),
 ]:
     with tempfile.TemporaryDirectory(prefix="node-types-") as temporary:
         folder = Path(temporary)
@@ -104,7 +110,11 @@ for label, source, dependency, strict in [
                   and (cause.get("line"), cause.get("column")) in positions]
         plain = run([str(binary), "main.ts"], folder)
         compiled = run([str(executable)], folder)
-        expected_output = expected if label != "split-request-echo" else "true false 2 4\n200 text/plain /text\n404 text/plain /other\n"
+        expected_output = {
+            "split-request-echo": "true false 2 4\n200 text/plain /text\n404 text/plain /other\n",
+            "split-returning-echo": "true false 2 4\n200 text/plain /text\n404 text/plain /other\n",
+            "split-streaming-echo": "true false 2 4\n200 text/plain /text/text\n404 text/plain /other/other\n",
+        }.get(label, expected)
         row = {"variant": label, "expectedStdout": expected_output, "sourceSHA256": hashlib.sha256(source.encode()).hexdigest(),
                "reports": reports, "answerCauses": answer, "plain": plain, "compiled": compiled}
         summary["variants"].append(row)
