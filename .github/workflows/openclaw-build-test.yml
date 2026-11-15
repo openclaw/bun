@@ -31,7 +31,7 @@ jobs:
       BUN_BUILD_CACHE_DIR: ${{ github.workspace }}/.cache/openclaw-build
       PUPPETEER_SKIP_DOWNLOAD: "1"
       WEBKIT_SOURCE_SHA: ${{ inputs.webkit_source_sha }}
-      EXPECTED_NATIVE_SHA: 56739277f7834a63cdd2ba8fd496672c5ab8f645
+      EXPECTED_NATIVE_SHA: d1e8ee9e11c1ae75a8c6f5f95f28e7476627f13d
     steps:
       - name: Validate source-pair request
         working-directory: .
@@ -47,13 +47,8 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: 56739277f7834a63cdd2ba8fd496672c5ab8f645
+          ref: d1e8ee9e11c1ae75a8c6f5f95f28e7476627f13d
           path: source
-          persist-credentials: false
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: 2596ac5d391d47804c93a42bdbe615804aa62387
-          path: source/baseline
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: inputs.webkit_source_sha != ''
@@ -141,11 +136,10 @@ jobs:
           key: openclaw-native-x64-v1-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', 'bun.lock', 'test/bun.lock', 'rust-toolchain.toml', 'scripts/build/**', 'scripts/build.ts', '.github/workflows/openclaw-build-test.yml') }}-${{ steps.pins.outputs.tree }}-${{ inputs.webkit_source_sha || 'pinned' }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             openclaw-native-x64-v1-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', 'bun.lock', 'test/bun.lock', 'rust-toolchain.toml', 'scripts/build/**', 'scripts/build.ts', '.github/workflows/openclaw-build-test.yml') }}-${{ steps.pins.outputs.tree }}-${{ inputs.webkit_source_sha || 'pinned' }}-
-      - name: Install frozen source and baseline type dependencies
+      - name: Install frozen source dependencies
         run: |
           test "$(git rev-parse HEAD)" = "$EXPECTED_NATIVE_SHA"
           bun install --frozen-lockfile
-          (cd baseline && bun install --frozen-lockfile)
       - name: Build the frozen source with the diagnostic engine
         timeout-minutes: 75
         run: |
@@ -166,10 +160,24 @@ jobs:
           cp build/release/bun-profile.trim/*.txt build/release/bun.trim/
           test -z "$(git status --porcelain --untracked-files=no)"
           test -z "$(git -C .openclaw-webkit status --porcelain --untracked-files=no)"
-      - name: Trace the two matched compile and runtime flows
-        run: bun ../scripts/openclaw-ci/aot-trim-baseline.ts --operation-origins
-      - name: Upload diagnostic receipts and operation traces
+      - name: Trace exact class parameter guard probes
+        run: python3 ../scripts/openclaw-ci/node-types-guard-diagnostic.py
+      - name: Bound diagnostic report artifacts
+        id: report-budget
         if: always()
+        run: |
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          root = Path("build/openclaw-ci")
+          files = [p for p in root.rglob("*") if p.is_file() and p.suffix in {".json", ".log"}]
+          timing = Path("build/release/timings.html")
+          if timing.is_file():
+              files.append(timing)
+          assert len(files) <= 100, "diagnostic report file budget exceeded"
+          assert sum(p.stat().st_size for p in files) <= 64 * 1024 * 1024, "diagnostic report byte budget exceeded"
+          PYTHON
+      - name: Upload diagnostic receipts and operation traces
+        if: ${{ always() && steps.report-budget.outcome == 'success' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: aot-operation-origins-${{ github.sha }}-attempt${{ github.run_attempt }}
@@ -177,6 +185,8 @@ jobs:
             source/build/openclaw-ci/*.json
             source/build/openclaw-ci/aot-baseline/*.json
             source/build/openclaw-ci/aot-baseline/*.log
+            source/build/openclaw-ci/trim-diagnostics/*.json
+            source/build/openclaw-ci/trim-diagnostics/*.log
             source/build/release/timings.html
           if-no-files-found: error
           retention-days: 7
