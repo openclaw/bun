@@ -18,6 +18,7 @@ use core::ffi::{CStr, c_uint, c_void};
 use bun_jsc::bindgen::{JsLocal, JsScope};
 use bun_jsc::virtual_machine::VirtualMachine;
 use bun_jsc::{GlobalRef, JSGlobalObject, JSValue, JsCell, JsResult, host_fn};
+use bun_removable_features::removable_definition;
 use bun_uws::{us_bun_verify_error_t, uws_callback};
 
 use super::DuplexUpgradeContext;
@@ -451,6 +452,7 @@ impl UpgradedDuplex {
             &global.js_thread(context),
             callback,
             JSValue::from(status),
+            crate::timer::Clock::Real,
         )?;
         Ok(())
     }
@@ -466,7 +468,12 @@ impl UpgradedDuplex {
             std::ptr::from_ref(self).cast_mut().cast(),
         )?;
         let context = global.bun_vm().context_of(self.context);
-        crate::timer::All::set_immediate(&global.js_thread(context), callback, JSValue::UNDEFINED)?;
+        crate::timer::All::set_immediate(
+            &global.js_thread(context),
+            callback,
+            JSValue::UNDEFINED,
+            crate::timer::Clock::Real,
+        )?;
         Ok(())
     }
 
@@ -724,8 +731,10 @@ impl UpgradedDuplex {
         Ok(())
     }
 
+    #[inline(never)]
     #[uws_callback(export = "UpgradedDuplex__encode_and_write")]
     pub(crate) fn encode_and_write(&self, data: &[u8]) -> i32 {
+        removable_definition!(Tls, Self::encode_and_write);
         bun_output::scoped_log!(UpgradedDuplex, "encodeAndWrite (len: {})", data.len());
         let _keep_alive = self.keep_alive();
         if let Some(w) = self.wrapper_ref() {
@@ -765,8 +774,10 @@ impl UpgradedDuplex {
         }
     }
 
+    #[inline(never)]
     #[uws_callback(export = "UpgradedDuplex__close")]
     pub(crate) fn close(&self) {
+        removable_definition!(Tls, Self::close);
         let _keep_alive = self.keep_alive();
         let Some(w) = self.wrapper_ref() else {
             if _keep_alive.uses_native_transport() {

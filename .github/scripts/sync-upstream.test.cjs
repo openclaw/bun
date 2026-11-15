@@ -109,6 +109,9 @@ test("creates one draft from frozen SHAs and preserves fork and upstream ancestr
   assert.deepEqual(f.failures, []);
   assert.deepEqual(f.writes.map(([method]) => method), ["git.createRef", "repos.merge", "repos.merge", "pulls.create"]);
   assert.deepEqual(f.writes.filter(([method]) => method === "repos.merge").map(([, args]) => args.head), [sha(2), sha(3)]);
+  const merges = f.writes.filter(([method]) => method === "repos.merge").map(([, args]) => args);
+  assert.ok(!merges[0].commit_message.includes("Bun-Upstream:"));
+  assert.ok(merges[1].commit_message.endsWith(`\n\nBun-Upstream: ${sha(3)}`));
   assert.equal(f.refs.get("heads/main"), sha(2));
   const head = f.refs.get(`heads/${branch}`);
   assert.ok(f.ancestor(sha(2), head) && f.ancestor(sha(3), head));

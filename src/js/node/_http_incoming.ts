@@ -3,6 +3,8 @@
 // native Bun.serve-based node:http server can construct IncomingMessage
 // instances directly from its native handle (the `kHandle` constructor form).
 // https://github.com/nodejs/node/blob/v26.3.0/lib/_http_incoming.js
+const ObjectConstructor: (value: unknown) => object = Object;
+const ReflectGet: (target: object, key: PropertyKey, receiver?: unknown) => unknown = Reflect.get;
 const Readable = require("internal/streams/readable");
 // callback-style stream.finished (returns a cleanup function)
 const finished = require("internal/streams/end-of-stream");
@@ -414,7 +416,7 @@ IncomingMessage.prototype._destroy = function _destroy(err, cb) {
 };
 
 function onFinishedAfterDestroy(this: any, state, err, cb, e) {
-  if (e?.code === "ERR_STREAM_PREMATURE_CLOSE") {
+  if (e != null && ReflectGet(ObjectConstructor(e), "code", e) === "ERR_STREAM_PREMATURE_CLOSE") {
     e = null;
   }
   state.cleanup();

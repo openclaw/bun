@@ -10,7 +10,9 @@ import {
   isMusl,
   isWindows,
   normalizeBunSnapshot,
+  runCommandMaxRSS,
   tempDir,
+  withoutAsanQuarantine,
 } from "harness";
 import {
   chmodSync,
@@ -6501,28 +6503,14 @@ maybe(() => { return f; });
       ".eslintrc.json": JSON.stringify({ root: true, rules: { "no-extra-boolean-cast": "error" } }),
       "a.js": `x = ${"!".repeat(45_000)}a;\n`,
     });
-    // Linux wait4 includes the spawning process's resident peak before exec. Start
-    // the measured linter from a fresh process so earlier tests do not set its floor.
-    await using proc = spawn({
-      cmd: [
-        bunExe(),
-        "-e",
-        `const child = Bun.spawn(${JSON.stringify([...command, "--threads", "1", "a.js"])}, {
-          stdout: "pipe", stderr: "pipe"
-        });
-        const [stdout, stderr, exitCode] = await Promise.all([
-          child.stdout.text(), child.stderr.text(), child.exited
-        ]);
-        console.log(JSON.stringify({ stdout, stderr, exitCode, maxRSS: child.resourceUsage().maxRSS }));`,
-      ],
-      env,
+    // Started by a process of its own: on Linux a child's peak RSS starts at its parent's peak, which for this test
+    // file is whatever it has run so far.
+    const { stdout, exitCode, maxRSS } = await runCommandMaxRSS({
+      cmd: [...command, "--threads", "1", "a.js"],
       cwd: String(dir),
-      stderr: "pipe",
+      env: withoutAsanQuarantine(env),
     });
-    const [output, helperExitCode] = await Promise.all([proc.stdout.text(), proc.exited]);
-    expect(helperExitCode).toBe(0);
-    const { stdout, exitCode, maxRSS } = JSON.parse(output);
-    // Where the stack is smaller or the frames are larger.
+    // Where the stack is smaller or the frames are larger, the file is rejected instead.
     if (!stdout.includes("The code is nested too deeply")) {
       expect(stdout).toContain(" errors and 0 warnings potentially fixable with the `--fix` option.");
     }

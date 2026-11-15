@@ -527,10 +527,10 @@ function decodeDataURLBase64(bytes, url) {
 // Called by the native module loader when any hooks are registered, right
 // before it would read the module off disk. Returns `undefined` to let the
 // native loader proceed, or `{ source, loader, moduleType }` overrides.
-function runLoadHooksBun(path, loaderHint, moduleTypeHint, isCommonJSRequire) {
+function runLoadHooksBun(path, loaderHint, moduleTypeHint, isCommonJSRequire, compiled = false) {
   const key = convertCJSFilenameToURL(path);
   const resolved = resolvedContexts.get(key);
-  if (resolvedContexts.delete(key)) updateNativeHooksCounts();
+  if (!compiled && resolvedContexts.delete(key)) updateNativeHooksCounts();
   const url = resolved?.url ?? key;
   const builtin = resolved?.builtin ?? builtinURLs.get(url) ?? nativeVirtualSpecifier(url);
   if (resolved?.isESM) isCommonJSRequire = false;
@@ -631,10 +631,13 @@ function runLoadHooksBun(path, loaderHint, moduleTypeHint, isCommonJSRequire) {
   if (loadHooks.length === 0) {
     const nativeFormat = defaultEsmFormat(url);
     if (format == null || format === nativeFormat || (format === "typescript" && nativeFormat == null)) {
+      if (compiled) discardResolvedContext(path);
       if (!isCommonJSRequire) validateDefaultAttributes(url, format ?? nativeFormat, { importAttributes });
       return undefined;
     }
   }
+
+  if (compiled) return false;
 
   const result = loadWithHooks(
     url,
@@ -688,10 +691,15 @@ function runLoadHooksBun(path, loaderHint, moduleTypeHint, isCommonJSRequire) {
   }
 }
 
+function canLoadCompiledModule(path, isCommonJSRequire) {
+  return runLoadHooksBun(path, LOADER_NONE, MODULE_TYPE_UNKNOWN, isCommonJSRequire, true) === undefined;
+}
+
 export default {
   registerHooks,
   runResolveHooksBun,
   runLoadHooksBun,
+  canLoadCompiledModule,
   discardResolvedContext,
   getResolvedImportAttributes,
   getResolvedBuiltin,

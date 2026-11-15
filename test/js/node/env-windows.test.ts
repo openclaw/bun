@@ -9,7 +9,15 @@ function createWindowsEnv() {
   let promoted = false;
   const edit = jest.fn();
   const coerce = jest.fn((_key, value) => `${value}`);
-  const env = windowsEnv(internal, ["KEY"], edit, coerce, jest.fn(), () => (promoted ? shared : undefined));
+  const env = windowsEnv(
+    internal,
+    ["KEY"],
+    edit,
+    coerce,
+    jest.fn(),
+    () => (promoted ? shared : undefined),
+    Bun.inspect.custom,
+  );
   return { env, internal, shared, edit, coerce, promote: () => (promoted = true) };
 }
 
@@ -157,6 +165,7 @@ for (const [name, write] of Object.entries(writes)) {
       (_key, next) => `${next}`,
       jest.fn(),
       () => undefined,
+      Bun.inspect.custom,
     );
     expect(Object.keys(env)).toEqual([]);
     expect(write(env, "tz", "UTC")).toBe(true);
@@ -186,4 +195,18 @@ test.if(isWindows)("new native environment variables survive copies, children, a
   expect(result.stdout.toString()).toBe("ok\n");
   expect(result.stderr.toString()).toBe("");
   expect(result.exitCode).toBe(0);
+});
+
+test.if(isWindows)("process.env can be listed after an attempt to keep it from being extended", () => {
+  expect(() => Object.preventExtensions(process.env)).toThrow(TypeError);
+  expect(() => Object.seal(process.env)).toThrow(TypeError);
+  expect(() => Object.freeze(process.env)).toThrow(TypeError);
+  expect(Reflect.preventExtensions(process.env)).toBe(false);
+  expect(Object.isExtensible(process.env)).toBe(true);
+
+  expect(Object.keys(process.env)).toContain(Object.keys({ ...process.env })[0]);
+  process.env.storedBehindTheAttempt = "stored";
+  expect(process.env.STOREDBEHINDTHEATTEMPT).toBe("stored");
+  expect(Object.keys(process.env).pop()).toBe("storedBehindTheAttempt");
+  delete process.env.storedBehindTheAttempt;
 });

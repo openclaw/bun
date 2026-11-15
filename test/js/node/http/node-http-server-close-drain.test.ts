@@ -1148,3 +1148,42 @@ test("closeAllConnections() on a server that took the listener of a Bun.serve se
   expect(stdout).toBe("0\n");
   expect(exitCode).toBe(0);
 });
+
+test.each([false, true])(
+  "borrowed server.close() does not schedule uninitialized listener drains (AOT: %s)",
+  async aot => {
+    using dir = tempDir("http-borrowed-close", {
+      "close.js": `
+      const assert = require("node:assert/strict");
+      const { Server } = require("node:http");
+      const errors = [];
+      process.on("uncaughtException", error => errors.push(error));
+      async function main() {
+        let checked = 0;
+        for (const make of [
+          () => Object.create(Server.prototype),
+          () => new Proxy(Object.create(Server.prototype), {}),
+        ]) {
+          for (const args of [[], ["a", 1]]) {
+            const receiver = make();
+            assert.strictEqual(Reflect.apply(Server.prototype.close, receiver, args), receiver);
+            checked++;
+          }
+        }
+        for (let turn = 0; turn < 4; turn++) await new Promise(resolve => setImmediate(resolve));
+        assert.deepStrictEqual(errors, []);
+        console.log(checked + " borrowed closes checked");
+      }
+      main().catch(error => { console.error(error); process.exitCode = 1; });
+    `,
+    });
+    await using proc = Bun.spawn({
+      cmd: [bunExe(), "run", ...(aot ? ["--aot"] : []), String(dir) + "/close.js"],
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect({ stdout, stderr, exitCode }).toEqual({ stdout: "4 borrowed closes checked\n", stderr: "", exitCode: 0 });
+  },
+);

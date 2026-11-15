@@ -396,8 +396,7 @@ describe("path.resolve", () => {
     expect(exitCode).toBe(0);
   });
 
-  // Known fork divergence: relative() normalizes this POSIX backslash; Node preserves it.
-  test.failing.skipIf(isWindows)("relative preserves a backslash at the end of the cwd", async () => {
+  test.skipIf(isWindows)("relative preserves a backslash at the end of the cwd", async () => {
     using dir = tempDir("relative-backslash-cwd", { "e\\/z": "" });
     await using proc = Bun.spawn({
       cmd: [bunExe(), "-e", `console.log(require("node:path").relative("..", "z"));`],

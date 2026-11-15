@@ -27,6 +27,13 @@ import { BuildError } from "./error.ts";
 
 export type ProfileName = keyof typeof profiles;
 
+const nativeTestProfile = {
+  buildType: "Release",
+  ci: true,
+  webkit: "prebuilt",
+  trimmable: true,
+} as const satisfies PartialConfig;
+
 export const profiles = {
   /** Default local dev: debug + prebuilt WebKit. ASAN defaults on for supported platforms. */
   debug: {
@@ -136,6 +143,16 @@ export const profiles = {
     webkit: "prebuilt",
   },
 
+  /** Qualify trimming with the same LTO graph as release builds. */
+  "openclaw-native": nativeTestProfile,
+
+  /** Darwin trimming needs the supported Linux-to-Darwin LLD cross-link. */
+  "openclaw-native-darwin-arm64": {
+    ...nativeTestProfile,
+    os: "darwin",
+    arch: "aarch64",
+  },
+
   /** Release with local WebKit. */
   "release-local": {
     buildType: "Release",
@@ -174,6 +191,7 @@ export const profiles = {
     ci: true,
     buildkite: true,
     webkit: "prebuilt",
+    trimmable: true,
   },
 } as const satisfies Record<string, PartialConfig>;
 

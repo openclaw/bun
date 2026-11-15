@@ -9,7 +9,7 @@
  *   bun scripts/openclaw-release/release.ts plan [--tag <tag>] [--publish] [--windows-signed] [--qualify-tls]
  *   bun scripts/openclaw-release/release.ts provision --source <dir> --target <t>...
  *   bun scripts/openclaw-release/release.ts build --source <dir> --target <t> --out <dir>
- *   bun scripts/openclaw-release/release.ts smoke --zip <zip> --target <t> --commit <sha> --webkit <sha> [--qualify-tls --source <dir> --out <reports>]
+ *   bun scripts/openclaw-release/release.ts smoke --zip <zip> --target <t> --commit <sha> --webkit <sha> --source <dir> [--out <reports> --qualify-tls]
  *   bun scripts/openclaw-release/release.ts manifest --dist <dir> --tag <tag> --commit <sha> --out <dir>
  *
  * Every command takes `--source <dir>`, the checkout of the commit being
@@ -328,10 +328,14 @@ export function buildArgs(t: Target, buildDir: string): string[] {
     "--profile=release",
     // Reproducibility flags of CI builds (path remapping) and fatal binary checks, without Buildkite's packaging.
     "--ci=on",
+    // OpenClaw's explicit AOT trim API needs the table in the packaged compiler itself.
+    ...(t.release && t.os !== "windows" ? ["--trimmable=on"] : []),
     `--os=${t.os}`,
     `--arch=${t.buildArch}`,
     ...(t.os === "linux" ? [`--abi=${t.abi}`] : []),
     `--build-dir=${buildDir}`,
+    // The Windows x64 package needs Bun, not three concurrent LTO links with the engine test programs.
+    ...(t.name === "windows-x64" ? ["--target=bun.exe"] : []),
   ];
 }
 
@@ -353,6 +357,9 @@ export function build(source: string, name: TargetName, out: string, mtime: numb
     join(buildDir, "bun-profile.linker-map"),
     join(buildDir, "features.json"),
   ].filter(existsSync);
+  // Preserve byte attribution from this link instead of rebuilding to recover it later.
+  if (name === "linux-x64")
+    debugInfo.push(join(`${profile}.trim-work`, "sections.txt"), join(`${profile}.trim-work`, "retained.txt"));
   if (t.os === "windows") {
     // Windows release bytes are signed and verified on x64 before packaging or hashing.
     for (const [directory, files] of [
@@ -416,6 +423,12 @@ export const tlsQualificationFiles = [
   "test/js/node/http2/node-http2-upgrade.test.mts",
 ] as const;
 
+const runtimeQualificationFiles = [
+  "test/js/web/workers/structured-clone.test.ts",
+  "test/js/web/structured-clone-shared-array-buffer.test.ts",
+  "test/js/node/v8/v8-serdes-buffer.test.ts",
+] as const;
+
 export function validateTLSQualification(names: readonly TargetName[], publish = false, tag = ""): void {
   if (publish || tag) throw new Error("TLS qualification requires a dry run without a release tag");
   if (names.some(name => targets[name].abi === "musl")) {
@@ -424,69 +437,175 @@ export function validateTLSQualification(names: readonly TargetName[], publish =
 }
 
 /** Checks the single-file report emitted by Bun, including declared skips. This is not a general XML reader. */
-export function tlsQualificationResult(xml: string): { passed: number; skipped: number } {
+export function qualificationResult(xml: string): { passed: number; skipped: number } {
   const root = /^\s*(?:<\?xml[^?]*\?>\s*)?<testsuites\b([^>]*)>/.exec(xml);
   const count = (name: string) => {
     const value = root && new RegExp(`\\s${name}="(\\d+)"`).exec(root[1]!)?.[1];
-    if (value === null || value === undefined) throw new Error(`TLS report is missing a valid ${name} count`);
+    if (value === null || value === undefined) throw new Error(`qualification report is missing a valid ${name} count`);
     const result = Number(value);
-    if (!Number.isSafeInteger(result)) throw new Error(`TLS report has an invalid ${name} count`);
+    if (!Number.isSafeInteger(result)) throw new Error(`qualification report has an invalid ${name} count`);
     return result;
   };
   const tests = count("tests");
   const skipped = count("skipped");
   const failures = count("failures");
   if (!/<\/testsuites>\s*$/.test(xml) || (xml.match(/<testsuites\b/g) ?? []).length !== 1) {
-    throw new Error("TLS report is incomplete or contains multiple runs");
+    throw new Error("qualification report is incomplete or contains multiple runs");
   }
   if (tests !== (xml.match(/<testcase\b/g) ?? []).length || skipped !== (xml.match(/<skipped\b/g) ?? []).length) {
-    throw new Error("TLS report counts do not match its test cases");
+    throw new Error("qualification report counts do not match its test cases");
   }
   if (failures !== 0 || /\serrors="(?!0")/.test(root![1]!) || /<(?:failure|error)\b/.test(xml) || tests <= skipped) {
-    throw new Error("TLS report must contain passing cases and no failures or errors");
+    throw new Error("qualification report must contain passing cases and no failures or errors");
   }
   return { passed: tests - skipped, skipped };
 }
 
-function qualifyTLS(exe: string, t: Target, source: string, reports: string, commit: string, webkit: string): void {
-  validateTLSQualification([t.name]);
+export function qualifyRuntime(
+  exe: string,
+  t: Target,
+  source: string,
+  reports: string,
+  commit: string,
+  webkit: string,
+  tls: boolean,
+): void {
   const facts = sourceFacts(source, "HEAD");
   if (facts.commit !== commit || facts.webkitVersion !== webkit) {
-    throw new Error("TLS qualification checkout does not match the artifact's source and WebKit commits");
+    throw new Error("qualification checkout does not match the artifact's source and WebKit commits");
   }
-  const node = Bun.which("node");
-  if (!node) throw new Error("TLS qualification requires Node.js 26.12.1 on PATH");
-  const reference = JSON.parse(
-    run(
-      [
-        node,
-        "-e",
-        `console.log(JSON.stringify({
+  if (tls) {
+    validateTLSQualification([t.name]);
+    const node = Bun.which("node");
+    if (!node) throw new Error("TLS qualification requires Node.js 26.12.1 on PATH");
+    const reference = JSON.parse(
+      run(
+        [
+          node,
+          "-e",
+          `console.log(JSON.stringify({
     name: process.release.name, version: process.versions.node, bun: process.versions.bun ?? null,
     platform: process.platform, arch: process.arch, exe: process.execPath
   }))`,
-      ],
-      {},
-    ),
-  );
-  if (
-    reference.name !== "node" ||
-    reference.version !== "26.12.1" ||
-    reference.bun !== null ||
-    reference.platform !== (t.os === "windows" ? "win32" : t.os) ||
-    reference.arch !== t.arch ||
-    realpathSync(reference.exe) !== realpathSync(node)
-  ) {
-    throw new Error("TLS qualification requires genuine Node.js 26.12.1 for the artifact's platform and architecture");
+        ],
+        {},
+      ),
+    );
+    if (
+      reference.name !== "node" ||
+      reference.version !== "26.12.1" ||
+      reference.bun !== null ||
+      reference.platform !== (t.os === "windows" ? "win32" : t.os) ||
+      reference.arch !== t.arch ||
+      realpathSync(reference.exe) !== realpathSync(node)
+    ) {
+      throw new Error(
+        "TLS qualification requires genuine Node.js 26.12.1 for the artifact's platform and architecture",
+      );
+    }
   }
   mkdirSync(reports, { recursive: true });
-  for (const file of tlsQualificationFiles) {
+  for (const file of [...runtimeQualificationFiles, ...(tls ? tlsQualificationFiles : [])]) {
     const report = join(reports, `${basename(file)}.xml`);
     // A failed invocation must never reuse a report from an earlier attempt.
     rmSync(report, { force: true });
-    run([exe, "test", file, "--reporter=junit", `--reporter-outfile=${report}`], { cwd: source, stdio: "inherit" });
-    console.log(`${file}: ${JSON.stringify(tlsQualificationResult(readFileSync(report, "utf8")))}`);
+    // Match runner.node.ts's native budget for the 1.5 GiB clone cases. A timeout also kills the shared clone child.
+    const timeout = file === "test/js/web/workers/structured-clone.test.ts" ? ["--timeout=90000"] : [];
+    run([exe, "test", file, ...timeout, "--reporter=junit", `--reporter-outfile=${report}`], {
+      cwd: source,
+      stdio: "inherit",
+    });
+    console.log(`${file}: ${JSON.stringify(qualificationResult(readFileSync(report, "utf8")))}`);
   }
+}
+
+/** Exercise the explicit compile contract used by OpenClaw's experimental Linux/macOS AOT builder. */
+export function qualifyCompiledRuntime(
+  exe: string,
+  name: TargetName,
+  scratch: string,
+  reports: string,
+  commit: string,
+  webkit: string,
+): void {
+  const target = targets[name];
+  mkdirSync(scratch, { recursive: true });
+  mkdirSync(reports, { recursive: true });
+  const steps: Record<string, unknown>[] = [];
+  const summary = { passed: false, target: name, commit, webkit, steps };
+  const report = join(reports, "compiled-runtime.json");
+  const save = () => writeFileSync(report, JSON.stringify(summary, null, 2) + "\n");
+  save();
+  const env = { ...process.env, BUN_OPTIONS: undefined, NODE_OPTIONS: undefined, BUN_BE_BUN: undefined };
+  const step = (name: string, command: string[], expected?: string, external = false) => {
+    const result = spawnSync(command[0]!, command.slice(1), {
+      encoding: "utf8",
+      env: { ...env, ...(external ? { BUN_BE_BUN: "1" } : {}) },
+      timeout: 120_000,
+      maxBuffer: 1 << 20,
+    });
+    steps.push({
+      name,
+      command,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      exitCode: result.status,
+      signal: result.signal,
+      error: result.error?.message,
+    });
+    save();
+    if (
+      result.error ||
+      result.signal ||
+      result.status !== 0 ||
+      (expected !== undefined && (result.stdout !== expected || result.stderr !== ""))
+    )
+      throw new Error(`${name} failed; see ${report}`);
+    return result.stdout;
+  };
+  const facts = JSON.parse(
+    step("identity", [
+      exe,
+      "--no-env-file",
+      "-e",
+      "console.log(JSON.stringify({revision:Bun.revision,webkit:process.versions.webkit,platform:process.platform,arch:process.arch}))",
+    ]),
+  );
+  if (
+    facts.revision !== commit ||
+    facts.webkit !== webkit ||
+    facts.platform !== target.os ||
+    facts.arch !== target.arch
+  )
+    throw new Error(`Compiled-runtime probe requires the admitted native ${name} executable`);
+  const entry = join(scratch, "hello.mjs");
+  const driver = join(scratch, "compile.mjs");
+  const external = join(scratch, "external.mjs");
+  writeFileSync(entry, 'console.log("openclaw compiled runtime");');
+  writeFileSync(external, 'import { basename } from "node:path"; console.log(basename(import.meta.filename));');
+  writeFileSync(
+    driver,
+    `
+    const result = await Bun.build({
+      entrypoints: [process.argv[2]],
+      compile: { outfile: process.argv[3], aot: true, allowCodeFromDisk: true, ...JSON.parse(process.argv[4]) },
+    });
+    for (const log of result.logs) console.error(log);
+    if (!result.success) process.exit(1);
+  `,
+  );
+  for (const [name, options] of [
+    ["aot", {}],
+    ["trim", { trim: true }],
+    ["run", { trim: { allow: ["run"] } }],
+  ] as const) {
+    const output = join(scratch, name);
+    step(`compile-${name}`, [exe, "--no-env-file", driver, entry, output, JSON.stringify(options)]);
+    step(`execute-${name}`, [output], "openclaw compiled runtime\n");
+    if (name === "run") step("external-run", [output, "run", external], "external.mjs\n", true);
+  }
+  summary.passed = true;
+  save();
 }
 
 /** Runs the binary of `zipPath` on this machine and checks it is the build the release says it is. */
@@ -495,7 +614,7 @@ export function smoke(
   name: TargetName,
   commit: string,
   webkitVersion: string,
-  qualification?: { source: string; reports: string },
+  qualification: { source: string; reports: string; tls?: boolean },
 ): void {
   const t = targets[name];
   const dir = mkdtempSync(join(tmpdir(), "openclaw-smoke-"));
@@ -547,7 +666,17 @@ export function smoke(
       problems.push(`the DFG JIT did not compile (numberOfDFGCompiles: ${facts.dfg})`);
     if (problems.length) throw new Error(`${name} smoke test failed:\n  ${problems.join("\n  ")}`);
     console.log(`${name}: ${run([exe, "--revision"], {}).trim()}, WebKit ${facts.webkit}, DFG compiles: ${facts.dfg}`);
-    if (qualification) qualifyTLS(exe, t, qualification.source, qualification.reports, commit, webkitVersion);
+    if (t.release && t.os !== "windows")
+      qualifyCompiledRuntime(exe, name, join(dir, "compiled-runtime"), qualification.reports, commit, webkitVersion);
+    qualifyRuntime(
+      exe,
+      t,
+      qualification.source,
+      qualification.reports,
+      commit,
+      webkitVersion,
+      qualification.tls ?? false,
+    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -881,13 +1010,11 @@ async function main(argv: string[]): Promise<void> {
     case "smoke": {
       const name = names()[0]!;
       if (values["qualify-tls"]) validateTLSQualification([name], values.publish, values.tag);
-      smoke(
-        resolve(values.zip!),
-        name,
-        values.commit!,
-        values.webkit!,
-        values["qualify-tls"] ? { source, reports: resolve(values.out ?? "tls-results") } : undefined,
-      );
+      smoke(resolve(values.zip!), name, values.commit!, values.webkit!, {
+        source,
+        reports: resolve(values.out ?? "qualification-results"),
+        tls: values["qualify-tls"],
+      });
       return;
     }
     case "manifest": {
