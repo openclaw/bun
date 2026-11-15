@@ -1,8 +1,8 @@
-// `IncomingMessage`, `ServerResponse`: a declaration file gives a program these types, and functions of Bun's own modules make the objects.
-// A position of such a type expects what that function makes, so a field is read from its slot and a method is called directly behind a test.
+// `IncomingMessage` and `ServerResponse` declarations identify the native layouts made by node:http.
+// Guards name those layouts even when individual accesses retain fallback paths.
 import { expect } from "bun:test";
 import { bunEnv, bunExe, isWindows, tempDirWithBunTypes as tempDir } from "harness";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { canTrim } from "../bundler/compile-trim-features";
 import { built, slot, spawned } from "./harness/commands";
 import { compileCommand } from "./harness/flags";
@@ -11,10 +11,8 @@ import { describe, test } from "./supported";
 const program = `import type { IncomingMessage, ServerResponse } from "node:http";
 import { exercise } from "exercise";
 
-function answer(req: IncomingMessage, res: ServerResponse): void {
-  res.statusCode = req.method === "GET" && req.url === "/text" ? 200 : 404;
-  res.setHeader("content-type", "text/plain");
-  res.end("hello");
+function answer(req: IncomingMessage, res: ServerResponse) {
+  return res.end(req.url);
 }
 exercise(answer);
 `;
@@ -38,7 +36,11 @@ export function exercise(answer: (req: IncomingMessage, res: ServerResponse) => 
   const stream = new Readable({ objectMode: true, read() {} });
   console.log(tell(emitter, 2), tell(stream, 3), heard, feed(stream, 4));
 
-  const server = createServer((req, res) => answer(req, res));
+  const server = createServer((req, res) => {
+    res.statusCode = req.method === "GET" && req.url === "/text" ? 200 : 404;
+    res.setHeader("content-type", "text/plain");
+    answer(req, res);
+  });
   server.listen(0, async () => {
     const address = server.address();
     const port = typeof address === "object" && address ? address.port : 0;
@@ -176,34 +178,48 @@ describe("compile/aot/types of node's classes", () => {
       }
     }));
 
-  test(
-    "a position of such a type is not read by name",
-    () =>
+  test.each([
+    {
+      name: "typed",
+      parameters: "req: IncomingMessage, res: ServerResponse",
+      types: ["IncomingMessage", "ServerResponse"],
+    },
+    { name: "untyped", parameters: "req, res", types: [] },
+  ])(
+    "$name HTTP callback guards match its native class annotations",
+    ({ parameters, types }) =>
       slot(async () => {
-        // Only answer() has application property accesses. The explain summary
-        // counts the exercise's accesses separately as dependency accesses.
         using dir = tempDir("aot-types-of-node-classes", {
-          "main.ts": program,
+          "main.ts": program.replace("req: IncomingMessage, res: ServerResponse", parameters),
           "node_modules/exercise/package.json": JSON.stringify({ name: "exercise", type: "module", main: "index.ts" }),
           "node_modules/exercise/index.ts": exercise,
         });
         const folder = String(dir);
         const executable = join(folder, isWindows ? "app.exe" : "app");
         const build = await spawned(
-          [bunExe(), ...compileCommand, "--explain=json", "main.ts", "--outfile", executable],
+          [bunExe(), ...compileCommand, "--explain=guards-json", "main.ts", "--outfile", executable],
           folder,
           bunEnv,
         );
         built(build);
-        const [report] = build.stdout
+        const guards = build.stdout
           .split("\n")
           .filter(line => line.startsWith("{"))
-          .map(line => JSON.parse(line));
-        expect(report.accesses.byName, build.stdout).toBe(0);
-        expect(report.accesses.tested + report.accesses.free).toBeGreaterThan(0);
+          .map(line => JSON.parse(line) as { aot: string; file: string; function: string; type: string })
+          // Dependency guards must not satisfy the callback's declaration proof.
+          .filter(
+            guard => guard.aot === "type-check" && guard.function === "answer" && basename(guard.file) === "main.ts",
+          )
+          .map(guard => guard.type)
+          .filter(type => type === "IncomingMessage" || type === "ServerResponse");
+        expect(new Set(guards), build.stdout).toEqual(new Set(types));
         const plain = await spawned([bunExe(), "main.ts"], folder, bunEnv);
-        expect(plain.exitCode).toBe(0);
-        expect(plain.stdout).toBe("true false 2 4\n200 text/plain hello\n404 text/plain hello\n");
+        expect(plain).toEqual({
+          stdout: "true false 2 4\n200 text/plain /text\n404 text/plain /other\n",
+          stderr: "",
+          exitCode: 0,
+          signal: null,
+        });
         expect(await spawned([executable], folder, bunEnv)).toEqual(plain);
       }),
     600_000,
