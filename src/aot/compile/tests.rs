@@ -957,6 +957,57 @@ fn runtime_files_are_checked_and_lowered_with_their_types() {
     assert!(count_checked_functions(&linked, ModuleOrigin::Runtime) > 0);
 }
 
+#[test]
+#[ignore = "requires the hosted Node type diagnostic fixture"]
+fn node_http_parameter_layout_diagnostic() {
+    let directory = std::env::var("OPENCLAW_NODE_TYPES_DIRECTORY").expect("hosted diagnostic fixture");
+    let project = TestProject::on_disk(directory.as_bytes(), &["main.ts"]);
+    run_build(&project, BUNDLED_LIBS, &WithoutServices, |build| {
+        with_bound_build(build, |build, loaded, bound| {
+            let application = &loaded.projects.application;
+            let files = application.loaded.files();
+            let entry = application.sources.entry_points()[0].file;
+            let roles = decide_project_roles(application);
+            let runtime = &loaded.projects.runtime;
+            println!("entry role: {:?}", roles.role(entry));
+            let http = table::module_by_specifier(b"node:http").expect("HTTP runtime module");
+            println!("runtime http: {:?}", runtime.sources.runtime_module_file(http));
+            build.with_lowering_inputs(loaded, bound, ProjectId::Application, &roles, |inputs| {
+                let module = files.atoms.intern(b"node:http");
+                for name in [b"IncomingMessage".as_slice(), b"ServerResponse".as_slice()] {
+                    let named = files.atoms.intern(name);
+                    println!("library {}: {:?}", BStr::new(name), inputs.named_values.find_library_export(module, named));
+                }
+                let report = bun_sema_driver::check_and_lower(
+                    application.loaded,
+                    application.host,
+                    application.request,
+                    &roles,
+                    &[entry],
+                    &|checker, file| {
+                        let parameters = files.hir(file).params.len();
+                        checker.with_queries(file, &inputs.query_inputs(), |queries| {
+                            for index in 0..parameters as u32 {
+                                let parameter = bun_sema::hir::ParamId(index);
+                                let checked = queries.parameter_type(parameter);
+                                println!("parameter {index}: {checked:?}");
+                                if let Ok(ty) = checked {
+                                    println!("origin {index}: {:?}", queries.object_origin(ty));
+                                    println!("members {index}: {:?}", queries.listed_members(ty).map(|members| members.len()));
+                                    println!("declarations {index}: {:?}", queries.library_declarations_of_type(ty));
+                                }
+                            }
+                        });
+                        Some(())
+                    },
+                );
+                assert_eq!(report.lowered.len(), 1, "the entry must reach the checker diagnostic");
+            });
+        }).expect("load and bind the existing HTTP fixture");
+        Ok(())
+    });
+}
+
 fn count_lowered_files_of_bun(source: &str) -> usize {
     count_lowered_files_of_bun_in(&TestProject::new(&[("a.js", source)], &default_settings()))
 }

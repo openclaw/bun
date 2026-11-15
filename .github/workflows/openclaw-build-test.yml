@@ -52,6 +52,7 @@ on:
             trim-linux-reflection,
             trim-linux-glob-aot,
             trim-linux-node-types,
+            types-checker-linux,
             compile-cache-darwin,
             trim-linux-baseline,
             trim-linux-source-baseline,
@@ -524,7 +525,7 @@ jobs:
           retention-days: 7
 
   native-diagnostics:
-    if: github.repository == 'openclaw/bun' && inputs.diagnostic != '' && inputs.diagnostic != 'none' && !startsWith(inputs.diagnostic, 'shipping-')
+    if: github.repository == 'openclaw/bun' && inputs.diagnostic != '' && inputs.diagnostic != 'none' && !startsWith(inputs.diagnostic, 'shipping-') && inputs.diagnostic != 'types-checker-linux'
     runs-on: ${{ (inputs.diagnostic == 'trim-linux-source-baseline' || inputs.diagnostic == 'trim-linux-aot-baseline') && 'blacksmith-16vcpu-ubuntu-2404' || startsWith(inputs.diagnostic, 'trim-linux') && 'ubuntu-24.04' || 'macos-15' }}
     timeout-minutes: ${{ (inputs.diagnostic == 'trim-linux-source-baseline' || inputs.diagnostic == 'trim-linux-aot-baseline') && 115 || 15 }}
     permissions:
@@ -1053,3 +1054,63 @@ jobs:
             ${{ runner.temp }}/consumer-proof/smoke/
           if-no-files-found: error
           retention-days: 14
+
+  type-checker-diagnostics:
+    if: github.repository == 'openclaw/bun' && inputs.diagnostic == 'types-checker-linux'
+    runs-on: blacksmith-16vcpu-ubuntu-2404
+    timeout-minutes: 35
+    env:
+      RUSTUP_TOOLCHAIN: nightly-2026-09-15
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_DEV_OPT_LEVEL: "1"
+      CARGO_INCREMENTAL: "0"
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: -Cforce-frame-pointers=yes -Zthreads=8
+      BUN_CODEGEN_DIR: ${{ github.workspace }}/build/debug/codegen
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust-lint-setup
+        with:
+          bun-version: "1.4.4"
+          llvm-version: "23"
+          toolchain: nightly-2026-09-15
+          ninja-targets: codegen clone-zstd clone-lolhtml clone-rust-argon2
+          webkit-generators-only: "1"
+      - name: Materialize the existing HTTP fixture
+        run: |
+          python3 - <<'PY'
+          import json, os, re, tempfile
+          from pathlib import Path
+          root = Path.cwd()
+          folder = Path(tempfile.mkdtemp(prefix="node-types-", dir=os.environ["RUNNER_TEMP"]))
+          source = Path("test/aot/types-of-node-classes-name-what-buns-modules-make.test.ts").read_text()
+          def template(name):
+              matches = re.findall(r"const " + name + r" = `([^`]+)`;", source)
+              assert len(matches) == 1 and "${" not in matches[0]
+              return matches[0]
+          (folder / "main.ts").write_text(template("program"))
+          package = folder / "node_modules/exercise"
+          package.mkdir(parents=True)
+          (package / "package.json").write_text(json.dumps({"name":"exercise","type":"module","main":"index.ts"}))
+          (package / "index.ts").write_text(template("exercise"))
+          types = folder / "node_modules/@types"
+          types.mkdir()
+          (types / "bun").symlink_to(root / "packages/bun-types", target_is_directory=True)
+          with open(os.environ["GITHUB_ENV"], "a") as output:
+              output.write("OPENCLAW_NODE_TYPES_DIRECTORY=" + str(folder) + "\n")
+          PY
+      - name: Observe the frontend type bridge
+        run: |
+          set -euo pipefail
+          mkdir -p build/openclaw-ci
+          cargo test -p bun_aot --lib compile::tests::node_http_parameter_layout_diagnostic -- --exact --ignored --nocapture \
+            2>&1 | tee build/openclaw-ci/node-types-checker.log
+      - name: Upload diagnostic text
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: node-types-checker-${{ github.sha }}-attempt${{ github.run_attempt }}
+          path: build/openclaw-ci/node-types-checker.log
+          retention-days: 7
+          if-no-files-found: warn
