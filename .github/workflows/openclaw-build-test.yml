@@ -757,7 +757,7 @@ jobs:
           cp build/release/bun-profile.trim/*.txt build/release/bun.trim/
           test -z "$(git status --porcelain --untracked-files=no)"
       - name: Inspect trim witnesses and mapped bytes
-        if: startsWith(inputs.diagnostic, 'trim-linux') && inputs.diagnostic != 'trim-linux-shipping' && inputs.diagnostic != 'trim-linux-cache' && inputs.diagnostic != 'trim-linux-type-stripping' && inputs.diagnostic != 'trim-linux-module-mocks' && !startsWith(inputs.diagnostic, 'trim-linux-runtime') && inputs.diagnostic != 'trim-linux-reflection' && inputs.diagnostic != 'trim-linux-glob-aot' && inputs.diagnostic != 'trim-linux-aot-baseline'
+        if: startsWith(inputs.diagnostic, 'trim-linux') && inputs.diagnostic != 'trim-linux-shipping' && inputs.diagnostic != 'trim-linux-cache' && inputs.diagnostic != 'trim-linux-type-stripping' && inputs.diagnostic != 'trim-linux-module-mocks' && !startsWith(inputs.diagnostic, 'trim-linux-runtime') && inputs.diagnostic != 'trim-linux-reflection' && inputs.diagnostic != 'trim-linux-glob-aot' && inputs.diagnostic != 'trim-linux-aot-baseline' && inputs.diagnostic != 'trim-linux-node-types'
         env:
           DIAGNOSTIC: ${{ inputs.diagnostic }}
         run: |
