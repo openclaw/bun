@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Give the full macOS fork-delta qualification lane 30 minutes while preserving every individual test deadline.
+
 - Keep cluster worker IPC connected until active server connections finish draining after `worker.disconnect()`.
 
 - Update xwin to recognize current Windows SDK catalog paths while retaining the pinned SDK and CRT versions.
