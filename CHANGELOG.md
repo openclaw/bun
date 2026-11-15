@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Update xwin to recognize current Windows SDK catalog paths while retaining the pinned SDK and CRT versions.
+
 - Preserve inherited file descriptors across `--aot` execution on macOS.
 
 - Pin immutable WebKit release `3357f9d63e6dd87a53f2aade723482130a55c0cd` and its matching AOT generators after Linux and Darwin Bun qualification and Windows ARM64 engine checks.
