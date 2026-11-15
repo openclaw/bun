@@ -51,6 +51,7 @@ on:
             trim-linux-runtime-rest,
             trim-linux-reflection,
             trim-linux-glob-aot,
+            trim-linux-node-types,
             compile-cache-darwin,
             trim-linux-baseline,
             trim-linux-source-baseline,
@@ -608,6 +609,15 @@ jobs:
           ref: 3f3a9ff87cdccf3d32d7ec6b648c664eddaae840
           path: baseline
           persist-credentials: false
+      - name: Checkout original Node class type fixture
+        if: inputs.diagnostic == 'trim-linux-node-types'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 05ac1e0fda2eef1f3890882f19223b4e7ee2d440
+          path: node-types-baseline
+          persist-credentials: false
+          sparse-checkout: test/aot/types-of-node-classes-name-what-buns-modules-make.test.ts
+          sparse-checkout-cone-mode: false
       - name: Read toolchain pins
         if: inputs.diagnostic == 'trim-linux-source-baseline' || inputs.diagnostic == 'trim-linux-aot-baseline' || inputs.diagnostic == 'trim-linux-runtime'
         id: pins
@@ -911,6 +921,11 @@ jobs:
             test/aot/engine-tests/valueflow/modules/evaluated-text-does-not-call-private-host-evaluators.ir \
             test/aot/engine-tests/valueflow/modules/a-private-host-evaluator-that-is-called-still-evaluates-text.ir \
             --show-output
+      - name: Compare Node class type fixture boundaries
+        if: inputs.diagnostic == 'trim-linux-node-types'
+        run: |
+          bun install --frozen-lockfile
+          python3 scripts/openclaw-ci/node-types-diagnostic.py
       - name: Upload focused diagnostics
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
