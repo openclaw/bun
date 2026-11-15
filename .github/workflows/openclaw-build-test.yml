@@ -5,15 +5,16 @@ on:
     inputs:
       platform:
         type: choice
-        options: [linux-x64]
+        options: [linux-x64, darwin-arm64]
         default: linux-x64
       webkit_source_sha:
-        description: Diagnostic engine commit with temporary operation-origin logging
+        description: Diagnostic engine commit, required only for the Linux operation-origin probe
         type: string
-        required: true
+        required: false
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: aot-operation-origins-${{ github.ref }}
@@ -21,6 +22,7 @@ concurrency:
 
 jobs:
   operation-origins:
+    if: inputs.platform == 'linux-x64'
     runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 100
     defaults:
@@ -35,7 +37,6 @@ jobs:
     steps:
       - name: Validate source-pair request
         working-directory: .
-        if: inputs.webkit_source_sha != ''
         env:
           PLATFORM: ${{ inputs.platform }}
         run: |
@@ -188,5 +189,49 @@ jobs:
             source/build/openclaw-ci/trim-diagnostics/*.json
             source/build/openclaw-ci/trim-diagnostics/*.log
             source/build/release/timings.html
+          if-no-files-found: error
+          retention-days: 7
+
+  cluster-pipe-exit:
+    if: inputs.platform == 'darwin-arm64'
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: a75d9fc1e8132c88c525f32fbc9a1da6767206bc
+          path: source
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: test/js/node/cluster.test.ts
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: "1.4.4"
+      - name: Download the existing admitted native bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: "14168969043"
+          run-id: "43731013867"
+          repository: openclaw/bun
+          github-token: ${{ github.token }}
+          path: bundle
+      - name: Verify and unpack the native bundle
+        run: |
+          test "$(uname -m)" = arm64
+          test "$(cat bundle/commit.txt)" = 55284cc25ad430f9bbc46a4923ea120dd4dea637
+          (cd bundle && shasum -a 256 -c SHA256SUMS)
+          mkdir native
+          tar -xzf bundle/bun-darwin-arm64.tar.gz -C native
+      - name: Capture unchanged cluster fixture exits and inherited stderr
+        run: python3 scripts/openclaw-ci/cluster-pipe-exit-diagnostic.py --native native/bun --stock "$(command -v bun)" --source source --out proof
+      - name: Upload only the bounded text diagnostic
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cluster-pipe-exit-${{ github.sha }}-attempt${{ github.run_attempt }}
+          path: proof/report.json
           if-no-files-found: error
           retention-days: 7
