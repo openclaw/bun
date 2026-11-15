@@ -5,10 +5,14 @@ on:
     inputs:
       platform:
         type: choice
-        options: [linux-x64, darwin-arm64]
+        options: [linux-x64, darwin-arm64, darwin-cluster-regression]
         default: linux-x64
       webkit_source_sha:
         description: Diagnostic engine commit, required only for the Linux operation-origin probe
+        type: string
+        required: false
+      cluster_fixed_artifact:
+        description: Native Darwin bundle from pinned run 43739822593; required only for the cluster regression proof
         type: string
         required: false
 
@@ -189,6 +193,68 @@ jobs:
             source/build/openclaw-ci/trim-diagnostics/*.json
             source/build/openclaw-ci/trim-diagnostics/*.log
             source/build/release/timings.html
+          if-no-files-found: error
+          retention-days: 7
+
+  cluster-drain-regression:
+    if: inputs.platform == 'darwin-cluster-regression'
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - name: Validate the pinned artifact request
+        env:
+          FIXED_ARTIFACT: ${{ inputs.cluster_fixed_artifact }}
+        run: '[[ "$FIXED_ARTIFACT" =~ ^[0-9]+$ ]]'
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 9c4e2b1f426f7e938c18ed2a7ace5d17d68c55fa
+          path: source
+          persist-credentials: false
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: "1.4.4"
+      - name: Install the frozen regression harness dependencies
+        working-directory: source
+        run: bun install --frozen-lockfile
+      - name: Download the admitted pre-fix native bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: "14168969043"
+          run-id: "43731013867"
+          repository: openclaw/bun
+          github-token: ${{ github.token }}
+          path: baseline-bundle
+      - name: Download the repaired native bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ inputs.cluster_fixed_artifact }}
+          run-id: "43739822593"
+          repository: openclaw/bun
+          github-token: ${{ github.token }}
+          path: fixed-bundle
+      - name: Verify and unpack both admitted bundles
+        run: |
+          test "$(uname -m)" = arm64
+          test "$(cat baseline-bundle/commit.txt)" = 55284cc25ad430f9bbc46a4923ea120dd4dea637
+          test "$(cat fixed-bundle/commit.txt)" = fe6297f8aeb9fb8f9ef1d55a49d054528c68f90c
+          for kind in baseline fixed; do
+            (cd "$kind-bundle" && shasum -a 256 -c SHA256SUMS)
+            mkdir "$kind"
+            tar -xzf "$kind-bundle/bun-darwin-arm64.tar.gz" -C "$kind"
+          done
+      - name: Run the exact committed regression cases on both binaries
+        env:
+          FIXED_ARTIFACT: ${{ inputs.cluster_fixed_artifact }}
+        run: python3 scripts/openclaw-ci/cluster-drain-regression.py --baseline baseline/bun --fixed fixed/bun --source source --out proof --fixed-artifact "$FIXED_ARTIFACT"
+      - name: Upload only the bounded text regression proof
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cluster-drain-regression-${{ github.sha }}-attempt${{ github.run_attempt }}
+          path: proof/report.json
           if-no-files-found: error
           retention-days: 7
 
