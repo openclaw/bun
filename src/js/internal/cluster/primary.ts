@@ -411,7 +411,8 @@ function send(worker: ClusterWorker, message: object, handle?: object | null, cb
 Worker.prototype.disconnect = function (this: ClusterWorker) {
   this.exitedAfterDisconnect = true;
   send(this, { act: "disconnect" });
-  this.process.disconnect!();
+  // Workers that never load node:cluster have no handler for the request.
+  if (this.state === "none") this.process.disconnect!();
   removeHandlesForWorker(this, false);
   removeWorker(this);
   return this;

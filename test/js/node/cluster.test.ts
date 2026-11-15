@@ -305,6 +305,108 @@ if (cluster.isPrimary) {
   expect(stdout).toContain("worker exit: 0");
 });
 
+test.concurrent("worker.disconnect() keeps IPC connected until active connections drain", async () => {
+  using dir = tempDir("cluster-disconnect-drain", {
+    "main.ts": `
+import cluster from "node:cluster";
+import net from "node:net";
+import { once } from "node:events";
+
+cluster.schedulingPolicy = cluster.SCHED_RR;
+
+if (cluster.isPrimary) {
+  const worker = cluster.fork();
+  const exited = once(worker, "exit");
+  let finalMessage = false;
+  worker.on("message", message => {
+    if (message === "final") finalMessage = true;
+  });
+  const [address] = await once(worker, "listening");
+  const socket = net.connect({ host: "127.0.0.1", port: address.port });
+  const closed = once(socket, "close");
+  socket.resume();
+  await once(worker, "message");
+  const returnedSelf = worker.disconnect() === worker;
+  const connectedWhileDraining = worker.isConnected();
+  socket.end("finish");
+  const [[code, signal], [hadError]] = await Promise.all([exited, closed]);
+  console.log(JSON.stringify({
+    returnedSelf, connectedWhileDraining, finalMessage,
+    disconnected: !worker.isConnected(), code, signal, hadError,
+  }));
+} else {
+  net.createServer(socket => {
+    socket.once("data", () => {
+      process.send!("final", error => {
+        if (error) throw error;
+        socket.end();
+      });
+    });
+    process.send!("ready");
+  }).listen(0, "127.0.0.1");
+}
+`,
+  });
+  await using proc = Bun.spawn({
+    cmd: [bunExe(), "main.ts"],
+    env: bunEnv,
+    cwd: String(dir),
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect({ out: JSON.parse(stdout.trim()), stderr, exitCode }).toEqual({
+    out: {
+      returnedSelf: true,
+      connectedWhileDraining: true,
+      finalMessage: true,
+      disconnected: true,
+      code: 0,
+      signal: null,
+      hadError: false,
+    },
+    stderr: "",
+    exitCode: 0,
+  });
+});
+
+test.concurrent("worker.disconnect() still closes IPC for an entry that never loads cluster", async () => {
+  using dir = tempDir("cluster-disconnect-without-bootstrap", {
+    "main.ts": `
+import cluster from "node:cluster";
+import { once } from "node:events";
+
+cluster.setupPrimary({ exec: "worker.js" });
+const worker = cluster.fork();
+const disconnected = once(worker, "disconnect");
+const exited = once(worker, "exit");
+await once(worker, "message");
+worker.disconnect();
+const [[code, signal]] = await Promise.all([exited, disconnected]);
+console.log(JSON.stringify({ code, signal, connected: worker.isConnected() }));
+`,
+    "worker.js": `
+process.exitCode = 42;
+process.once("disconnect", () => { process.exitCode = 0; });
+process.on("message", () => {});
+process.send("ready");
+`,
+  });
+  await using proc = Bun.spawn({
+    cmd: [bunExe(), "main.ts"],
+    env: bunEnv,
+    cwd: String(dir),
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect({ out: JSON.parse(stdout.trim()), stderr, exitCode }).toEqual({
+    out: { code: 0, signal: null, connected: false },
+    stderr: "",
+    exitCode: 0,
+  });
+});
+
 test.skipIf(isWindows)("round-robin accepted sockets honor allowHalfOpen after the client's FIN", async () => {
   const dir = tempDirWithFiles("bun-test", {
     "main.ts": `

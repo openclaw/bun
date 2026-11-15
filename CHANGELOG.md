@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep cluster worker IPC connected until active server connections finish draining after `worker.disconnect()`.
+
 - Update xwin to recognize current Windows SDK catalog paths while retaining the pinned SDK and CRT versions.
 
 - Preserve inherited file descriptors across `--aot` execution on macOS.
