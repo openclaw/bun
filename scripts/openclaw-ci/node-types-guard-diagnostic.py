@@ -39,6 +39,7 @@ echo_exercise = exercise.replace('createServer((req, res) => answer(req, res))',
     answer(req, res);
   })''')
 returning_echo = echo_program.replace('): void {\n  res.end(req.url);', ') {\n  return res.end(req.url);')
+untyped_returning_echo = returning_echo.replace("req: IncomingMessage, res: ServerResponse", "req, res")
 streaming_echo = echo_program.replace('res.end(req.url);',
     'for (let index = 0; index < 2; index++) res.write(req.url);')
 streaming_exercise = echo_exercise.replace('    answer(req, res);', '    answer(req, res);\n    res.end();')
@@ -76,6 +77,7 @@ for label, source, dependency, strict in [
     ("split", program, exercise, False),
     ("split-returning-echo", returning_echo, echo_exercise, False),
     ("split-streaming-echo", streaming_echo, streaming_exercise, False),
+    ("split-returning-echo-untyped", untyped_returning_echo, echo_exercise, False),
 ]:
     with tempfile.TemporaryDirectory(prefix="node-types-") as temporary:
         folder = Path(temporary)
@@ -108,18 +110,33 @@ for label, source, dependency, strict in [
         expected_output = {
             "split-request-echo": "true false 2 4\n200 text/plain /text\n404 text/plain /other\n",
             "split-returning-echo": "true false 2 4\n200 text/plain /text\n404 text/plain /other\n",
+            "split-returning-echo-untyped": "true false 2 4\n200 text/plain /text\n404 text/plain /other\n",
             "split-streaming-echo": "true false 2 4\n200 text/plain /text/text\n404 text/plain /other/other\n",
         }.get(label, expected)
         row = {"variant": label, "expectedStdout": expected_output, "sourceSHA256": hashlib.sha256(source.encode()).hexdigest(),
                "reports": reports, "answerCauses": answer, "plain": plain, "compiled": compiled}
+        if label in {"split-returning-echo", "split-returning-echo-untyped"}:
+            guard_build = run([str(binary), "build", "--compile", "--aot", "--explain=guards-json",
+                               "main.ts", "--outfile", str(folder / "guard-app")], folder)
+            (output / (label + "-guards.log")).write_text(json.dumps({"build": guard_build}, indent=2))
+            assert guard_build["exitCode"] == 0, label + " guard report failed to compile"
+            guards = [json.loads(line) for line in guard_build["stdout"].splitlines() if line.startswith("{")]
+            assert all(guard.get("aot") == "type-check" for guard in guards), "unexpected guard report schema"
+            row["answerGuards"] = [guard for guard in guards if guard.get("function") == "answer"
+                                   and Path(guard.get("file", "")).name == "main.ts"]
         summary["variants"].append(row)
         summary_path.write_text(json.dumps(summary, indent=2) + "\n")
         print(json.dumps({"variant": label, "accesses": reports[0]["accesses"],
                           "plainExit": plain["exitCode"], "compiledExit": compiled["exitCode"]}), flush=True)
 
 by_variant = {row["variant"]: row for row in summary["variants"]}
-assert set(by_variant) == {"split", "split-returning-echo", "split-streaming-echo"}
+assert set(by_variant) == {"split", "split-returning-echo", "split-streaming-echo", "split-returning-echo-untyped"}
 assert by_variant["split"]["reports"][0]["accesses"]["byName"] == 5, "original failure did not reproduce"
+native_types = {"IncomingMessage", "ServerResponse"}
+typed_guards = by_variant["split-returning-echo"]["answerGuards"]
+untyped_guards = by_variant["split-returning-echo-untyped"]["answerGuards"]
+assert native_types <= {guard["type"] for guard in typed_guards}, "typed callback lacks native class guards"
+assert native_types.isdisjoint({guard["type"] for guard in untyped_guards}), "native class guards do not depend on annotations"
 summary["complete"] = True
 summary_path.write_text(json.dumps(summary, indent=2) + "\n")
 for row in summary["variants"]:
