@@ -443,7 +443,8 @@ def main():
                     if executable:
                         probe = "console.log(JSON.stringify({version:Bun.version,revision:Bun.revision,webkit:process.versions.webkit,platform:process.platform,arch:process.arch}))"
                         identity = json.loads(subprocess.check_output(
-                            executor + [str(binary), "-e", probe], env=env, text=True, timeout=30,
+                            executor + [str(binary), "-e", probe], env=env, text=True,
+                            timeout=120 if target == "darwin-x64" else 30,
                         ))
                         assert identity == {
                             "version": "1.4.4", "revision": RELEASES[label][0],
