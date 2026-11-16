@@ -20,6 +20,7 @@ on:
             linux-openclaw-invitation-callback,
             linux-openclaw-invitation-snapshot,
             linux-openclaw-anchor-preparation,
+            linux-openclaw-anchor-full-context,
             linux-openclaw-doctor-continuation,
           ]
         default: linux-x64
@@ -41,7 +42,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: aot-operation-origins-${{ github.ref }}${{ inputs.platform == 'linux-openclaw-bun-only' && '-bun-only' || inputs.platform == 'linux-openclaw-repin' && '-linux-repin' || inputs.platform == 'darwin-openclaw-app-host' && '-app-host' || inputs.platform == 'linux-openclaw-doctor-causes' && '-doctor-causes' || inputs.platform == 'linux-openclaw-doctor-readiness' && '-doctor-readiness' || inputs.platform == 'linux-openclaw-invitation-retention' && '-invitation-retention' || inputs.platform == 'linux-openclaw-invitation-callback' && '-invitation-callback' || inputs.platform == 'linux-openclaw-invitation-snapshot' && '-invitation-snapshot' || inputs.platform == 'linux-openclaw-anchor-preparation' && '-anchor-preparation' || inputs.platform == 'linux-openclaw-doctor-continuation' && '-doctor-continuation' || '' }}
+  group: aot-operation-origins-${{ github.ref }}${{ inputs.platform == 'linux-openclaw-bun-only' && '-bun-only' || inputs.platform == 'linux-openclaw-repin' && '-linux-repin' || inputs.platform == 'darwin-openclaw-app-host' && '-app-host' || inputs.platform == 'linux-openclaw-doctor-causes' && '-doctor-causes' || inputs.platform == 'linux-openclaw-doctor-readiness' && '-doctor-readiness' || inputs.platform == 'linux-openclaw-invitation-retention' && '-invitation-retention' || inputs.platform == 'linux-openclaw-invitation-callback' && '-invitation-callback' || inputs.platform == 'linux-openclaw-invitation-snapshot' && '-invitation-snapshot' || inputs.platform == 'linux-openclaw-anchor-full-context' && '-anchor-full-context' || inputs.platform == 'linux-openclaw-anchor-preparation' && '-anchor-preparation' || inputs.platform == 'linux-openclaw-doctor-continuation' && '-doctor-continuation' || '' }}
   cancel-in-progress: true
 
 jobs:
@@ -115,7 +116,7 @@ jobs:
           retention-days: 7
 
   openclaw-anchor-preparation:
-    if: inputs.platform == 'linux-openclaw-anchor-preparation'
+    if: inputs.platform == 'linux-openclaw-anchor-preparation' || inputs.platform == 'linux-openclaw-anchor-full-context'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     permissions:
@@ -147,13 +148,16 @@ jobs:
       - name: Observe the existing POSIX preparation awaits without credentials
         env:
           CONTROLLER_SHA: ${{ github.sha }}
+          ANCHOR_FULL_CONTEXT: ${{ inputs.platform == 'linux-openclaw-anchor-full-context' }}
         run: |
+          context_args=()
+          if [ "$ANCHOR_FULL_CONTEXT" = true ]; then context_args+=(--anchor-full-context); fi
           controller_home="$RUNNER_TEMP/anchor-preparation-controller-home"
           controller_tmp="$RUNNER_TEMP/anchor-preparation-controller-tmp"
           install -d -m 0700 "$controller_home" "$controller_tmp"
           env -i PATH="$PATH" HOME="$controller_home" TMPDIR="$controller_tmp" LANG=C.UTF-8 CI=true \
             python3 scripts/openclaw-ci/openclaw-linux-repin.py --source source --out anchor-preparation-proof \
-            --controller-sha "$CONTROLLER_SHA" --group large42_process --pin new --anchor-preparation
+            --controller-sha "$CONTROLLER_SHA" --group large42_process --pin new --anchor-preparation "${context_args[@]}"
       - name: Check bounded text-only diagnostic evidence
         id: anchor-preparation-budget
         if: always()

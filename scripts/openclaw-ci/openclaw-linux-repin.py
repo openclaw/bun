@@ -22,6 +22,7 @@ DOCTOR_FILE = "src/commands/doctor-maintenance.continuation-scope.test.ts"
 DOCTOR_CASES = tuple(f"keeps Doctor continuation with its repair scope (cached writer: {writer})"
                      for writer in ("true", "false"))
 ANCHOR_FILE = "src/process/supervisor/service-child-group-anchor.preparation.test.ts"
+ANCHOR_GROUP_SHA256 = "002349c7fe78370a021dec47798239fe9d9acedd9779dc9473699b7060db2c56"
 ANCHOR_PATCH_SHA256 = "616e96a98212e57d6405656a043384d8d77199d6e6ea6529238ee6e61971ee75"
 ANCHOR_FILES = {
     ANCHOR_FILE: ("c06787c77d9ff318112146538be08dea0e24d79ac473f7211278bfe5fa31ed66", "a787c516c259e84dc9fcb148fee0f30dd5e2812dd4c589c23257ed3d02c21bd4"),
@@ -60,7 +61,7 @@ INVITATION_CASES = (
 common = runpy.run_path(str(Path(__file__).with_name("openclaw-repin-regression.py")))
 
 
-def anchor_observations(log, exit_code):
+def anchor_observations(log, exit_code, full_context=False):
     cases, summaries, frames = [], [], []
     prefix = "[shard:bun:core-runtime-infra-process-hosted-2]"
     events = set("fixture-created await-start await-complete child-exit child-disconnect fd-close closure-joined dispose-start kill-start kill-complete dispose-complete fact-received control-received overflow invalid".split())
@@ -95,7 +96,10 @@ def anchor_observations(log, exit_code):
         if not re.search(r"\|[^|]+\|.* >(?: |$)", body):
             continue
         match = re.fullmatch(r"(.*?)\|([^|]+)\|\s+(.+?) > (.+?)(?: \d+(?:\.\d+)?ms)?", body)
-        assert match and match[2] == "process" and match[3] == ANCHOR_FILE, "unexpected anchor case row"
+        assert match, "malformed anchor case row"
+        if full_context and match[3] != ANCHOR_FILE:
+            continue  # Other native cases remain in the original log and broad summaries.
+        assert match[2] == "process" and match[3] == ANCHOR_FILE, "unexpected anchor case row"
         assert match[4] in ANCHOR_CASES.values(), "unexpected anchor case"
         marker = match[1].strip()
         if marker == "FAIL":
@@ -315,8 +319,10 @@ def main():
     parser.add_argument("--invitation-native-callback", action="store_true")
     parser.add_argument("--invitation-snapshot", action="store_true")
     parser.add_argument("--anchor-preparation", action="store_true")
+    parser.add_argument("--anchor-full-context", action="store_true")
     parser.add_argument("--doctor-continuation", action="store_true")
     args = parser.parse_args()
+    assert not args.anchor_full_context or args.anchor_preparation
     assert not args.doctor_continuation or (args.group == "large5" and not any((
         args.doctor_causes, args.doctor_readiness, args.invitation_retention,
         args.invitation_native_callback, args.invitation_snapshot, args.anchor_preparation)))
@@ -413,12 +419,15 @@ def main():
                 "scope": "standalone file; a pass does not explain or waive the original 309-file failure"}
         if args.anchor_preparation:
             assert len(selected["group"]["includePatterns"]) == 168 and ANCHOR_FILE in selected["group"]["includePatterns"]
-            effective_group = {**selected["group"], "includePatterns": [ANCHOR_FILE]}
+            if args.anchor_full_context:
+                assert report["groupSHA256"] == ANCHOR_GROUP_SHA256
+            effective_group = selected["group"] if args.anchor_full_context else {**selected["group"], "includePatterns": [ANCHOR_FILE]}
             group_json = json.dumps([effective_group], separators=(",", ":"))
             report["anchorPreparation"] = {"originalGroupSHA256": report["groupSHA256"],
                 "effectiveGroup": effective_group, "effectiveGroupSHA256": hashlib.sha256(group_json.encode()).hexdigest(),
                 "expectedCases": ANCHOR_CASES,
-                "scope": "instrumented ten-case standalone file; not unchanged-C or whole-group qualification"}
+                "scope": ("instrumented original 168-pattern group; native exit and broad summaries remain authoritative; a pass leaves the original failure unexplained"
+                          if args.anchor_full_context else "instrumented ten-case standalone file; not unchanged-C or whole-group qualification")}
         if args.doctor_continuation:
             assert len(selected["group"]["includePatterns"]) == 116 and DOCTOR_FILE in selected["group"]["includePatterns"]
             effective_group = {**selected["group"], "includePatterns": [DOCTOR_FILE]}
@@ -572,7 +581,7 @@ def main():
             report["status"] = "DIAGNOSTIC"
         elif args.anchor_preparation:
             report["diagnosticNativeStatus"] = "PASS" if outcome["exitCode"] == 0 else "FAIL"
-            report["anchorPreparation"].update(anchor_observations(log, outcome["exitCode"]))
+            report["anchorPreparation"].update(anchor_observations(log, outcome["exitCode"], args.anchor_full_context))
             assert report["anchorPreparation"]["framingComplete"], "anchor observation missing, capped, invalid or interrupted"
             report["status"] = "DIAGNOSTIC"
         elif args.invitation_retention or args.invitation_native_callback or args.invitation_snapshot:
