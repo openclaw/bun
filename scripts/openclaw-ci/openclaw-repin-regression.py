@@ -68,6 +68,27 @@ def public_json(url):
     return json.loads(data), hashlib.sha256(data).hexdigest()
 
 
+class NoApiRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, response, code, message, headers, new_url):
+        raise RuntimeError("release metadata API redirect refused")
+
+
+def release_api_json(endpoint, token, expected_tag_object=None):
+    allowed = {prefix + tag for _, tag, _ in RELEASES.values()
+               for prefix in ("releases/tags/", "git/ref/tags/")}
+    if expected_tag_object is not None:
+        assert re.fullmatch("[0-9a-f]{40}", expected_tag_object)
+        allowed.add("git/tags/" + expected_tag_object)
+    assert endpoint in allowed and token, "unapproved release metadata request"
+    request = urllib.request.Request("https://api.github.com/repos/openclaw/bun/" + endpoint,
+                                     headers={"User-Agent": "openclaw-repin-diagnostic",
+                                              "Authorization": "Bearer " + token})
+    with urllib.request.build_opener(NoApiRedirect()).open(request, timeout=60) as response:
+        data = response.read(LIMIT + 1)
+    assert len(data) <= LIMIT, "release metadata exceeds text budget"
+    return json.loads(data)
+
+
 def private_env(cell, tool_path):
     cell.mkdir(mode=0o700)
     directories = {name: cell / name for name in ("home", "config", "cache", "data", "tmp", "state")}
@@ -132,24 +153,25 @@ def run(command, cwd, env, log, redact, timeout=600):
             "settlementUncertain": bool(failure or indeterminate or proc.returncode not in (0, 1))}
 
 
-def admit_release(label, pin):
+def admit_release(label, pin, token):
     commit, tag, webkit = RELEASES[label]
     assert pin["commit"] == commit and pin["tag"] == tag
     assert re.fullmatch(r"1[.]4[.]4(?:-canary[.]1)?[+]" + commit[:9], pin["revision"])
     assert set(pin["artifacts"]) == set(TARGETS) | {"windows-arm64", "windows-x64"}
-    api = "https://api.github.com/repos/openclaw/bun/"
-    release, _ = public_json(api + "releases/tags/" + tag)
+    release = release_api_json("releases/tags/" + tag, token)
     assert release["tag_name"] == tag and not release["draft"] and release["published_at"]
     if label == "new":
         assert release["prerelease"], "candidate publication must be a prerelease"
-    ref, _ = public_json(api + "git/ref/tags/" + tag)
+    ref = release_api_json("git/ref/tags/" + tag, token)
     obj = ref["object"]
     if obj["type"] == "tag":
-        annotated, _ = public_json(api + "git/tags/" + obj["sha"])
+        annotated = release_api_json("git/tags/" + obj["sha"], token, obj["sha"])
         obj = annotated["object"]
     assert obj["type"] == "commit" and obj["sha"] == commit
     assets = {asset["name"]: asset for asset in release["assets"]}
     assert len(assets) == len(release["assets"])
+    assert assets["manifest.json"]["browser_download_url"] == \
+        "https://github.com/openclaw/bun/releases/download/" + tag + "/manifest.json"
     manifest, digest = public_json(assets["manifest.json"]["browser_download_url"])
     assert manifest["repository"] == "openclaw/bun" and manifest["tag"] == tag
     assert manifest["bun"]["commit"] == commit and manifest["bun"]["revision"] == pin["revision"]
@@ -294,13 +316,18 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--candidate-sha", required=True)
+    parser.add_argument("--controller-sha", required=True)
+    parser.add_argument("--phase", choices=("metadata", "execute"), required=True)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     source, out = args.source.resolve(), args.out.resolve()
-    out.mkdir(mode=0o700)
+    if args.phase == "metadata":
+        out.mkdir(mode=0o700)
+    else:
+        assert out.is_dir(), "metadata admission must finish first"
     report = {"diagnosticComplete": False, "noNewRegression": False, "source": args.candidate_sha,
               "baselineSource": BASE, "inventoryKind": "current-derived-15", "tests": TESTS,
-              "controller": os.environ.get("GITHUB_SHA"), "runs": [], "staging": [],
+              "controller": args.controller_sha, "phase": args.phase, "runs": [], "staging": [],
               "settlementUncertain": False}
     candidate_bytes = None
     redact = lambda text: text
@@ -322,6 +349,9 @@ def main():
     try:
         assert platform.system() == "Darwin" and platform.machine() == "arm64", "hosted native macOS ARM64 required"
         assert re.fullmatch("[0-9a-f]{40}", args.candidate_sha)
+        assert re.fullmatch("[0-9a-f]{40}", args.controller_sha)
+        if args.phase == "execute":
+            assert "BUN_RELEASE_METADATA_TOKEN" not in os.environ, "metadata credentials reached execution phase"
         with ExitStack() as cleanup:
             root = Path(tempfile.mkdtemp(prefix="openclaw-repin-"))
             cleanup.callback(lambda: None if report["settlementUncertain"] else shutil.rmtree(root))
@@ -336,9 +366,11 @@ def main():
                                                env=env, text=True, timeout=120).strip()
 
             assert git("rev-parse", "HEAD") == args.candidate_sha
+            assert git("-C", str(Path(__file__).resolve().parents[2]), "rev-parse", "HEAD") == args.controller_sha
             assert git("remote", "get-url", "origin").removesuffix(".git") == "https://github.com/openclaw/openclaw"
             assert not git("status", "--porcelain", "--untracked-files=no")
-            git("fetch", "--no-tags", "--no-auto-maintenance", "--depth=1", "origin", BASE)
+            if args.phase == "metadata":
+                git("fetch", "--no-tags", "--no-auto-maintenance", "--depth=1", "origin", BASE)
             changes = git("diff", "--name-status", BASE, args.candidate_sha).splitlines()
             assert changes and all(line.startswith("M\t") and line[2:] in ALLOWED for line in changes)
             assert "M\t" + PIN in changes
@@ -346,9 +378,26 @@ def main():
             candidate_bytes = (source / PIN).read_bytes()
             old_bytes = (git("show", BASE + ":" + PIN) + "\n").encode()
             pins = {"old": json.loads(old_bytes), "new": json.loads(candidate_bytes)}
-            report["releases"] = {label: admit_release(label, pin) for label, pin in pins.items()}
             report.update(sourceTree=git("rev-parse", "HEAD^{tree}"), changedPaths=changes,
                           testSHA256={test: sha(source / test) for test in TESTS}, childEnvironmentKeys=sorted(env))
+            binding = {"source": args.candidate_sha, "controller": args.controller_sha,
+                       "sourceTree": report["sourceTree"], "baselineSource": BASE,
+                       "pinSHA256": {"old": hashlib.sha256(old_bytes).hexdigest(),
+                                     "new": hashlib.sha256(candidate_bytes).hexdigest()}}
+            metadata_path = out / "metadata-admission.json"
+            if args.phase == "metadata":
+                token = os.environ["BUN_RELEASE_METADATA_TOKEN"]
+                releases = {label: admit_release(label, pin, token) for label, pin in pins.items()}
+                data = json.dumps({"binding": binding, "releases": releases}, indent=2) + "\n"
+                assert len(data.encode()) <= LIMIT, "metadata receipt exceeds budget"
+                metadata_path.write_text(data)
+                report.update(metadataAdmitted=True, metadataSHA256=sha(metadata_path))
+                return
+            assert metadata_path.stat().st_size <= LIMIT, "metadata receipt exceeds budget"
+            metadata = json.loads(metadata_path.read_text())
+            assert metadata["binding"] == binding, "metadata receipt does not match this source/controller/pin pair"
+            assert {label: release["pin"] for label, release in metadata["releases"].items()} == pins
+            report.update(releases=metadata["releases"], metadataSHA256=sha(metadata_path))
             package = json.loads((source / "package.json").read_text())
             assert package["packageManager"].startswith("pnpm@12.15.0+sha512.")
             assert subprocess.check_output([str(node), "--version"], env=env, text=True).strip() == "v24.22.1"
@@ -485,8 +534,9 @@ def main():
             report.update(stateRetained=True, restoration="not-attempted-indeterminate-settlement",
                           scratchDisposition="retained-for-hosted-runner-teardown")
         elif candidate_bytes is not None:
-            (source / PIN).write_bytes(candidate_bytes)
-            report["candidatePinRestored"] = (source / PIN).read_bytes() == candidate_bytes
+            if args.phase == "execute":
+                (source / PIN).write_bytes(candidate_bytes)
+                report["candidatePinRestored"] = (source / PIN).read_bytes() == candidate_bytes
             status = git("status", "--porcelain", "--untracked-files=no")
             report["trackedSourceClean"] = not status
             if status:

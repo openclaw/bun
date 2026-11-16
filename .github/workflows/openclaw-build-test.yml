@@ -5,7 +5,7 @@ on:
     inputs:
       platform:
         type: choice
-        options: [linux-x64, darwin-arm64, darwin-cluster-regression, darwin-openclaw-repin]
+        options: [linux-x64, darwin-arm64, darwin-cluster-regression, darwin-openclaw-repin, linux-openclaw-bun-only]
         default: linux-x64
       webkit_source_sha:
         description: Diagnostic engine commit, required only for the Linux operation-origin probe
@@ -25,10 +25,66 @@ permissions:
   actions: read
 
 concurrency:
-  group: aot-operation-origins-${{ github.ref }}
+  group: aot-operation-origins-${{ github.ref }}${{ inputs.platform == 'linux-openclaw-bun-only' && '-bun-only' || '' }}
   cancel-in-progress: true
 
 jobs:
+  openclaw-bun-only:
+    if: inputs.platform == 'linux-openclaw-bun-only'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    env:
+      BUN_ONLY_WORK: ${{ runner.temp }}/openclaw-bun-only-${{ github.run_id }}-${{ github.run_attempt }}
+      DOCKER_CONFIG: ${{ runner.temp }}/openclaw-bun-only-${{ github.run_id }}-${{ github.run_attempt }}/docker
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: openclaw/openclaw
+          ref: 4ea5babab09c338812ae50dbcdaed990f48cd0fc
+          path: source
+          persist-credentials: false
+      - name: Admit the exact reviewed candidate before running its code
+        run: |
+          test "$(git -C source rev-parse HEAD)" = 4ea5babab09c338812ae50dbcdaed990f48cd0fc
+          test -z "$(git -C source status --porcelain)"
+          test ! -e "$BUN_ONLY_WORK"
+          install -d -m 0700 "$BUN_ONLY_WORK" "$DOCKER_CONFIG"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.22.1"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          version: v0.23.0
+      - name: Package and run the canonical Bun-only smoke without credentials
+        run: /bin/bash scripts/openclaw-ci/openclaw-bun-only-smoke.sh "$GITHUB_WORKSPACE/source" "$BUN_ONLY_WORK" "$GITHUB_WORKSPACE/bun-only-proof" "$GITHUB_SHA"
+      - name: Check bounded text-only smoke evidence
+        id: bun-only-budget
+        if: always()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path("bun-only-proof")
+          assert (root / "receipt.json").is_file(), "missing smoke receipt"
+          files = list(root.iterdir())
+          assert len(files) <= 400 and all(p.is_file() and not p.is_symlink() and p.suffix in {".json", ".md", ".log"} for p in files)
+          assert sum(p.stat().st_size for p in files) <= 64 * 1024 * 1024
+          for p in files:
+              p.read_text(encoding="utf-8")
+          PY
+      - name: Upload only text Bun-only evidence
+        if: ${{ always() && steps.bun-only-budget.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: openclaw-bun-only-${{ github.sha }}-attempt${{ github.run_attempt }}
+          path: bun-only-proof/
+          if-no-files-found: error
+          retention-days: 7
+
   openclaw-repin:
     if: inputs.platform == 'darwin-openclaw-repin'
     runs-on: macos-15
@@ -52,10 +108,23 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24.22.1"
-      - name: Admit published pins and compare the current derived regression set
+      - name: Admit public release metadata before candidate execution
         env:
           CANDIDATE_SHA: ${{ inputs.openclaw_candidate_sha }}
-        run: python3 scripts/openclaw-ci/openclaw-repin-regression.py --source source --candidate-sha "$CANDIDATE_SHA" --out repin-proof
+          CONTROLLER_SHA: ${{ github.sha }}
+          BUN_RELEASE_METADATA_TOKEN: ${{ github.token }}
+        run: python3 scripts/openclaw-ci/openclaw-repin-regression.py --phase metadata --source source --candidate-sha "$CANDIDATE_SHA" --controller-sha "$CONTROLLER_SHA" --out repin-proof
+      - name: Compare the current derived regression set without credentials
+        env:
+          CANDIDATE_SHA: ${{ inputs.openclaw_candidate_sha }}
+          CONTROLLER_SHA: ${{ github.sha }}
+        run: |
+          controller_home="$RUNNER_TEMP/repin-controller-home"
+          controller_tmp="$RUNNER_TEMP/repin-controller-tmp"
+          install -d -m 0700 "$controller_home" "$controller_tmp"
+          env -i PATH="$PATH" HOME="$controller_home" TMPDIR="$controller_tmp" LANG=en_US.UTF-8 CI=true \
+            python3 scripts/openclaw-ci/openclaw-repin-regression.py --phase execute --source source \
+            --candidate-sha "$CANDIDATE_SHA" --controller-sha "$CONTROLLER_SHA" --out repin-proof
       - name: Check text-only evidence budget
         id: repin-budget
         if: always()
