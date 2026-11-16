@@ -43,21 +43,36 @@ def metadata_fields(encoded):
 
 
 def snippets(code, remaining):
+    namespaces = set(re.findall(r"\b_usingCtx\d*\s*=\s*\(\s*0\s*,\s*(__vite_ssr_import_\d+__)\.default\s*\)\s*\(", code))
     anchors = {
         "function": r"\bfunction appendSessionTurnInWorker\b",
         "prepare-phase": r"persist\.turn\.prepare",
         "completion-phase": r"persist\.turn\.completion",
-        "disposal": r"__using|__dispose|__addDisposableResource|_using_ctx|Symbol\.(?:asyncDispose|dispose)",
+        "disposal": r"__using|__dispose|__addDisposableResource|_using_ctx|Symbol\.(?:asyncDispose|dispose)|\b_usingCtx\d*\.d\s*\(\s*\)",
+        "helper-linkage": r"\b(?:const|let|var)\s+(__vite_ssr_import_\d+__)\s*=",
     }
     rows, counts, clipped = [], {}, False
     lines = code.splitlines()
+    declarations = {i: match[1] for i, line in enumerate(lines)
+                    if (match := re.search(anchors["helper-linkage"], line)) and match[1] in namespaces}
     for label, pattern in anchors.items():
-        hits = [i for i, line in enumerate(lines) if re.search(pattern, line)]
+        hits = list(declarations) if label == "helper-linkage" else [i for i, line in enumerate(lines) if re.search(pattern, line)]
         counts[label] = len(hits)
         chosen = hits[:2] + hits[-2:] if label == "disposal" and len(hits) > 4 else hits[:4]
         clipped |= len(hits) > len(chosen)
         for index in chosen:
             block = "\n".join(lines[max(0, index - 5):index + 9])
+            linkage = {}
+            if label == "helper-linkage":
+                public = re.search(r"\b(?:const|let|var)\s+" + re.escape(declarations[index])
+                    + r'''\s*=\s*await\s+__vite_ssr_import__\(\s*(["'])(@babel/runtime/helpers/(?:esm/)?usingCtx)\1\s*[,)]''', lines[index])
+                linkage = {"declarationSHA256": sha(lines[index].encode()),
+                           "publicModule": public[2] if public else "unresolved"}
+            if any(max(0, index - 5) <= line < index + 9 for line in declarations):
+                # Also redact overlapping excerpts, not just the helper's own anchor.
+                block = re.sub(r'''"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`''',
+                    lambda match: json.dumps(match[0][1:-1]) if match[0][1:-1] in {
+                        "@babel/runtime/helpers/usingCtx", "@babel/runtime/helpers/esm/usingCtx"} else '"<redacted>"', block)
             block = "\n".join(line for line in block.splitlines()
                               if not re.search(r"//[#@]\s*(?:source(?:Mapping)?URL|vitestCache)=", line))
             # Only sanitized excerpts leave the private cell; raw hashes bind the original bytes.
@@ -70,8 +85,12 @@ def snippets(code, remaining):
             clipped |= truncated
             text = encoded[:budget].decode("utf-8", errors="ignore")
             remaining -= len(text.encode("utf-8"))
-            rows.append({"anchor": label, "line": index + 1, "text": text, "truncated": truncated})
-    return {"anchorLineCounts": counts, "excerpts": rows, "excerptsTruncated": clipped}, remaining
+            rows.append({"anchor": label, "line": index + 1, "text": text, "truncated": truncated, **linkage})
+    linkage_complete = (bool(namespaces) and len(declarations) == len(namespaces) <= 4
+                        and set(declarations.values()) == namespaces
+                        and all(row["publicModule"] != "unresolved" for row in rows if row["anchor"] == "helper-linkage"))
+    return {"anchorLineCounts": counts, "excerpts": rows, "excerptsTruncated": clipped,
+            "helperNamespaceCount": len(namespaces), "helperLinkageComplete": linkage_complete}, remaining
 
 
 def capture(source, cache):
@@ -187,7 +206,8 @@ def capture(source, cache):
             for digest in dict.fromkeys(row["codeSHA256"] for row in result["candidates"])]
         result["selectionComplete"] = not gaps and bool(result["candidates"])
         result["complete"] = result["selectionComplete"] and all(
-            not row["excerptsTruncated"] and all(row["anchorLineCounts"].values()) for row in result["candidates"])
+            not row["excerptsTruncated"] and row["helperLinkageComplete"]
+            and all(row["anchorLineCounts"].values()) for row in result["candidates"])
     except Exception:
         result["selectionGaps"] = sorted(set(gaps + [stage + "-unverified"]))
     if len(json.dumps(result, ensure_ascii=False).encode()) > 64 * 1024:
