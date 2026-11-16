@@ -18,6 +18,7 @@ on:
             linux-openclaw-doctor-readiness,
             linux-openclaw-doctor-phases,
             linux-openclaw-doctor-fixture-fix,
+            linux-openclaw-doctor-fixture-phases,
             linux-openclaw-invitation-retention,
             linux-openclaw-invitation-cache-code,
             linux-openclaw-invitation-callback,
@@ -47,7 +48,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: aot-operation-origins-${{ github.ref }}${{ inputs.platform == 'linux-openclaw-bun-only' && '-bun-only' || inputs.platform == 'linux-openclaw-repin' && '-linux-repin' || inputs.platform == 'darwin-openclaw-app-host' && '-app-host' || inputs.platform == 'linux-openclaw-doctor-causes' && '-doctor-causes' || inputs.platform == 'linux-openclaw-doctor-readiness' && '-doctor-readiness' || inputs.platform == 'linux-openclaw-doctor-phases' && '-doctor-phases' || inputs.platform == 'linux-openclaw-doctor-fixture-fix' && '-doctor-fixture-fix' || inputs.platform == 'linux-openclaw-invitation-cache-code' && '-invitation-cache-code' || inputs.platform == 'linux-openclaw-invitation-retention' && '-invitation-retention' || inputs.platform == 'linux-openclaw-invitation-callback' && '-invitation-callback' || inputs.platform == 'linux-openclaw-invitation-snapshot' && '-invitation-snapshot' || inputs.platform == 'linux-openclaw-anchor-fixture-fix' && '-anchor-fixture-fix' || inputs.platform == 'linux-openclaw-anchor-full-context' && '-anchor-full-context' || inputs.platform == 'linux-openclaw-anchor-preparation' && '-anchor-preparation' || inputs.platform == 'linux-openclaw-doctor-continuation' && '-doctor-continuation' || inputs.platform == 'linux-openclaw-profile-layout' && '-profile-layout' || '' }}
+  group: aot-operation-origins-${{ github.ref }}${{ inputs.platform == 'linux-openclaw-bun-only' && '-bun-only' || inputs.platform == 'linux-openclaw-repin' && '-linux-repin' || inputs.platform == 'darwin-openclaw-app-host' && '-app-host' || inputs.platform == 'linux-openclaw-doctor-causes' && '-doctor-causes' || inputs.platform == 'linux-openclaw-doctor-readiness' && '-doctor-readiness' || inputs.platform == 'linux-openclaw-doctor-phases' && '-doctor-phases' || inputs.platform == 'linux-openclaw-doctor-fixture-fix' && '-doctor-fixture-fix' || inputs.platform == 'linux-openclaw-doctor-fixture-phases' && '-doctor-fixture-phases' || inputs.platform == 'linux-openclaw-invitation-cache-code' && '-invitation-cache-code' || inputs.platform == 'linux-openclaw-invitation-retention' && '-invitation-retention' || inputs.platform == 'linux-openclaw-invitation-callback' && '-invitation-callback' || inputs.platform == 'linux-openclaw-invitation-snapshot' && '-invitation-snapshot' || inputs.platform == 'linux-openclaw-anchor-fixture-fix' && '-anchor-fixture-fix' || inputs.platform == 'linux-openclaw-anchor-full-context' && '-anchor-full-context' || inputs.platform == 'linux-openclaw-anchor-preparation' && '-anchor-preparation' || inputs.platform == 'linux-openclaw-doctor-continuation' && '-doctor-continuation' || inputs.platform == 'linux-openclaw-profile-layout' && '-profile-layout' || '' }}
   cancel-in-progress: true
 
 jobs:
@@ -438,7 +439,7 @@ jobs:
           retention-days: 7
 
   openclaw-doctor-readiness:
-    if: inputs.platform == 'linux-openclaw-doctor-readiness' || inputs.platform == 'linux-openclaw-doctor-phases' || inputs.platform == 'linux-openclaw-doctor-fixture-fix'
+    if: inputs.platform == 'linux-openclaw-doctor-readiness' || inputs.platform == 'linux-openclaw-doctor-phases' || inputs.platform == 'linux-openclaw-doctor-fixture-fix' || inputs.platform == 'linux-openclaw-doctor-fixture-phases'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     permissions:
@@ -472,10 +473,12 @@ jobs:
           CONTROLLER_SHA: ${{ github.sha }}
           DOCTOR_PHASES: ${{ inputs.platform == 'linux-openclaw-doctor-phases' }}
           DOCTOR_FIXTURE_FIX: ${{ inputs.platform == 'linux-openclaw-doctor-fixture-fix' }}
+          DOCTOR_FIXTURE_PHASES: ${{ inputs.platform == 'linux-openclaw-doctor-fixture-phases' }}
         run: |
           diagnostic_args=(--doctor-readiness)
           if [ "$DOCTOR_PHASES" = true ]; then diagnostic_args=(--doctor-phases); fi
           if [ "$DOCTOR_FIXTURE_FIX" = true ]; then diagnostic_args=(--doctor-fixture-fix); fi
+          if [ "$DOCTOR_FIXTURE_PHASES" = true ]; then diagnostic_args=(--doctor-fixture-phases); fi
           controller_home="$RUNNER_TEMP/doctor-readiness-controller-home"
           controller_tmp="$RUNNER_TEMP/doctor-readiness-controller-tmp"
           install -d -m 0700 "$controller_home" "$controller_tmp"
