@@ -16,6 +16,7 @@ on:
             darwin-openclaw-app-host,
             linux-openclaw-doctor-causes,
             linux-openclaw-invitation-retention,
+            linux-openclaw-invitation-callback,
           ]
         default: linux-x64
       webkit_source_sha:
@@ -36,10 +37,73 @@ permissions:
   actions: read
 
 concurrency:
-  group: aot-operation-origins-${{ github.ref }}${{ inputs.platform == 'linux-openclaw-bun-only' && '-bun-only' || inputs.platform == 'linux-openclaw-repin' && '-linux-repin' || inputs.platform == 'darwin-openclaw-app-host' && '-app-host' || inputs.platform == 'linux-openclaw-doctor-causes' && '-doctor-causes' || inputs.platform == 'linux-openclaw-invitation-retention' && '-invitation-retention' || '' }}
+  group: aot-operation-origins-${{ github.ref }}${{ inputs.platform == 'linux-openclaw-bun-only' && '-bun-only' || inputs.platform == 'linux-openclaw-repin' && '-linux-repin' || inputs.platform == 'darwin-openclaw-app-host' && '-app-host' || inputs.platform == 'linux-openclaw-doctor-causes' && '-doctor-causes' || inputs.platform == 'linux-openclaw-invitation-retention' && '-invitation-retention' || inputs.platform == 'linux-openclaw-invitation-callback' && '-invitation-callback' || '' }}
   cancel-in-progress: true
 
 jobs:
+  openclaw-invitation-callback:
+    if: inputs.platform == 'linux-openclaw-invitation-callback'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - name: Require the reviewed diagnostic candidate
+        env:
+          CANDIDATE_SHA: ${{ inputs.openclaw_candidate_sha }}
+        run: test "$CANDIDATE_SHA" = 4ea5babab09c338812ae50dbcdaed990f48cd0fc
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: openclaw/openclaw
+          ref: 4ea5babab09c338812ae50dbcdaed990f48cd0fc
+          path: source
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.22.1"
+      - name: Admit source and published Bun before candidate execution
+        env:
+          CONTROLLER_SHA: ${{ github.sha }}
+          BUN_RELEASE_METADATA_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/openclaw-ci/openclaw-repin-regression.py --phase metadata --source source \
+            --candidate-sha 4ea5babab09c338812ae50dbcdaed990f48cd0fc --controller-sha "$CONTROLLER_SHA" --out invitation-callback-proof
+      - name: Run the reviewed callback contrast without credentials
+        env:
+          CONTROLLER_SHA: ${{ github.sha }}
+        run: |
+          controller_home="$RUNNER_TEMP/invitation-callback-controller-home"
+          controller_tmp="$RUNNER_TEMP/invitation-callback-controller-tmp"
+          install -d -m 0700 "$controller_home" "$controller_tmp"
+          env -i PATH="$PATH" HOME="$controller_home" TMPDIR="$controller_tmp" LANG=C.UTF-8 CI=true \
+            python3 scripts/openclaw-ci/openclaw-linux-repin.py --source source --out invitation-callback-proof \
+            --controller-sha "$CONTROLLER_SHA" --group small4 --pin new --invitation-native-callback
+      - name: Check bounded text-only diagnostic evidence
+        id: invitation-callback-budget
+        if: always()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path("invitation-callback-proof")
+          assert (root / "report.json").is_file(), "missing diagnostic receipt"
+          files = list(root.iterdir())
+          assert len(files) <= 20 and all(p.is_file() and not p.is_symlink() and p.suffix in {".json", ".log"} for p in files)
+          assert sum(p.stat().st_size for p in files) <= 64 * 1024 * 1024
+          for p in files:
+              p.read_text(encoding="utf-8")
+          PY
+      - name: Upload only text invitation callback evidence
+        if: ${{ always() && steps.invitation-callback-budget.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: openclaw-invitation-callback-${{ github.sha }}-attempt${{ github.run_attempt }}
+          path: invitation-callback-proof/
+          if-no-files-found: error
+          retention-days: 7
+
   openclaw-invitation-retention:
     if: inputs.platform == 'linux-openclaw-invitation-retention'
     runs-on: ubuntu-24.04

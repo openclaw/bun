@@ -1,6 +1,7 @@
 """Replay reviewed canonical CI groups in independent hosted old/new Bun jobs."""
 
 import argparse
+import difflib
 import hashlib
 import json
 import os
@@ -18,6 +19,8 @@ import time
 CANDIDATE = "4ea5babab09c338812ae50dbcdaed990f48cd0fc"
 GROUPS = ("large10", "large5", "small4", "large2", "large42_storage", "large42_process")
 INVITATION_FILE = "src/config/sessions/session-mention-invitation.test.ts"
+INVITATION_SOURCE_SHA256 = "a3fe4f0f54f7daceaa7ce53e1df5525f067cb5699b0096a6c527e366b24a8cf4"
+INVITATION_CALLBACK_SHA256 = "1775321fae85b26fca81575d9910aa3118e8e67955cd9d1774d8335e3f310fe7"
 INVITATION_CASES = (
     *(f"commits a tag and its invitation together before any Inbox work, without regranting on reopen (first: {first})" for first in ("false", "true")),
     *(f"rolls back the tag, grant and watermark when commit authority changes (first: {first})" for first in ("false", "true")),
@@ -27,6 +30,27 @@ INVITATION_CASES = (
     "releases invitation callbacks and closes admissions after rollback",
 )
 common = runpy.run_path(str(Path(__file__).with_name("openclaw-repin-regression.py")))
+
+
+def invitation_callback_bytes(original):
+    assert hashlib.sha256(original).hexdigest() == INVITATION_SOURCE_SHA256
+    old_import = b'import { setImmediate as nextTurn } from "node:timers/promises";'
+    new_import = b'import { setImmediate as nextTurn } from "node:timers";'
+    old_call = b"      await nextTurn();\n      queryObjects(WeakRef);"
+    new_call = b"""      await new Promise<void>((resolve, reject) => {
+        nextTurn(() => {
+          try {
+            queryObjects(WeakRef);
+            resolve();
+          } catch (error) {
+            reject(error);
+          }
+        });
+      });"""
+    assert original.count(old_import) == original.count(old_call) == 1
+    patched = original.replace(old_import, new_import).replace(old_call, new_call)
+    assert hashlib.sha256(patched).hexdigest() == INVITATION_CALLBACK_SHA256
+    return patched
 
 
 def invitation_observations(log, exit_code):
@@ -82,9 +106,12 @@ def main():
     parser.add_argument("--pin", choices=("old", "new"), required=True)
     parser.add_argument("--doctor-causes", action="store_true")
     parser.add_argument("--invitation-retention", action="store_true")
+    parser.add_argument("--invitation-native-callback", action="store_true")
     args = parser.parse_args()
     assert not args.doctor_causes or (args.group, args.pin) == ("large5", "new")
     assert not args.invitation_retention or (args.group == "small4" and not args.doctor_causes)
+    assert not args.invitation_native_callback or ((args.group, args.pin) == ("small4", "new")
+                                                   and not args.doctor_causes and not args.invitation_retention)
     source, out = args.source.resolve(), args.out.resolve()
     assert out.is_dir(), "metadata admission must finish first"
     root = Path(tempfile.mkdtemp(prefix="openclaw-linux-repin-"))
@@ -95,9 +122,10 @@ def main():
               "pin": args.pin, "status": "INCONCLUSIVE", "settlementUncertain": False,
               "stateDisposition": "retained-for-hosted-runner-teardown", "preparation": [],
               "cacheProfile": "cold-private-caches; original CI cache restore status unknown"}
-    if args.doctor_causes or args.invitation_retention:
+    if args.doctor_causes or args.invitation_retention or args.invitation_native_callback:
         report.update(diagnosticOnly=True, qualifiesRepin=False)
     candidate_bytes = None
+    original_test_bytes = None
     deadline = time.monotonic() + 75 * 60
 
     def save():
@@ -152,7 +180,7 @@ def main():
         group_json = json.dumps([selected["group"]], separators=(",", ":"))
         report.update(payloadSHA256=common["sha"](payload_path), originalPayloadSHA256=payload["originalPayloadSHA256"],
                       groupSHA256=hashlib.sha256(group_json.encode()).hexdigest(), selectedInput=selected)
-        if args.invitation_retention:
+        if args.invitation_retention or args.invitation_native_callback:
             assert len(selected["group"]["includePatterns"]) == 309 and INVITATION_FILE in selected["group"]["includePatterns"]
             effective_group = {**selected["group"], "includePatterns": [INVITATION_FILE]}
             group_json = json.dumps([effective_group], separators=(",", ":"))
@@ -225,6 +253,21 @@ def main():
                                   "sha256": common["sha"](observer)}
             env["OPENCLAW_NODE_TEST_VITEST_ARGS_JSON"] = json.dumps(effective_args)
         report.update(command=selected["nativeArgv"], childEnvironment=env)
+        if args.invitation_native_callback:
+            test_path = source / INVITATION_FILE
+            assert test_path.is_file() and not test_path.is_symlink()
+            original = test_path.read_bytes()
+            patched = invitation_callback_bytes(original)
+            report["testProjection"] = {"path": INVITATION_FILE, "state": "prepared",
+                "originalSHA256": INVITATION_SOURCE_SHA256, "patchedSHA256": INVITATION_CALLBACK_SHA256,
+                "diff": "".join(difflib.unified_diff(original.decode().splitlines(True),
+                    patched.decode().splitlines(True), fromfile="a/" + INVITATION_FILE, tofile="b/" + INVITATION_FILE)),
+                "scope": "one immediate and one GC per retention case; Promise/closure roots and GC/resumption ordering differ; no qualification or leak-cause verdict"}
+            original_test_bytes = original
+            test_path.write_bytes(patched)
+            report["testProjection"]["state"] = "applied"
+            assert common["sha"](test_path) == INVITATION_CALLBACK_SHA256
+            assert git("diff", "HEAD", "--name-only") == INVITATION_FILE, "unexpected tracked source projection"
         remaining = deadline - time.monotonic()
         assert remaining > 0, "controller preparation exhausted the diagnostic budget"
         report["settlementUncertain"] = True
@@ -243,7 +286,7 @@ def main():
         assert completion["invocations"] > 0 and 0 <= completion["failedInvocations"] <= completion["invocations"]
         assert (completion["failedInvocations"] == 0) == (outcome["exitCode"] == 0)
         report.update(nativeCompletion=completion, settlementUncertain=False)
-        if args.invitation_retention:
+        if args.invitation_retention or args.invitation_native_callback:
             report["invitationRetention"].update(invitation_observations(log, outcome["exitCode"]))
             report.update(status="DIAGNOSTIC", diagnosticNativeStatus="PASS" if outcome["exitCode"] == 0 else "FAIL")
         elif args.doctor_causes:
@@ -259,9 +302,21 @@ def main():
     finally:
         if report["settlementUncertain"]:
             report["restoration"] = "not-attempted-indeterminate-settlement"
+            if original_test_bytes is not None:
+                report["testProjection"]["state"] = "retained-indeterminate-settlement"
         elif candidate_bytes is not None:
-            (source / common["PIN"]).write_bytes(candidate_bytes)
-            report["candidatePinRestored"] = (source / common["PIN"]).read_bytes() == candidate_bytes
+            restore_allowed = original_test_bytes is None or (test_path.is_file() and not test_path.is_symlink()
+                              and common["sha"](test_path) == INVITATION_CALLBACK_SHA256)
+            if restore_allowed:
+                if original_test_bytes is not None:
+                    (source / INVITATION_FILE).write_bytes(original_test_bytes)
+                    report["testProjection"].update(state="restored", restoredSHA256=common["sha"](source / INVITATION_FILE))
+                    assert report["testProjection"]["restoredSHA256"] == INVITATION_SOURCE_SHA256
+                (source / common["PIN"]).write_bytes(candidate_bytes)
+                report["candidatePinRestored"] = (source / common["PIN"]).read_bytes() == candidate_bytes
+            else:
+                report["testProjection"]["state"] = "retained-unexpected-test-bytes"
+                report.update(status="INCONCLUSIVE", error="diagnostic test changed unexpectedly; no restoration attempted")
             report["trackedSourceClean"] = not git("status", "--porcelain", "--untracked-files=no")
             if not report["trackedSourceClean"]:
                 report.update(status="INCONCLUSIVE", error="tracked source changed")
