@@ -232,9 +232,14 @@ export function invitationRetainerSnapshot(input: unknown, address: bigint | und
     };
     const rootRows: Array<{ id: number; reason: string; pendingActivity: boolean; ancillary: string }> = [];
     const rootCategories: Record<string, number> = {};
+    const parentCounts = new Map(
+      incoming.map(offset => [edges[offset] as number, { incomingCount: 0, reportedRootCount: 0 }]),
+    );
     for (let offset = 0; offset < roots.length; offset += 3) {
       const id = integer(roots[offset]);
       if (!byId.has(id)) throw new Error();
+      const parent = parentCounts.get(id);
+      if (parent) parent.reportedRootCount++;
       const raw = stringAt(labels, roots[offset + 1]);
       const detail = stringAt(labels, roots[offset + 2]);
       const reason = raw.includes("DOMGCOutput")
@@ -258,7 +263,8 @@ export function invitationRetainerSnapshot(input: unknown, address: bigint | und
     const next = new Map<number, { child: number; edge: number }>();
     const visited = new Set([target]);
     let frontier = new Set([target]),
-      scanned = 0;
+      scanned = 0,
+      parentCountsComplete = false;
     for (let depth = 0; frontier.size; depth++) {
       for (const root of rootRows) {
         if (!frontier.has(root.id)) continue;
@@ -296,6 +302,11 @@ export function invitationRetainerSnapshot(input: unknown, address: bigint | und
         }
         const from = edges[offset] as number,
           to = edges[offset + 1] as number;
+        // Reuse this existing scan; an interrupted first pass yields lower bounds only.
+        if (depth === 0) {
+          const parent = parentCounts.get(to);
+          if (parent) parent.incomingCount++;
+        }
         if (!frontier.has(to) || !byId.has(from) || visited.has(from)) continue;
         if (visited.size === 1024) {
           truncation.push("traversal-node-budget");
@@ -306,11 +317,20 @@ export function invitationRetainerSnapshot(input: unknown, address: bigint | und
         next.set(from, { child: to, edge: offset });
       }
       if (truncation.includes("edge-scan-budget") || truncation.includes("traversal-node-budget")) break;
+      if (depth === 0) parentCountsComplete = true;
       frontier = parents;
     }
     result.target = nodeInfo(target);
     result.incomingCount = incomingCount;
     result.incoming = incoming.map(offset => ({ from: nodeInfo(edges[offset] as number), edge: edgeInfo(offset) }));
+    result.incomingParents = [...parentCounts].map(([id, counts]) => ({
+      ...nodeInfo(id),
+      incomingCount: parentCountsComplete ? counts.incomingCount : null,
+      incomingCountComplete: parentCountsComplete,
+      ...(parentCountsComplete ? {} : { incomingCountLowerBound: counts.incomingCount }),
+      reportedRootCount: counts.reportedRootCount,
+    }));
+    result.reverseSearch = { visitedCount: visited.size, frontierExhausted: frontier.size === 0 };
     result.reportedRootPaths = paths;
     result.allReportedRootCategories = rootCategories;
     result.filtering = "no root category or reported edge excluded by strength; unknown labels remain Other/redacted";
