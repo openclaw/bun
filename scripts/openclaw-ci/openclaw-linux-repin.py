@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import runpy
 import shutil
 import signal
@@ -19,6 +20,22 @@ GROUPS = ("large10", "large5", "small4", "large2", "large42_storage", "large42_p
 common = runpy.run_path(str(Path(__file__).with_name("openclaw-repin-regression.py")))
 
 
+def doctor_observations(log):
+    rows = []
+    for line in log.splitlines():
+        match = re.match(r"^(?:\[shard:[^]]+\] )?\[doctor-causes\] (.*)$", line)
+        if match:
+            assert len(line.encode()) <= 64 * 1024
+            rows.append(json.loads(match[1]))
+    assert rows and all(row["version"] == 1 for row in rows), "observer readiness missing"
+    ready = [row for row in rows if row["kind"] == "ready"]
+    cases = [row for row in rows if row["kind"] == "case"]
+    assert len(ready) == 1 and ready[0]["bun"] and ready[0]["bunRevision"] == common["RELEASES"]["new"][0]
+    assert 1 <= len(cases) <= 2 and len(rows) == 1 + len(cases), "observer missing, incomplete or duplicated"
+    assert all(row["complete"] and row["errors"] for row in cases), "incomplete observer cause tree"
+    return rows
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", type=Path, required=True)
@@ -26,17 +43,21 @@ def main():
     parser.add_argument("--controller-sha", required=True)
     parser.add_argument("--group", choices=GROUPS, required=True)
     parser.add_argument("--pin", choices=("old", "new"), required=True)
+    parser.add_argument("--doctor-causes", action="store_true")
     args = parser.parse_args()
+    assert not args.doctor_causes or (args.group, args.pin) == ("large5", "new")
     source, out = args.source.resolve(), args.out.resolve()
     assert out.is_dir(), "metadata admission must finish first"
     root = Path(tempfile.mkdtemp(prefix="openclaw-linux-repin-"))
     node = Path(shutil.which("node")).resolve()
     env = common["private_env"](root / "control", str(node.parent) + ":/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin")
-    redact = lambda text: text.replace(str(root), "<private-cell>").replace(str(source), "<openclaw-source>")
+    redact = lambda text: text.replace(str(root), "<private-cell>").replace(str(source), "<openclaw-source>").replace(str(Path(__file__).resolve().parents[2]), "<diagnostic-controller>")
     report = {"source": CANDIDATE, "controller": args.controller_sha, "group": args.group,
               "pin": args.pin, "status": "INCONCLUSIVE", "settlementUncertain": False,
               "stateDisposition": "retained-for-hosted-runner-teardown", "preparation": [],
               "cacheProfile": "cold-private-caches; original CI cache restore status unknown"}
+    if args.doctor_causes:
+        report.update(diagnosticOnly=True, qualifiesRepin=False)
     candidate_bytes = None
     deadline = time.monotonic() + 75 * 60
 
@@ -148,6 +169,14 @@ def main():
                    OPENCLAW_VITEST_FS_MODULE_CACHE_ROOT=str(root / "cache/vitest"),
                    NODE_COMPILE_CACHE=str(root / "cache/node"), BUN_RUNTIME_TRANSPILER_CACHE_PATH=str(root / "cache/bun"))
         assert env["OPENCLAW_NODE_TEST_VITEST_ARGS_JSON"] == "[]"
+        if args.doctor_causes:
+            observer = Path(__file__).with_name("doctor-cause-reporter.mjs").resolve()
+            assert observer.is_file() and not observer.is_relative_to(source)
+            effective_args = ["--reporter=verbose", "--reporter=github-actions", "--reporter=" + str(observer)]
+            report["observer"] = {"diagnosticOnly": True, "qualifiesRepin": False,
+                                  "originalVitestArgs": [], "effectiveVitestArgs": effective_args,
+                                  "sha256": common["sha"](observer)}
+            env["OPENCLAW_NODE_TEST_VITEST_ARGS_JSON"] = json.dumps(effective_args)
         report.update(command=selected["nativeArgv"], childEnvironment=env)
         remaining = deadline - time.monotonic()
         assert remaining > 0, "controller preparation exhausted the diagnostic budget"
@@ -166,8 +195,13 @@ def main():
         assert completion["version"] == 1 and completion["planned"] == completion["completed"] == 1
         assert completion["invocations"] > 0 and 0 <= completion["failedInvocations"] <= completion["invocations"]
         assert (completion["failedInvocations"] == 0) == (outcome["exitCode"] == 0)
-        report.update(nativeCompletion=completion, settlementUncertain=False,
-                      status="PASS" if outcome["exitCode"] == 0 else "FAIL")
+        report.update(nativeCompletion=completion, settlementUncertain=False)
+        if args.doctor_causes:
+            report["observer"]["records"] = doctor_observations(log)
+            assert outcome["exitCode"] == 1, "instrumented run did not reproduce a native failure"
+            report["status"] = "DIAGNOSTIC"
+        else:
+            report["status"] = "PASS" if outcome["exitCode"] == 0 else "FAIL"
         raise SystemExit(outcome["exitCode"])
     except Exception as error:
         report["error"] = str(error)
