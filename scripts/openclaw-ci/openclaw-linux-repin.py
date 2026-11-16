@@ -21,6 +21,8 @@ GROUPS = ("large10", "large5", "small4", "large2", "large42_storage", "large42_p
 INVITATION_FILE = "src/config/sessions/session-mention-invitation.test.ts"
 INVITATION_SOURCE_SHA256 = "a3fe4f0f54f7daceaa7ce53e1df5525f067cb5699b0096a6c527e366b24a8cf4"
 INVITATION_CALLBACK_SHA256 = "1775321fae85b26fca81575d9910aa3118e8e67955cd9d1774d8335e3f310fe7"
+INVITATION_SNAPSHOT_PAYLOAD_SHA256 = "93b25e3e5fbf0bdd46f51e795a97f779e5b0e3dc63f5225c35064af6d20b40d0"
+INVITATION_SNAPSHOT_SHA256 = "c62153e11fa7ae7b2c6ae1f07aa7f39fa7e9aa0beca66149f47037dbe893c5b4"
 READINESS_PATCH_SHA256 = "60c3550aa310570c0321c41b8218e7f5ac546b1f08d22ebc7e95ea700c737f60"
 READINESS_FILES = {
     "resource-protocol.ts": ("3f66dcd70bc32b798930d3f11a8e575e0915206bb6ad5c0417a8ccb4975ed5c2", "a2fba54300e08f7a5107ffc0ce2cb2be095bc3553359b4d991ff881c27fa4458"),
@@ -60,6 +62,56 @@ def invitation_callback_bytes(original):
     patched = original.replace(old_import, new_import).replace(old_call, new_call)
     assert hashlib.sha256(patched).hexdigest() == INVITATION_CALLBACK_SHA256
     return patched
+
+
+def invitation_snapshot_bytes(original):
+    assert hashlib.sha256(original).hexdigest() == INVITATION_SOURCE_SHA256
+    payload = Path(__file__).with_name("invitation-retainer-snapshot.ts").read_bytes()
+    assert hashlib.sha256(payload).hexdigest() == INVITATION_SNAPSHOT_PAYLOAD_SHA256
+    assert payload.count(b"export function ") == 3
+    additions = (
+        (b'import { queryObjects } from "node:v8";',
+         b'import { queryObjects } from "node:v8";\nimport { generateHeapSnapshotForDebugging, jscDescribe } from "bun:jsc";'),
+        (b"function fixture() {", payload.replace(b"export function ", b"function ") + b"\nfunction fixture() {"),
+        (b"      async function settle() {", b"      let snapshotAddress: bigint | undefined;\n      async function settle() {"),
+        (b'        const captured = { sentinel: "synthetic invitation callback" };', b'''        const captured = { sentinel: "synthetic invitation callback" };
+        if (outcome === "commit") {
+          try {
+            snapshotAddress = invitationSnapshotAddress(jscDescribe(captured));
+          } catch {
+            // Missing address remains inconclusive; preserve the original assertions.
+          }
+        }'''),
+        (b"      queryObjects(WeakRef);", b'''      queryObjects(WeakRef);
+      if (outcome === "commit") {
+        try {
+          emitInvitationRetainerSnapshot(generateHeapSnapshotForDebugging(), snapshotAddress);
+        } catch {
+          emitInvitationRetainerSnapshot(undefined, snapshotAddress);
+        }
+      }'''),
+    )
+    patched = original
+    for before, after in additions:
+        assert patched.count(before) == 1
+        patched = patched.replace(before, after)
+    assert hashlib.sha256(patched).hexdigest() == INVITATION_SNAPSHOT_SHA256
+    return patched
+
+
+def snapshot_observations(log):
+    rows = []
+    for raw in log.splitlines():
+        line = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", raw)
+        match = re.match(r"^(?:\[shard:[^]]+\] )?\[invitation-snapshot\] (.*)$", line)
+        if match:
+            assert len(line.encode()) <= 64 * 1024, "snapshot text budget exceeded"
+            rows.append(json.loads(match[1]))
+    assert len(rows) == 1, "snapshot evidence missing or duplicated"
+    row = rows[0]
+    assert row["version"] == 1 and row["kind"] == "commit-retainer-snapshot"
+    assert row["diagnosticOnly"] is True and row["qualifiesRepin"] is False
+    return row
 
 
 def invitation_observations(log, exit_code):
@@ -158,7 +210,11 @@ def main():
     parser.add_argument("--doctor-readiness", action="store_true")
     parser.add_argument("--invitation-retention", action="store_true")
     parser.add_argument("--invitation-native-callback", action="store_true")
+    parser.add_argument("--invitation-snapshot", action="store_true")
     args = parser.parse_args()
+    assert not args.invitation_snapshot or ((args.group, args.pin) == ("small4", "new")
+                                           and not any((args.doctor_causes, args.doctor_readiness,
+                                                        args.invitation_retention, args.invitation_native_callback)))
     assert not args.doctor_causes or (args.group, args.pin) == ("large5", "new")
     assert not args.doctor_readiness or ((args.group, args.pin) == ("large5", "new")
                                          and not args.doctor_causes and not args.invitation_retention
@@ -176,7 +232,7 @@ def main():
               "pin": args.pin, "status": "INCONCLUSIVE", "settlementUncertain": False,
               "stateDisposition": "retained-for-hosted-runner-teardown", "preparation": [],
               "cacheProfile": "cold-private-caches; original CI cache restore status unknown"}
-    if args.doctor_causes or args.doctor_readiness or args.invitation_retention or args.invitation_native_callback:
+    if args.doctor_causes or args.doctor_readiness or args.invitation_retention or args.invitation_native_callback or args.invitation_snapshot:
         report.update(diagnosticOnly=True, qualifiesRepin=False)
     candidate_bytes = None
     original_test_bytes = None
@@ -235,7 +291,7 @@ def main():
         group_json = json.dumps([selected["group"]], separators=(",", ":"))
         report.update(payloadSHA256=common["sha"](payload_path), originalPayloadSHA256=payload["originalPayloadSHA256"],
                       groupSHA256=hashlib.sha256(group_json.encode()).hexdigest(), selectedInput=selected)
-        if args.invitation_retention or args.invitation_native_callback:
+        if args.invitation_retention or args.invitation_native_callback or args.invitation_snapshot:
             assert len(selected["group"]["includePatterns"]) == 309 and INVITATION_FILE in selected["group"]["includePatterns"]
             effective_group = {**selected["group"], "includePatterns": [INVITATION_FILE]}
             group_json = json.dumps([effective_group], separators=(",", ":"))
@@ -327,20 +383,24 @@ def main():
             report["readinessProjection"]["state"] = "applied"
             assert all(common["sha"](path) == READINESS_FILES[name][1] for name, path in paths.items())
             assert set(git("diff", "HEAD", "--name-only").splitlines()) == set(report["readinessProjection"]["files"])
-        if args.invitation_native_callback:
+        if args.invitation_native_callback or args.invitation_snapshot:
             test_path = source / INVITATION_FILE
             assert test_path.is_file() and not test_path.is_symlink()
             original = test_path.read_bytes()
-            patched = invitation_callback_bytes(original)
+            patched = invitation_snapshot_bytes(original) if args.invitation_snapshot else invitation_callback_bytes(original)
+            patched_test_sha = INVITATION_SNAPSHOT_SHA256 if args.invitation_snapshot else INVITATION_CALLBACK_SHA256
             report["testProjection"] = {"path": INVITATION_FILE, "state": "prepared",
-                "originalSHA256": INVITATION_SOURCE_SHA256, "patchedSHA256": INVITATION_CALLBACK_SHA256,
+                "originalSHA256": INVITATION_SOURCE_SHA256, "patchedSHA256": patched_test_sha,
                 "diff": "".join(difflib.unified_diff(original.decode().splitlines(True),
                     patched.decode().splitlines(True), fromfile="a/" + INVITATION_FILE, tofile="b/" + INVITATION_FILE)),
                 "scope": "one immediate and one GC per retention case; Promise/closure roots and GC/resumption ordering differ; no qualification or leak-cause verdict"}
+            if args.invitation_snapshot:
+                report["testProjection"].update(payloadSHA256=INVITATION_SNAPSHOT_PAYLOAD_SHA256,
+                    scope="commit-only address capture and one synchronous debug snapshot after original timer/queryObjects; extra full GC and allocation/root/layout perturbation; reported structure only, no strong-retainer, scanner, leak-cause or qualification verdict")
             original_test_bytes = original
             test_path.write_bytes(patched)
             report["testProjection"]["state"] = "applied"
-            assert common["sha"](test_path) == INVITATION_CALLBACK_SHA256
+            assert common["sha"](test_path) == patched_test_sha
             assert git("diff", "HEAD", "--name-only") == INVITATION_FILE, "unexpected tracked source projection"
         remaining = deadline - time.monotonic()
         assert remaining > 0, "controller preparation exhausted the diagnostic budget"
@@ -360,9 +420,13 @@ def main():
         assert completion["invocations"] > 0 and 0 <= completion["failedInvocations"] <= completion["invocations"]
         assert (completion["failedInvocations"] == 0) == (outcome["exitCode"] == 0)
         report.update(nativeCompletion=completion, settlementUncertain=False)
-        if args.invitation_retention or args.invitation_native_callback:
+        if args.invitation_retention or args.invitation_native_callback or args.invitation_snapshot:
             report["invitationRetention"].update(invitation_observations(log, outcome["exitCode"]))
-            report.update(status="DIAGNOSTIC", diagnosticNativeStatus="PASS" if outcome["exitCode"] == 0 else "FAIL")
+            report["diagnosticNativeStatus"] = "PASS" if outcome["exitCode"] == 0 else "FAIL"
+            if args.invitation_snapshot:
+                report["snapshot"] = snapshot_observations(log)
+                assert report["snapshot"]["complete"] is True, "snapshot identity or reported structure incomplete; no absence inference"
+            report["status"] = "DIAGNOSTIC"
         elif args.doctor_causes or args.doctor_readiness:
             report["observer"]["records"] = doctor_observations(log)
             if args.doctor_readiness:
@@ -385,7 +449,7 @@ def main():
                 report["readinessProjection"]["state"] = "retained-indeterminate-settlement"
         elif candidate_bytes is not None:
             restore_allowed = original_test_bytes is None or (test_path.is_file() and not test_path.is_symlink()
-                              and common["sha"](test_path) == INVITATION_CALLBACK_SHA256)
+                              and common["sha"](test_path) == patched_test_sha)
             if readiness_originals is not None:
                 restore_allowed = all(path.is_file() and not path.is_symlink() and common["sha"](path) == READINESS_FILES[name][1]
                                       for name, path in paths.items())
