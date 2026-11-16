@@ -24,6 +24,7 @@ on:
             linux-openclaw-anchor-full-context,
             linux-openclaw-anchor-fixture-fix,
             linux-openclaw-doctor-continuation,
+            linux-openclaw-profile-layout,
           ]
         default: linux-x64
       webkit_source_sha:
@@ -44,10 +45,61 @@ permissions:
   actions: read
 
 concurrency:
-  group: aot-operation-origins-${{ github.ref }}${{ inputs.platform == 'linux-openclaw-bun-only' && '-bun-only' || inputs.platform == 'linux-openclaw-repin' && '-linux-repin' || inputs.platform == 'darwin-openclaw-app-host' && '-app-host' || inputs.platform == 'linux-openclaw-doctor-causes' && '-doctor-causes' || inputs.platform == 'linux-openclaw-doctor-readiness' && '-doctor-readiness' || inputs.platform == 'linux-openclaw-invitation-cache-code' && '-invitation-cache-code' || inputs.platform == 'linux-openclaw-invitation-retention' && '-invitation-retention' || inputs.platform == 'linux-openclaw-invitation-callback' && '-invitation-callback' || inputs.platform == 'linux-openclaw-invitation-snapshot' && '-invitation-snapshot' || inputs.platform == 'linux-openclaw-anchor-fixture-fix' && '-anchor-fixture-fix' || inputs.platform == 'linux-openclaw-anchor-full-context' && '-anchor-full-context' || inputs.platform == 'linux-openclaw-anchor-preparation' && '-anchor-preparation' || inputs.platform == 'linux-openclaw-doctor-continuation' && '-doctor-continuation' || '' }}
+  group: aot-operation-origins-${{ github.ref }}${{ inputs.platform == 'linux-openclaw-bun-only' && '-bun-only' || inputs.platform == 'linux-openclaw-repin' && '-linux-repin' || inputs.platform == 'darwin-openclaw-app-host' && '-app-host' || inputs.platform == 'linux-openclaw-doctor-causes' && '-doctor-causes' || inputs.platform == 'linux-openclaw-doctor-readiness' && '-doctor-readiness' || inputs.platform == 'linux-openclaw-invitation-cache-code' && '-invitation-cache-code' || inputs.platform == 'linux-openclaw-invitation-retention' && '-invitation-retention' || inputs.platform == 'linux-openclaw-invitation-callback' && '-invitation-callback' || inputs.platform == 'linux-openclaw-invitation-snapshot' && '-invitation-snapshot' || inputs.platform == 'linux-openclaw-anchor-fixture-fix' && '-anchor-fixture-fix' || inputs.platform == 'linux-openclaw-anchor-full-context' && '-anchor-full-context' || inputs.platform == 'linux-openclaw-anchor-preparation' && '-anchor-preparation' || inputs.platform == 'linux-openclaw-doctor-continuation' && '-doctor-continuation' || inputs.platform == 'linux-openclaw-profile-layout' && '-profile-layout' || '' }}
   cancel-in-progress: true
 
 jobs:
+  openclaw-profile-layout:
+    if: inputs.platform == 'linux-openclaw-profile-layout'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Admit the exact published profile metadata
+        env:
+          CONTROLLER_SHA: ${{ github.sha }}
+          BUN_RELEASE_METADATA_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/openclaw-ci/profile-layout.py --phase metadata \
+            --controller-sha "$CONTROLLER_SHA" --out profile-layout-proof
+      - name: Inspect profile metadata without credentials or binary execution
+        env:
+          CONTROLLER_SHA: ${{ github.sha }}
+        run: |
+          controller_home="$RUNNER_TEMP/profile-layout-home"
+          controller_tmp="$RUNNER_TEMP/profile-layout-tmp"
+          install -d -m 0700 "$controller_home" "$controller_tmp"
+          env -i PATH="$PATH" HOME="$controller_home" TMPDIR="$controller_tmp" LANG=C CI=true \
+            python3 scripts/openclaw-ci/profile-layout.py --phase inspect \
+            --controller-sha "$CONTROLLER_SHA" --out profile-layout-proof
+      - name: Check bounded structural-only evidence
+        id: profile-layout-budget
+        if: always()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path("profile-layout-proof")
+          files = list(root.iterdir())
+          assert (root / "report.json").is_file()
+          assert {p.name for p in files} <= {"report.json", "metadata.json"}
+          assert all(p.is_file() and not p.is_symlink() for p in files)
+          assert sum(p.stat().st_size for p in files) <= 64 * 1024
+          for p in files:
+              p.read_text(encoding="utf-8")
+          PY
+      - name: Upload only structural profile evidence
+        if: ${{ always() && steps.profile-layout-budget.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: openclaw-profile-layout-${{ github.sha }}-attempt${{ github.run_attempt }}
+          path: profile-layout-proof/
+          if-no-files-found: error
+          retention-days: 7
+
   openclaw-doctor-continuation:
     if: inputs.platform == 'linux-openclaw-doctor-continuation'
     runs-on: ubuntu-24.04
