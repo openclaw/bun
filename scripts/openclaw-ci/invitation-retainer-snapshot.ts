@@ -262,9 +262,12 @@ export function invitationRetainerSnapshot(input: unknown, address: bigint | und
     const paths: Array<Record<string, unknown>> = [];
     const next = new Map<number, { child: number; edge: number }>();
     const visited = new Set([target]);
+    const graphNodes = new Set([target]);
+    const graphEdges: number[] = [];
     let frontier = new Set([target]),
       scanned = 0,
-      parentCountsComplete = false;
+      parentCountsComplete = false,
+      graphCapped = false;
     for (let depth = 0; frontier.size; depth++) {
       for (const root of rootRows) {
         if (!frontier.has(root.id)) continue;
@@ -307,7 +310,20 @@ export function invitationRetainerSnapshot(input: unknown, address: bigint | und
           const parent = parentCounts.get(to);
           if (parent) parent.incomingCount++;
         }
-        if (!frontier.has(to) || !byId.has(from) || visited.has(from)) continue;
+        if (!frontier.has(to)) continue;
+        // Capture before visited filtering so cycles and duplicate records remain visible.
+        if (!graphCapped) {
+          const addedNodes = Number(!graphNodes.has(from)) + Number(from !== to && !graphNodes.has(to));
+          if (graphEdges.length === 128 || graphNodes.size + addedNodes > 32) {
+            graphCapped = true;
+            truncation.push(graphEdges.length === 128 ? "reverse-graph-edge-limit" : "reverse-graph-node-limit");
+          } else {
+            graphNodes.add(from);
+            graphNodes.add(to);
+            graphEdges.push(offset);
+          }
+        }
+        if (!byId.has(from) || visited.has(from)) continue;
         if (visited.size === 1024) {
           truncation.push("traversal-node-budget");
           break;
@@ -331,6 +347,18 @@ export function invitationRetainerSnapshot(input: unknown, address: bigint | und
       reportedRootCount: counts.reportedRootCount,
     }));
     result.reverseSearch = { visitedCount: visited.size, frontierExhausted: frontier.size === 0 };
+    result.recordedReverseGraph = {
+      completeRecordedReverseGraph: frontier.size === 0 && !graphCapped && !unrepresentedZeroSources,
+      capturedNodeCount: graphNodes.size,
+      capturedEdgeCount: graphEdges.length,
+      captureCapped: graphCapped,
+      nodes: [...graphNodes].map(nodeInfo),
+      edges: graphEdges.map(offset => ({
+        from: localIds.get(edges[offset] as number)!,
+        to: localIds.get(edges[offset + 1] as number)!,
+        edge: edgeInfo(offset),
+      })),
+    };
     result.reportedRootPaths = paths;
     result.allReportedRootCategories = rootCategories;
     result.filtering = "no root category or reported edge excluded by strength; unknown labels remain Other/redacted";
