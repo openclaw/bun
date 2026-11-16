@@ -17,7 +17,44 @@ import time
 
 CANDIDATE = "4ea5babab09c338812ae50dbcdaed990f48cd0fc"
 GROUPS = ("large10", "large5", "small4", "large2", "large42_storage", "large42_process")
+INVITATION_FILE = "src/config/sessions/session-mention-invitation.test.ts"
+INVITATION_CASES = (
+    *(f"commits a tag and its invitation together before any Inbox work, without regranting on reopen (first: {first})" for first in ("false", "true")),
+    *(f"rolls back the tag, grant and watermark when commit authority changes (first: {first})" for first in ("false", "true")),
+    "keeps each first-session message's own watermark when invitations are deferred until session creation",
+    "does not grant access when a message hook removes the selected token",
+    "releases invitation callbacks and closes admissions after commit",
+    "releases invitation callbacks and closes admissions after rollback",
+)
 common = runpy.run_path(str(Path(__file__).with_name("openclaw-repin-regression.py")))
+
+
+def invitation_observations(log, exit_code):
+    rows, summaries = [], []
+    prefix = "[shard:bun:core-runtime-config-hosted-3]"
+    for raw in log.splitlines():
+        line = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", raw)
+        if not line.startswith(prefix):
+            continue
+        body = line[len(prefix):].strip()
+        if body.startswith(("Test Files ", "Tests ")):
+            summaries.append(body)
+        if not re.search(r"\|[^|]+\|.* >(?: |$)", body):
+            continue
+        match = re.fullmatch(r"(.*?)\|([^|]+)\|\s+(.+?) > (.+?)(?: \d+(?:\.\d+)?ms)?", body)
+        assert match, "malformed diagnostic case row"
+        assert match[2] == "runtime-config" and match[3] == INVITATION_FILE, "unexpected diagnostic file"
+        assert match[4] in INVITATION_CASES, "unexpected diagnostic case"
+        marker = match[1].strip()
+        if marker == "FAIL":
+            continue  # Native failure summaries repeat the primary case result.
+        assert marker in {"✓", "√", "×", "↓"}, "unsupported diagnostic case status"
+        rows.append({"file": match[3], "fullName": match[4],
+                     "status": {"✓": "passed", "√": "passed", "×": "failed", "↓": "skipped"}[marker]})
+    assert len(rows) == 8 and {row["fullName"] for row in rows} == set(INVITATION_CASES), "incomplete or duplicate diagnostic cases"
+    assert all(row["status"] in {"passed", "failed"} for row in rows), "diagnostic case skipped"
+    assert exit_code != 0 or all(row["status"] == "passed" for row in rows), "successful exit contradicts failed case"
+    return {"cases": rows, "nativeSummaries": summaries}
 
 
 def doctor_observations(log):
@@ -44,8 +81,10 @@ def main():
     parser.add_argument("--group", choices=GROUPS, required=True)
     parser.add_argument("--pin", choices=("old", "new"), required=True)
     parser.add_argument("--doctor-causes", action="store_true")
+    parser.add_argument("--invitation-retention", action="store_true")
     args = parser.parse_args()
     assert not args.doctor_causes or (args.group, args.pin) == ("large5", "new")
+    assert not args.invitation_retention or (args.group == "small4" and not args.doctor_causes)
     source, out = args.source.resolve(), args.out.resolve()
     assert out.is_dir(), "metadata admission must finish first"
     root = Path(tempfile.mkdtemp(prefix="openclaw-linux-repin-"))
@@ -56,7 +95,7 @@ def main():
               "pin": args.pin, "status": "INCONCLUSIVE", "settlementUncertain": False,
               "stateDisposition": "retained-for-hosted-runner-teardown", "preparation": [],
               "cacheProfile": "cold-private-caches; original CI cache restore status unknown"}
-    if args.doctor_causes:
+    if args.doctor_causes or args.invitation_retention:
         report.update(diagnosticOnly=True, qualifiesRepin=False)
     candidate_bytes = None
     deadline = time.monotonic() + 75 * 60
@@ -113,6 +152,14 @@ def main():
         group_json = json.dumps([selected["group"]], separators=(",", ":"))
         report.update(payloadSHA256=common["sha"](payload_path), originalPayloadSHA256=payload["originalPayloadSHA256"],
                       groupSHA256=hashlib.sha256(group_json.encode()).hexdigest(), selectedInput=selected)
+        if args.invitation_retention:
+            assert len(selected["group"]["includePatterns"]) == 309 and INVITATION_FILE in selected["group"]["includePatterns"]
+            effective_group = {**selected["group"], "includePatterns": [INVITATION_FILE]}
+            group_json = json.dumps([effective_group], separators=(",", ":"))
+            report["invitationRetention"] = {"originalGroupSHA256": report["groupSHA256"],
+                "effectiveGroup": effective_group, "effectiveGroupSHA256": hashlib.sha256(group_json.encode()).hexdigest(),
+                "expectedCases": INVITATION_CASES,
+                "scope": "standalone file; a pass does not explain or waive the original 309-file failure"}
         pin_path.write_bytes(old_bytes if args.pin == "old" else candidate_bytes)
         report["activePin"] = args.pin
         checked(["/bin/bash", "scripts/stage-openclaw-bun.sh", str(root / "runtime"), "linux", "x64"],
@@ -196,7 +243,10 @@ def main():
         assert completion["invocations"] > 0 and 0 <= completion["failedInvocations"] <= completion["invocations"]
         assert (completion["failedInvocations"] == 0) == (outcome["exitCode"] == 0)
         report.update(nativeCompletion=completion, settlementUncertain=False)
-        if args.doctor_causes:
+        if args.invitation_retention:
+            report["invitationRetention"].update(invitation_observations(log, outcome["exitCode"]))
+            report.update(status="DIAGNOSTIC", diagnosticNativeStatus="PASS" if outcome["exitCode"] == 0 else "FAIL")
+        elif args.doctor_causes:
             report["observer"]["records"] = doctor_observations(log)
             assert outcome["exitCode"] == 1, "instrumented run did not reproduce a native failure"
             report["status"] = "DIAGNOSTIC"
