@@ -22,6 +22,7 @@ on:
             linux-openclaw-invitation-snapshot,
             linux-openclaw-anchor-preparation,
             linux-openclaw-anchor-full-context,
+            linux-openclaw-anchor-fixture-fix,
             linux-openclaw-doctor-continuation,
           ]
         default: linux-x64
@@ -43,7 +44,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: aot-operation-origins-${{ github.ref }}${{ inputs.platform == 'linux-openclaw-bun-only' && '-bun-only' || inputs.platform == 'linux-openclaw-repin' && '-linux-repin' || inputs.platform == 'darwin-openclaw-app-host' && '-app-host' || inputs.platform == 'linux-openclaw-doctor-causes' && '-doctor-causes' || inputs.platform == 'linux-openclaw-doctor-readiness' && '-doctor-readiness' || inputs.platform == 'linux-openclaw-invitation-cache-code' && '-invitation-cache-code' || inputs.platform == 'linux-openclaw-invitation-retention' && '-invitation-retention' || inputs.platform == 'linux-openclaw-invitation-callback' && '-invitation-callback' || inputs.platform == 'linux-openclaw-invitation-snapshot' && '-invitation-snapshot' || inputs.platform == 'linux-openclaw-anchor-full-context' && '-anchor-full-context' || inputs.platform == 'linux-openclaw-anchor-preparation' && '-anchor-preparation' || inputs.platform == 'linux-openclaw-doctor-continuation' && '-doctor-continuation' || '' }}
+  group: aot-operation-origins-${{ github.ref }}${{ inputs.platform == 'linux-openclaw-bun-only' && '-bun-only' || inputs.platform == 'linux-openclaw-repin' && '-linux-repin' || inputs.platform == 'darwin-openclaw-app-host' && '-app-host' || inputs.platform == 'linux-openclaw-doctor-causes' && '-doctor-causes' || inputs.platform == 'linux-openclaw-doctor-readiness' && '-doctor-readiness' || inputs.platform == 'linux-openclaw-invitation-cache-code' && '-invitation-cache-code' || inputs.platform == 'linux-openclaw-invitation-retention' && '-invitation-retention' || inputs.platform == 'linux-openclaw-invitation-callback' && '-invitation-callback' || inputs.platform == 'linux-openclaw-invitation-snapshot' && '-invitation-snapshot' || inputs.platform == 'linux-openclaw-anchor-fixture-fix' && '-anchor-fixture-fix' || inputs.platform == 'linux-openclaw-anchor-full-context' && '-anchor-full-context' || inputs.platform == 'linux-openclaw-anchor-preparation' && '-anchor-preparation' || inputs.platform == 'linux-openclaw-doctor-continuation' && '-doctor-continuation' || '' }}
   cancel-in-progress: true
 
 jobs:
@@ -117,7 +118,7 @@ jobs:
           retention-days: 7
 
   openclaw-anchor-preparation:
-    if: inputs.platform == 'linux-openclaw-anchor-preparation' || inputs.platform == 'linux-openclaw-anchor-full-context'
+    if: inputs.platform == 'linux-openclaw-anchor-preparation' || inputs.platform == 'linux-openclaw-anchor-full-context' || inputs.platform == 'linux-openclaw-anchor-fixture-fix'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     permissions:
@@ -146,19 +147,21 @@ jobs:
         run: |
           python3 scripts/openclaw-ci/openclaw-repin-regression.py --phase metadata --source source \
             --candidate-sha 4ea5babab09c338812ae50dbcdaed990f48cd0fc --controller-sha "$CONTROLLER_SHA" --out anchor-preparation-proof
-      - name: Observe the existing POSIX preparation awaits without credentials
+      - name: Run the selected POSIX preparation diagnostic without credentials
         env:
           CONTROLLER_SHA: ${{ github.sha }}
           ANCHOR_FULL_CONTEXT: ${{ inputs.platform == 'linux-openclaw-anchor-full-context' }}
+          ANCHOR_FIXTURE_FIX: ${{ inputs.platform == 'linux-openclaw-anchor-fixture-fix' }}
         run: |
-          context_args=()
+          context_args=(--anchor-preparation)
           if [ "$ANCHOR_FULL_CONTEXT" = true ]; then context_args+=(--anchor-full-context); fi
+          if [ "$ANCHOR_FIXTURE_FIX" = true ]; then context_args=(--anchor-fixture-fix); fi
           controller_home="$RUNNER_TEMP/anchor-preparation-controller-home"
           controller_tmp="$RUNNER_TEMP/anchor-preparation-controller-tmp"
           install -d -m 0700 "$controller_home" "$controller_tmp"
           env -i PATH="$PATH" HOME="$controller_home" TMPDIR="$controller_tmp" LANG=C.UTF-8 CI=true \
             python3 scripts/openclaw-ci/openclaw-linux-repin.py --source source --out anchor-preparation-proof \
-            --controller-sha "$CONTROLLER_SHA" --group large42_process --pin new --anchor-preparation "${context_args[@]}"
+            --controller-sha "$CONTROLLER_SHA" --group large42_process --pin new "${context_args[@]}"
       - name: Check bounded text-only diagnostic evidence
         id: anchor-preparation-budget
         if: always()

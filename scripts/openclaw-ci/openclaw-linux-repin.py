@@ -28,6 +28,10 @@ ANCHOR_FILES = {
     ANCHOR_FILE: ("c06787c77d9ff318112146538be08dea0e24d79ac473f7211278bfe5fa31ed66", "a787c516c259e84dc9fcb148fee0f30dd5e2812dd4c589c23257ed3d02c21bd4"),
     "src/process/supervisor/service-child-group-anchor.preparation.test-support.ts": ("0f17b08a5b9fd79cd3be8129f251ce48544c5c6448db6542b5ef445b0fb49538", "27d71cd9f4f539541582f3b6d8f978b6ffeab2996d6e1bba619fa192673f2c52"),
 }
+ANCHOR_FIX_COMMIT = "bbebe49faffb1adb286e53a977d078df91951a9d"
+ANCHOR_FIX_FILE = "src/process/supervisor/service-child-group-anchor.preparation.test-support.ts"
+ANCHOR_FIX_PATCH_SHA256 = "b77fd5687c6c58867bdc58786cccd584aefeb8101d2b0b9e7da65f6b0b7a5f2e"
+ANCHOR_FIX_SHA256 = "288e3370a48cd5911e3f2bca77c07cc2eeaf225422414e008c23a0049beae485"
 ANCHOR_CASES = {
     "prepare": "POSIX anchor preparation > prepares before spawning once with the accepted identity despite a duplicate start",
     **{"authority:" + key: "POSIX anchor preparation > keeps " + action + " authoritative when preparation resumes before startup-error acknowledgement"
@@ -321,8 +325,13 @@ def main():
     parser.add_argument("--invitation-snapshot", action="store_true")
     parser.add_argument("--anchor-preparation", action="store_true")
     parser.add_argument("--anchor-full-context", action="store_true")
+    parser.add_argument("--anchor-fixture-fix", action="store_true")
     parser.add_argument("--doctor-continuation", action="store_true")
     args = parser.parse_args()
+    assert not args.anchor_fixture_fix or ((args.group, args.pin) == ("large42_process", "new")
+        and not any((args.anchor_preparation, args.anchor_full_context, args.doctor_causes,
+                     args.doctor_readiness, args.doctor_continuation, args.invitation_retention,
+                     args.invitation_cache_code, args.invitation_native_callback, args.invitation_snapshot)))
     assert not args.invitation_cache_code or (args.invitation_retention and args.pin == "new")
     assert not args.anchor_full_context or args.anchor_preparation
     assert not args.doctor_continuation or (args.group == "large5" and not any((
@@ -351,12 +360,13 @@ def main():
               "pin": args.pin, "status": "INCONCLUSIVE", "settlementUncertain": False,
               "stateDisposition": "retained-for-hosted-runner-teardown", "preparation": [],
               "cacheProfile": "cold-private-caches; original CI cache restore status unknown"}
-    if args.doctor_causes or args.doctor_readiness or args.invitation_retention or args.invitation_native_callback or args.invitation_snapshot or args.anchor_preparation or args.doctor_continuation:
+    if args.doctor_causes or args.doctor_readiness or args.invitation_retention or args.invitation_native_callback or args.invitation_snapshot or args.anchor_preparation or args.doctor_continuation or args.anchor_fixture_fix:
         report.update(diagnosticOnly=True, qualifiesRepin=False)
     candidate_bytes = None
     original_test_bytes = None
     readiness_originals = None
     anchor_originals = None
+    fixture_original = None
     deadline = time.monotonic() + 75 * 60
 
     def save():
@@ -411,6 +421,11 @@ def main():
         group_json = json.dumps([selected["group"]], separators=(",", ":"))
         report.update(payloadSHA256=common["sha"](payload_path), originalPayloadSHA256=payload["originalPayloadSHA256"],
                       groupSHA256=hashlib.sha256(group_json.encode()).hexdigest(), selectedInput=selected)
+        if args.anchor_fixture_fix:
+            assert report["groupSHA256"] == ANCHOR_GROUP_SHA256
+            report["anchorFix"] = {"originalGroupSHA256": report["groupSHA256"],
+                "effectiveGroupSHA256": report["groupSHA256"], "expectedCases": ANCHOR_CASES,
+                "scope": "C plus one reviewed fixture fix, original 168-pattern group; native exit and all cases remain authoritative; not unchanged-C qualification"}
         if args.invitation_retention or args.invitation_native_callback or args.invitation_snapshot:
             assert len(selected["group"]["includePatterns"]) == 309 and INVITATION_FILE in selected["group"]["includePatterns"]
             effective_group = {**selected["group"], "includePatterns": [INVITATION_FILE]}
@@ -503,6 +518,26 @@ def main():
                                   "sha256": common["sha"](observer)}
             env["OPENCLAW_NODE_TEST_VITEST_ARGS_JSON"] = json.dumps(effective_args)
         report.update(command=selected["nativeArgv"], childEnvironment=env)
+        if args.anchor_fixture_fix:
+            patch = Path(__file__).with_name("anchor-preparation-fixture-fix.patch").resolve()
+            fixture_path, anchor_test = source / ANCHOR_FIX_FILE, source / ANCHOR_FILE
+            assert common["sha"](patch) == ANCHOR_FIX_PATCH_SHA256
+            assert fixture_path.is_file() and not fixture_path.is_symlink()
+            assert common["sha"](fixture_path) == ANCHOR_FILES[ANCHOR_FIX_FILE][0]
+            assert anchor_test.is_file() and not anchor_test.is_symlink()
+            assert common["sha"](anchor_test) == ANCHOR_FILES[ANCHOR_FILE][0]
+            assert not git("diff", "HEAD", "--name-only")
+            git("apply", "--check", str(patch))
+            fixture_original = fixture_path.read_bytes()
+            report["fixtureProjection"] = {"state": "prepared", "sourceCommit": ANCHOR_FIX_COMMIT,
+                "path": ANCHOR_FIX_FILE, "patchSHA256": ANCHOR_FIX_PATCH_SHA256,
+                "originalSHA256": ANCHOR_FILES[ANCHOR_FIX_FILE][0], "patchedSHA256": ANCHOR_FIX_SHA256,
+                "unchangedTestSHA256": ANCHOR_FILES[ANCHOR_FILE][0]}
+            save()
+            git("apply", "--whitespace=nowarn", str(patch))
+            report["fixtureProjection"]["state"] = "applied"
+            assert common["sha"](fixture_path) == ANCHOR_FIX_SHA256
+            assert git("diff", "HEAD", "--name-only") == ANCHOR_FIX_FILE
         if args.doctor_readiness:
             patch = Path(__file__).with_name("doctor-readiness.patch").resolve()
             assert common["sha"](patch) == READINESS_PATCH_SHA256
@@ -577,7 +612,12 @@ def main():
         assert completion["invocations"] > 0 and 0 <= completion["failedInvocations"] <= completion["invocations"]
         assert (completion["failedInvocations"] == 0) == (outcome["exitCode"] == 0)
         report.update(nativeCompletion=completion, settlementUncertain=False)
-        if args.doctor_continuation:
+        if args.anchor_fixture_fix:
+            report["diagnosticNativeStatus"] = "PASS" if outcome["exitCode"] == 0 else "FAIL"
+            observations = anchor_observations(log, outcome["exitCode"], full_context=True)
+            report["anchorFix"].update({key: observations[key] for key in ("cases", "nativeSummaries")})
+            report["status"] = "DIAGNOSTIC"
+        elif args.doctor_continuation:
             report["doctorContinuation"].update(doctor_continuation_observations(log, outcome["exitCode"]))
             report["diagnosticNativeStatus"] = "PASS" if outcome["exitCode"] == 0 else "FAIL"
             report["status"] = "DIAGNOSTIC"
@@ -620,9 +660,23 @@ def main():
                 report["readinessProjection"]["state"] = "retained-indeterminate-settlement"
             if anchor_originals is not None:
                 report["anchorProjection"]["state"] = "retained-indeterminate-settlement"
+            if fixture_original is not None:
+                report["fixtureProjection"]["state"] = "retained-indeterminate-settlement"
         elif candidate_bytes is not None:
             restore_allowed = original_test_bytes is None or (test_path.is_file() and not test_path.is_symlink()
                               and common["sha"](test_path) == patched_test_sha)
+            if fixture_original is not None:
+                restore_allowed = (fixture_path.is_file() and not fixture_path.is_symlink()
+                    and common["sha"](fixture_path) == ANCHOR_FIX_SHA256
+                    and anchor_test.is_file() and not anchor_test.is_symlink()
+                    and common["sha"](anchor_test) == ANCHOR_FILES[ANCHOR_FILE][0]
+                    and git("diff", "HEAD", "--name-only") == ANCHOR_FIX_FILE)
+                if restore_allowed:
+                    fixture_path.write_bytes(fixture_original)
+                    report["fixtureProjection"].update(state="restored", restoredSHA256=common["sha"](fixture_path))
+                    assert report["fixtureProjection"]["restoredSHA256"] == ANCHOR_FILES[ANCHOR_FIX_FILE][0]
+                else:
+                    report["fixtureProjection"]["state"] = "retained-unexpected-source-bytes"
             if readiness_originals is not None:
                 restore_allowed = all(path.is_file() and not path.is_symlink() and common["sha"](path) == READINESS_FILES[name][1]
                                       for name, path in paths.items())
