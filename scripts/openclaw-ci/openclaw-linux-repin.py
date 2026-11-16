@@ -18,6 +18,20 @@ import time
 
 CANDIDATE = "4ea5babab09c338812ae50dbcdaed990f48cd0fc"
 GROUPS = ("large10", "large5", "small4", "large2", "large42_storage", "large42_process")
+ANCHOR_FILE = "src/process/supervisor/service-child-group-anchor.preparation.test.ts"
+ANCHOR_PATCH_SHA256 = "163c821c27cc2f3b06897b760c41661e86b8b26b6ff8be5b9df99c85afd379bc"
+ANCHOR_FILES = {
+    ANCHOR_FILE: ("c06787c77d9ff318112146538be08dea0e24d79ac473f7211278bfe5fa31ed66", "a787c516c259e84dc9fcb148fee0f30dd5e2812dd4c589c23257ed3d02c21bd4"),
+    "src/process/supervisor/service-child-group-anchor.preparation.test-support.ts": ("0f17b08a5b9fd79cd3be8129f251ce48544c5c6448db6542b5ef445b0fb49538", "3244ec4274485413b249ba6ee56517f7008c5c9ec468adb1b82dd22d6cc069a3"),
+}
+ANCHOR_CASES = {
+    "prepare": "POSIX anchor preparation > prepares before spawning once with the accepted identity despite a duplicate start",
+    **{"authority:" + key: "POSIX anchor preparation > keeps " + action + " authoritative when preparation resumes before startup-error acknowledgement"
+       for key, action in (("cancel-term", "cancel TERM"), ("cancel-kill", "cancel KILL"), ("worker-close", "worker-close"), ("sigterm", "SIGTERM"))},
+    **{f"retire:{key}:{cancelled}": f"POSIX anchor preparation > joins preparation retirement after {action} (cancelled={str(bool(cancelled)).lower()})"
+       for key, action, cancelled in (("control-eof", "control EOF", 0), ("ipc-disconnect", "IPC disconnect", 0),
+                                      ("parent-loss", "parent-loss", 0), ("control-eof", "control EOF", 1), ("ipc-disconnect", "IPC disconnect", 1))},
+}
 INVITATION_FILE = "src/config/sessions/session-mention-invitation.test.ts"
 INVITATION_SOURCE_SHA256 = "a3fe4f0f54f7daceaa7ce53e1df5525f067cb5699b0096a6c527e366b24a8cf4"
 INVITATION_CALLBACK_SHA256 = "1775321fae85b26fca81575d9910aa3118e8e67955cd9d1774d8335e3f310fe7"
@@ -41,6 +55,64 @@ INVITATION_CASES = (
     "releases invitation callbacks and closes admissions after rollback",
 )
 common = runpy.run_path(str(Path(__file__).with_name("openclaw-repin-regression.py")))
+
+
+def anchor_observations(log, exit_code):
+    cases, summaries, frames = [], [], []
+    prefix = "[shard:bun:core-runtime-infra-process-hosted-2]"
+    events = set("fixture-created await-start await-complete child-exit child-disconnect fd-close closure-joined dispose-start kill-start kill-complete dispose-complete fact-received control-received overflow invalid".split())
+    ops = set("first-fact loading duplicate-start ready-spawned root-result startup-error prepared closed dispose-closed lineage-loading lineage-loaded spawn command-exit ready closing stdin-closed worker-message result-error output output-end released".split())
+    for raw in log.splitlines():
+        line = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", raw)
+        if not line.startswith(prefix):
+            continue
+        body = line[len(prefix):].strip()
+        if "[anchor-preparation-observer]" in body:
+            assert body.startswith("[anchor-preparation-observer] "), "malformed anchor marker framing"
+            assert len(line.encode()) <= 512, "anchor marker byte limit exceeded"
+            row = json.loads(body.removeprefix("[anchor-preparation-observer] "))
+            assert {"v", "case", "seq", "event"} <= set(row) <= {"v", "case", "seq", "event", "op", "fd", "code", "signal"}
+            assert row["v"] == 1 and row["case"] in ANCHOR_CASES and row["event"] in events
+            assert type(row["seq"]) is int and 1 <= row["seq"] <= 65
+            assert "op" not in row or row["op"] in ops
+            assert "fd" not in row or (type(row["fd"]) is int and 0 <= row["fd"] <= 6)
+            assert "code" not in row or row["code"] is None or type(row["code"]) is int
+            assert "signal" not in row or row["signal"] in {None, "SIGTERM", "SIGKILL"}
+            if row["event"] == "fd-close":
+                assert "fd" in row
+            if row["event"] == "child-exit":
+                assert {"code", "signal"} <= set(row)
+            if row["event"] in {"await-start", "await-complete", "fact-received", "control-received"}:
+                assert "op" in row
+            frames.append(row)
+            assert len(frames) <= 650, "anchor marker count exceeded"
+            continue
+        if body.startswith(("Test Files ", "Tests ")):
+            summaries.append(body)
+        if not re.search(r"\|[^|]+\|.* >(?: |$)", body):
+            continue
+        match = re.fullmatch(r"(.*?)\|([^|]+)\|\s+(.+?) > (.+?)(?: \d+(?:\.\d+)?ms)?", body)
+        assert match and match[2] == "process" and match[3] == ANCHOR_FILE, "unexpected anchor case row"
+        assert match[4] in ANCHOR_CASES.values(), "unexpected anchor case"
+        marker = match[1].strip()
+        if marker == "FAIL":
+            continue
+        assert marker in {"✓", "√", "×", "↓"}, "unsupported anchor case status"
+        cases.append({"fullName": match[4], "status": {"✓": "passed", "√": "passed", "×": "failed", "↓": "skipped"}[marker]})
+    assert len(cases) == 10 and {row["fullName"] for row in cases} == set(ANCHOR_CASES.values()), "incomplete or duplicate anchor cases"
+    assert all(row["status"] in {"passed", "failed"} for row in cases), "anchor case skipped"
+    assert exit_code != 0 or all(row["status"] == "passed" for row in cases), "successful exit contradicts failed anchor case"
+    coverage, complete = {}, True
+    for case in ANCHOR_CASES:
+        rows = [row for row in frames if row["case"] == case]
+        valid = (0 < len(rows) <= 64 and rows[0]["event"] == "fixture-created"
+                 and [row["seq"] for row in rows] == list(range(1, len(rows) + 1))
+                 and not any(row["event"] in {"overflow", "invalid"} for row in rows))
+        complete &= valid
+        coverage[case] = {"frames": len(rows), "framingComplete": valid, "last": rows[-1] if rows else None}
+    return {"cases": cases, "nativeSummaries": summaries, "frames": frames,
+            "frameCoverage": coverage, "framingComplete": complete,
+            "limit": "bounded client-observed transitions; missing completion marker does not prove an event never occurred; logging perturbs timing"}
 
 
 def invitation_callback_bytes(original):
@@ -211,7 +283,11 @@ def main():
     parser.add_argument("--invitation-retention", action="store_true")
     parser.add_argument("--invitation-native-callback", action="store_true")
     parser.add_argument("--invitation-snapshot", action="store_true")
+    parser.add_argument("--anchor-preparation", action="store_true")
     args = parser.parse_args()
+    assert not args.anchor_preparation or ((args.group, args.pin) == ("large42_process", "new")
+                                          and not any((args.doctor_causes, args.doctor_readiness, args.invitation_retention,
+                                                       args.invitation_native_callback, args.invitation_snapshot)))
     assert not args.invitation_snapshot or ((args.group, args.pin) == ("small4", "new")
                                            and not any((args.doctor_causes, args.doctor_readiness,
                                                         args.invitation_retention, args.invitation_native_callback)))
@@ -232,11 +308,12 @@ def main():
               "pin": args.pin, "status": "INCONCLUSIVE", "settlementUncertain": False,
               "stateDisposition": "retained-for-hosted-runner-teardown", "preparation": [],
               "cacheProfile": "cold-private-caches; original CI cache restore status unknown"}
-    if args.doctor_causes or args.doctor_readiness or args.invitation_retention or args.invitation_native_callback or args.invitation_snapshot:
+    if args.doctor_causes or args.doctor_readiness or args.invitation_retention or args.invitation_native_callback or args.invitation_snapshot or args.anchor_preparation:
         report.update(diagnosticOnly=True, qualifiesRepin=False)
     candidate_bytes = None
     original_test_bytes = None
     readiness_originals = None
+    anchor_originals = None
     deadline = time.monotonic() + 75 * 60
 
     def save():
@@ -299,6 +376,14 @@ def main():
                 "effectiveGroup": effective_group, "effectiveGroupSHA256": hashlib.sha256(group_json.encode()).hexdigest(),
                 "expectedCases": INVITATION_CASES,
                 "scope": "standalone file; a pass does not explain or waive the original 309-file failure"}
+        if args.anchor_preparation:
+            assert len(selected["group"]["includePatterns"]) == 168 and ANCHOR_FILE in selected["group"]["includePatterns"]
+            effective_group = {**selected["group"], "includePatterns": [ANCHOR_FILE]}
+            group_json = json.dumps([effective_group], separators=(",", ":"))
+            report["anchorPreparation"] = {"originalGroupSHA256": report["groupSHA256"],
+                "effectiveGroup": effective_group, "effectiveGroupSHA256": hashlib.sha256(group_json.encode()).hexdigest(),
+                "expectedCases": ANCHOR_CASES,
+                "scope": "instrumented ten-case standalone file; not unchanged-C or whole-group qualification"}
         pin_path.write_bytes(old_bytes if args.pin == "old" else candidate_bytes)
         report["activePin"] = args.pin
         checked(["/bin/bash", "scripts/stage-openclaw-bun.sh", str(root / "runtime"), "linux", "x64"],
@@ -383,6 +468,24 @@ def main():
             report["readinessProjection"]["state"] = "applied"
             assert all(common["sha"](path) == READINESS_FILES[name][1] for name, path in paths.items())
             assert set(git("diff", "HEAD", "--name-only").splitlines()) == set(report["readinessProjection"]["files"])
+        if args.anchor_preparation:
+            patch = Path(__file__).with_name("anchor-preparation-observer.patch").resolve()
+            assert common["sha"](patch) == ANCHOR_PATCH_SHA256
+            anchor_paths = {name: source / name for name in ANCHOR_FILES}
+            assert all(path.is_file() and not path.is_symlink() and common["sha"](path) == ANCHOR_FILES[name][0]
+                       for name, path in anchor_paths.items()), "anchor source differs from exact candidate"
+            assert not git("diff", "HEAD", "--name-only")
+            git("apply", "--check", str(patch))
+            anchor_originals = {name: path.read_bytes() for name, path in anchor_paths.items()}
+            report["anchorProjection"] = {"state": "prepared", "patchSHA256": ANCHOR_PATCH_SHA256,
+                "files": {name: {"originalSHA256": hashes[0], "patchedSHA256": hashes[1]} for name, hashes in ANCHOR_FILES.items()},
+                "egress": "64 fixed markers per case plus one overflow; no raw payload, path or stderr; native log32MiB",
+                "scope": "temporary test/fixture observer only; no additional waits, listeners, promise reactions, ACKs or cleanup; production anchor unchanged"}
+            save()
+            git("apply", "--whitespace=nowarn", str(patch))
+            report["anchorProjection"]["state"] = "applied"
+            assert all(common["sha"](path) == ANCHOR_FILES[name][1] for name, path in anchor_paths.items())
+            assert set(git("diff", "HEAD", "--name-only").splitlines()) == set(ANCHOR_FILES)
         if args.invitation_native_callback or args.invitation_snapshot:
             test_path = source / INVITATION_FILE
             assert test_path.is_file() and not test_path.is_symlink()
@@ -420,7 +523,12 @@ def main():
         assert completion["invocations"] > 0 and 0 <= completion["failedInvocations"] <= completion["invocations"]
         assert (completion["failedInvocations"] == 0) == (outcome["exitCode"] == 0)
         report.update(nativeCompletion=completion, settlementUncertain=False)
-        if args.invitation_retention or args.invitation_native_callback or args.invitation_snapshot:
+        if args.anchor_preparation:
+            report["diagnosticNativeStatus"] = "PASS" if outcome["exitCode"] == 0 else "FAIL"
+            report["anchorPreparation"].update(anchor_observations(log, outcome["exitCode"]))
+            assert report["anchorPreparation"]["framingComplete"], "anchor observation missing, capped, invalid or interrupted"
+            report["status"] = "DIAGNOSTIC"
+        elif args.invitation_retention or args.invitation_native_callback or args.invitation_snapshot:
             report["invitationRetention"].update(invitation_observations(log, outcome["exitCode"]))
             report["diagnosticNativeStatus"] = "PASS" if outcome["exitCode"] == 0 else "FAIL"
             if args.invitation_snapshot:
@@ -447,6 +555,8 @@ def main():
                 report["testProjection"]["state"] = "retained-indeterminate-settlement"
             if readiness_originals is not None:
                 report["readinessProjection"]["state"] = "retained-indeterminate-settlement"
+            if anchor_originals is not None:
+                report["anchorProjection"]["state"] = "retained-indeterminate-settlement"
         elif candidate_bytes is not None:
             restore_allowed = original_test_bytes is None or (test_path.is_file() and not test_path.is_symlink()
                               and common["sha"](test_path) == patched_test_sha)
@@ -460,6 +570,16 @@ def main():
                     report["readinessProjection"]["state"] = "restored"
                 else:
                     report["readinessProjection"]["state"] = "retained-unexpected-source-bytes"
+            if anchor_originals is not None:
+                restore_allowed = all(path.is_file() and not path.is_symlink() and common["sha"](path) == ANCHOR_FILES[name][1]
+                                      for name, path in anchor_paths.items())
+                restore_allowed &= set(git("diff", "HEAD", "--name-only").splitlines()) == set(ANCHOR_FILES)
+                if restore_allowed:
+                    for name, original in anchor_originals.items():
+                        anchor_paths[name].write_bytes(original)
+                    report["anchorProjection"]["state"] = "restored"
+                else:
+                    report["anchorProjection"]["state"] = "retained-unexpected-source-bytes"
             if restore_allowed:
                 if original_test_bytes is not None:
                     (source / INVITATION_FILE).write_bytes(original_test_bytes)

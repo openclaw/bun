@@ -1,0 +1,264 @@
+--- a/src/process/supervisor/service-child-group-anchor.preparation.test.ts
++++ b/src/process/supervisor/service-child-group-anchor.preparation.test.ts
+@@ -17,15 +17,18 @@
+ }
+ 
+ async function expectClosedBeforeSpawn(fixture: PreparationFixture) {
++  fixture.trace("await-start", "closed");
+   expect(await fixture.closed).toEqual({ code: null, signal: "SIGKILL" });
++  fixture.trace("await-complete", "closed");
+   expectNoCommand(fixture);
+   expect(isOwnedProcessGroupGone(fixture.child.pid!)).toBe(true);
+   expect(fixture.descriptorsClosed()).toBe(true);
+ }
+ 
+-async function withPreparation(check: (fixture: PreparationFixture) => Promise<void>) {
++async function withPreparation(caseId: string, check: (fixture: PreparationFixture) => Promise<void>) {
+   const fixture = createHeldAnchorPreparation(tempDirs.make("openclaw-anchor-preparation-"), {
+     acknowledgeStartupError: false,
++    diagnosticCase: caseId,
+   });
+   try {
+     await check(fixture);
+@@ -36,18 +39,26 @@
+ 
+ describe.skipIf(process.platform === "win32")("POSIX anchor preparation", () => {
+   it("prepares before spawning once with the accepted identity despite a duplicate start", () =>
+-    withPreparation(async (fixture) => {
++    withPreparation("prepare", async (fixture) => {
++      fixture.trace("await-start", "first-fact");
+       const first = await fixture.firstFact();
++      fixture.trace("await-complete", "first-fact");
+       if (first.type === "spawn") {
+         // Prove that the real late import is held before reporting the ordering failure.
+         fixture.send({ type: "cancel", signal: "SIGTERM" });
++        fixture.trace("await-start", "loading");
+         await fixture.loading();
++        fixture.trace("await-complete", "loading");
+       }
+       expect(first, JSON.stringify(fixture.facts)).toEqual({ type: "lineage-loading" });
++      fixture.trace("await-start", "duplicate-start");
+       await fixture.duplicateStart();
++      fixture.trace("await-complete", "duplicate-start");
+       expectNoCommand(fixture);
+       fixture.release();
++      fixture.trace("await-start", "ready-spawned");
+       const [ready] = await Promise.all([fixture.ready(), fixture.spawned()]);
++      fixture.trace("await-complete", "ready-spawned");
+       expect(ready).toMatchObject({ type: "ready", generation: fixture.generation });
+       expect(
+         fixture.facts
+@@ -55,8 +66,12 @@
+           .map((fact) => fact.type),
+       ).toEqual(["lineage-loading", "lineage-loaded", "spawn"]);
+       fixture.send({ type: "worker-start" });
++      fixture.trace("await-start", "root-result");
+       expect(await fixture.rootResult()).toMatchObject({ code: 0, signal: null });
++      fixture.trace("await-complete", "root-result");
++      fixture.trace("await-start", "closed");
+       await fixture.closed;
++      fixture.trace("await-complete", "closed");
+       expect(fixture.facts.filter((fact) => fact.type === "spawn")).toHaveLength(1);
+       expect(fixture.messages.every((message) => message.generation === fixture.generation)).toBe(
+         true,
+@@ -67,8 +82,10 @@
+   it.each(["cancel TERM", "cancel KILL", "worker-close", "SIGTERM"] as const)(
+     "keeps %s authoritative when preparation resumes before startup-error acknowledgement",
+     (action) =>
+-      withPreparation(async (fixture) => {
++      withPreparation(`authority:${({ "cancel TERM": "cancel-term", "cancel KILL": "cancel-kill", "worker-close": "worker-close", SIGTERM: "sigterm" })[action]}`, async (fixture) => {
++        fixture.trace("await-start", "loading");
+         await fixture.loading();
++        fixture.trace("await-complete", "loading");
+         if (action === "cancel TERM" || action === "cancel KILL") {
+           fixture.send({
+             type: "cancel",
+@@ -79,14 +96,18 @@
+         } else {
+           fixture.child.kill(action);
+         }
++        fixture.trace("await-start", "startup-error");
+         expect(await fixture.startupError()).toMatchObject({
+           type: "startup-error",
+           generation: fixture.generation,
+         });
++        fixture.trace("await-complete", "startup-error");
+         expectNoCommand(fixture);
+         expect(isOwnedProcessGroupGone(fixture.child.pid!)).toBe(false);
+         fixture.release();
++        fixture.trace("await-start", "prepared");
+         await fixture.prepared();
++        fixture.trace("await-complete", "prepared");
+         expectNoCommand(fixture);
+         expect(isOwnedProcessGroupGone(fixture.child.pid!)).toBe(false);
+         fixture.send({ type: "startup-error-ack" });
+@@ -105,11 +126,15 @@
+     { action: "control EOF", cancelled: true },
+     { action: "IPC disconnect", cancelled: true },
+   ])("joins preparation retirement after $action (cancelled=$cancelled)", ({ action, cancelled }) =>
+-    withPreparation(async (fixture) => {
++    withPreparation(`retire:${action === "control EOF" ? "control-eof" : action === "IPC disconnect" ? "ipc-disconnect" : "parent-loss"}:${cancelled ? 1 : 0}`, async (fixture) => {
++      fixture.trace("await-start", "loading");
+       await fixture.loading();
++      fixture.trace("await-complete", "loading");
+       if (cancelled) {
+         fixture.send({ type: "cancel", signal: "SIGTERM" });
++        fixture.trace("await-start", "startup-error");
+         await fixture.startupError();
++        fixture.trace("await-complete", "startup-error");
+       }
+       if (action === "control EOF") {
+         fixture.control.end();
+--- a/src/process/supervisor/service-child-group-anchor.preparation.test-support.ts
++++ b/src/process/supervisor/service-child-group-anchor.preparation.test-support.ts
+@@ -19,6 +19,43 @@
+   ServiceChildStart,
+ } from "./service-child-protocol.js";
+ 
++const preparationCases = new Set([
++  "prepare", "authority:cancel-term", "authority:cancel-kill", "authority:worker-close", "authority:sigterm",
++  "retire:control-eof:0", "retire:ipc-disconnect:0", "retire:parent-loss:0", "retire:control-eof:1", "retire:ipc-disconnect:1",
++]);
++const preparationEvents = new Set([
++  "fixture-created", "await-start", "await-complete", "child-exit", "child-disconnect", "fd-close",
++  "closure-joined", "dispose-start", "kill-start", "kill-complete", "dispose-complete", "fact-received", "control-received",
++]);
++const preparationOps = new Set([
++  "first-fact", "loading", "duplicate-start", "ready-spawned", "root-result", "startup-error", "prepared", "closed", "dispose-closed",
++  "lineage-loading", "lineage-loaded", "spawn", "command-exit", "ready", "closing", "stdin-closed", "worker-message", "result-error", "output", "output-end", "released",
++]);
++function createPreparationObserver(caseId?: string) {
++  let sequence = 0;
++  return (event: string, op?: string, fields: { fd?: number; code?: number | null; signal?: string | null } = {}) => {
++    if (caseId === undefined || sequence > 64) return;
++    const valid = preparationCases.has(caseId) && preparationEvents.has(event) &&
++      (op === undefined || preparationOps.has(op)) &&
++      (fields.fd === undefined || (Number.isInteger(fields.fd) && fields.fd >= 0 && fields.fd <= 6)) &&
++      (fields.code === undefined || fields.code === null || Number.isSafeInteger(fields.code)) &&
++      (fields.signal === undefined || fields.signal === null || ["SIGTERM", "SIGKILL"].includes(fields.signal));
++    const row: Record<string, unknown> = { v: 1, case: preparationCases.has(caseId) ? caseId : "invalid", seq: ++sequence,
++      event: sequence === 65 ? "overflow" : valid ? event : "invalid" };
++    if (valid && sequence <= 64) {
++      if (op !== undefined) row.op = op;
++      if (fields.fd !== undefined) row.fd = fields.fd;
++      if (fields.code !== undefined) row.code = fields.code;
++      if (fields.signal !== undefined) row.signal = fields.signal;
++    }
++    try {
++      process.stderr.write("[anchor-preparation-observer] " + JSON.stringify(row) + "\n");
++    } catch {
++      // Observation must not mask an original failure; missing frames remain incomplete evidence.
++    }
++  };
++}
++
+ type PreparationFact = {
+   type: "lineage-loading" | "lineage-loaded" | "spawn" | "command-exit" | "duplicate-start";
+   pid?: number;
+@@ -40,16 +77,22 @@
+   });
+ }
+ 
+-export function waitForAnchorClosure<T>(child: ChildProcess, exited: Promise<T>) {
+-  const waitFor = (source: EventEmitter, event: string) =>
++export function waitForAnchorClosure<T>(child: ChildProcess, exited: Promise<T>, trace = createPreparationObserver()) {
++  const waitFor = (source: EventEmitter, event: string, fd?: number) =>
+     new Promise<void>((resolve) => {
+-      source.once(event, resolve);
++      source.once(event, (value) => {
++        resolve(value);
++        trace(event === "disconnect" ? "child-disconnect" : "fd-close", undefined, fd === undefined ? {} : { fd });
++      });
+     });
+   return Promise.all([
+     exited,
+     waitFor(child, "disconnect"),
+-    ...child.stdio.filter((stream) => stream != null).map((stream) => waitFor(stream, "close")),
+-  ]).then(([result]) => result);
++    ...child.stdio.flatMap((stream, fd) => stream != null ? [waitFor(stream, "close", fd)] : []),
++  ]).then(([result]) => {
++    trace("closure-joined");
++    return result;
++  });
+ }
+ 
+ function observeMessages<Message extends { type: string }>(
+@@ -79,9 +122,10 @@
+ 
+ export function createHeldAnchorPreparation(
+   root: string,
+-  options: { acknowledgeStartupError?: boolean } = {},
++  options: { acknowledgeStartupError?: boolean; diagnosticCase?: string } = {},
+ ) {
+   const generation = "held-lineage-preparation";
++  const trace = createPreparationObserver(options.diagnosticCase);
+   const commandSource = `
+     process.on("message", () => process.disconnect());
+     process.once("disconnect", () => process.exit(0));
+@@ -149,11 +193,15 @@
+     [...anchorArgv.slice(0, -1), "--import", pathToFileURL(preload).href, anchorArgv.at(-1)!],
+     { detached: true, stdio: ["ignore", "pipe", "pipe", "pipe", "pipe", "ipc", "pipe"] },
+   );
++  trace("fixture-created");
+   const exited = createDeferred<{ code: number | null; signal: NodeJS.Signals | null }>();
+-  child.once("exit", (code, signal) => exited.resolve({ code, signal }));
++  child.once("exit", (code, signal) => {
++    exited.resolve({ code, signal });
++    trace("child-exit", undefined, { code, signal });
++  });
+   child.once("error", exited.reject);
+   // Native Node can omit aggregate close after explicit IPC disconnect with extra pipes.
+-  const closed = waitForAnchorClosure(child, exited.promise);
++  const closed = waitForAnchorClosure(child, exited.promise, trace);
+   const control = child.stdio[3];
+   const lineage = child.stdio[4];
+   const probe = child.stdio.at(6);
+@@ -161,7 +209,7 @@
+     child.kill("SIGKILL");
+     throw new Error("Missing anchor fixture descriptors");
+   }
+-  const { messages: facts, waitFor } = observeMessages<PreparationFact>(probe);
++  const { messages: facts, waitFor } = observeMessages<PreparationFact>(probe, (fact) => trace("fact-received", fact.type));
+   let sequence = 0;
+   let stderr = "";
+   const send = (message: ControlPayload) => {
+@@ -183,6 +231,7 @@
+       } else if (message.type === "closing") {
+         send({ type: "closing-ack", closingSequence: message.sequence });
+       }
++      trace("control-received", message.type);
+     },
+   );
+   lineage.once("end", () => send({ type: "lineage-closed" }));
+@@ -215,6 +264,7 @@
+     ]);
+   child.send(start);
+   return {
++    trace,
+     child,
+     control,
+     facts,
+@@ -242,10 +292,15 @@
+       }
+     },
+     async dispose() {
++      trace("dispose-start");
+       if (child.exitCode === null && child.signalCode === null) {
++        trace("kill-start");
+         process.kill(-child.pid!, "SIGKILL");
++        trace("kill-complete");
+       }
++      trace("await-start", "dispose-closed");
+       await closed;
++      trace("await-complete", "dispose-closed");
+       control.destroy();
+       lineage.destroy();
+       probe.destroy();
+@@ -254,6 +309,7 @@
+           throw new Error(`Commanded fixture process ${fact.pid} survived group cleanup`);
+         }
+       }
++      trace("dispose-complete");
+     },
+   };
+ }
