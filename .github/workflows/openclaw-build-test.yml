@@ -13,6 +13,7 @@ on:
             darwin-openclaw-repin,
             linux-openclaw-bun-only,
             linux-openclaw-repin,
+            darwin-openclaw-app-host,
           ]
         default: linux-x64
       webkit_source_sha:
@@ -33,10 +34,82 @@ permissions:
   actions: read
 
 concurrency:
-  group: aot-operation-origins-${{ github.ref }}${{ inputs.platform == 'linux-openclaw-bun-only' && '-bun-only' || inputs.platform == 'linux-openclaw-repin' && '-linux-repin' || '' }}
+  group: aot-operation-origins-${{ github.ref }}${{ inputs.platform == 'linux-openclaw-bun-only' && '-bun-only' || inputs.platform == 'linux-openclaw-repin' && '-linux-repin' || inputs.platform == 'darwin-openclaw-app-host' && '-app-host' || '' }}
   cancel-in-progress: true
 
 jobs:
+  openclaw-app-host:
+    if: inputs.platform == 'darwin-openclaw-app-host'
+    runs-on: xcode-27
+    timeout-minutes: 180
+    permissions:
+      contents: read
+    steps:
+      - name: Require the reviewed candidate and disposable hosted runner
+        env:
+          CANDIDATE_SHA: ${{ inputs.openclaw_candidate_sha }}
+          HOSTED_ENVIRONMENT: ${{ runner.environment }}
+        run: |
+          test "$CANDIDATE_SHA" = 4ea5babab09c338812ae50dbcdaed990f48cd0fc
+          test "$HOSTED_ENVIRONMENT" = github-hosted
+          test "$(uname -m)" = arm64
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: openclaw/openclaw
+          ref: 4ea5babab09c338812ae50dbcdaed990f48cd0fc
+          path: source
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.22.1"
+      - name: Admit source and published Bun before candidate execution
+        timeout-minutes: 15
+        env:
+          CONTROLLER_SHA: ${{ github.sha }}
+          BUN_RELEASE_METADATA_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/openclaw-ci/openclaw-repin-regression.py --phase metadata --source source \
+            --candidate-sha 4ea5babab09c338812ae50dbcdaed990f48cd0fc --controller-sha "$CONTROLLER_SHA" --out app-host-proof
+      - name: Build and run the canonical focused app host without credentials
+        env:
+          CONTROLLER_SHA: ${{ github.sha }}
+          HOSTED_ENVIRONMENT: ${{ runner.environment }}
+        run: |
+          controller_home="$RUNNER_TEMP/app-host-controller-home"
+          controller_tmp="$RUNNER_TEMP/app-host-controller-tmp"
+          install -d -m 0700 "$controller_home" "$controller_tmp"
+          env -i PATH="$PATH" HOME="$controller_home" TMPDIR="$controller_tmp" LANG=en_US.UTF-8 CI=true \
+            RUNNER_ENVIRONMENT="$HOSTED_ENVIRONMENT" RUNNER_TRACKING_ID="${RUNNER_TRACKING_ID:?}" \
+            SDKROOT="${SDKROOT:-}" TOOLCHAINS="${TOOLCHAINS:-}" \
+            DYLD_FRAMEWORK_PATH="${DYLD_FRAMEWORK_PATH:-}" DYLD_LIBRARY_PATH="${DYLD_LIBRARY_PATH:-}" \
+            python3 scripts/openclaw-ci/openclaw-app-host.py --source source --out app-host-proof \
+            --controller-sha "$CONTROLLER_SHA"
+      - name: Check bounded text-only app-host evidence
+        id: app-host-budget
+        if: always()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path("app-host-proof")
+          assert (root / "report.json").is_file(), "missing app-host receipt"
+          files = list(root.iterdir())
+          assert len(files) <= 20 and all(p.is_file() and not p.is_symlink() and p.suffix in {".json", ".jsonl", ".log"} for p in files)
+          assert sum(p.stat().st_size for p in files) <= 64 * 1024 * 1024
+          for p in files:
+              p.read_text(encoding="utf-8")
+          PY
+      - name: Upload only text app-host evidence
+        if: ${{ always() && steps.app-host-budget.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: openclaw-app-host-${{ github.sha }}-attempt${{ github.run_attempt }}
+          path: app-host-proof/
+          if-no-files-found: error
+          retention-days: 7
+
   openclaw-linux-repin:
     if: inputs.platform == 'linux-openclaw-repin'
     runs-on: ubuntu-24.04
