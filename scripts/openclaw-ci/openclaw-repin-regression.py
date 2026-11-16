@@ -103,7 +103,7 @@ def private_env(cell, tool_path):
     }
 
 
-def run(command, cwd, env, log, redact, timeout=600):
+def run(command, cwd, env, log, redact, timeout=600, output_limit=LIMIT):
     started = time.monotonic()
     proc = subprocess.Popen(command, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
@@ -132,8 +132,8 @@ def run(command, cwd, env, log, redact, timeout=600):
                             selector.unregister(key.fileobj)
                             continue
                         received += len(chunk)
-                        output.extend(chunk[:max(0, LIMIT - len(output))])
-                        if not failure and received > LIMIT:
+                        output.extend(chunk[:max(0, output_limit - len(output))])
+                        if not failure and received > output_limit:
                             failure = "controller log budget exceeded"
                 except KeyboardInterrupt:
                     failure = "controller interrupted"
@@ -144,7 +144,7 @@ def run(command, cwd, env, log, redact, timeout=600):
             # Unexpected controller errors cannot establish native descendant settlement.
             failure = failure or "controller exited before native settlement"
         proc.stdout.close()
-        log.write_text(redact(output[:LIMIT].decode(errors="replace")) + (f"\n{failure}\n" if failure else ""))
+        log.write_text(redact(output[:output_limit].decode(errors="replace")) + (f"\n{failure}\n" if failure else ""))
     indeterminate = any(marker in output for marker in (
         b"processTreeState", b"child/group or nested resource completion was not verified",
         b"descendant completion is unverified",
@@ -194,6 +194,14 @@ def admit_release(label, pin, token):
     return {"release": release["html_url"], "releaseId": release["id"],
             "publishedAt": release["published_at"], "prerelease": release["prerelease"],
             "manifestSHA256": digest, "manifest": manifest, "pin": pin}
+
+
+def read_admission_receipt(path, binding, pins):
+    assert path.stat().st_size <= LIMIT, "metadata receipt exceeds budget"
+    metadata = json.loads(path.read_text())
+    assert metadata["binding"] == binding, "metadata receipt does not match this source/controller/pin pair"
+    assert {label: release["pin"] for label, release in metadata["releases"].items()} == pins
+    return metadata
 
 
 def cases(report, source):
@@ -347,7 +355,9 @@ def main():
 
     save()
     try:
-        assert platform.system() == "Darwin" and platform.machine() == "arm64", "hosted native macOS ARM64 required"
+        host = (platform.system(), platform.machine())
+        assert host == ("Darwin", "arm64") or (args.phase == "metadata" and host == ("Linux", "x86_64")), \
+            "native macOS ARM64 execution or hosted Linux metadata admission required"
         assert re.fullmatch("[0-9a-f]{40}", args.candidate_sha)
         assert re.fullmatch("[0-9a-f]{40}", args.controller_sha)
         if args.phase == "execute":
@@ -393,10 +403,7 @@ def main():
                 metadata_path.write_text(data)
                 report.update(metadataAdmitted=True, metadataSHA256=sha(metadata_path))
                 return
-            assert metadata_path.stat().st_size <= LIMIT, "metadata receipt exceeds budget"
-            metadata = json.loads(metadata_path.read_text())
-            assert metadata["binding"] == binding, "metadata receipt does not match this source/controller/pin pair"
-            assert {label: release["pin"] for label, release in metadata["releases"].items()} == pins
+            metadata = read_admission_receipt(metadata_path, binding, pins)
             report.update(releases=metadata["releases"], metadataSHA256=sha(metadata_path))
             package = json.loads((source / "package.json").read_text())
             assert package["packageManager"].startswith("pnpm@12.15.0+sha512.")
