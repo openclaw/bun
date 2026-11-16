@@ -142,7 +142,9 @@ def main():
         checked([str(node), "scripts/prepare-apple-mermaid.mjs"], "mermaid", 600)
         checked(["swift", "build", "--package-path", "apps/macos", "--build-system", "native",
                  "--enable-code-coverage", "--disable-index-store", "-Xswiftc", "-gline-tables-only", "--build-tests"], "swift-build", 2100)
-        checked(["pnpm", "build:ci-artifacts"], "runtime-build", 2100, {**env, "NODE_OPTIONS": "--max-old-space-size=8192"})
+        report["runtimeBuildProfile"] = "canonical private macOS app: pnpm build with OPENCLAW_RUN_NODE_SKIP_DTS_BUILD=1"
+        checked(["pnpm", "build"], "runtime-build", 2100,
+                {**env, "NODE_OPTIONS": "--max-old-space-size=8192", "OPENCLAW_RUN_NODE_SKIP_DTS_BUILD": "1"})
         build = json.loads((source / "dist/build-info.json").read_text())
         assert build["commit"] == CANDIDATE
         report["buildInfo"] = build
