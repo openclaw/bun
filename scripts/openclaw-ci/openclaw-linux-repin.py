@@ -18,6 +18,9 @@ import time
 
 CANDIDATE = "4ea5babab09c338812ae50dbcdaed990f48cd0fc"
 GROUPS = ("large10", "large5", "small4", "large2", "large42_storage", "large42_process")
+DOCTOR_FILE = "src/commands/doctor-maintenance.continuation-scope.test.ts"
+DOCTOR_CASES = tuple(f"keeps Doctor continuation with its repair scope (cached writer: {writer})"
+                     for writer in ("true", "false"))
 ANCHOR_FILE = "src/process/supervisor/service-child-group-anchor.preparation.test.ts"
 ANCHOR_PATCH_SHA256 = "163c821c27cc2f3b06897b760c41661e86b8b26b6ff8be5b9df99c85afd379bc"
 ANCHOR_FILES = {
@@ -214,6 +217,34 @@ def invitation_observations(log, exit_code):
     return {"cases": rows, "nativeSummaries": summaries}
 
 
+def doctor_continuation_observations(log, exit_code):
+    rows, summaries = [], []
+    prefix = "[shard:bun:agentic-commands-doctor]"
+    for raw in log.splitlines():
+        line = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", raw)
+        if not line.startswith(prefix):
+            continue
+        body = line[len(prefix):].strip()
+        if body.startswith(("Test Files ", "Tests ")):
+            summaries.append(body)
+        if not re.search(r"\|[^|]+\|.* >(?: |$)", body):
+            continue
+        match = re.fullmatch(r"(.*?)\|([^|]+)\|\s+(.+?) > (.+?)(?: \d+(?:\.\d+)?ms)?", body)
+        assert match, "malformed diagnostic case row"
+        assert match[2] == "commands" and match[3] == DOCTOR_FILE, "unexpected diagnostic file"
+        assert match[4] in DOCTOR_CASES, "unexpected diagnostic case"
+        marker = match[1].strip()
+        if marker == "FAIL":
+            continue  # Native failure summaries repeat the primary case result.
+        assert marker in {"✓", "√", "×", "↓"}, "unsupported diagnostic case status"
+        rows.append({"file": match[3], "fullName": match[4],
+                     "status": {"✓": "passed", "√": "passed", "×": "failed", "↓": "skipped"}[marker]})
+    assert len(rows) == 2 and {row["fullName"] for row in rows} == set(DOCTOR_CASES), "incomplete or duplicate diagnostic cases"
+    assert all(row["status"] in {"passed", "failed"} for row in rows), "diagnostic case skipped"
+    assert exit_code != 0 or all(row["status"] == "passed" for row in rows), "successful exit contradicts failed case"
+    return {"cases": rows, "nativeSummaries": summaries}
+
+
 def doctor_observations(log):
     rows = []
     for line in log.splitlines():
@@ -284,7 +315,11 @@ def main():
     parser.add_argument("--invitation-native-callback", action="store_true")
     parser.add_argument("--invitation-snapshot", action="store_true")
     parser.add_argument("--anchor-preparation", action="store_true")
+    parser.add_argument("--doctor-continuation", action="store_true")
     args = parser.parse_args()
+    assert not args.doctor_continuation or (args.group == "large5" and not any((
+        args.doctor_causes, args.doctor_readiness, args.invitation_retention,
+        args.invitation_native_callback, args.invitation_snapshot, args.anchor_preparation)))
     assert not args.anchor_preparation or ((args.group, args.pin) == ("large42_process", "new")
                                           and not any((args.doctor_causes, args.doctor_readiness, args.invitation_retention,
                                                        args.invitation_native_callback, args.invitation_snapshot)))
@@ -308,7 +343,7 @@ def main():
               "pin": args.pin, "status": "INCONCLUSIVE", "settlementUncertain": False,
               "stateDisposition": "retained-for-hosted-runner-teardown", "preparation": [],
               "cacheProfile": "cold-private-caches; original CI cache restore status unknown"}
-    if args.doctor_causes or args.doctor_readiness or args.invitation_retention or args.invitation_native_callback or args.invitation_snapshot or args.anchor_preparation:
+    if args.doctor_causes or args.doctor_readiness or args.invitation_retention or args.invitation_native_callback or args.invitation_snapshot or args.anchor_preparation or args.doctor_continuation:
         report.update(diagnosticOnly=True, qualifiesRepin=False)
     candidate_bytes = None
     original_test_bytes = None
@@ -384,6 +419,14 @@ def main():
                 "effectiveGroup": effective_group, "effectiveGroupSHA256": hashlib.sha256(group_json.encode()).hexdigest(),
                 "expectedCases": ANCHOR_CASES,
                 "scope": "instrumented ten-case standalone file; not unchanged-C or whole-group qualification"}
+        if args.doctor_continuation:
+            assert len(selected["group"]["includePatterns"]) == 116 and DOCTOR_FILE in selected["group"]["includePatterns"]
+            effective_group = {**selected["group"], "includePatterns": [DOCTOR_FILE]}
+            group_json = json.dumps([effective_group], separators=(",", ":"))
+            report["doctorContinuation"] = {"originalGroupSHA256": report["groupSHA256"],
+                "effectiveGroup": effective_group, "effectiveGroupSHA256": hashlib.sha256(group_json.encode()).hexdigest(),
+                "sourceFileSHA256": common["sha"](source / DOCTOR_FILE), "expectedCases": DOCTOR_CASES,
+                "scope": "unchanged standalone two-case file; both-pass leaves context or timing unresolved and does not waive the original 116-file failure"}
         pin_path.write_bytes(old_bytes if args.pin == "old" else candidate_bytes)
         report["activePin"] = args.pin
         checked(["/bin/bash", "scripts/stage-openclaw-bun.sh", str(root / "runtime"), "linux", "x64"],
@@ -523,7 +566,11 @@ def main():
         assert completion["invocations"] > 0 and 0 <= completion["failedInvocations"] <= completion["invocations"]
         assert (completion["failedInvocations"] == 0) == (outcome["exitCode"] == 0)
         report.update(nativeCompletion=completion, settlementUncertain=False)
-        if args.anchor_preparation:
+        if args.doctor_continuation:
+            report["doctorContinuation"].update(doctor_continuation_observations(log, outcome["exitCode"]))
+            report["diagnosticNativeStatus"] = "PASS" if outcome["exitCode"] == 0 else "FAIL"
+            report["status"] = "DIAGNOSTIC"
+        elif args.anchor_preparation:
             report["diagnosticNativeStatus"] = "PASS" if outcome["exitCode"] == 0 else "FAIL"
             report["anchorPreparation"].update(anchor_observations(log, outcome["exitCode"]))
             assert report["anchorPreparation"]["framingComplete"], "anchor observation missing, capped, invalid or interrupted"
