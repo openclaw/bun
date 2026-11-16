@@ -28,6 +28,7 @@ export function invitationRetainerSnapshot(input: unknown, address: bigint | und
       "absence of a reported path does not identify a conservative stack root or prove collection",
       "one shortest reported path per reached root; alternate paths are not enumerated",
       "full snapshot memory is allocated before parser and output bounds apply",
+      "serialized function labels may be explicit cell labels; matching names do not identify source",
     ],
   };
   try {
@@ -212,8 +213,14 @@ export function invitationRetainerSnapshot(input: unknown, address: bigint | und
       "onRequest",
       "prototype",
       "constructor",
+      "mentionCommitGuards",
+      "workerPreparation",
+      "messages",
+      "options",
+      "assertOwnerCurrent",
+      "selectRuntimeTarget",
     ]);
-    const redacted = { classes: 0, edgeTypes: 0, edgeNames: 0, rootLabels: 0 };
+    const redacted = { classes: 0, edgeTypes: 0, edgeNames: 0, rootLabels: 0, functionLabels: 0 };
     const localIds = new Map<number, string>([[target, "n0"]]);
     const nodeInfo = (id: number) => {
       if (!localIds.has(id)) localIds.set(id, "n" + localIds.size);
@@ -352,7 +359,14 @@ export function invitationRetainerSnapshot(input: unknown, address: bigint | und
       capturedNodeCount: graphNodes.size,
       capturedEdgeCount: graphEdges.length,
       captureCapped: graphCapped,
-      nodes: [...graphNodes].map(nodeInfo),
+      nodes: [...graphNodes].map(id => {
+        const info = nodeInfo(id);
+        if (info.class !== "Function") return info;
+        const label = stringAt(labels, nodes[byId.get(id)! + 4]);
+        const admitted = ["assertOwnerCurrent", "assertCurrent", "selectRuntimeTarget", "run"].includes(label);
+        if (label && !admitted) redacted.functionLabels++;
+        return { ...info, reportedFunctionLabel: !label ? "unrepresented" : admitted ? label : "redacted" };
+      }),
       edges: graphEdges.map(offset => ({
         from: localIds.get(edges[offset] as number)!,
         to: localIds.get(edges[offset + 1] as number)!,
