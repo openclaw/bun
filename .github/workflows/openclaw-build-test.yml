@@ -35,9 +35,6 @@ jobs:
     timeout-minutes: 90
     permissions:
       contents: read
-    env:
-      BUN_ONLY_WORK: ${{ runner.temp }}/openclaw-bun-only-${{ github.run_id }}-${{ github.run_attempt }}
-      DOCKER_CONFIG: ${{ runner.temp }}/openclaw-bun-only-${{ github.run_id }}-${{ github.run_attempt }}/docker
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -49,11 +46,15 @@ jobs:
           path: source
           persist-credentials: false
       - name: Admit the exact reviewed candidate before running its code
+        env:
+          BUN_ONLY_WORK: ${{ runner.temp }}/openclaw-bun-only-${{ github.run_id }}-${{ github.run_attempt }}
+          DOCKER_CONFIG: ${{ runner.temp }}/openclaw-bun-only-${{ github.run_id }}-${{ github.run_attempt }}/docker
         run: |
           test "$(git -C source rev-parse HEAD)" = 4ea5babab09c338812ae50dbcdaed990f48cd0fc
           test -z "$(git -C source status --porcelain)"
           test ! -e "$BUN_ONLY_WORK"
           install -d -m 0700 "$BUN_ONLY_WORK" "$DOCKER_CONFIG"
+          printf 'BUN_ONLY_WORK=%s\nDOCKER_CONFIG=%s\n' "$BUN_ONLY_WORK" "$DOCKER_CONFIG" >> "$GITHUB_ENV"
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24.22.1"
