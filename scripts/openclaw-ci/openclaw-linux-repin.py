@@ -45,14 +45,15 @@ INVITATION_SOURCE_SHA256 = "a3fe4f0f54f7daceaa7ce53e1df5525f067cb5699b0096a6c527
 INVITATION_CALLBACK_SHA256 = "1775321fae85b26fca81575d9910aa3118e8e67955cd9d1774d8335e3f310fe7"
 INVITATION_SNAPSHOT_PAYLOAD_SHA256 = "69473344a9e3a29e74c72552c9b43b98be691c274869ecd4a917bfe9d66cf67b"
 INVITATION_SNAPSHOT_SHA256 = "f03c29b4b9b38678328ef5f0d63e593af4a7ca847095a41f86175cd23163b695"
-READINESS_PATCH_SHA256 = "60c3550aa310570c0321c41b8218e7f5ac546b1f08d22ebc7e95ea700c737f60"
+READINESS_PATCH_SHA256 = "cb2aedd7cf89ae1298d1335fcc461ca932060a58b63a1489a128eef57ba94b4c"
 READINESS_FILES = {
-    "resource-protocol.ts": ("3f66dcd70bc32b798930d3f11a8e575e0915206bb6ad5c0417a8ccb4975ed5c2", "a2fba54300e08f7a5107ffc0ce2cb2be095bc3553359b4d991ff881c27fa4458"),
-    "host.ts": ("3360493ae2ad0488c4e480f4b7022fe37788d05b811c0fc075855a2a663047f1", "581988c7e085fa86738dc01011aafbd77fdaa7fe9ec22d521e12d2ded6bcf1fa"),
-    "worker.ts": ("a58c07435184a536344a893ca0a4696fc26f9b9b908d93ead996dbf931194e61", "771bebb238901e8f7cf1652f57abb5b8579089ea8c82ad917d07dbb9664d00cc"),
-    "resource-server.ts": ("e3b812ccf3224078b8f5b1f740c19a3867b6fa4288c9f93264ee053a411660c0", "60b535bc8b9c208d98a941a718d8a69a425bdc8efe203bde44ae368c63450171"),
-    "resource-client.ts": ("7e81d67234b0ccf624c01907a6fc2b85df7b1c5d2f2f7e8358ce4f54da7657e9", "2eec3fd65fe93b8a1875206e34db13f2d6b6923e09086894b6097e6f51a20f50"),
-    "child-diagnostics.ts": ("d30543707f2e8b2c7aff2c26395c843a04d3b26189112f0d166987c1f45e6468", "8f9050ac05a303da04d810253fec5b65b18b531c51bc2f38a38bda582988b646"),
+    "src/process/spawn-broker/resource-protocol.ts": ("3f66dcd70bc32b798930d3f11a8e575e0915206bb6ad5c0417a8ccb4975ed5c2", "89cdfbb498eb09cd6233459ac6d8c1ba74cd4c53e8f20bf79f7cc8ffce411d68"),
+    "src/process/spawn-broker/host.ts": ("3360493ae2ad0488c4e480f4b7022fe37788d05b811c0fc075855a2a663047f1", "581988c7e085fa86738dc01011aafbd77fdaa7fe9ec22d521e12d2ded6bcf1fa"),
+    "src/process/spawn-broker/worker.ts": ("a58c07435184a536344a893ca0a4696fc26f9b9b908d93ead996dbf931194e61", "068b39612a2d05811be9b317cc4691e5c09633a2f6b22a727124a23931531c24"),
+    "src/process/spawn-broker/resource-server.ts": ("e3b812ccf3224078b8f5b1f740c19a3867b6fa4288c9f93264ee053a411660c0", "60b535bc8b9c208d98a941a718d8a69a425bdc8efe203bde44ae368c63450171"),
+    "src/process/spawn-broker/resource-client.ts": ("7e81d67234b0ccf624c01907a6fc2b85df7b1c5d2f2f7e8358ce4f54da7657e9", "2eec3fd65fe93b8a1875206e34db13f2d6b6923e09086894b6097e6f51a20f50"),
+    "src/process/spawn-broker/child-diagnostics.ts": ("d30543707f2e8b2c7aff2c26395c843a04d3b26189112f0d166987c1f45e6468", "8f9050ac05a303da04d810253fec5b65b18b531c51bc2f38a38bda582988b646"),
+    "src/commands/doctor-maintenance.admission.test-support.ts": ("c358cb66f0e72f5cbfc0a26b61527244bcede760241186e4115ef29c7a1e7ea0", "b4e7af2bc382865152d6178185db17b66b46048259159ba4816ee4d747ede90b"),
 }
 INVITATION_CASES = (
     *(f"commits a tag and its invitation together before any Inbox work, without regranting on reopen (first: {first})" for first in ("false", "true")),
@@ -270,9 +271,10 @@ def doctor_observations(log):
 
 
 def readiness_observations(log, causes):
-    events = set("bootstrap-send bootstrap-callback bootstrap-error host-ipc-ready worker-bootstrap server-listen server-listening attach-decoded attach-rejected attach-duplicate attach-capacity attach-accepted ready-queued ready-written client-connected client-attach-written client-ready client-timeout evidence-limit framing-loss".split())
+    events = set("bootstrap-send bootstrap-callback bootstrap-error host-ipc-ready worker-bootstrap guard-bootstrap-received worker-message-handler-installed server-listen server-listening attach-decoded attach-rejected attach-duplicate attach-capacity attach-accepted ready-queued ready-written client-connected client-attach-written client-ready client-timeout evidence-limit framing-loss".split())
     codes = set("none unknown EACCES EADDRINUSE EADDRNOTAVAIL EAGAIN ECANCELED ECONNREFUSED ECONNRESET EINTR EINVAL EISCONN EMFILE ENFILE ENOBUFS ENOENT ENOMEM ENOTSOCK EPERM EPIPE ETIMEDOUT".split())
     counts, brokers, timeouts = {}, {}, set()
+    bootstraps, guards, installed = {}, {}, {}
     digest, total = hashlib.sha256(), 0
     incomplete = False
     for raw in log.splitlines():
@@ -282,9 +284,9 @@ def readiness_observations(log, causes):
             continue
         assert len(match[0].encode()) <= 1024, "oversized readiness frame"
         row = json.loads(match[1])
-        assert list(row) == ["v", "event", "pid", "key", "generation", "id", "peer", "attempts", "code"]
+        assert list(row) == ["v", "event", "pid", "ppid", "key", "generation", "id", "peer", "attempts", "messageListenerCount", "disconnectListenerCount", "code"]
         assert row["v"] == 1 and row["event"] in events and row["code"] in codes
-        assert all(type(row[key]) is int and -1 <= row[key] <= 2**53 - 1 for key in ("pid", "key", "generation", "id", "peer", "attempts"))
+        assert all(type(row[key]) is int and -1 <= row[key] <= 2**53 - 1 for key in ("pid", "ppid", "key", "generation", "id", "peer", "attempts", "messageListenerCount", "disconnectListenerCount"))
         total += 1
         digest.update((match[1] + "\n").encode())
         counts[row["event"]] = counts.get(row["event"], 0) + 1
@@ -296,18 +298,54 @@ def readiness_observations(log, causes):
                 brokers.setdefault(identity, set()).add(pid)
         if row["event"] == "client-timeout":
             timeouts.add((row["pid"], row["key"], row["generation"], row["id"]))
+        if row["event"] == "bootstrap-send":
+            bootstraps.setdefault(identity, set()).add((row["pid"], row["peer"]))
+        if row["event"] == "guard-bootstrap-received":
+            guards.setdefault((row["pid"], row["ppid"], row["generation"]), []).append((total, row))
+        if row["event"] == "worker-message-handler-installed":
+            installed.setdefault((row["pid"], row["ppid"]), []).append((total, row))
     # Bind the failed Doctor error to its own timeout frame, not neighboring file output.
-    cause_ids = {tuple(map(int, values)) for values in re.findall(
-        r"Spawn broker readiness deadline exceeded \[doctor-readiness pid=(\d+) key=(\d+) generation=(\d+) id=(\d+) ", json.dumps(causes))}
-    bindings = [{"pid": pid, "key": key, "generation": generation, "id": attachment,
-                 "brokerPids": sorted(brokers.get((key, generation), set()))}
-                for pid, key, generation, attachment in sorted(cause_ids)]
+    bindings, cause_ids = [], set()
+    for case in causes:
+        if case.get("kind") != "case":
+            continue
+        assert case["fullName"] in DOCTOR_CASES
+        case_ids = {tuple(map(int, values)) for values in re.findall(
+            r"Spawn broker readiness deadline exceeded \[doctor-readiness pid=(\d+) key=(\d+) generation=(\d+) id=(\d+) ", json.dumps(case["errors"]))}
+        incomplete |= not case_ids
+        cause_ids.update(case_ids)
+        for pid, key, generation, attachment in sorted(case_ids):
+            hosts = bootstraps.get((key, generation), set())
+            binding = {"fullName": case["fullName"], "pid": pid, "key": key, "generation": generation,
+                       "id": attachment, "brokerPids": sorted(brokers.get((key, generation), set())),
+                       "mappingComplete": False, "earlyDeliveryObserved": False}
+            if len(hosts) == 1:
+                parent, child = next(iter(hosts))
+                receipts = guards.get((child, parent, generation), [])
+                handlers = installed.get((child, parent), [])
+                binding.update(parentPid=parent, childPid=child, guardReceipts=len(receipts), handlerReceipts=len(handlers))
+                if parent > 0 and child > 0 and len(receipts) == len(handlers) == 1:
+                    received_at, receipt = receipts[0]
+                    installed_at, handler = handlers[0]
+                    binding.update(guard=receipt, handlerInstalled=handler,
+                        mappingComplete=(receipt["messageListenerCount"] >= 1 and handler["messageListenerCount"] >= 2
+                                         and receipt["disconnectListenerCount"] >= 0 and handler["disconnectListenerCount"] >= 0))
+                    binding["earlyDeliveryObserved"] = (binding["mappingComplete"]
+                        and received_at < installed_at and receipt["messageListenerCount"] == 1)
+            bindings.append(binding)
+    # Shared case custody or fingerprint collisions cannot identify one failing broker.
+    identities = [(row["pid"], row["key"], row["generation"], row["id"]) for row in bindings]
     complete = (total > 0 and not incomplete and bool(cause_ids) and cause_ids <= timeouts
                 and all(len(item["brokerPids"]) == 1 for item in bindings)
-                and all(len(pids) == 1 for pids in brokers.values()))
+                and all(len(pids) == 1 for pids in brokers.values())
+                and len(identities) == len(set(identities))
+                and all(item["mappingComplete"] for item in bindings))
+    for binding in bindings:
+        binding["earlyDeliveryObserved"] &= complete
     return {"frameCount": total, "framesSHA256": digest.hexdigest(), "eventCounts": counts,
             "causeBindings": bindings, "complete": complete, "rawEvidence": "native-shard.log",
-            "correlationLimit": "noncryptographic 53-bit endpoint fingerprint; collisions remain possible; no global ordering or IPC-cause inference"}
+            "earlyDeliveryObserved": complete and any(item["earlyDeliveryObserved"] for item in bindings),
+            "correlationLimit": "noncryptographic 53-bit endpoint fingerprint; collisions remain possible; ordering only within one child's stderr; missing/false is not absence or a complete Doctor cause verdict"}
 
 
 def main():
@@ -426,6 +464,8 @@ def main():
             report["anchorFix"] = {"originalGroupSHA256": report["groupSHA256"],
                 "effectiveGroupSHA256": report["groupSHA256"], "expectedCases": ANCHOR_CASES,
                 "scope": "C plus one reviewed fixture fix, original 168-pattern group; native exit and all cases remain authoritative; not unchanged-C qualification"}
+        if args.doctor_readiness:
+            assert report["groupSHA256"] == "3d18b3a8c52cd624cd953353f5949b487c54e3611e5ab3db45f690656a6c7224"
         if args.invitation_retention or args.invitation_native_callback or args.invitation_snapshot:
             assert len(selected["group"]["includePatterns"]) == 309 and INVITATION_FILE in selected["group"]["includePatterns"]
             effective_group = {**selected["group"], "includePatterns": [INVITATION_FILE]}
@@ -541,16 +581,16 @@ def main():
         if args.doctor_readiness:
             patch = Path(__file__).with_name("doctor-readiness.patch").resolve()
             assert common["sha"](patch) == READINESS_PATCH_SHA256
-            paths = {name: source / "src/process/spawn-broker" / name for name in READINESS_FILES}
+            paths = {name: source / name for name in READINESS_FILES}
             assert all(path.is_file() and not path.is_symlink() and common["sha"](path) == READINESS_FILES[name][0]
                        for name, path in paths.items()), "readiness source differs from exact candidate"
             assert not git("diff", "HEAD", "--name-only")
             git("apply", "--check", str(patch))
             readiness_originals = {name: path.read_bytes() for name, path in paths.items()}
             report["readinessProjection"] = {"state": "prepared", "patchSHA256": READINESS_PATCH_SHA256,
-                "files": {"src/process/spawn-broker/" + name: {"originalSHA256": hashes[0], "patchedSHA256": hashes[1]}
+                "files": {name: {"originalSHA256": hashes[0], "patchedSHA256": hashes[1]}
                           for name, hashes in READINESS_FILES.items()},
-                "egress": "2048 fixed frames plus one limit marker per loaded diagnostic module instance; each frame below512B; whole native log32MiB",
+                "egress": "4 guard receipts plus one overflow per guard; 2048 fixed frames plus one limit marker per loaded diagnostic module instance; each frame below512B; whole native log32MiB",
                 "scope": "instrumented readiness diagnosis only; stderr writes and hashing can perturb scheduling; no added Promise continuation, wait, retry or timeout"}
             save()
             git("apply", "--whitespace=nowarn", str(patch))

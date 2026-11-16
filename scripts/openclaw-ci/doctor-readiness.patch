@@ -1,6 +1,6 @@
 --- a/src/process/spawn-broker/resource-protocol.ts
 +++ b/src/process/spawn-broker/resource-protocol.ts
-@@ -68,3 +68,203 @@
+@@ -68,3 +68,213 @@
        resourceError: false;
      }
    | { type: "resource-failed"; id: number; error: NativeWorkerFailure };
@@ -12,6 +12,8 @@
 +  "bootstrap-error",
 +  "host-ipc-ready",
 +  "worker-bootstrap",
++  "guard-bootstrap-received",
++  "worker-message-handler-installed",
 +  "server-listen",
 +  "server-listening",
 +  "attach-decoded",
@@ -85,11 +87,14 @@
 +            v: 1,
 +            event: "evidence-limit",
 +            pid: process.pid,
++            ppid: process.ppid,
 +            key: -1,
 +            generation: -1,
 +            id: -1,
 +            peer: -1,
 +            attempts: 0,
++            messageListenerCount: -1,
++            disconnectListenerCount: -1,
 +            code: "none",
 +          }) +
 +          "\n",
@@ -108,6 +113,8 @@
 +  peer = -1,
 +  attempts = 0,
 +  code = "none",
++  messageListenerCount = -1,
++  disconnectListenerCount = -1,
 +): void {
 +  if (!doctorReadinessEvents.has(event)) {
 +    return;
@@ -119,11 +126,14 @@
 +        v: 1,
 +        event,
 +        pid: process.pid,
++        ppid: process.ppid,
 +        key: endpoint === undefined ? -1 : doctorReadinessKey(endpoint),
 +        generation: numeric(generation),
 +        id: numeric(id),
 +        peer: numeric(peer),
 +        attempts: numeric(attempts),
++        messageListenerCount: numeric(messageListenerCount),
++        disconnectListenerCount: numeric(disconnectListenerCount),
 +        code: doctorReadinessCodes.has(code) ? code : "unknown",
 +      }),
 +  );
@@ -148,11 +158,11 @@
 +        const row = JSON.parse(pending.slice(doctorReadinessPrefix.length));
 +        if (
 +          !row ||
-+          Object.keys(row).join(",") !== "v,event,pid,key,generation,id,peer,attempts,code" ||
++          Object.keys(row).join(",") !== "v,event,pid,ppid,key,generation,id,peer,attempts,messageListenerCount,disconnectListenerCount,code" ||
 +          row.v !== 1 ||
 +          !doctorReadinessEvents.has(row.event) ||
 +          !doctorReadinessCodes.has(row.code) ||
-+          ![row.pid, row.key, row.generation, row.id, row.peer, row.attempts].every(
++          ![row.pid, row.ppid, row.key, row.generation, row.id, row.peer, row.attempts, row.messageListenerCount, row.disconnectListenerCount].every(
 +            (value) => Number.isSafeInteger(value) && value >= -1,
 +          )
 +        ) {
@@ -285,7 +295,24 @@
  import type {
    BrokerBootstrap,
    BrokerResourceRequest,
-@@ -701,6 +702,7 @@
+@@ -695,12 +696,24 @@
+     }
+   }
+ });
++doctorReadiness(
++  "worker-message-handler-installed",
++  undefined,
++  -1,
++  -1,
++  -1,
++  0,
++  "none",
++  process.listenerCount("message"),
++  process.listenerCount("disconnect"),
++);
+ async function initialize(bootstrap: BrokerBootstrap): Promise<void> {
+   if (stopping || !process.connected) {
+     return;
    }
    if (bootstrap.nativeResource) {
      const authority = bootstrap.nativeResource;
@@ -502,3 +529,28 @@
    return async () => {
      const stderr = redactToolPayloadText(stderrTail).trim();
      return (
+--- a/src/commands/doctor-maintenance.admission.test-support.ts
++++ b/src/commands/doctor-maintenance.admission.test-support.ts
+@@ -106,7 +106,22 @@
+       native.close();
+       fs.writeFileSync(path.join(root, 'sqlite-open-guard-' + process.pid + '.json'),
+         JSON.stringify({ pid: process.pid, entry: process.argv[1], databasePath: expected }));
++      let doctorReadinessReceipts = 0;
+       process.on('message', (message) => {
++        try {
++          if (message && typeof message === 'object' && message.type === 'bootstrap'
++              && message.nativeResource && typeof message.nativeResource === 'object'
++              && Number.isSafeInteger(message.nativeResource.generation)
++              && message.nativeResource.generation >= 0 && doctorReadinessReceipts <= 4) {
++            const event = doctorReadinessReceipts++ < 4 ? 'guard-bootstrap-received' : 'evidence-limit';
++            process.stderr.write('[doctor-readiness] ' + JSON.stringify({
++              v: 1, event, pid: process.pid, ppid: process.ppid, key: -1,
++              generation: message.nativeResource.generation, id: -1, peer: -1, attempts: 0,
++              messageListenerCount: process.listenerCount('message'),
++              disconnectListenerCount: process.listenerCount('disconnect'), code: 'none',
++            }) + '\\n');
++          }
++        } catch {}
+         if (message && typeof message === 'object' && Array.isArray(message.args)) {
+           fs.appendFileSync(path.join(root, 'sqlite-readonly-requests-' + process.pid + '.jsonl'),
+             JSON.stringify(message.args) + '\\n');
