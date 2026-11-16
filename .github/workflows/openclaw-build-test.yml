@@ -28,6 +28,7 @@ on:
             linux-openclaw-anchor-fixture-fix,
             linux-openclaw-doctor-continuation,
             linux-openclaw-profile-layout,
+            linux-openclaw-doctor-fixture-regression,
           ]
         default: linux-x64
       webkit_source_sha:
@@ -48,10 +49,76 @@ permissions:
   actions: read
 
 concurrency:
-  group: aot-operation-origins-${{ github.ref }}${{ inputs.platform == 'linux-openclaw-bun-only' && '-bun-only' || inputs.platform == 'linux-openclaw-repin' && '-linux-repin' || inputs.platform == 'darwin-openclaw-app-host' && '-app-host' || inputs.platform == 'linux-openclaw-doctor-causes' && '-doctor-causes' || inputs.platform == 'linux-openclaw-doctor-readiness' && '-doctor-readiness' || inputs.platform == 'linux-openclaw-doctor-phases' && '-doctor-phases' || inputs.platform == 'linux-openclaw-doctor-fixture-fix' && '-doctor-fixture-fix' || inputs.platform == 'linux-openclaw-doctor-fixture-phases' && '-doctor-fixture-phases' || inputs.platform == 'linux-openclaw-invitation-cache-code' && '-invitation-cache-code' || inputs.platform == 'linux-openclaw-invitation-retention' && '-invitation-retention' || inputs.platform == 'linux-openclaw-invitation-callback' && '-invitation-callback' || inputs.platform == 'linux-openclaw-invitation-snapshot' && '-invitation-snapshot' || inputs.platform == 'linux-openclaw-anchor-fixture-fix' && '-anchor-fixture-fix' || inputs.platform == 'linux-openclaw-anchor-full-context' && '-anchor-full-context' || inputs.platform == 'linux-openclaw-anchor-preparation' && '-anchor-preparation' || inputs.platform == 'linux-openclaw-doctor-continuation' && '-doctor-continuation' || inputs.platform == 'linux-openclaw-profile-layout' && '-profile-layout' || '' }}
+  group: aot-operation-origins-${{ github.ref }}${{ inputs.platform == 'linux-openclaw-bun-only' && '-bun-only' || inputs.platform == 'linux-openclaw-repin' && '-linux-repin' || inputs.platform == 'darwin-openclaw-app-host' && '-app-host' || inputs.platform == 'linux-openclaw-doctor-causes' && '-doctor-causes' || inputs.platform == 'linux-openclaw-doctor-readiness' && '-doctor-readiness' || inputs.platform == 'linux-openclaw-doctor-phases' && '-doctor-phases' || inputs.platform == 'linux-openclaw-doctor-fixture-fix' && '-doctor-fixture-fix' || inputs.platform == 'linux-openclaw-doctor-fixture-phases' && '-doctor-fixture-phases' || inputs.platform == 'linux-openclaw-invitation-cache-code' && '-invitation-cache-code' || inputs.platform == 'linux-openclaw-invitation-retention' && '-invitation-retention' || inputs.platform == 'linux-openclaw-invitation-callback' && '-invitation-callback' || inputs.platform == 'linux-openclaw-invitation-snapshot' && '-invitation-snapshot' || inputs.platform == 'linux-openclaw-anchor-fixture-fix' && '-anchor-fixture-fix' || inputs.platform == 'linux-openclaw-anchor-full-context' && '-anchor-full-context' || inputs.platform == 'linux-openclaw-anchor-preparation' && '-anchor-preparation' || inputs.platform == 'linux-openclaw-doctor-continuation' && '-doctor-continuation' || inputs.platform == 'linux-openclaw-profile-layout' && '-profile-layout' || inputs.platform == 'linux-openclaw-doctor-fixture-regression' && '-doctor-fixture-regression' || '' }}
   cancel-in-progress: true
 
 jobs:
+  openclaw-doctor-fixture-regression:
+    if: inputs.platform == 'linux-openclaw-doctor-fixture-regression'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - name: Require the reviewed actual regression commit
+        env:
+          CANDIDATE_SHA: ${{ inputs.openclaw_candidate_sha }}
+        run: test "$CANDIDATE_SHA" = 43c2926ba69479fdc68f5fccb4fd3a089763c9fb
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: openclaw/openclaw
+          ref: 43c2926ba69479fdc68f5fccb4fd3a089763c9fb
+          fetch-depth: 2
+          path: source
+          persist-credentials: false
+      - name: Admit signed source before executing candidate code
+        env:
+          CONTROLLER_SHA: ${{ github.sha }}
+          OPENCLAW_SOURCE_METADATA_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/openclaw-ci/doctor-fixture-regression.py --phase metadata --source source \
+            --candidate-sha 43c2926ba69479fdc68f5fccb4fd3a089763c9fb \
+            --controller-sha "$CONTROLLER_SHA" --out doctor-fixture-regression-proof
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.22.1"
+      - name: Run the unchanged focused Node fixture without credentials
+        env:
+          CONTROLLER_SHA: ${{ github.sha }}
+        run: |
+          controller_home="$RUNNER_TEMP/doctor-fixture-regression-home"
+          controller_tmp="$RUNNER_TEMP/doctor-fixture-regression-tmp"
+          install -d -m 0700 "$controller_home" "$controller_tmp"
+          env -i PATH="$PATH" HOME="$controller_home" TMPDIR="$controller_tmp" LANG=C.UTF-8 CI=true \
+            python3 scripts/openclaw-ci/doctor-fixture-regression.py --phase execute --source source \
+            --candidate-sha 43c2926ba69479fdc68f5fccb4fd3a089763c9fb \
+            --controller-sha "$CONTROLLER_SHA" --out doctor-fixture-regression-proof
+      - name: Check bounded text-only fixture evidence
+        id: doctor-fixture-regression-budget
+        if: always()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path("doctor-fixture-regression-proof")
+          assert (root / "report.json").is_file()
+          files = list(root.iterdir())
+          assert len(files) <= 10 and all(p.is_file() and not p.is_symlink() and p.suffix in {".json", ".log"} for p in files)
+          assert sum(p.stat().st_size for p in files) <= 48 * 1024 * 1024
+          for p in files:
+              p.read_text(encoding="utf-8")
+          PY
+      - name: Upload only text fixture evidence
+        if: ${{ always() && steps.doctor-fixture-regression-budget.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: openclaw-doctor-fixture-regression-${{ github.sha }}-attempt${{ github.run_attempt }}
+          path: doctor-fixture-regression-proof/
+          if-no-files-found: error
+          retention-days: 7
+
   openclaw-profile-layout:
     if: inputs.platform == 'linux-openclaw-profile-layout'
     runs-on: ubuntu-24.04
