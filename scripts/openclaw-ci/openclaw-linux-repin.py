@@ -612,7 +612,7 @@ def main():
                    OPENCLAW_VITEST_FS_MODULE_CACHE_ROOT=str(root / "cache/vitest"),
                    NODE_COMPILE_CACHE=str(root / "cache/node"), BUN_RUNTIME_TRANSPILER_CACHE_PATH=str(root / "cache/bun"))
         assert env["OPENCLAW_NODE_TEST_VITEST_ARGS_JSON"] == "[]"
-        if args.doctor_causes or args.doctor_readiness:
+        if args.doctor_causes or args.doctor_readiness or args.doctor_phases:
             observer = Path(__file__).with_name("doctor-cause-reporter.mjs").resolve()
             assert observer.is_file() and not observer.is_relative_to(source)
             effective_args = ["--reporter=verbose", "--reporter=github-actions", "--reporter=" + str(observer)]
@@ -727,6 +727,7 @@ def main():
             report["status"] = "DIAGNOSTIC"
         elif args.doctor_phases:
             report["diagnosticNativeStatus"] = "PASS" if outcome["exitCode"] == 0 else "FAIL"
+            report["observer"]["records"] = doctor_observations(log)
             report["doctorPhases"] = doctor_phase_observations(log, outcome["exitCode"])
             assert report["doctorPhases"]["framingComplete"], "Doctor phase evidence missing, capped or unattributed"
             report["status"] = "DIAGNOSTIC"
