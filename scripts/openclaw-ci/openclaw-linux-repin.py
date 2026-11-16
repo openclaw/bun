@@ -22,10 +22,10 @@ DOCTOR_FILE = "src/commands/doctor-maintenance.continuation-scope.test.ts"
 DOCTOR_CASES = tuple(f"keeps Doctor continuation with its repair scope (cached writer: {writer})"
                      for writer in ("true", "false"))
 ANCHOR_FILE = "src/process/supervisor/service-child-group-anchor.preparation.test.ts"
-ANCHOR_PATCH_SHA256 = "163c821c27cc2f3b06897b760c41661e86b8b26b6ff8be5b9df99c85afd379bc"
+ANCHOR_PATCH_SHA256 = "616e96a98212e57d6405656a043384d8d77199d6e6ea6529238ee6e61971ee75"
 ANCHOR_FILES = {
     ANCHOR_FILE: ("c06787c77d9ff318112146538be08dea0e24d79ac473f7211278bfe5fa31ed66", "a787c516c259e84dc9fcb148fee0f30dd5e2812dd4c589c23257ed3d02c21bd4"),
-    "src/process/supervisor/service-child-group-anchor.preparation.test-support.ts": ("0f17b08a5b9fd79cd3be8129f251ce48544c5c6448db6542b5ef445b0fb49538", "3244ec4274485413b249ba6ee56517f7008c5c9ec468adb1b82dd22d6cc069a3"),
+    "src/process/supervisor/service-child-group-anchor.preparation.test-support.ts": ("0f17b08a5b9fd79cd3be8129f251ce48544c5c6448db6542b5ef445b0fb49538", "27d71cd9f4f539541582f3b6d8f978b6ffeab2996d6e1bba619fa192673f2c52"),
 }
 ANCHOR_CASES = {
     "prepare": "POSIX anchor preparation > prepares before spawning once with the accepted identity despite a duplicate start",
@@ -64,7 +64,7 @@ def anchor_observations(log, exit_code):
     cases, summaries, frames = [], [], []
     prefix = "[shard:bun:core-runtime-infra-process-hosted-2]"
     events = set("fixture-created await-start await-complete child-exit child-disconnect fd-close closure-joined dispose-start kill-start kill-complete dispose-complete fact-received control-received overflow invalid".split())
-    ops = set("first-fact loading duplicate-start ready-spawned root-result startup-error prepared closed dispose-closed lineage-loading lineage-loaded spawn command-exit ready closing stdin-closed worker-message result-error output output-end released".split())
+    ops = set("first-fact loading duplicate-start ready-spawned root-result startup-error prepared closed dispose-closed lineage-loading lineage-loaded spawn command-exit ready closing stdin-closed worker-message result-error output output-end released loader-start-before-owner loader-start-after-owner loader-start-owner-unconfirmed loader-owner-listener-installed".split())
     for raw in log.splitlines():
         line = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", raw)
         if not line.startswith(prefix):

@@ -111,7 +111,7 @@
          fixture.control.end();
 --- a/src/process/supervisor/service-child-group-anchor.preparation.test-support.ts
 +++ b/src/process/supervisor/service-child-group-anchor.preparation.test-support.ts
-@@ -19,6 +19,43 @@
+@@ -19,8 +19,47 @@
    ServiceChildStart,
  } from "./service-child-protocol.js";
  
@@ -126,6 +126,7 @@
 +const preparationOps = new Set([
 +  "first-fact", "loading", "duplicate-start", "ready-spawned", "root-result", "startup-error", "prepared", "closed", "dispose-closed",
 +  "lineage-loading", "lineage-loaded", "spawn", "command-exit", "ready", "closing", "stdin-closed", "worker-message", "result-error", "output", "output-end", "released",
++  "loader-start-before-owner", "loader-start-after-owner", "loader-start-owner-unconfirmed", "loader-owner-listener-installed",
 +]);
 +function createPreparationObserver(caseId?: string) {
 +  let sequence = 0;
@@ -153,9 +154,13 @@
 +}
 +
  type PreparationFact = {
-   type: "lineage-loading" | "lineage-loaded" | "spawn" | "command-exit" | "duplicate-start";
+-  type: "lineage-loading" | "lineage-loaded" | "spawn" | "command-exit" | "duplicate-start";
++  type: "lineage-loading" | "lineage-loaded" | "spawn" | "command-exit" | "duplicate-start"
++    | "loader-start-before-owner" | "loader-start-after-owner" | "loader-start-owner-unconfirmed" | "loader-owner-listener-installed";
    pid?: number;
-@@ -40,16 +77,22 @@
+ };
+ 
+@@ -40,16 +79,22 @@
    });
  }
  
@@ -183,7 +188,7 @@
  }
  
  function observeMessages<Message extends { type: string }>(
-@@ -79,9 +122,10 @@
+@@ -79,9 +124,10 @@
  
  export function createHeldAnchorPreparation(
    root: string,
@@ -195,7 +200,51 @@
    const commandSource = `
      process.on("message", () => process.disconnect());
      process.once("disconnect", () => process.exit(0));
-@@ -149,11 +193,15 @@
+@@ -107,9 +153,18 @@
+       const released = new Promise(resolve => { release = resolve; });
+       probe.on("data", () => release());
+       if (process.versions.bun) probe.connect({ fd: 6 });
++      let ownerInstalled = false;
++      let initialObserved = false;
+       globalThis[Symbol.for("openclaw.anchor-preparation-test")] = {
+         emit,
+         released,
++        markOwnerListenerInstalled() {
++          if (ownerInstalled) return;
++          ownerInstalled = true;
++          try {
++            emit({ type: "loader-owner-listener-installed" });
++          } catch {}
++        },
+       };
+       const nativeSpawn = childProcess.spawn;
+       childProcess.spawn = function(...args) {
+@@ -125,6 +180,12 @@
+         if (message.type === "start" && message.generation === "held-lineage-preparation-replacement") {
+           emit({ type: "duplicate-start" });
+         }
++        if (initialObserved || message.type !== "start" || message.generation !== "held-lineage-preparation") return;
++        initialObserved = true;
++        try {
++          emit({ type: ownerInstalled ? "loader-start-after-owner"
++            : process.listenerCount("message") === 1 ? "loader-start-before-owner" : "loader-start-owner-unconfirmed" });
++        } catch {}
+       });
+       registerFixtureSourceTransform({
+         name: "held-lineage-preparation",
+@@ -136,7 +197,10 @@
+           // where the bundler inlines the lineage module's initialization.
+           const preparation = /(lineageCompletion\\s*=\\s*)([\\s\\S]*?);/;
+           if (!preparation.test(original)) throw new Error("Missing anchor lineage preparation");
+-          return original.replace(preparation, (_match, assignment, expression) =>
++          const ownerInvocation = "runServiceChildGroupAnchor();";
++          if (original.split(ownerInvocation).length !== 2) throw new Error("Missing or ambiguous anchor owner invocation");
++          const observed = original.replace(ownerInvocation, ownerInvocation + " " + gate + ".markOwnerListenerInstalled();");
++          return observed.replace(preparation, (_match, assignment, expression) =>
+             assignment + "await (async () => { " + gate + '.emit({type:"lineage-loading"}); await '
+               + gate + ".released; const loaded = " + expression + "; "
+               + gate + '.emit({type:"lineage-loaded"}); return loaded; })();');
+@@ -149,11 +213,15 @@
      [...anchorArgv.slice(0, -1), "--import", pathToFileURL(preload).href, anchorArgv.at(-1)!],
      { detached: true, stdio: ["ignore", "pipe", "pipe", "pipe", "pipe", "ipc", "pipe"] },
    );
@@ -213,7 +262,7 @@
    const control = child.stdio[3];
    const lineage = child.stdio[4];
    const probe = child.stdio.at(6);
-@@ -161,7 +209,7 @@
+@@ -161,7 +229,7 @@
      child.kill("SIGKILL");
      throw new Error("Missing anchor fixture descriptors");
    }
@@ -222,7 +271,7 @@
    let sequence = 0;
    let stderr = "";
    const send = (message: ControlPayload) => {
-@@ -183,6 +231,7 @@
+@@ -183,6 +251,7 @@
        } else if (message.type === "closing") {
          send({ type: "closing-ack", closingSequence: message.sequence });
        }
@@ -230,7 +279,7 @@
      },
    );
    lineage.once("end", () => send({ type: "lineage-closed" }));
-@@ -215,6 +264,7 @@
+@@ -215,6 +284,7 @@
      ]);
    child.send(start);
    return {
@@ -238,7 +287,7 @@
      child,
      control,
      facts,
-@@ -242,10 +292,15 @@
+@@ -242,10 +312,15 @@
        }
      },
      async dispose() {
@@ -254,7 +303,7 @@
        control.destroy();
        lineage.destroy();
        probe.destroy();
-@@ -254,6 +309,7 @@
+@@ -254,6 +329,7 @@
            throw new Error(`Commanded fixture process ${fact.pid} survived group cleanup`);
          }
        }
