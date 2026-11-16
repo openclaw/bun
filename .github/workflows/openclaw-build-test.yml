@@ -17,6 +17,7 @@ on:
             linux-openclaw-doctor-causes,
             linux-openclaw-doctor-readiness,
             linux-openclaw-invitation-retention,
+            linux-openclaw-invitation-cache-code,
             linux-openclaw-invitation-callback,
             linux-openclaw-invitation-snapshot,
             linux-openclaw-anchor-preparation,
@@ -42,7 +43,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: aot-operation-origins-${{ github.ref }}${{ inputs.platform == 'linux-openclaw-bun-only' && '-bun-only' || inputs.platform == 'linux-openclaw-repin' && '-linux-repin' || inputs.platform == 'darwin-openclaw-app-host' && '-app-host' || inputs.platform == 'linux-openclaw-doctor-causes' && '-doctor-causes' || inputs.platform == 'linux-openclaw-doctor-readiness' && '-doctor-readiness' || inputs.platform == 'linux-openclaw-invitation-retention' && '-invitation-retention' || inputs.platform == 'linux-openclaw-invitation-callback' && '-invitation-callback' || inputs.platform == 'linux-openclaw-invitation-snapshot' && '-invitation-snapshot' || inputs.platform == 'linux-openclaw-anchor-full-context' && '-anchor-full-context' || inputs.platform == 'linux-openclaw-anchor-preparation' && '-anchor-preparation' || inputs.platform == 'linux-openclaw-doctor-continuation' && '-doctor-continuation' || '' }}
+  group: aot-operation-origins-${{ github.ref }}${{ inputs.platform == 'linux-openclaw-bun-only' && '-bun-only' || inputs.platform == 'linux-openclaw-repin' && '-linux-repin' || inputs.platform == 'darwin-openclaw-app-host' && '-app-host' || inputs.platform == 'linux-openclaw-doctor-causes' && '-doctor-causes' || inputs.platform == 'linux-openclaw-doctor-readiness' && '-doctor-readiness' || inputs.platform == 'linux-openclaw-invitation-cache-code' && '-invitation-cache-code' || inputs.platform == 'linux-openclaw-invitation-retention' && '-invitation-retention' || inputs.platform == 'linux-openclaw-invitation-callback' && '-invitation-callback' || inputs.platform == 'linux-openclaw-invitation-snapshot' && '-invitation-snapshot' || inputs.platform == 'linux-openclaw-anchor-full-context' && '-anchor-full-context' || inputs.platform == 'linux-openclaw-anchor-preparation' && '-anchor-preparation' || inputs.platform == 'linux-openclaw-doctor-continuation' && '-doctor-continuation' || '' }}
   cancel-in-progress: true
 
 jobs:
@@ -308,14 +309,14 @@ jobs:
           retention-days: 7
 
   openclaw-invitation-retention:
-    if: inputs.platform == 'linux-openclaw-invitation-retention'
+    if: inputs.platform == 'linux-openclaw-invitation-retention' || inputs.platform == 'linux-openclaw-invitation-cache-code'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     strategy:
       fail-fast: false
       max-parallel: 1
       matrix:
-        pin: [old, new]
+        pin: ${{ fromJSON(inputs.platform == 'linux-openclaw-invitation-cache-code' && '["new"]' || '["old", "new"]') }}
     permissions:
       contents: read
     steps:
@@ -346,13 +347,16 @@ jobs:
         env:
           CONTROLLER_SHA: ${{ github.sha }}
           PIN: ${{ matrix.pin }}
+          CAPTURE_CACHE_CODE: ${{ inputs.platform == 'linux-openclaw-invitation-cache-code' }}
         run: |
+          capture_args=()
+          if [ "$CAPTURE_CACHE_CODE" = true ]; then capture_args+=(--invitation-cache-code); fi
           controller_home="$RUNNER_TEMP/invitation-retention-controller-home"
           controller_tmp="$RUNNER_TEMP/invitation-retention-controller-tmp"
           install -d -m 0700 "$controller_home" "$controller_tmp"
           env -i PATH="$PATH" HOME="$controller_home" TMPDIR="$controller_tmp" LANG=C.UTF-8 CI=true \
             python3 scripts/openclaw-ci/openclaw-linux-repin.py --source source --out invitation-retention-proof \
-            --controller-sha "$CONTROLLER_SHA" --group small4 --pin "$PIN" --invitation-retention
+            --controller-sha "$CONTROLLER_SHA" --group small4 --pin "$PIN" --invitation-retention "${capture_args[@]}"
       - name: Check bounded text-only diagnostic evidence
         id: invitation-retention-budget
         if: always()

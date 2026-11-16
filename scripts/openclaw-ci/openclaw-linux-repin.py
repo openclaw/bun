@@ -316,12 +316,14 @@ def main():
     parser.add_argument("--doctor-causes", action="store_true")
     parser.add_argument("--doctor-readiness", action="store_true")
     parser.add_argument("--invitation-retention", action="store_true")
+    parser.add_argument("--invitation-cache-code", action="store_true")
     parser.add_argument("--invitation-native-callback", action="store_true")
     parser.add_argument("--invitation-snapshot", action="store_true")
     parser.add_argument("--anchor-preparation", action="store_true")
     parser.add_argument("--anchor-full-context", action="store_true")
     parser.add_argument("--doctor-continuation", action="store_true")
     args = parser.parse_args()
+    assert not args.invitation_cache_code or (args.invitation_retention and args.pin == "new")
     assert not args.anchor_full_context or args.anchor_preparation
     assert not args.doctor_continuation or (args.group == "large5" and not any((
         args.doctor_causes, args.doctor_readiness, args.invitation_retention,
@@ -590,6 +592,11 @@ def main():
             if args.invitation_snapshot:
                 report["snapshot"] = snapshot_observations(log)
                 assert report["snapshot"]["complete"] is True, "snapshot identity or reported structure incomplete; no absence inference"
+            if args.invitation_cache_code:
+                collector = Path(__file__).with_name("invitation-cache-code.py")
+                report["transformedCode"] = runpy.run_path(str(collector))["capture"](source, root / "cache/vitest")
+                report["transformedCode"]["collectorSHA256"] = common["sha"](collector)
+                assert report["transformedCode"]["complete"], "post-native cache evidence incomplete; native outcome remains unchanged"
             report["status"] = "DIAGNOSTIC"
         elif args.doctor_causes or args.doctor_readiness:
             report["observer"]["records"] = doctor_observations(log)
