@@ -15,7 +15,7 @@ import time
 
 
 CANDIDATE = "4ea5babab09c338812ae50dbcdaed990f48cd0fc"
-GROUPS = ("large10", "large5", "small4", "large2")
+GROUPS = ("large10", "large5", "small4", "large2", "large42_storage", "large42_process")
 common = runpy.run_path(str(Path(__file__).with_name("openclaw-repin-regression.py")))
 
 
