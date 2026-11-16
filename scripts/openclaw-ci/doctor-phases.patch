@@ -1,0 +1,199 @@
+diff --git a/src/commands/doctor-maintenance.continuation-scope.test.ts b/src/commands/doctor-maintenance.continuation-scope.test.ts
+--- a/src/commands/doctor-maintenance.continuation-scope.test.ts
++++ b/src/commands/doctor-maintenance.continuation-scope.test.ts
+@@ -20,6 +20,7 @@
+ import {
+   beginDoctorRepair,
+   setupDoctorAdmissionFixture,
++  traceDoctorPhase,
+ } from "./doctor-maintenance.admission.test-support.js";
+ import { beginDoctorMaintenance } from "./doctor-maintenance.js";
+ 
+@@ -47,7 +48,10 @@
+ it.each([true, false])(
+   "keeps Doctor continuation with its repair scope (cached writer: %s)",
+   async (keepWriter) => {
++    const phaseCase = keepWriter ? "cached-true" : "cached-false";
++    traceDoctorPhase(phaseCase, "fixture-create", "enter");
+     const { env, database, family, assertIsolation } = fixture(true);
++    traceDoctorPhase(phaseCase, "fixture-create", "returned");
+     vi.stubEnv("OPENCLAW_STATE_DIR", env.OPENCLAW_STATE_DIR);
+     vi.stubEnv("OPENCLAW_SERVICE_REPAIR_POLICY", undefined);
+     vi.stubEnv("OPENCLAW_UPDATE_IN_PROGRESS", undefined);
+@@ -74,6 +78,7 @@
+     });
+     let gateway: Awaited<ReturnType<typeof acquireGatewayLock>> | undefined;
+     let maintenance: Awaited<ReturnType<typeof beginDoctorMaintenance>>;
++    let phaseCycle = -1;
+     prepareService.mockImplementation(async (params) => {
+       const inspected = {
+         stopped: false,
+@@ -94,10 +99,14 @@
+         return inspected;
+       }
+       params.assertCurrent?.();
++      traceDoctorPhase(phaseCase, "service-gateway-release", "enter", phaseCycle);
+       await gateway!.release();
++      traceDoctorPhase(phaseCase, "service-gateway-release", "returned", phaseCycle);
+       gateway = undefined;
+       if (!keepWriter) {
++        traceDoctorPhase(phaseCase, "service-db-close", "enter", phaseCycle);
+         await closeOpenClawStateDatabaseAsync();
++        traceDoctorPhase(phaseCase, "service-db-close", "returned", phaseCycle);
+       }
+       const stopped = { ...inspected, stopped: true, running: false, offline: true };
+       params.onStopped?.(stopped);
+@@ -105,6 +114,8 @@
+     });
+     try {
+       for (let cycle = 0; cycle < (keepWriter ? 2 : 1); cycle++) {
++        phaseCycle = cycle;
++        traceDoctorPhase(phaseCase, "gateway-acquire", "enter", cycle);
+         gateway = await acquireGatewayLock({
+           env: process.env,
+           role: "gateway",
+@@ -113,15 +124,19 @@
+           port: 1,
+           allowInTests: true,
+         });
++        traceDoctorPhase(phaseCase, "gateway-acquire", "returned", cycle);
++        traceDoctorPhase(phaseCase, "maintenance-acquire", "enter", cycle);
+         maintenance = await beginDoctorRepair({
+           root: install,
+           beforeStateMutation: async () => {
++            traceDoctorPhase(phaseCase, "before-state-mutation", "enter", cycle);
+             const original = family();
+             listUpdateRuns({}, { env }, openDoctorStateSchemaReadAdmission);
+             if (!keepWriter) {
+               expect(isOpenClawStateDatabaseOpen(database)).toBe(false);
+               const scope = getOpenClawDatabaseMaintenanceScope()!;
+               hashes.mockClear();
++              traceDoctorPhase(phaseCase, "baseline-capture", "enter", cycle);
+               const { ref } = await captureUpdateRecoveryBaseline({
+                 runId: "doctor-plugin-capture",
+                 installRoot: install,
+@@ -130,6 +145,7 @@
+                 assertCurrent: scope.assertAdmission,
+                 acquisition: { mode: "maintenance-owner" },
+               });
++              traceDoctorPhase(phaseCase, "baseline-capture", "returned", cycle);
+               expect(hashes.mock.calls.length).toBeLessThanOrEqual(2);
+               const manifest = parseUpdateRecoveryBackupManifest(
+                 fs.readFileSync(ref.manifestPath, "utf8"),
+@@ -147,16 +163,28 @@
+               }
+             }
+             expect(family()).toEqual(original);
++            traceDoctorPhase(phaseCase, "before-state-mutation", "returned", cycle);
+           },
+         });
++        traceDoctorPhase(phaseCase, "maintenance-acquire", "returned", cycle);
++        traceDoctorPhase(phaseCase, "maintenance-read", "enter", cycle);
+         maintenance!.run(() => listUpdateRuns({}, { env }, openDoctorStateSchemaReadAdmission));
++        traceDoctorPhase(phaseCase, "maintenance-read", "returned", cycle);
++        traceDoctorPhase(phaseCase, "maintenance-release", "enter", cycle);
+         await maintenance!.release();
++        traceDoctorPhase(phaseCase, "maintenance-release", "returned", cycle);
+         maintenance = undefined;
+       }
+     } finally {
++      traceDoctorPhase(phaseCase, "finally-maintenance-release", "enter", phaseCycle);
+       await maintenance?.release();
++      traceDoctorPhase(phaseCase, "finally-maintenance-release", "returned", phaseCycle);
++      traceDoctorPhase(phaseCase, "finally-gateway-release", "enter", phaseCycle);
+       await gateway?.release();
++      traceDoctorPhase(phaseCase, "finally-gateway-release", "returned", phaseCycle);
++      traceDoctorPhase(phaseCase, "finally-isolation", "enter", phaseCycle);
+       assertIsolation();
++      traceDoctorPhase(phaseCase, "finally-isolation", "returned", phaseCycle);
+     }
+   },
+ );
+diff --git a/src/commands/doctor-maintenance.admission.test-support.ts b/src/commands/doctor-maintenance.admission.test-support.ts
+--- a/src/commands/doctor-maintenance.admission.test-support.ts
++++ b/src/commands/doctor-maintenance.admission.test-support.ts
+@@ -47,17 +47,83 @@
+   });
+ }
+ 
++type DoctorPhaseCase = "cached-true" | "cached-false";
++type DoctorPhaseStage =
++  | "fixture-create"
++  | "gateway-acquire"
++  | "maintenance-acquire"
++  | "service-gateway-release"
++  | "service-db-close"
++  | "before-state-mutation"
++  | "baseline-capture"
++  | "maintenance-read"
++  | "maintenance-release"
++  | "finally-maintenance-release"
++  | "finally-gateway-release"
++  | "finally-isolation"
++  | "after-each-db-async"
++  | "after-each-db-sync"
++  | "after-each-directories"
++  | "after-each-mocks"
++  | "after-each-env";
++
++const doctorPhaseCounts = { "cached-true": 0, "cached-false": 0 };
++
++export function traceDoctorPhase(
++  caseId: DoctorPhaseCase | undefined,
++  stage: DoctorPhaseStage,
++  event: "enter" | "returned",
++  cycle = -1,
++) {
++  if (!caseId || doctorPhaseCounts[caseId] >= 65) {
++    return;
++  }
++  const seq = ++doctorPhaseCounts[caseId];
++  try {
++    process.stderr.write(
++      "[doctor-phases] " +
++        JSON.stringify({
++          v: 1,
++          case: caseId,
++          seq,
++          stage: seq === 65 ? "overflow" : stage,
++          event: seq === 65 ? "overflow" : event,
++          cycle: seq === 65 ? -1 : cycle,
++        }) +
++        "\n",
++    );
++  } catch {
++    // Diagnostic write failures must not replace the operation's original outcome.
++  }
++}
++
+ export function setupDoctorAdmissionFixture() {
+   const directories = createTempDirTracker();
+   useDoctorMaintenanceRuntimeDirectory(() => directories.make("doctor-admission-custody-"));
+-  afterEach(async () => {
++  afterEach(async (context) => {
++    const phaseCase =
++      context.task.name === "keeps Doctor continuation with its repair scope (cached writer: true)"
++        ? "cached-true"
++        : context.task.name === "keeps Doctor continuation with its repair scope (cached writer: false)"
++          ? "cached-false"
++          : undefined;
+     try {
++      traceDoctorPhase(phaseCase, "after-each-db-async", "enter");
+       await closeOpenClawStateDatabaseAsync();
++      traceDoctorPhase(phaseCase, "after-each-db-async", "returned");
++      traceDoctorPhase(phaseCase, "after-each-db-sync", "enter");
+       closeOpenClawStateDatabaseForTest();
++      traceDoctorPhase(phaseCase, "after-each-db-sync", "returned");
++      traceDoctorPhase(phaseCase, "after-each-directories", "enter");
+       directories.cleanup();
++      traceDoctorPhase(phaseCase, "after-each-directories", "returned");
+     } finally {
++      traceDoctorPhase(phaseCase, "after-each-mocks", "enter");
+       vi.restoreAllMocks();
++      traceDoctorPhase(phaseCase, "after-each-mocks", "returned");
++      traceDoctorPhase(phaseCase, "after-each-env", "enter");
+       vi.unstubAllEnvs();
++      traceDoctorPhase(phaseCase, "after-each-env", "returned");
+     }
+   });
+   return (keepWriter = false) => {

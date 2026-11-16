@@ -21,6 +21,11 @@ GROUPS = ("large10", "large5", "small4", "large2", "large42_storage", "large42_p
 DOCTOR_FILE = "src/commands/doctor-maintenance.continuation-scope.test.ts"
 DOCTOR_CASES = tuple(f"keeps Doctor continuation with its repair scope (cached writer: {writer})"
                      for writer in ("true", "false"))
+DOCTOR_PHASE_PATCH_SHA256 = "033fdf2c27913a7b8fc23ffc09da536ab9f21052054090a42b8c387591aff800"
+DOCTOR_PHASE_FILES = {
+    DOCTOR_FILE: ("31af4b9968716bf8e4ccade9b184bd810bb4e3096df3488d4a6f66f3d1a34f2f", "a8f0f9d3f39d7c940f118e2c17a5abb671f5ce109481cea4c42ff539f495d3c0"),
+    "src/commands/doctor-maintenance.admission.test-support.ts": ("c358cb66f0e72f5cbfc0a26b61527244bcede760241186e4115ef29c7a1e7ea0", "14d8caac91f0b61edb33f6c21a60d879c1315cbd543f08a43c37fa6fb419c0a2"),
+}
 ANCHOR_FILE = "src/process/supervisor/service-child-group-anchor.preparation.test.ts"
 ANCHOR_GROUP_SHA256 = "002349c7fe78370a021dec47798239fe9d9acedd9779dc9473699b7060db2c56"
 ANCHOR_PATCH_SHA256 = "616e96a98212e57d6405656a043384d8d77199d6e6ea6529238ee6e61971ee75"
@@ -226,7 +231,7 @@ def invitation_observations(log, exit_code):
     return {"cases": rows, "nativeSummaries": summaries}
 
 
-def doctor_continuation_observations(log, exit_code):
+def doctor_continuation_observations(log, exit_code, full_context=False):
     rows, summaries = [], []
     prefix = "[shard:bun:agentic-commands-doctor]"
     for raw in log.splitlines():
@@ -236,6 +241,8 @@ def doctor_continuation_observations(log, exit_code):
         body = line[len(prefix):].strip()
         if body.startswith(("Test Files ", "Tests ")):
             summaries.append(body)
+        if full_context and DOCTOR_FILE + " > " not in body:
+            continue
         if not re.search(r"\|[^|]+\|.* >(?: |$)", body):
             continue
         match = re.fullmatch(r"(.*?)\|([^|]+)\|\s+(.+?) > (.+?)(?: \d+(?:\.\d+)?ms)?", body)
@@ -252,6 +259,57 @@ def doctor_continuation_observations(log, exit_code):
     assert all(row["status"] in {"passed", "failed"} for row in rows), "diagnostic case skipped"
     assert exit_code != 0 or all(row["status"] == "passed" for row in rows), "successful exit contradicts failed case"
     return {"cases": rows, "nativeSummaries": summaries}
+
+
+def doctor_phase_observations(log, exit_code):
+    result = doctor_continuation_observations(log, exit_code, full_context=True)
+    aliases = dict(zip(("cached-true", "cached-false"), DOCTOR_CASES))
+    stages = set("fixture-create gateway-acquire maintenance-acquire service-gateway-release service-db-close before-state-mutation baseline-capture maintenance-read maintenance-release finally-maintenance-release finally-gateway-release finally-isolation after-each-db-async after-each-db-sync after-each-directories after-each-mocks after-each-env overflow".split())
+    prefix = "[shard:bun:agentic-commands-doctor]"
+    frames = []
+    for raw in log.splitlines():
+        line = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", raw)
+        if not line.startswith(prefix):
+            continue
+        body = line[len(prefix):].strip()
+        if "[doctor-phases]" not in body:
+            continue
+        assert body.startswith("[doctor-phases] ") and len(line.encode()) <= 512, "invalid Doctor phase framing"
+        row = json.loads(body.removeprefix("[doctor-phases] "))
+        assert list(row) == ["v", "case", "seq", "stage", "event", "cycle"]
+        assert type(row["v"]) is int and row["v"] == 1 and row["case"] in aliases
+        assert row["stage"] in stages and row["event"] in {"enter", "returned", "overflow"}
+        assert type(row["seq"]) is int and 1 <= row["seq"] <= 65
+        assert type(row["cycle"]) is int and -1 <= row["cycle"] <= (1 if row["case"] == "cached-true" else 0)
+        assert (row["event"] == "overflow") == (row["stage"] == "overflow") == (row["seq"] == 65)
+        if row["stage"].startswith("after-each-") or row["stage"] in {"fixture-create", "overflow"}:
+            assert row["cycle"] == -1
+        frames.append(row)
+        assert len(frames) <= 130, "Doctor phase count exceeded"
+    coverage, complete = {}, True
+    for alias, full_name in aliases.items():
+        rows = [row for row in frames if row["case"] == alias]
+        valid = (0 < len(rows) <= 64 and rows[0]["stage"] == "fixture-create" and rows[0]["event"] == "enter"
+                 and [row["seq"] for row in rows] == list(range(1, len(rows) + 1))
+                 and any(row["stage"] == "after-each-db-async" and row["event"] == "enter" for row in rows)
+                 and not any(row["event"] == "overflow" for row in rows))
+        pending = []
+        for row in rows:
+            if row["event"] == "enter":
+                pending.append(row)
+            elif row["event"] == "returned":
+                matches = [i for i, entered in enumerate(pending) if (entered["stage"], entered["cycle"]) == (row["stage"], row["cycle"])]
+                if matches:
+                    pending.pop(matches[-1])
+                else:
+                    valid = False
+        complete &= valid
+        coverage[alias] = {"fullName": full_name, "frames": len(rows), "framingComplete": valid,
+                           "lastUnmatchedBoundary": pending[-1] if pending else None,
+                           "unmatchedEnterCount": len(pending), "last": rows[-1] if rows else None}
+    result.update(frames=frames, frameCoverage=coverage, framingComplete=complete,
+                  limit="enter without returned is an observed boundary only; no cause, absence or qualification inference; synchronous logging perturbs scheduling")
+    return result
 
 
 def doctor_observations(log):
@@ -357,6 +415,7 @@ def main():
     parser.add_argument("--pin", choices=("old", "new"), required=True)
     parser.add_argument("--doctor-causes", action="store_true")
     parser.add_argument("--doctor-readiness", action="store_true")
+    parser.add_argument("--doctor-phases", action="store_true")
     parser.add_argument("--invitation-retention", action="store_true")
     parser.add_argument("--invitation-cache-code", action="store_true")
     parser.add_argument("--invitation-native-callback", action="store_true")
@@ -366,6 +425,10 @@ def main():
     parser.add_argument("--anchor-fixture-fix", action="store_true")
     parser.add_argument("--doctor-continuation", action="store_true")
     args = parser.parse_args()
+    assert not args.doctor_phases or ((args.group, args.pin) == ("large5", "new") and not any((
+        args.doctor_causes, args.doctor_readiness, args.doctor_continuation, args.invitation_retention,
+        args.invitation_cache_code, args.invitation_native_callback, args.invitation_snapshot,
+        args.anchor_preparation, args.anchor_full_context, args.anchor_fixture_fix)))
     assert not args.anchor_fixture_fix or ((args.group, args.pin) == ("large42_process", "new")
         and not any((args.anchor_preparation, args.anchor_full_context, args.doctor_causes,
                      args.doctor_readiness, args.doctor_continuation, args.invitation_retention,
@@ -398,11 +461,11 @@ def main():
               "pin": args.pin, "status": "INCONCLUSIVE", "settlementUncertain": False,
               "stateDisposition": "retained-for-hosted-runner-teardown", "preparation": [],
               "cacheProfile": "cold-private-caches; original CI cache restore status unknown"}
-    if args.doctor_causes or args.doctor_readiness or args.invitation_retention or args.invitation_native_callback or args.invitation_snapshot or args.anchor_preparation or args.doctor_continuation or args.anchor_fixture_fix:
+    if args.doctor_causes or args.doctor_readiness or args.doctor_phases or args.invitation_retention or args.invitation_native_callback or args.invitation_snapshot or args.anchor_preparation or args.doctor_continuation or args.anchor_fixture_fix:
         report.update(diagnosticOnly=True, qualifiesRepin=False)
     candidate_bytes = None
     original_test_bytes = None
-    readiness_originals = None
+    doctor_originals = None
     anchor_originals = None
     fixture_original = None
     deadline = time.monotonic() + 75 * 60
@@ -464,7 +527,7 @@ def main():
             report["anchorFix"] = {"originalGroupSHA256": report["groupSHA256"],
                 "effectiveGroupSHA256": report["groupSHA256"], "expectedCases": ANCHOR_CASES,
                 "scope": "C plus one reviewed fixture fix, original 168-pattern group; native exit and all cases remain authoritative; not unchanged-C qualification"}
-        if args.doctor_readiness:
+        if args.doctor_readiness or args.doctor_phases:
             assert report["groupSHA256"] == "3d18b3a8c52cd624cd953353f5949b487c54e3611e5ab3db45f690656a6c7224"
         if args.invitation_retention or args.invitation_native_callback or args.invitation_snapshot:
             assert len(selected["group"]["includePatterns"]) == 309 and INVITATION_FILE in selected["group"]["includePatterns"]
@@ -578,25 +641,30 @@ def main():
             report["fixtureProjection"]["state"] = "applied"
             assert common["sha"](fixture_path) == ANCHOR_FIX_SHA256
             assert git("diff", "HEAD", "--name-only") == ANCHOR_FIX_FILE
-        if args.doctor_readiness:
-            patch = Path(__file__).with_name("doctor-readiness.patch").resolve()
-            assert common["sha"](patch) == READINESS_PATCH_SHA256
-            paths = {name: source / name for name in READINESS_FILES}
-            assert all(path.is_file() and not path.is_symlink() and common["sha"](path) == READINESS_FILES[name][0]
-                       for name, path in paths.items()), "readiness source differs from exact candidate"
+        if args.doctor_readiness or args.doctor_phases:
+            doctor_files = DOCTOR_PHASE_FILES if args.doctor_phases else READINESS_FILES
+            projection_key = "doctorPhaseProjection" if args.doctor_phases else "readinessProjection"
+            patch_sha = DOCTOR_PHASE_PATCH_SHA256 if args.doctor_phases else READINESS_PATCH_SHA256
+            patch = Path(__file__).with_name("doctor-phases.patch" if args.doctor_phases else "doctor-readiness.patch").resolve()
+            assert common["sha"](patch) == patch_sha
+            paths = {name: source / name for name in doctor_files}
+            assert all(path.is_file() and not path.is_symlink() and common["sha"](path) == doctor_files[name][0]
+                       for name, path in paths.items()), "Doctor diagnostic source differs from exact candidate"
             assert not git("diff", "HEAD", "--name-only")
             git("apply", "--check", str(patch))
-            readiness_originals = {name: path.read_bytes() for name, path in paths.items()}
-            report["readinessProjection"] = {"state": "prepared", "patchSHA256": READINESS_PATCH_SHA256,
+            doctor_originals = {name: path.read_bytes() for name, path in paths.items()}
+            report[projection_key] = {"state": "prepared", "patchSHA256": patch_sha,
                 "files": {name: {"originalSHA256": hashes[0], "patchedSHA256": hashes[1]}
-                          for name, hashes in READINESS_FILES.items()},
-                "egress": "4 guard receipts plus one overflow per guard; 2048 fixed frames plus one limit marker per loaded diagnostic module instance; each frame below512B; whole native log32MiB",
-                "scope": "instrumented readiness diagnosis only; stderr writes and hashing can perturb scheduling; no added Promise continuation, wait, retry or timeout"}
+                          for name, hashes in doctor_files.items()},
+                "egress": ("64 combined test/fixture frames per case plus one overflow; fixed schema below512B; whole native log32MiB"
+                           if args.doctor_phases else "4 guard receipts plus one overflow per guard; 2048 fixed frames plus one limit marker per loaded diagnostic module instance; each frame below512B; whole native log32MiB"),
+                "scope": ("two test/fixture projections in original116-pattern group; stderr writes can perturb scheduling; observed operation boundaries only, no cause or qualification verdict"
+                          if args.doctor_phases else "instrumented readiness diagnosis only; stderr writes and hashing can perturb scheduling; no added Promise continuation, wait, retry or timeout")}
             save()
             git("apply", "--whitespace=nowarn", str(patch))
-            report["readinessProjection"]["state"] = "applied"
-            assert all(common["sha"](path) == READINESS_FILES[name][1] for name, path in paths.items())
-            assert set(git("diff", "HEAD", "--name-only").splitlines()) == set(report["readinessProjection"]["files"])
+            report[projection_key]["state"] = "applied"
+            assert all(common["sha"](path) == doctor_files[name][1] for name, path in paths.items())
+            assert set(git("diff", "HEAD", "--name-only").splitlines()) == set(report[projection_key]["files"])
         if args.anchor_preparation:
             patch = Path(__file__).with_name("anchor-preparation-observer.patch").resolve()
             assert common["sha"](patch) == ANCHOR_PATCH_SHA256
@@ -657,6 +725,11 @@ def main():
             observations = anchor_observations(log, outcome["exitCode"], full_context=True)
             report["anchorFix"].update({key: observations[key] for key in ("cases", "nativeSummaries")})
             report["status"] = "DIAGNOSTIC"
+        elif args.doctor_phases:
+            report["diagnosticNativeStatus"] = "PASS" if outcome["exitCode"] == 0 else "FAIL"
+            report["doctorPhases"] = doctor_phase_observations(log, outcome["exitCode"])
+            assert report["doctorPhases"]["framingComplete"], "Doctor phase evidence missing, capped or unattributed"
+            report["status"] = "DIAGNOSTIC"
         elif args.doctor_continuation:
             report["doctorContinuation"].update(doctor_continuation_observations(log, outcome["exitCode"]))
             report["diagnosticNativeStatus"] = "PASS" if outcome["exitCode"] == 0 else "FAIL"
@@ -696,8 +769,8 @@ def main():
             report["restoration"] = "not-attempted-indeterminate-settlement"
             if original_test_bytes is not None:
                 report["testProjection"]["state"] = "retained-indeterminate-settlement"
-            if readiness_originals is not None:
-                report["readinessProjection"]["state"] = "retained-indeterminate-settlement"
+            if doctor_originals is not None:
+                report[projection_key]["state"] = "retained-indeterminate-settlement"
             if anchor_originals is not None:
                 report["anchorProjection"]["state"] = "retained-indeterminate-settlement"
             if fixture_original is not None:
@@ -717,16 +790,16 @@ def main():
                     assert report["fixtureProjection"]["restoredSHA256"] == ANCHOR_FILES[ANCHOR_FIX_FILE][0]
                 else:
                     report["fixtureProjection"]["state"] = "retained-unexpected-source-bytes"
-            if readiness_originals is not None:
-                restore_allowed = all(path.is_file() and not path.is_symlink() and common["sha"](path) == READINESS_FILES[name][1]
+            if doctor_originals is not None:
+                restore_allowed = all(path.is_file() and not path.is_symlink() and common["sha"](path) == doctor_files[name][1]
                                       for name, path in paths.items())
-                restore_allowed &= set(git("diff", "HEAD", "--name-only").splitlines()) == set(report["readinessProjection"]["files"])
+                restore_allowed &= set(git("diff", "HEAD", "--name-only").splitlines()) == set(report[projection_key]["files"])
                 if restore_allowed:
-                    for name, original in readiness_originals.items():
+                    for name, original in doctor_originals.items():
                         paths[name].write_bytes(original)
-                    report["readinessProjection"]["state"] = "restored"
+                    report[projection_key]["state"] = "restored"
                 else:
-                    report["readinessProjection"]["state"] = "retained-unexpected-source-bytes"
+                    report[projection_key]["state"] = "retained-unexpected-source-bytes"
             if anchor_originals is not None:
                 restore_allowed = all(path.is_file() and not path.is_symlink() and common["sha"](path) == ANCHOR_FILES[name][1]
                                       for name, path in anchor_paths.items())

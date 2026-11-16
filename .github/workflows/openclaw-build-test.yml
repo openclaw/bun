@@ -16,6 +16,7 @@ on:
             darwin-openclaw-app-host,
             linux-openclaw-doctor-causes,
             linux-openclaw-doctor-readiness,
+            linux-openclaw-doctor-phases,
             linux-openclaw-invitation-retention,
             linux-openclaw-invitation-cache-code,
             linux-openclaw-invitation-callback,
@@ -45,7 +46,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: aot-operation-origins-${{ github.ref }}${{ inputs.platform == 'linux-openclaw-bun-only' && '-bun-only' || inputs.platform == 'linux-openclaw-repin' && '-linux-repin' || inputs.platform == 'darwin-openclaw-app-host' && '-app-host' || inputs.platform == 'linux-openclaw-doctor-causes' && '-doctor-causes' || inputs.platform == 'linux-openclaw-doctor-readiness' && '-doctor-readiness' || inputs.platform == 'linux-openclaw-invitation-cache-code' && '-invitation-cache-code' || inputs.platform == 'linux-openclaw-invitation-retention' && '-invitation-retention' || inputs.platform == 'linux-openclaw-invitation-callback' && '-invitation-callback' || inputs.platform == 'linux-openclaw-invitation-snapshot' && '-invitation-snapshot' || inputs.platform == 'linux-openclaw-anchor-fixture-fix' && '-anchor-fixture-fix' || inputs.platform == 'linux-openclaw-anchor-full-context' && '-anchor-full-context' || inputs.platform == 'linux-openclaw-anchor-preparation' && '-anchor-preparation' || inputs.platform == 'linux-openclaw-doctor-continuation' && '-doctor-continuation' || inputs.platform == 'linux-openclaw-profile-layout' && '-profile-layout' || '' }}
+  group: aot-operation-origins-${{ github.ref }}${{ inputs.platform == 'linux-openclaw-bun-only' && '-bun-only' || inputs.platform == 'linux-openclaw-repin' && '-linux-repin' || inputs.platform == 'darwin-openclaw-app-host' && '-app-host' || inputs.platform == 'linux-openclaw-doctor-causes' && '-doctor-causes' || inputs.platform == 'linux-openclaw-doctor-readiness' && '-doctor-readiness' || inputs.platform == 'linux-openclaw-doctor-phases' && '-doctor-phases' || inputs.platform == 'linux-openclaw-invitation-cache-code' && '-invitation-cache-code' || inputs.platform == 'linux-openclaw-invitation-retention' && '-invitation-retention' || inputs.platform == 'linux-openclaw-invitation-callback' && '-invitation-callback' || inputs.platform == 'linux-openclaw-invitation-snapshot' && '-invitation-snapshot' || inputs.platform == 'linux-openclaw-anchor-fixture-fix' && '-anchor-fixture-fix' || inputs.platform == 'linux-openclaw-anchor-full-context' && '-anchor-full-context' || inputs.platform == 'linux-openclaw-anchor-preparation' && '-anchor-preparation' || inputs.platform == 'linux-openclaw-doctor-continuation' && '-doctor-continuation' || inputs.platform == 'linux-openclaw-profile-layout' && '-profile-layout' || '' }}
   cancel-in-progress: true
 
 jobs:
@@ -436,7 +437,7 @@ jobs:
           retention-days: 7
 
   openclaw-doctor-readiness:
-    if: inputs.platform == 'linux-openclaw-doctor-readiness'
+    if: inputs.platform == 'linux-openclaw-doctor-readiness' || inputs.platform == 'linux-openclaw-doctor-phases'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     permissions:
@@ -468,13 +469,16 @@ jobs:
       - name: Observe Doctor readiness in the complete canonical group without credentials
         env:
           CONTROLLER_SHA: ${{ github.sha }}
+          DOCTOR_PHASES: ${{ inputs.platform == 'linux-openclaw-doctor-phases' }}
         run: |
+          diagnostic_args=(--doctor-readiness)
+          if [ "$DOCTOR_PHASES" = true ]; then diagnostic_args=(--doctor-phases); fi
           controller_home="$RUNNER_TEMP/doctor-readiness-controller-home"
           controller_tmp="$RUNNER_TEMP/doctor-readiness-controller-tmp"
           install -d -m 0700 "$controller_home" "$controller_tmp"
           env -i PATH="$PATH" HOME="$controller_home" TMPDIR="$controller_tmp" LANG=C.UTF-8 CI=true \
             python3 scripts/openclaw-ci/openclaw-linux-repin.py --source source --out doctor-readiness-proof \
-            --controller-sha "$CONTROLLER_SHA" --group large5 --pin new --doctor-readiness
+            --controller-sha "$CONTROLLER_SHA" --group large5 --pin new "${diagnostic_args[@]}"
       - name: Check bounded text-only diagnostic evidence
         id: doctor-readiness-budget
         if: always()
