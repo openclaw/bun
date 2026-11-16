@@ -1,0 +1,504 @@
+--- a/src/process/spawn-broker/resource-protocol.ts
++++ b/src/process/spawn-broker/resource-protocol.ts
+@@ -68,3 +68,203 @@
+       resourceError: false;
+     }
+   | { type: "resource-failed"; id: number; error: NativeWorkerFailure };
++
++// Temporary readiness diagnosis: fixed fields only; never serialize broker payloads.
++const doctorReadinessEvents = new Set([
++  "bootstrap-send",
++  "bootstrap-callback",
++  "bootstrap-error",
++  "host-ipc-ready",
++  "worker-bootstrap",
++  "server-listen",
++  "server-listening",
++  "attach-decoded",
++  "attach-rejected",
++  "attach-duplicate",
++  "attach-capacity",
++  "attach-accepted",
++  "ready-queued",
++  "ready-written",
++  "client-connected",
++  "client-attach-written",
++  "client-ready",
++  "client-timeout",
++  "evidence-limit",
++  "framing-loss",
++]);
++const doctorReadinessCodes = new Set([
++  "none",
++  "unknown",
++  "EACCES",
++  "EADDRINUSE",
++  "EADDRNOTAVAIL",
++  "EAGAIN",
++  "ECANCELED",
++  "ECONNREFUSED",
++  "ECONNRESET",
++  "EINTR",
++  "EINVAL",
++  "EISCONN",
++  "EMFILE",
++  "ENFILE",
++  "ENOBUFS",
++  "ENOENT",
++  "ENOMEM",
++  "ENOTSOCK",
++  "EPERM",
++  "EPIPE",
++  "ETIMEDOUT",
++]);
++const doctorReadinessPrefix = "[doctor-readiness] ";
++let doctorReadinessFrames = 0;
++
++// Correlation only: this noncryptographic 53-bit fingerprint can collide.
++export function doctorReadinessKey(endpoint: string): number {
++  let value = 14695981039346656037n;
++  for (let index = 0; index < endpoint.length; index++) {
++    value = BigInt.asUintN(64, (value ^ BigInt(endpoint.charCodeAt(index))) * 1099511628211n);
++  }
++  return Number(value & 0x1fffffffffffffn);
++}
++
++export function doctorReadinessCode(error: unknown): string {
++  try {
++    const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
++    return typeof code === "string" && doctorReadinessCodes.has(code) ? code : "unknown";
++  } catch {
++    return "unknown";
++  }
++}
++
++function writeDoctorReadiness(line: string): void {
++  try {
++    if (doctorReadinessFrames < 2048) {
++      doctorReadinessFrames++;
++      process.stderr.write(line + "\n");
++    } else if (doctorReadinessFrames === 2048) {
++      doctorReadinessFrames++;
++      process.stderr.write(
++        doctorReadinessPrefix +
++          JSON.stringify({
++            v: 1,
++            event: "evidence-limit",
++            pid: process.pid,
++            key: -1,
++            generation: -1,
++            id: -1,
++            peer: -1,
++            attempts: 0,
++            code: "none",
++          }) +
++          "\n",
++      );
++    }
++  } catch {
++    // Diagnostic output cannot replace the native outcome or cleanup owner.
++  }
++}
++
++export function doctorReadiness(
++  event: string,
++  endpoint?: string,
++  generation = -1,
++  id = -1,
++  peer = -1,
++  attempts = 0,
++  code = "none",
++): void {
++  if (!doctorReadinessEvents.has(event)) {
++    return;
++  }
++  const numeric = (value: number) => (Number.isSafeInteger(value) && value >= -1 ? value : -1);
++  writeDoctorReadiness(
++    doctorReadinessPrefix +
++      JSON.stringify({
++        v: 1,
++        event,
++        pid: process.pid,
++        key: endpoint === undefined ? -1 : doctorReadinessKey(endpoint),
++        generation: numeric(generation),
++        id: numeric(id),
++        peer: numeric(peer),
++        attempts: numeric(attempts),
++        code: doctorReadinessCodes.has(code) ? code : "unknown",
++      }),
++  );
++}
++
++/** Forward only complete bounded diagnostic frames; preserve the caller's stderr tail. */
++export function createDoctorReadinessForwarder() {
++  let pending = "";
++  let discarded = false;
++  let markerSeen = false;
++  let markerTail = "";
++  const consume = () => {
++    if (
++      markerSeen ||
++      pending.startsWith(doctorReadinessPrefix) ||
++      (pending && doctorReadinessPrefix.startsWith(pending))
++    ) {
++      try {
++        if (discarded || Buffer.byteLength(pending) > 512) {
++          throw new Error("incomplete diagnostic frame");
++        }
++        const row = JSON.parse(pending.slice(doctorReadinessPrefix.length));
++        if (
++          !row ||
++          Object.keys(row).join(",") !== "v,event,pid,key,generation,id,peer,attempts,code" ||
++          row.v !== 1 ||
++          !doctorReadinessEvents.has(row.event) ||
++          !doctorReadinessCodes.has(row.code) ||
++          ![row.pid, row.key, row.generation, row.id, row.peer, row.attempts].every(
++            (value) => Number.isSafeInteger(value) && value >= -1,
++          )
++        ) {
++          throw new Error("invalid diagnostic frame");
++        }
++        writeDoctorReadiness(doctorReadinessPrefix + JSON.stringify(row));
++      } catch {
++        doctorReadiness("framing-loss");
++      }
++    }
++    pending = "";
++    discarded = false;
++    markerSeen = false;
++    markerTail = "";
++  };
++  return {
++    push(chunk: string) {
++      let offset = 0;
++      while (offset < chunk.length) {
++        const end = chunk.indexOf("\n", offset);
++        const part = chunk.slice(offset, end < 0 ? chunk.length : end);
++        const scan = markerTail + part;
++        markerSeen ||= scan.includes(doctorReadinessPrefix);
++        markerTail = scan.slice(1 - doctorReadinessPrefix.length);
++        if (!discarded) {
++          const room = 513 - pending.length;
++          pending += part.slice(0, room);
++          discarded = part.length > room || pending.length > 512;
++        }
++        if (end < 0) {
++          break;
++        }
++        consume();
++        offset = end + 1;
++      }
++    },
++    finish() {
++      if (
++        markerSeen ||
++        pending.startsWith(doctorReadinessPrefix) ||
++        (doctorReadinessPrefix.startsWith(pending) && pending)
++      ) {
++        doctorReadiness("framing-loss");
++      }
++      pending = "";
++      discarded = false;
++      markerSeen = false;
++      markerTail = "";
++    },
++  };
++}
+--- a/src/process/spawn-broker/host.ts
++++ b/src/process/spawn-broker/host.ts
+@@ -52,6 +52,8 @@
+   type BrokerNativeResourceLease,
+ } from "./resource-host.js";
+ import {
++  doctorReadiness,
++  doctorReadinessCode,
+   SPAWN_BROKER_STARTUP_TIMEOUT_MS,
+   spawnBrokerStartupNowMs,
+   type BrokerBootstrap,
+@@ -572,6 +574,15 @@
+         return;
+       }
+       if (message.type === "ready") {
++        if (this.resourceAuthority) {
++          doctorReadiness(
++            "host-ipc-ready",
++            this.resourceAuthority.endpoint,
++            generation,
++            -1,
++            message.pid,
++          );
++        }
+         try {
+           markReady(message.pid, generation);
+         } catch (error) {
+@@ -667,12 +678,43 @@
+     // Bootstrap must enter native IPC before a synchronous caller blocks Promise reactions.
+     // Its send receipt is not readiness; the child reports readiness after initialization.
+     try {
++      if (this.resourceAuthority) {
++        doctorReadiness(
++          "bootstrap-send",
++          this.resourceAuthority.endpoint,
++          generation,
++          -1,
++          child.pid,
++        );
++      }
+       child.send(bootstrap, (error) => {
++        if (this.resourceAuthority) {
++          doctorReadiness(
++            error ? "bootstrap-error" : "bootstrap-callback",
++            this.resourceAuthority.endpoint,
++            generation,
++            -1,
++            child.pid,
++            0,
++            error ? doctorReadinessCode(error) : "none",
++          );
++        }
+         if (error) {
+           fail(error);
+         }
+       });
+     } catch (error) {
++      if (this.resourceAuthority) {
++        doctorReadiness(
++          "bootstrap-error",
++          this.resourceAuthority.endpoint,
++          generation,
++          -1,
++          child.pid,
++          0,
++          doctorReadinessCode(error),
++        );
++      }
+       fail(toErrorObject(error, "Spawn broker bootstrap delivery failed"));
+     }
+     if (!ended) {
+--- a/src/process/spawn-broker/worker.ts
++++ b/src/process/spawn-broker/worker.ts
+@@ -31,6 +31,7 @@
+   type BrokerRequest,
+   type BrokerResponse,
+ } from "./protocol.js";
++import { doctorReadiness } from "./resource-protocol.js";
+ import type {
+   BrokerBootstrap,
+   BrokerResourceRequest,
+@@ -701,6 +702,7 @@
+   }
+   if (bootstrap.nativeResource) {
+     const authority = bootstrap.nativeResource;
++    doctorReadiness("worker-bootstrap", authority.endpoint, authority.generation);
+     try {
+       resources = await createBrokerNativeResourceServer({
+         endpoint: authority.endpoint,
+--- a/src/process/spawn-broker/resource-server.ts
++++ b/src/process/spawn-broker/resource-server.ts
+@@ -11,6 +11,7 @@
+ } from "../../infra/worker-native-lifecycle.types.js";
+ import { MAX_PENDING_BYTES, MAX_PENDING_MESSAGES } from "./ipc.js";
+ import {
++  doctorReadiness,
+   SPAWN_BROKER_STARTUP_TIMEOUT_MS,
+   type BrokerResourceAttachment,
+   type BrokerResourceRequest,
+@@ -357,6 +358,7 @@
+           return;
+         }
+         const attachment = request.attachment;
++        doctorReadiness("attach-decoded", options.endpoint, options.generation);
+         if (
+           sourceSealed ||
+           attached ||
+@@ -371,15 +373,18 @@
+             typeof attachment.sourceLoaderUrl !== "string") ||
+           typeof attachment.ownerPort !== "boolean"
+         ) {
++          doctorReadiness("attach-rejected", options.endpoint, options.generation);
+           transport.close();
+           return;
+         }
+         // Attachments have one transport lifetime; a lost Worker never reconnects.
+         if (resources.has(attachment.id)) {
++          doctorReadiness("attach-duplicate", options.endpoint, options.generation, attachment.id);
+           transport.close();
+           return;
+         }
+         if (!options.canAdmit()) {
++          doctorReadiness("attach-capacity", options.endpoint, options.generation, attachment.id);
+           void transport
+             .send({
+               type: "resource-failed",
+@@ -390,6 +395,7 @@
+             .catch(() => {});
+           return;
+         }
++        doctorReadiness("attach-accepted", options.endpoint, options.generation, attachment.id);
+         const current: Resource = {
+           attachment,
+           target: new BrokerResourcePort((message) => {
+@@ -427,10 +433,12 @@
+           pid: process.pid,
+           generation: options.generation,
+         };
++        doctorReadiness("ready-queued", options.endpoint, options.generation, attachment.id);
+         const readySent = transport.send(ready);
+         publishParent(ready);
+         current.initialized = (async () => {
+           await readySent;
++          doctorReadiness("ready-written", options.endpoint, options.generation, attachment.id);
+           if (!live() || sourceSealed) {
+             return;
+           }
+@@ -516,7 +524,9 @@
+   }
+   await new Promise<void>((resolve, reject) => {
+     server.once("error", reject);
++    doctorReadiness("server-listen", options.endpoint, options.generation);
+     server.listen(options.endpoint, () => {
++      doctorReadiness("server-listening", options.endpoint, options.generation);
+       server.off("error", reject);
+       server.on("error", disconnect);
+       resolve();
+--- a/src/process/spawn-broker/resource-client.ts
++++ b/src/process/spawn-broker/resource-client.ts
+@@ -7,6 +7,9 @@
+ import { createDeferredCore, type Deferred } from "../../shared/deferred.js";
+ import {
+   BrokerNativeResourceCloseError,
++  doctorReadiness,
++  doctorReadinessCode,
++  doctorReadinessKey,
+   spawnBrokerStartupNowMs,
+   type BrokerResourceAttachment,
+   type BrokerResourceRequest,
+@@ -26,6 +29,10 @@
+   let transport: ReturnType<typeof createBrokerResourceSocket> | undefined;
+   let retryTimer: NodeJS.Timeout | undefined;
+   let closeSequence = 0;
++  let diagnosticAttempts = 0;
++  let diagnosticCode = "none";
++  let diagnosticConnected = false;
++  let diagnosticAttachSent = false;
+   let ready = false;
+   let initializedOwner = false;
+   let closed = false;
+@@ -65,6 +72,18 @@
+       throw new Error("Native resource attachment is closed");
+     }
+     await transport.send(message);
++    if (message.type === "resource-attach") {
++      diagnosticAttachSent = true;
++      doctorReadiness(
++        "client-attach-written",
++        attachment.endpoint,
++        attachment.generation,
++        attachment.id,
++        -1,
++        diagnosticAttempts,
++        diagnosticCode,
++      );
++    }
+   };
+   const receive = (value: unknown) => {
+     if (!isRecord(value) || value.id !== attachment.id || typeof value.type !== "string") {
+@@ -80,6 +99,15 @@
+     observe(response);
+     if (response.type === "resource-ready") {
+       ready = true;
++      doctorReadiness(
++        "client-ready",
++        attachment.endpoint,
++        attachment.generation,
++        attachment.id,
++        response.pid,
++        diagnosticAttempts,
++        diagnosticCode,
++      );
+       clearTimeout(startupTimer);
+     } else if (response.type === "resource-created") {
+       initializedOwner = true;
+@@ -115,10 +143,12 @@
+     if (failure || closed) {
+       return;
+     }
++    diagnosticAttempts++;
+     let candidate: Socket;
+     try {
+       candidate = connect(attachment.endpoint);
+     } catch (error) {
++      diagnosticCode = doctorReadinessCode(error);
+       // An invalid endpoint throws before any socket exists. Report it like an asynchronous
+       // connection failure, after the caller has installed this attachment's owner.
+       queueMicrotask(() => lose(toErrorObject(error, "Native resource attachment failed")));
+@@ -128,6 +158,7 @@
+     let connectionError: Error | undefined;
+     candidate.once("error", (error) => {
+       connectionError = error;
++      diagnosticCode = doctorReadinessCode(error);
+     });
+     transport = createBrokerResourceSocket(candidate, {
+       message: receive,
+@@ -150,6 +181,16 @@
+     });
+     candidate.once("connect", () => {
+       connected = true;
++      diagnosticConnected = true;
++      doctorReadiness(
++        "client-connected",
++        attachment.endpoint,
++        attachment.generation,
++        attachment.id,
++        -1,
++        diagnosticAttempts,
++        diagnosticCode,
++      );
+       void transmit({ type: "resource-attach", attachment }).catch((error: unknown) =>
+         lose(toErrorObject(error, "Native resource attachment failed")),
+       );
+@@ -161,7 +202,20 @@
+       : setTimeout(
+           () => {
+             if (!ready) {
+-              lose(new Error("Spawn broker readiness deadline exceeded"));
++              doctorReadiness(
++                "client-timeout",
++                attachment.endpoint,
++                attachment.generation,
++                attachment.id,
++                -1,
++                diagnosticAttempts,
++                diagnosticCode,
++              );
++              lose(
++                new Error(
++                  `Spawn broker readiness deadline exceeded [doctor-readiness pid=${process.pid} key=${doctorReadinessKey(attachment.endpoint)} generation=${attachment.generation} id=${attachment.id} attempts=${diagnosticAttempts} connected=${Number(diagnosticConnected)} attachSent=${Number(diagnosticAttachSent)} ready=${Number(ready)} code=${diagnosticCode}]`,
++                ),
++              );
+             }
+           },
+           Math.max(0, attachment.startupDeadline - spawnBrokerStartupNowMs()),
+--- a/src/process/spawn-broker/child-diagnostics.ts
++++ b/src/process/spawn-broker/child-diagnostics.ts
+@@ -4,6 +4,7 @@
+ import { redactToolPayloadText } from "../../logging/redact.js";
+ import { truncateUtf8Suffix } from "../../utils/utf8-truncate.js";
+ import { SpawnBrokerError } from "./protocol.js";
++import { createDoctorReadinessForwarder } from "./resource-protocol.js";
+ 
+ /** Capture the final stderr tail before the owner reports the child's exit. */
+ export function observeBrokerChildDiagnostics(child: ChildProcess): () => Promise<Error> {
+@@ -13,9 +14,12 @@
+     started = true;
+   });
+   let stderrTail = "";
++  const diagnosticFrames = createDoctorReadinessForwarder();
+   child.stderr?.setEncoding("utf8").on("data", (chunk: string) => {
+     stderrTail = truncateUtf8Suffix(stderrTail + chunk, 2048);
++    diagnosticFrames.push(chunk);
+   });
++  child.stderr?.once("close", () => diagnosticFrames.finish());
+   return async () => {
+     const stderr = redactToolPayloadText(stderrTail).trim();
+     return (

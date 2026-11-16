@@ -21,6 +21,15 @@ GROUPS = ("large10", "large5", "small4", "large2", "large42_storage", "large42_p
 INVITATION_FILE = "src/config/sessions/session-mention-invitation.test.ts"
 INVITATION_SOURCE_SHA256 = "a3fe4f0f54f7daceaa7ce53e1df5525f067cb5699b0096a6c527e366b24a8cf4"
 INVITATION_CALLBACK_SHA256 = "1775321fae85b26fca81575d9910aa3118e8e67955cd9d1774d8335e3f310fe7"
+READINESS_PATCH_SHA256 = "60c3550aa310570c0321c41b8218e7f5ac546b1f08d22ebc7e95ea700c737f60"
+READINESS_FILES = {
+    "resource-protocol.ts": ("3f66dcd70bc32b798930d3f11a8e575e0915206bb6ad5c0417a8ccb4975ed5c2", "a2fba54300e08f7a5107ffc0ce2cb2be095bc3553359b4d991ff881c27fa4458"),
+    "host.ts": ("3360493ae2ad0488c4e480f4b7022fe37788d05b811c0fc075855a2a663047f1", "581988c7e085fa86738dc01011aafbd77fdaa7fe9ec22d521e12d2ded6bcf1fa"),
+    "worker.ts": ("a58c07435184a536344a893ca0a4696fc26f9b9b908d93ead996dbf931194e61", "771bebb238901e8f7cf1652f57abb5b8579089ea8c82ad917d07dbb9664d00cc"),
+    "resource-server.ts": ("e3b812ccf3224078b8f5b1f740c19a3867b6fa4288c9f93264ee053a411660c0", "60b535bc8b9c208d98a941a718d8a69a425bdc8efe203bde44ae368c63450171"),
+    "resource-client.ts": ("7e81d67234b0ccf624c01907a6fc2b85df7b1c5d2f2f7e8358ce4f54da7657e9", "2eec3fd65fe93b8a1875206e34db13f2d6b6923e09086894b6097e6f51a20f50"),
+    "child-diagnostics.ts": ("d30543707f2e8b2c7aff2c26395c843a04d3b26189112f0d166987c1f45e6468", "8f9050ac05a303da04d810253fec5b65b18b531c51bc2f38a38bda582988b646"),
+}
 INVITATION_CASES = (
     *(f"commits a tag and its invitation together before any Inbox work, without regranting on reopen (first: {first})" for first in ("false", "true")),
     *(f"rolls back the tag, grant and watermark when commit authority changes (first: {first})" for first in ("false", "true")),
@@ -97,6 +106,47 @@ def doctor_observations(log):
     return rows
 
 
+def readiness_observations(log, causes):
+    events = set("bootstrap-send bootstrap-callback bootstrap-error host-ipc-ready worker-bootstrap server-listen server-listening attach-decoded attach-rejected attach-duplicate attach-capacity attach-accepted ready-queued ready-written client-connected client-attach-written client-ready client-timeout evidence-limit framing-loss".split())
+    codes = set("none unknown EACCES EADDRINUSE EADDRNOTAVAIL EAGAIN ECANCELED ECONNREFUSED ECONNRESET EINTR EINVAL EISCONN EMFILE ENFILE ENOBUFS ENOENT ENOMEM ENOTSOCK EPERM EPIPE ETIMEDOUT".split())
+    counts, brokers, timeouts = {}, {}, set()
+    digest, total = hashlib.sha256(), 0
+    incomplete = False
+    for raw in log.splitlines():
+        line = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", raw)
+        match = re.match(r"^(?:\[shard:[^]]+\] )?\[doctor-readiness\] (.*)$", line)
+        if not match:
+            continue
+        assert len(match[0].encode()) <= 1024, "oversized readiness frame"
+        row = json.loads(match[1])
+        assert list(row) == ["v", "event", "pid", "key", "generation", "id", "peer", "attempts", "code"]
+        assert row["v"] == 1 and row["event"] in events and row["code"] in codes
+        assert all(type(row[key]) is int and -1 <= row[key] <= 2**53 - 1 for key in ("pid", "key", "generation", "id", "peer", "attempts"))
+        total += 1
+        digest.update((match[1] + "\n").encode())
+        counts[row["event"]] = counts.get(row["event"], 0) + 1
+        incomplete |= row["event"] in {"evidence-limit", "framing-loss"}
+        identity = (row["key"], row["generation"])
+        if row["event"] in {"bootstrap-send", "host-ipc-ready", "worker-bootstrap", "server-listening"}:
+            pid = row["peer"] if row["event"] in {"bootstrap-send", "host-ipc-ready"} else row["pid"]
+            if pid > 0:
+                brokers.setdefault(identity, set()).add(pid)
+        if row["event"] == "client-timeout":
+            timeouts.add((row["pid"], row["key"], row["generation"], row["id"]))
+    # Bind the failed Doctor error to its own timeout frame, not neighboring file output.
+    cause_ids = {tuple(map(int, values)) for values in re.findall(
+        r"Spawn broker readiness deadline exceeded \[doctor-readiness pid=(\d+) key=(\d+) generation=(\d+) id=(\d+) ", json.dumps(causes))}
+    bindings = [{"pid": pid, "key": key, "generation": generation, "id": attachment,
+                 "brokerPids": sorted(brokers.get((key, generation), set()))}
+                for pid, key, generation, attachment in sorted(cause_ids)]
+    complete = (total > 0 and not incomplete and bool(cause_ids) and cause_ids <= timeouts
+                and all(len(item["brokerPids"]) == 1 for item in bindings)
+                and all(len(pids) == 1 for pids in brokers.values()))
+    return {"frameCount": total, "framesSHA256": digest.hexdigest(), "eventCounts": counts,
+            "causeBindings": bindings, "complete": complete, "rawEvidence": "native-shard.log",
+            "correlationLimit": "noncryptographic 53-bit endpoint fingerprint; collisions remain possible; no global ordering or IPC-cause inference"}
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", type=Path, required=True)
@@ -105,10 +155,14 @@ def main():
     parser.add_argument("--group", choices=GROUPS, required=True)
     parser.add_argument("--pin", choices=("old", "new"), required=True)
     parser.add_argument("--doctor-causes", action="store_true")
+    parser.add_argument("--doctor-readiness", action="store_true")
     parser.add_argument("--invitation-retention", action="store_true")
     parser.add_argument("--invitation-native-callback", action="store_true")
     args = parser.parse_args()
     assert not args.doctor_causes or (args.group, args.pin) == ("large5", "new")
+    assert not args.doctor_readiness or ((args.group, args.pin) == ("large5", "new")
+                                         and not args.doctor_causes and not args.invitation_retention
+                                         and not args.invitation_native_callback)
     assert not args.invitation_retention or (args.group == "small4" and not args.doctor_causes)
     assert not args.invitation_native_callback or ((args.group, args.pin) == ("small4", "new")
                                                    and not args.doctor_causes and not args.invitation_retention)
@@ -122,10 +176,11 @@ def main():
               "pin": args.pin, "status": "INCONCLUSIVE", "settlementUncertain": False,
               "stateDisposition": "retained-for-hosted-runner-teardown", "preparation": [],
               "cacheProfile": "cold-private-caches; original CI cache restore status unknown"}
-    if args.doctor_causes or args.invitation_retention or args.invitation_native_callback:
+    if args.doctor_causes or args.doctor_readiness or args.invitation_retention or args.invitation_native_callback:
         report.update(diagnosticOnly=True, qualifiesRepin=False)
     candidate_bytes = None
     original_test_bytes = None
+    readiness_originals = None
     deadline = time.monotonic() + 75 * 60
 
     def save():
@@ -244,7 +299,7 @@ def main():
                    OPENCLAW_VITEST_FS_MODULE_CACHE_ROOT=str(root / "cache/vitest"),
                    NODE_COMPILE_CACHE=str(root / "cache/node"), BUN_RUNTIME_TRANSPILER_CACHE_PATH=str(root / "cache/bun"))
         assert env["OPENCLAW_NODE_TEST_VITEST_ARGS_JSON"] == "[]"
-        if args.doctor_causes:
+        if args.doctor_causes or args.doctor_readiness:
             observer = Path(__file__).with_name("doctor-cause-reporter.mjs").resolve()
             assert observer.is_file() and not observer.is_relative_to(source)
             effective_args = ["--reporter=verbose", "--reporter=github-actions", "--reporter=" + str(observer)]
@@ -253,6 +308,25 @@ def main():
                                   "sha256": common["sha"](observer)}
             env["OPENCLAW_NODE_TEST_VITEST_ARGS_JSON"] = json.dumps(effective_args)
         report.update(command=selected["nativeArgv"], childEnvironment=env)
+        if args.doctor_readiness:
+            patch = Path(__file__).with_name("doctor-readiness.patch").resolve()
+            assert common["sha"](patch) == READINESS_PATCH_SHA256
+            paths = {name: source / "src/process/spawn-broker" / name for name in READINESS_FILES}
+            assert all(path.is_file() and not path.is_symlink() and common["sha"](path) == READINESS_FILES[name][0]
+                       for name, path in paths.items()), "readiness source differs from exact candidate"
+            assert not git("diff", "HEAD", "--name-only")
+            git("apply", "--check", str(patch))
+            readiness_originals = {name: path.read_bytes() for name, path in paths.items()}
+            report["readinessProjection"] = {"state": "prepared", "patchSHA256": READINESS_PATCH_SHA256,
+                "files": {"src/process/spawn-broker/" + name: {"originalSHA256": hashes[0], "patchedSHA256": hashes[1]}
+                          for name, hashes in READINESS_FILES.items()},
+                "egress": "2048 fixed frames plus one limit marker per loaded diagnostic module instance; each frame below512B; whole native log32MiB",
+                "scope": "instrumented readiness diagnosis only; stderr writes and hashing can perturb scheduling; no added Promise continuation, wait, retry or timeout"}
+            save()
+            git("apply", "--whitespace=nowarn", str(patch))
+            report["readinessProjection"]["state"] = "applied"
+            assert all(common["sha"](path) == READINESS_FILES[name][1] for name, path in paths.items())
+            assert set(git("diff", "HEAD", "--name-only").splitlines()) == set(report["readinessProjection"]["files"])
         if args.invitation_native_callback:
             test_path = source / INVITATION_FILE
             assert test_path.is_file() and not test_path.is_symlink()
@@ -289,8 +363,11 @@ def main():
         if args.invitation_retention or args.invitation_native_callback:
             report["invitationRetention"].update(invitation_observations(log, outcome["exitCode"]))
             report.update(status="DIAGNOSTIC", diagnosticNativeStatus="PASS" if outcome["exitCode"] == 0 else "FAIL")
-        elif args.doctor_causes:
+        elif args.doctor_causes or args.doctor_readiness:
             report["observer"]["records"] = doctor_observations(log)
+            if args.doctor_readiness:
+                report["readiness"] = readiness_observations(log, report["observer"]["records"])
+                assert report["readiness"]["complete"], "readiness evidence missing, capped, conflicting or not reproduced"
             assert outcome["exitCode"] == 1, "instrumented run did not reproduce a native failure"
             report["status"] = "DIAGNOSTIC"
         else:
@@ -304,9 +381,21 @@ def main():
             report["restoration"] = "not-attempted-indeterminate-settlement"
             if original_test_bytes is not None:
                 report["testProjection"]["state"] = "retained-indeterminate-settlement"
+            if readiness_originals is not None:
+                report["readinessProjection"]["state"] = "retained-indeterminate-settlement"
         elif candidate_bytes is not None:
             restore_allowed = original_test_bytes is None or (test_path.is_file() and not test_path.is_symlink()
                               and common["sha"](test_path) == INVITATION_CALLBACK_SHA256)
+            if readiness_originals is not None:
+                restore_allowed = all(path.is_file() and not path.is_symlink() and common["sha"](path) == READINESS_FILES[name][1]
+                                      for name, path in paths.items())
+                restore_allowed &= set(git("diff", "HEAD", "--name-only").splitlines()) == set(report["readinessProjection"]["files"])
+                if restore_allowed:
+                    for name, original in readiness_originals.items():
+                        paths[name].write_bytes(original)
+                    report["readinessProjection"]["state"] = "restored"
+                else:
+                    report["readinessProjection"]["state"] = "retained-unexpected-source-bytes"
             if restore_allowed:
                 if original_test_bytes is not None:
                     (source / INVITATION_FILE).write_bytes(original_test_bytes)
@@ -315,8 +404,9 @@ def main():
                 (source / common["PIN"]).write_bytes(candidate_bytes)
                 report["candidatePinRestored"] = (source / common["PIN"]).read_bytes() == candidate_bytes
             else:
-                report["testProjection"]["state"] = "retained-unexpected-test-bytes"
-                report.update(status="INCONCLUSIVE", error="diagnostic test changed unexpectedly; no restoration attempted")
+                if original_test_bytes is not None:
+                    report["testProjection"]["state"] = "retained-unexpected-test-bytes"
+                report.update(status="INCONCLUSIVE", error="diagnostic source changed unexpectedly; no restoration attempted")
             report["trackedSourceClean"] = not git("status", "--porcelain", "--untracked-files=no")
             if not report["trackedSourceClean"]:
                 report.update(status="INCONCLUSIVE", error="tracked source changed")
