@@ -44,15 +44,19 @@ def metadata_fields(encoded):
 
 def snippets(code, remaining):
     namespaces = set(re.findall(r"\b_usingCtx\d*\s*=\s*\(\s*0\s*,\s*(__vite_ssr_import_\d+__)\.default\s*\)\s*\(", code))
+    native_disposal = r"^\s*(?:await\s+)?using\s+[A-Za-z_$][\w$]*\s*="
+    lowered_disposal = r"__using|__dispose|__addDisposableResource|_using_ctx|Symbol\.(?:asyncDispose|dispose)|\b_usingCtx\d*\.d\s*\(\s*\)"
     anchors = {
         "function": r"\bfunction appendSessionTurnInWorker\b",
         "prepare-phase": r"persist\.turn\.prepare",
         "completion-phase": r"persist\.turn\.completion",
-        "disposal": r"__using|__dispose|__addDisposableResource|_using_ctx|Symbol\.(?:asyncDispose|dispose)|\b_usingCtx\d*\.d\s*\(\s*\)",
+        "disposal": f"{native_disposal}|{lowered_disposal}",
         "helper-linkage": r"\b(?:const|let|var)\s+(__vite_ssr_import_\d+__)\s*=",
     }
     rows, counts, clipped = [], {}, False
     lines = code.splitlines()
+    native_count = sum(bool(re.search(native_disposal, line)) for line in lines)
+    lowered_count = sum(bool(re.search(lowered_disposal, line)) for line in lines)
     declarations = {i: match[1] for i, line in enumerate(lines)
                     if (match := re.search(anchors["helper-linkage"], line)) and match[1] in namespaces}
     for label, pattern in anchors.items():
@@ -89,8 +93,12 @@ def snippets(code, remaining):
     linkage_complete = (bool(namespaces) and len(declarations) == len(namespaces) <= 4
                         and set(declarations.values()) == namespaces
                         and all(row["publicModule"] != "unresolved" for row in rows if row["anchor"] == "helper-linkage"))
+    form = ("mixed" if native_count and lowered_count else "native-using" if native_count
+            else "lowered-helper" if lowered_count else "unknown")
     return {"anchorLineCounts": counts, "excerpts": rows, "excerptsTruncated": clipped,
-            "helperNamespaceCount": len(namespaces), "helperLinkageComplete": linkage_complete}, remaining
+            "helperNamespaceCount": len(namespaces), "helperLinkageComplete": linkage_complete,
+            "disposalForm": form,
+            "disposalEvidenceComplete": form == "native-using" or form == "lowered-helper" and linkage_complete}, remaining
 
 
 def capture(source, cache):
@@ -206,8 +214,10 @@ def capture(source, cache):
             for digest in dict.fromkeys(row["codeSHA256"] for row in result["candidates"])]
         result["selectionComplete"] = not gaps and bool(result["candidates"])
         result["complete"] = result["selectionComplete"] and all(
-            not row["excerptsTruncated"] and row["helperLinkageComplete"]
-            and all(row["anchorLineCounts"].values()) for row in result["candidates"])
+            not row["excerptsTruncated"] and row["disposalEvidenceComplete"]
+            and all(row["anchorLineCounts"][name] for name in
+                    ("function", "prepare-phase", "completion-phase", "disposal"))
+            for row in result["candidates"])
     except Exception:
         result["selectionGaps"] = sorted(set(gaps + [stage + "-unverified"]))
     if len(json.dumps(result, ensure_ascii=False).encode()) > 64 * 1024:
