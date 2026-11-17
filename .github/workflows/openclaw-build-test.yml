@@ -63,14 +63,14 @@ jobs:
       - name: Require the reviewed actual regression commit
         env:
           CANDIDATE_SHA: ${{ inputs.openclaw_candidate_sha }}
-        run: test "$CANDIDATE_SHA" = 43c2926ba69479fdc68f5fccb4fd3a089763c9fb
+        run: test "$CANDIDATE_SHA" = 58778fd27ca2e8725f30a8fd5aa2da0b1b82a855
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: openclaw/openclaw
-          ref: 43c2926ba69479fdc68f5fccb4fd3a089763c9fb
+          ref: 58778fd27ca2e8725f30a8fd5aa2da0b1b82a855
           fetch-depth: 2
           path: source
           persist-credentials: false
@@ -80,7 +80,7 @@ jobs:
           OPENCLAW_SOURCE_METADATA_TOKEN: ${{ github.token }}
         run: |
           python3 scripts/openclaw-ci/doctor-fixture-regression.py --phase metadata --source source \
-            --candidate-sha 43c2926ba69479fdc68f5fccb4fd3a089763c9fb \
+            --candidate-sha 58778fd27ca2e8725f30a8fd5aa2da0b1b82a855 \
             --controller-sha "$CONTROLLER_SHA" --out doctor-fixture-regression-proof
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -94,7 +94,7 @@ jobs:
           install -d -m 0700 "$controller_home" "$controller_tmp"
           env -i PATH="$PATH" HOME="$controller_home" TMPDIR="$controller_tmp" LANG=C.UTF-8 CI=true \
             python3 scripts/openclaw-ci/doctor-fixture-regression.py --phase execute --source source \
-            --candidate-sha 43c2926ba69479fdc68f5fccb4fd3a089763c9fb \
+            --candidate-sha 58778fd27ca2e8725f30a8fd5aa2da0b1b82a855 \
             --controller-sha "$CONTROLLER_SHA" --out doctor-fixture-regression-proof
       - name: Check bounded text-only fixture evidence
         id: doctor-fixture-regression-budget
@@ -105,7 +105,7 @@ jobs:
           root = Path("doctor-fixture-regression-proof")
           assert (root / "report.json").is_file()
           files = list(root.iterdir())
-          assert len(files) <= 10 and all(p.is_file() and not p.is_symlink() and p.suffix in {".json", ".log"} for p in files)
+          assert len(files) <= 11 and all(p.is_file() and not p.is_symlink() and p.suffix in {".json", ".log"} for p in files)
           assert sum(p.stat().st_size for p in files) <= 48 * 1024 * 1024
           for p in files:
               p.read_text(encoding="utf-8")

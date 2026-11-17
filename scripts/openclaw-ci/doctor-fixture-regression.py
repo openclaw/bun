@@ -15,13 +15,13 @@ import time
 import urllib.request
 
 
-CANDIDATE = "43c2926ba69479fdc68f5fccb4fd3a089763c9fb"
-PARENT = "910f6b9427d7550a1d8607f25946d7f5ec4e0014"
+CANDIDATE = "58778fd27ca2e8725f30a8fd5aa2da0b1b82a855"
+PARENT = "43c2926ba69479fdc68f5fccb4fd3a089763c9fb"
 TEST = "src/commands/doctor-maintenance.admission-warm.test.ts"
 HELPER = "src/commands/doctor-maintenance.admission.test-support.ts"
 SOURCE_HASHES = {
     TEST: "a87d656f5be11d0550f2bd749550ca0decb1372966787c197022ac78b46b868d",
-    HELPER: "c358cb66f0e72f5cbfc0a26b61527244bcede760241186e4115ef29c7a1e7ea0",
+    HELPER: "80cc7c47700e9d5e77beb98fd31ec5a73eb8d31945b24ac0dc40f4ffe0266314",
 }
 REGRESSION = "observes readonly worker requests without adding IPC listeners to other children"
 CASES = (
@@ -40,11 +40,25 @@ CASES = (
     "does not borrow a retained discovery snapshot for current admission",
     "refuses new quarantine with a cold reader and unchanged ledger bytes",
 )
+SIBLING_CASES = {
+    "src/commands/doctor-maintenance.admission-activation.test.ts": (
+        "restores within the native deadline when cold source observations cost two seconds",
+        "refuses new update after the final restart ownership reply",
+        "refuses revoked custody after the final restart ownership reply",
+    ),
+    "src/commands/doctor-maintenance.continuation-scope.test.ts": (
+        "keeps Doctor continuation with its repair scope (cached writer: true)",
+        "keeps Doctor continuation with its repair scope (cached writer: false)",
+    ),
+}
 COMMAND = ["pnpm", "test", TEST, "--maxWorkers=1"]
+SIBLING_COMMAND = ["pnpm", "test", *SIBLING_CASES, "--maxWorkers=1"]
 common = runpy.run_path(str(Path(__file__).with_name("openclaw-repin-regression.py")))
 
 
-def observations(log, exit_code):
+def observations(log, exit_code, expected=None):
+    expected = expected or {TEST: CASES}
+    identities = {(file, name) for file, names in expected.items() for name in names}
     cases, summaries, completion = [], [], []
     for raw in log.splitlines():
         line = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", raw).strip()
@@ -53,28 +67,28 @@ def observations(log, exit_code):
             status, project, file, tail = match.groups()
             timed = re.fullmatch(r"(.+?)\s+([\d.]+)ms", tail)
             name = timed[1] if timed else tail
-            assert project == "commands" and file == TEST and name in CASES, "unexpected case identity"
+            assert project == "commands" and (file, name) in identities, "unexpected case identity"
             if status in {"FAIL", "stderr", "stdout"}:
                 continue
             assert status in {"✓", "✔", "×", "✗"} and timed, "skipped or malformed case row"
-            cases.append({"name": name, "status": "passed" if status in {"✓", "✔"} else "failed",
+            cases.append({"file": file, "name": name, "status": "passed" if status in {"✓", "✔"} else "failed",
                           "durationMs": float(timed[2])})
         if re.search(r"(?:^|\]\s*)(?:Test Files|Tests)\s+", line):
             summaries.append(line)
         match = re.fullmatch(r"\[test\] (passed|failed) 1 Vitest shard in .+", line)
         if match:
             completion.append(match[1])
-    assert len(cases) == len(CASES) and {row["name"] for row in cases} == set(CASES), "incomplete or duplicate case inventory"
+    assert len(cases) == len(identities) and {(row["file"], row["name"]) for row in cases} == identities, "incomplete or duplicate case inventory"
     assert exit_code in (0, 1) and completion == ["passed" if exit_code == 0 else "failed"], "missing canonical completion"
     failed = sum(row["status"] == "failed" for row in cases)
     assert exit_code != 0 or failed == 0, "successful exit contradicts failed case"
     totals = [line for line in summaries if re.search(r"(?:^|\]\s*)Tests\s+", line)]
     assert len(totals) == 1, "missing or multiple native test summaries"
     counts = {status: int(count) for count, status in re.findall(r"(\d+) (passed|failed|skipped|todo)", totals[0])}
-    assert counts.get("passed", 0) == len(CASES) - failed and counts.get("failed", 0) == failed
-    assert not counts.get("skipped", 0) and not counts.get("todo", 0) and f"({len(CASES)})" in totals[0]
+    assert counts.get("passed", 0) == len(identities) - failed and counts.get("failed", 0) == failed
+    assert not counts.get("skipped", 0) and not counts.get("todo", 0) and f"({len(identities)})" in totals[0]
     return {"cases": cases, "summaries": summaries, "completion": completion[0],
-            "regressionCase": next(row for row in cases if row["name"] == REGRESSION)}
+            "regressionCase": next((row for row in cases if row["name"] == REGRESSION), None)}
 
 
 def metadata_api(endpoint, token):
@@ -127,11 +141,11 @@ def main():
     signal.signal(signal.SIGINT, interrupt)
     deadline = time.monotonic() + 50 * 60
 
-    def checked(command, label, command_env=None, timeout=120):
+    def checked(command, label, command_env=None, timeout=120, group="preparation"):
         report["settlementUncertain"] = True
         result = common["run"](command, source, command_env or env, out / (label + ".log"), redact,
             min(timeout, max(1, deadline - time.monotonic())), output_limit=8 * 1024 * 1024)
-        report["preparation"].append({"step": label, **result})
+        report.setdefault(group, []).append({"step": label, "command": command, **result})
         report["settlementUncertain"] = result["settlementUncertain"] or result["exitCode"] != 0
         save()
         assert not report["settlementUncertain"], label + " failed; state retained"
@@ -142,7 +156,7 @@ def main():
         assert git("rev-parse", "HEAD") == CANDIDATE and git("rev-parse", "HEAD^") == PARENT
         assert git("-C", str(controller), "rev-parse", "HEAD") == args.controller_sha
         assert git("remote", "get-url", "origin").removesuffix(".git") == "https://github.com/openclaw/openclaw"
-        assert git("diff", "HEAD^", "HEAD", "--name-only").splitlines() == [TEST]
+        assert git("diff", "HEAD^", "HEAD", "--name-only").splitlines() == [HELPER]
         assert not git("status", "--porcelain", "--untracked-files=no")
         for name, digest in SOURCE_HASHES.items():
             assert not (source / name).is_symlink() and common["sha"](source / name) == digest
@@ -158,7 +172,7 @@ def main():
             assert commit["sha"] == CANDIDATE and [item["sha"] for item in commit["parents"]] == [PARENT]
             assert commit["commit"]["tree"]["sha"] == binding["sourceTree"]
             assert commit["commit"]["verification"]["verified"] and commit["commit"]["verification"]["reason"] == "valid"
-            assert [item["filename"] for item in commit["files"]] == [TEST]
+            assert [item["filename"] for item in commit["files"]] == [HELPER]
             assert pr["state"] == "open" and pr["draft"] and pr["head"]["sha"] == CANDIDATE
             assert pr["head"]["repo"]["full_name"] == "openclaw/openclaw"
             metadata_path.write_text(json.dumps({"binding": binding, "signatureVerified": True,
@@ -201,6 +215,31 @@ def main():
         report["settlementUncertain"] = True
         report["observations"] = observations((out / "native-test.log").read_text(), outcome["exitCode"])
         report["settlementUncertain"] = False
+        if outcome["exitCode"] == 0:
+            report["siblingCommand"] = SIBLING_COMMAND
+            report["settlementUncertain"] = True
+            sibling = common["run"](SIBLING_COMMAND, source, env, out / "sibling-tests.log", redact,
+                min(1500, max(1, deadline - time.monotonic())), output_limit=8 * 1024 * 1024)
+            report["siblingOutcome"] = sibling
+            report["settlementUncertain"] = sibling["settlementUncertain"]
+            assert not sibling["settlementUncertain"], "sibling settlement uncertain; no proof parsing"
+            report["settlementUncertain"] = True
+            report["siblingObservations"] = observations((out / "sibling-tests.log").read_text(),
+                sibling["exitCode"], SIBLING_CASES)
+            report["settlementUncertain"] = False
+            if sibling["exitCode"] != 0:
+                report["status"] = "FAIL"
+                raise SystemExit(sibling["exitCode"])
+            static_env = {**env, "CI": "false", "OPENCLAW_FORMAT_TOOL": "oxfmt",
+                          "OPENCLAW_LINT_TOOL": "oxlint"}
+            for command, label in (
+                (["node", "scripts/run-format.mts", "--check", TEST, HELPER], "format"),
+                (["node", "scripts/run-oxlint.mjs", "--tsconfig", "config/tsconfig/oxlint.core.json",
+                  TEST, HELPER], "lint"),
+                (["node", "scripts/run-tsgo.mjs", "-p",
+                  "test/tsconfig/tsconfig.core.test.commands-doctor.json", "--incremental"], "doctor-types"),
+            ):
+                checked(command, label, static_env, timeout=600, group="staticChecks")
         report["trackedSourceClean"] = not git("status", "--porcelain", "--untracked-files=no")
         assert report["trackedSourceClean"], "source drift after native completion"
         report["status"] = "PASS" if outcome["exitCode"] == 0 else "FAIL"
