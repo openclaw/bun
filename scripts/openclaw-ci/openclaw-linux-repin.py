@@ -797,7 +797,10 @@ def main():
             test_path.write_bytes(patched)
             report["testProjection"]["state"] = "applied"
             assert common["sha"](test_path) == patched_test_sha
-            assert git("diff", "HEAD", "--name-only") == INVITATION_FILE, "unexpected tracked source projection"
+            projected_files = {INVITATION_FILE}
+            if args.pin == "old":
+                projected_files.add(common["PIN"])
+            assert set(git("diff", "HEAD", "--name-only").splitlines()) == projected_files, "unexpected tracked source projection"
         remaining = deadline - time.monotonic()
         assert remaining > 0, "controller preparation exhausted the diagnostic budget"
         report["settlementUncertain"] = True
