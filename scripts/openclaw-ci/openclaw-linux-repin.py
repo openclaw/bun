@@ -55,6 +55,7 @@ ANCHOR_CASES = {
 }
 INVITATION_FILE = "src/config/sessions/session-mention-invitation.test.ts"
 INVITATION_SOURCE_SHA256 = "a3fe4f0f54f7daceaa7ce53e1df5525f067cb5699b0096a6c527e366b24a8cf4"
+INVITATION_OWNER_CUT_SHA256 = "1538b03ef36b0f57b5fe62dc89de2de6524c44aa97b10cc0f74a5ef22ca353ae"
 INVITATION_CALLBACK_SHA256 = "1775321fae85b26fca81575d9910aa3118e8e67955cd9d1774d8335e3f310fe7"
 INVITATION_SNAPSHOT_PAYLOAD_SHA256 = "69473344a9e3a29e74c72552c9b43b98be691c274869ecd4a917bfe9d66cf67b"
 INVITATION_SNAPSHOT_SHA256 = "f03c29b4b9b38678328ef5f0d63e593af4a7ca847095a41f86175cd23163b695"
@@ -159,6 +160,49 @@ def invitation_callback_bytes(original):
     patched = original.replace(old_import, new_import).replace(old_call, new_call)
     assert hashlib.sha256(patched).hexdigest() == INVITATION_CALLBACK_SHA256
     return patched
+
+
+def invitation_owner_cut_bytes(original):
+    assert hashlib.sha256(original).hexdigest() == INVITATION_SOURCE_SHA256
+    before = b"      const control = new WeakRef({});"
+    after = b"""      const closedOwnerReferences = owners.map((owner) => new WeakRef(owner));
+      owners.length = 0;
+      transactionOwners.clear();
+      const control = new WeakRef({});"""
+    observation = b"""      queryObjects(WeakRef);
+      process.stderr.write("[invitation-owner-cut] " + JSON.stringify({
+        version: 1,
+        outcome,
+        ownerCount: closedOwnerReferences.length,
+        survivingOwners: closedOwnerReferences.filter((owner) => owner.deref() !== undefined).length,
+        sentinelAlive: reference.deref() !== undefined,
+        controlAlive: control.deref() !== undefined,
+      }) + "\\n");"""
+    assert original.count(before) == original.count(b"      queryObjects(WeakRef);") == 1
+    patched = original.replace(before, after).replace(b"      queryObjects(WeakRef);", observation)
+    assert hashlib.sha256(patched).hexdigest() == INVITATION_OWNER_CUT_SHA256
+    return patched
+
+
+def invitation_owner_cut_observations(log):
+    rows = []
+    for raw in log.splitlines():
+        line = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", raw)
+        match = re.fullmatch(r"(?:\[shard:bun:core-runtime-config-hosted-3\] )?\[invitation-owner-cut\] (.*)", line)
+        if not match:
+            continue
+        assert len(line.encode()) <= 512, "owner-cut marker exceeds byte budget"
+        row = json.loads(match[1])
+        assert set(row) == {"version", "outcome", "ownerCount", "survivingOwners", "sentinelAlive", "controlAlive"}
+        assert row["version"] == 1 and row["outcome"] in {"commit", "rollback"}
+        assert type(row["ownerCount"]) is int and 0 < row["ownerCount"] <= 1024
+        assert type(row["survivingOwners"]) is int and 0 <= row["survivingOwners"] <= row["ownerCount"]
+        assert type(row["sentinelAlive"]) is bool and type(row["controlAlive"]) is bool
+        rows.append(row)
+    assert len(rows) == 2 and {row["outcome"] for row in rows} == {"commit", "rollback"}, "owner-cut cases missing or duplicated"
+    return {"cases": rows, "diagnosticOnly": True, "qualifiesRepin": False,
+            "scope": "closed admission roots removed after their original assertions; original timer, GC and assertions retained",
+            "limit": "allocation and root removal can change collection; surviving admissions leave the owner hypothesis unresolved"}
 
 
 def invitation_snapshot_bytes(original):
@@ -428,6 +472,7 @@ def main():
     parser.add_argument("--doctor-fixture-phases", action="store_true")
     parser.add_argument("--invitation-retention", action="store_true")
     parser.add_argument("--invitation-cache-code", action="store_true")
+    parser.add_argument("--invitation-owner-cut", action="store_true")
     parser.add_argument("--invitation-native-callback", action="store_true")
     parser.add_argument("--invitation-snapshot", action="store_true")
     parser.add_argument("--anchor-preparation", action="store_true")
@@ -452,6 +497,8 @@ def main():
                      args.doctor_readiness, args.doctor_continuation, args.invitation_retention,
                      args.invitation_cache_code, args.invitation_native_callback, args.invitation_snapshot)))
     assert not args.invitation_cache_code or (args.invitation_retention and args.pin == "new")
+    assert not args.invitation_owner_cut or (args.invitation_retention and not args.invitation_cache_code
+                                           and not args.invitation_native_callback and not args.invitation_snapshot)
     assert not args.anchor_full_context or args.anchor_preparation
     assert not args.doctor_continuation or (args.group == "large5" and not any((
         args.doctor_causes, args.doctor_readiness, args.invitation_retention,
@@ -728,17 +775,21 @@ def main():
             report["anchorProjection"]["state"] = "applied"
             assert all(common["sha"](path) == ANCHOR_FILES[name][1] for name, path in anchor_paths.items())
             assert set(git("diff", "HEAD", "--name-only").splitlines()) == set(ANCHOR_FILES)
-        if args.invitation_native_callback or args.invitation_snapshot:
+        if args.invitation_native_callback or args.invitation_snapshot or args.invitation_owner_cut:
             test_path = source / INVITATION_FILE
             assert test_path.is_file() and not test_path.is_symlink()
             original = test_path.read_bytes()
-            patched = invitation_snapshot_bytes(original) if args.invitation_snapshot else invitation_callback_bytes(original)
-            patched_test_sha = INVITATION_SNAPSHOT_SHA256 if args.invitation_snapshot else INVITATION_CALLBACK_SHA256
+            patched = (invitation_owner_cut_bytes(original) if args.invitation_owner_cut else
+                       invitation_snapshot_bytes(original) if args.invitation_snapshot else invitation_callback_bytes(original))
+            patched_test_sha = (INVITATION_OWNER_CUT_SHA256 if args.invitation_owner_cut else
+                                INVITATION_SNAPSHOT_SHA256 if args.invitation_snapshot else INVITATION_CALLBACK_SHA256)
             report["testProjection"] = {"path": INVITATION_FILE, "state": "prepared",
                 "originalSHA256": INVITATION_SOURCE_SHA256, "patchedSHA256": patched_test_sha,
                 "diff": "".join(difflib.unified_diff(original.decode().splitlines(True),
                     patched.decode().splitlines(True), fromfile="a/" + INVITATION_FILE, tofile="b/" + INVITATION_FILE)),
                 "scope": "one immediate and one GC per retention case; Promise/closure roots and GC/resumption ordering differ; no qualification or leak-cause verdict"}
+            if args.invitation_owner_cut:
+                report["testProjection"]["scope"] = "remove test-held closed admissions after their assertions; retain original timer, GC and sentinel assertions; diagnostic only"
             if args.invitation_snapshot:
                 report["testProjection"].update(payloadSHA256=INVITATION_SNAPSHOT_PAYLOAD_SHA256,
                     scope="commit-only address capture and one synchronous debug snapshot after original timer/queryObjects; extra full GC and allocation/root/layout perturbation; reported structure only, no strong-retainer, scanner, leak-cause or qualification verdict")
@@ -793,6 +844,8 @@ def main():
         elif args.invitation_retention or args.invitation_native_callback or args.invitation_snapshot:
             report["invitationRetention"].update(invitation_observations(log, outcome["exitCode"]))
             report["diagnosticNativeStatus"] = "PASS" if outcome["exitCode"] == 0 else "FAIL"
+            if args.invitation_owner_cut:
+                report["ownerCut"] = invitation_owner_cut_observations(log)
             if args.invitation_snapshot:
                 report["snapshot"] = snapshot_observations(log)
                 assert report["snapshot"]["complete"] is True, "snapshot identity or reported structure incomplete; no absence inference"
