@@ -90,6 +90,10 @@ class StackEvidenceTests(unittest.TestCase):
         log = "[invitation-stack] " + json.dumps(row)
         self.assertTrue(controller["stack_observations"](log, attach_only=True)["complete"])
         self.assertFalse(controller["stack_observations"](log)["complete"])
+        for extra in ({"debuggerEvents": ["Error in sourced command file"]},
+                      {"receipt": {**row["receipt"], "detachErrorCategory": "RuntimeError"}}):
+            self.assertFalse(controller["stack_observations"](
+                "[invitation-stack] " + json.dumps({**row, **extra}), attach_only=True)["complete"])
 
 
 if __name__ == "__main__":

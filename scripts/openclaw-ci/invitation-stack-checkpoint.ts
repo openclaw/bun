@@ -16,8 +16,10 @@ export function invitationStackCheckpoint(
     const { spawnSync } = require("node:child_process") as typeof import("node:child_process");
     const root = process.env.OPENCLAW_INVITATION_STACK_ROOT;
     const commands = process.env.OPENCLAW_INVITATION_STACK_COMMANDS;
+    const gdbAttach = process.env.OPENCLAW_INVITATION_GDB_ATTACH === "1";
     if (!root || !commands || (!attachOnly && address === undefined))
       throw new Error("checkpoint-input");
+    if (gdbAttach && !attachOnly) throw new Error("gdb-attachment-only");
     const directory = fs.mkdtempSync(path.join(root, "worker-"));
     fs.writeFileSync(path.join(directory, "mode.txt"), attachOnly ? "attachment-only" : "stack", {
       mode: 0o600,
@@ -52,21 +54,42 @@ export function invitationStackCheckpoint(
         "/usr/bin/timeout",
         "--kill-after=5s",
         "60s",
-        "/usr/bin/lldb",
-        "--no-lldbinit",
-        "--batch",
-        "--one-line-before-file",
-        "settings set plugin.jit-loader.gdb.enable off",
-        "--one-line-before-file",
-        "settings set target.preload-symbols false",
-        "--one-line-before-file",
-        "script import os,json; d=os.environ['OPENCLAW_INVITATION_STACK_DIR']; p=os.path.join(d,'attach.log'); lldb.debugger.HandleCommand('log enable -f ' + json.dumps(p) + ' gdb-remote packets'); st=os.stat(d); os.chown(p,st.st_uid,st.st_gid)",
-        "--one-line-before-file",
-        "script import os,pathlib; pathlib.Path(os.environ['OPENCLAW_INVITATION_STACK_DIR'],'phase.txt').write_text('debugger-started')",
-        "--attach-pid",
-        String(process.pid),
-        "--source",
-        commands,
+        ...(gdbAttach
+          ? [
+              "/usr/bin/gdb",
+              "--nx",
+              "--quiet",
+              "--batch",
+              "-iex",
+              "set auto-load off",
+              "-iex",
+              "set script-extension strict",
+              "-iex",
+              "set debuginfod enabled off",
+              "-iex",
+              "python import os,pathlib; pathlib.Path(os.environ['OPENCLAW_INVITATION_STACK_DIR'],'phase.txt').write_text('debugger-started')",
+              "--pid",
+              String(process.pid),
+              "--command",
+              commands,
+            ]
+          : [
+              "/usr/bin/lldb",
+              "--no-lldbinit",
+              "--batch",
+              "--one-line-before-file",
+              "settings set plugin.jit-loader.gdb.enable off",
+              "--one-line-before-file",
+              "settings set target.preload-symbols false",
+              "--one-line-before-file",
+              "script import os,json; d=os.environ['OPENCLAW_INVITATION_STACK_DIR']; p=os.path.join(d,'attach.log'); lldb.debugger.HandleCommand('log enable -f ' + json.dumps(p) + ' gdb-remote packets'); st=os.stat(d); os.chown(p,st.st_uid,st.st_gid)",
+              "--one-line-before-file",
+              "script import os,pathlib; pathlib.Path(os.environ['OPENCLAW_INVITATION_STACK_DIR'],'phase.txt').write_text('debugger-started')",
+              "--attach-pid",
+              String(process.pid),
+              "--source",
+              commands,
+            ]),
       ],
       { encoding: "utf8", timeout: 70_000, maxBuffer: 1024 * 1024 },
     );
@@ -88,6 +111,8 @@ export function invitationStackCheckpoint(
       "lost connection",
       "Connection refused",
       "Failed to attach",
+      "Error in sourced command file",
+      "Python scripting is not supported",
       "error:",
     ].filter((event) => output.includes(event));
     const phasePath = path.join(directory, "phase.txt");

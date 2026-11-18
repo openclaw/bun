@@ -66,7 +66,7 @@ INVITATION_REDUCTION_CASES = tuple(f"releases reduced invitation callbacks after
 INVITATION_CALLBACK_SHA256 = "1775321fae85b26fca81575d9910aa3118e8e67955cd9d1774d8335e3f310fe7"
 INVITATION_SNAPSHOT_PAYLOAD_SHA256 = "69473344a9e3a29e74c72552c9b43b98be691c274869ecd4a917bfe9d66cf67b"
 INVITATION_SNAPSHOT_SHA256 = "f03c29b4b9b38678328ef5f0d63e593af4a7ca847095a41f86175cd23163b695"
-INVITATION_STACK_PAYLOAD_SHA256 = "8d96a3e58b1e5b37f363190e89867954ab844cd44c5606bc28e31fe81def4e20"
+INVITATION_STACK_PAYLOAD_SHA256 = "c601c4d3dff34290adb56367b2ef1f817d3502e19f23b50a1ca48240a06900cc"
 READINESS_PATCH_SHA256 = "cb2aedd7cf89ae1298d1335fcc461ca932060a58b63a1489a128eef57ba94b4c"
 READINESS_FILES = {
     "src/process/spawn-broker/resource-protocol.ts": ("3f66dcd70bc32b798930d3f11a8e575e0915206bb6ad5c0417a8ccb4975ed5c2", "89cdfbb498eb09cd6233459ac6d8c1ba74cd4c53e8f20bf79f7cc8ffce411d68"),
@@ -421,6 +421,7 @@ def stack_observations(log, attach_only=False):
     complete = (row.get("version") == 1 and row.get("parentContinued") is True
                 and row.get("debuggerExitCode") == 0 and row.get("debuggerSignal") is None
                 and "errorCategory" not in row and "errorCategory" not in receipt
+                and "detachErrorCategory" not in receipt and not row.get("debuggerEvents")
                 and all(receipt.get(key) is True for key in required)
                 and (not attach_only or receipt.get("captureMode") == "attachment-only"))
     return {"checkpoint": row, "complete": complete, "diagnosticOnly": True, "qualifiesRepin": False}
@@ -657,12 +658,14 @@ def main():
     parser.add_argument("--invitation-native-callback", action="store_true")
     parser.add_argument("--invitation-snapshot", action="store_true")
     parser.add_argument("--invitation-stack", action="store_true")
+    parser.add_argument("--invitation-gdb-attach", action="store_true")
     parser.add_argument("--anchor-preparation", action="store_true")
     parser.add_argument("--anchor-full-context", action="store_true")
     parser.add_argument("--anchor-fixture-fix", action="store_true")
     parser.add_argument("--doctor-continuation", action="store_true")
     args = parser.parse_args()
     assert not args.invitation_stack or args.invitation_snapshot
+    assert not args.invitation_gdb_attach or args.invitation_stack
     assert not args.doctor_fixture_phases or ((args.group, args.pin) == ("large5", "new") and not any((
         args.doctor_causes, args.doctor_readiness, args.doctor_phases, args.doctor_fixture_fix, args.doctor_continuation,
         args.invitation_retention, args.invitation_cache_code, args.invitation_native_callback,
@@ -829,16 +832,23 @@ def main():
         env.update(OPENCLAW_BUN_PATH=str(bun), BUN_BIN=str(bun), PATH=str(bun.parent) + ":" + env["PATH"])
         if args.invitation_stack:
             collector = Path(__file__).with_name("invitation_stack.py").resolve()
-            assert Path("/usr/bin/lldb").is_file(), "LLDB unavailable"
             assert Path("/usr/bin/prlimit").is_file(), "debugger file-size limiter unavailable"
-            checked(["/usr/bin/lldb", "--no-lldbinit", "--batch", "-o",
-                     "command script import " + json.dumps(str(collector)), "-o", "quit"], "lldb-python", timeout=30)
-            assert "\nopenclaw-lldb-module-ready\n" in (out / "lldb-python.log").read_text()
+            debugger = "gdb" if args.invitation_gdb_attach else "lldb"
+            assert Path("/usr/bin/" + debugger).is_file(), "debugger unavailable"
+            if not args.invitation_gdb_attach:
+                checked(["/usr/bin/lldb", "--no-lldbinit", "--batch", "-o",
+                         "command script import " + json.dumps(str(collector)), "-o", "quit"], "lldb-python", timeout=30)
+                assert "\nopenclaw-lldb-module-ready\n" in (out / "lldb-python.log").read_text()
             stack_module = runpy.run_path(str(collector))
             bun, profile = stack_module["stage_profile"](root, out.parent / "invitation-profile-proof/metadata.json", args.controller_sha)
             report["stackProfile"] = {**profile, "collectorSHA256": common["sha"](collector)}
-            commands = root / "stack-commands.txt"
-            commands.write_text("command script import " + json.dumps(str(collector)) + "\nquit\n")
+            if args.invitation_gdb_attach:
+                commands = Path(__file__).with_name("invitation_gdb_attach.py").resolve()
+                env["OPENCLAW_INVITATION_GDB_ATTACH"] = "1"
+                report["stackProfile"]["collectorSHA256"] = common["sha"](commands)
+            else:
+                commands = root / "stack-commands.txt"
+                commands.write_text("command script import " + json.dumps(str(collector)) + "\nquit\n")
             stack_root = root / "stack"
             stack_root.mkdir(mode=0o700)
             env.update(OPENCLAW_BUN_PATH=str(bun), BUN_BIN=str(bun), PATH=str(bun.parent) + ":" + env["PATH"],
@@ -849,11 +859,15 @@ def main():
             preflight = root / "attach-preflight.ts"
             preflight.write_bytes(payload.replace(b"export function ", b"function ") +
                                   b"\ninvitationStackCheckpoint(undefined, undefined, true);\n")
-            checked([str(bun), str(preflight)], "lldb-attach", env, timeout=90)
-            report["stackAttachPreflight"] = stack_observations((out / "lldb-attach.log").read_text(), attach_only=True)
-            report["debuggerPacketTraces"] = stack_module["packet_traces"](stack_root)
+            checked([str(bun), str(preflight)], debugger + "-attach", env, timeout=90)
+            report["stackAttachPreflight"] = stack_observations((out / (debugger + "-attach.log")).read_text(), attach_only=True)
+            if not args.invitation_gdb_attach:
+                report["debuggerPacketTraces"] = stack_module["packet_traces"](stack_root)
             report["settlementUncertain"] = not report["stackAttachPreflight"]["complete"]
             assert report["stackAttachPreflight"]["complete"], "minimal profile attachment did not settle; full test not started"
+            if args.invitation_gdb_attach:
+                report.update(status="DIAGNOSTIC", debugger="gdb", captureMode="attachment-only")
+                raise SystemExit(0)
             assert len(report["debuggerPacketTraces"]) == 1 and report["debuggerPacketTraces"][0].get("parsedRecords", 0) > 0, "packet logging preflight failed; full test not started"
         report["settlementUncertain"] = True
         host = json.loads(subprocess.check_output([str(node), "-e",
