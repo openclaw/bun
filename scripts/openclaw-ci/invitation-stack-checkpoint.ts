@@ -4,6 +4,7 @@ export function invitationStackCheckpoint(snapshot: unknown, address: bigint | u
   let debuggerSignal: string | null = null;
   let receipt: unknown;
   let errorCategory: string | undefined;
+  let debuggerEvents: string[] = [];
   try {
     const fs = require("node:fs") as typeof import("node:fs");
     const path = require("node:path") as typeof import("node:path");
@@ -45,10 +46,28 @@ export function invitationStackCheckpoint(snapshot: unknown, address: bigint | u
         "--source",
         commands,
       ],
-      { stdio: "ignore", timeout: 70_000 },
+      { encoding: "utf8", timeout: 70_000, maxBuffer: 1024 * 1024 },
     );
     debuggerExitCode = child.status;
     debuggerSignal = child.signal;
+    const output = (child.stdout ?? "") + (child.stderr ?? "");
+    fs.writeFileSync(path.join(directory, "debugger.log"), output, { mode: 0o600, flag: "wx" });
+    debuggerEvents = [
+      "attach failed",
+      "Operation not permitted",
+      "ptrace_scope",
+      "unable to locate lldb-server",
+      "not allowed to execute",
+      "module importing failed",
+      "Traceback (most recent call last)",
+      "SyntaxError",
+      "ModuleNotFoundError",
+      "KeyError",
+      "lost connection",
+      "Connection refused",
+      "Failed to attach",
+      "error:",
+    ].filter((event) => output.includes(event));
     if (child.error) throw child.error;
     const receiptPath = path.join(directory, "receipt.json");
     if (fs.statSync(receiptPath).size > 64 * 1024) throw new Error("receipt-budget");
@@ -63,6 +82,7 @@ export function invitationStackCheckpoint(snapshot: unknown, address: bigint | u
         parentContinued: true,
         debuggerExitCode,
         debuggerSignal,
+        debuggerEvents,
         errorCategory,
         receipt,
       }) +
