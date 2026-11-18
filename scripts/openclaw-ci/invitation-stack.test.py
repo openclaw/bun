@@ -6,7 +6,7 @@ import struct
 import unittest
 
 
-stack = runpy.run_path(str(Path(__file__).with_name("invitation-stack.py")))
+stack = runpy.run_path(str(Path(__file__).with_name("invitation_stack.py")))
 controller = runpy.run_path(str(Path(__file__).with_name("openclaw-linux-repin.py")))
 
 

@@ -128,12 +128,15 @@ def stack_matches(memory, start, cells, bounds):
 def __lldb_init_module(debugger, _internal_dict):
     import lldb
 
+    process = debugger.GetSelectedTarget().GetProcess()
+    if not process.IsValid():
+        print("openclaw-lldb-module-ready")
+        return
     root = Path(os.environ["OPENCLAW_INVITATION_STACK_DIR"])
     output = root / "receipt.json"
     receipt = {"version": 1, "attached": False, "detached": False, "captured": False,
                "diagnosticOnly": True, "qualifiesRepin": False,
                "limitation": "Post-GC stack occurrences only; frame bounds do not prove ownership, a root, or what GC scanned. Other threads are not inspected."}
-    process = debugger.GetSelectedTarget().GetProcess()
     try:
         assert process.IsValid() and process.GetState() == lldb.eStateStopped
         receipt["attached"] = True

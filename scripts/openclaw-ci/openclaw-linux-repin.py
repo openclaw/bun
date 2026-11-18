@@ -826,11 +826,11 @@ def main():
         report["bunSHA256"] = common["sha"](bun)
         env.update(OPENCLAW_BUN_PATH=str(bun), BUN_BIN=str(bun), PATH=str(bun.parent) + ":" + env["PATH"])
         if args.invitation_stack:
-            collector = Path(__file__).with_name("invitation-stack.py").resolve()
+            collector = Path(__file__).with_name("invitation_stack.py").resolve()
             assert Path("/usr/bin/lldb").is_file(), "LLDB unavailable"
             checked(["/usr/bin/lldb", "--no-lldbinit", "--batch", "-o",
-                     "script print('openclaw-lldb-python-ready')", "-o", "quit"], "lldb-python", timeout=30)
-            assert "\nopenclaw-lldb-python-ready\n" in (out / "lldb-python.log").read_text()
+                     "command script import " + json.dumps(str(collector)), "-o", "quit"], "lldb-python", timeout=30)
+            assert "\nopenclaw-lldb-module-ready\n" in (out / "lldb-python.log").read_text()
             stack_module = runpy.run_path(str(collector))
             bun, profile = stack_module["stage_profile"](root, out.parent / "invitation-profile-proof/metadata.json", args.controller_sha)
             report["stackProfile"] = {**profile, "collectorSHA256": common["sha"](collector)}
