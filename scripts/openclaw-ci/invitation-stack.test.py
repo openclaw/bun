@@ -57,6 +57,14 @@ class StackEvidenceTests(unittest.TestCase):
         with self.assertRaises(AssertionError):
             controller["stack_observations"]("")
 
+    def test_attachment_preflight_cannot_qualify_stack_capture(self):
+        row = {"version": 1, "parentContinued": True, "debuggerExitCode": 0, "debuggerSignal": None,
+               "receipt": {"attached": True, "identityQualified": True, "detached": True,
+                           "captured": False, "captureMode": "attachment-only"}}
+        log = "[invitation-stack] " + json.dumps(row)
+        self.assertTrue(controller["stack_observations"](log, attach_only=True)["complete"])
+        self.assertFalse(controller["stack_observations"](log)["complete"])
+
 
 if __name__ == "__main__":
     unittest.main()

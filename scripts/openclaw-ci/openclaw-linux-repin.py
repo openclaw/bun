@@ -66,7 +66,7 @@ INVITATION_REDUCTION_CASES = tuple(f"releases reduced invitation callbacks after
 INVITATION_CALLBACK_SHA256 = "1775321fae85b26fca81575d9910aa3118e8e67955cd9d1774d8335e3f310fe7"
 INVITATION_SNAPSHOT_PAYLOAD_SHA256 = "69473344a9e3a29e74c72552c9b43b98be691c274869ecd4a917bfe9d66cf67b"
 INVITATION_SNAPSHOT_SHA256 = "f03c29b4b9b38678328ef5f0d63e593af4a7ca847095a41f86175cd23163b695"
-INVITATION_STACK_PAYLOAD_SHA256 = "c6e8ef41db2365f9f2571da921a3a054d222f6afa76228aea60522e045bc4107"
+INVITATION_STACK_PAYLOAD_SHA256 = "aeaa29b5d95d0e637c3b73185eaf364dafadaf450d45affc1e9a99e12ddcdf3d"
 READINESS_PATCH_SHA256 = "cb2aedd7cf89ae1298d1335fcc461ca932060a58b63a1489a128eef57ba94b4c"
 READINESS_FILES = {
     "src/process/spawn-broker/resource-protocol.ts": ("3f66dcd70bc32b798930d3f11a8e575e0915206bb6ad5c0417a8ccb4975ed5c2", "89cdfbb498eb09cd6233459ac6d8c1ba74cd4c53e8f20bf79f7cc8ffce411d68"),
@@ -405,7 +405,7 @@ def snapshot_observations(log):
     return row
 
 
-def stack_observations(log):
+def stack_observations(log, attach_only=False):
     rows = []
     for raw in log.splitlines():
         line = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", raw)
@@ -416,11 +416,13 @@ def stack_observations(log):
     assert len(rows) == 1, "stack checkpoint missing or duplicated"
     row = rows[0]
     receipt = row.get("receipt", {})
+    required = ("attached", "identityQualified", "detached") if attach_only else (
+        "attached", "identityQualified", "detached", "captured", "mainThreadQualified")
     complete = (row.get("version") == 1 and row.get("parentContinued") is True
                 and row.get("debuggerExitCode") == 0 and row.get("debuggerSignal") is None
                 and "errorCategory" not in row and "errorCategory" not in receipt
-                and all(receipt.get(key) is True for key in
-                        ("attached", "identityQualified", "detached", "captured", "mainThreadQualified")))
+                and all(receipt.get(key) is True for key in required)
+                and (not attach_only or receipt.get("captureMode") == "attachment-only"))
     return {"checkpoint": row, "complete": complete, "diagnosticOnly": True, "qualifiesRepin": False}
 
 
@@ -841,6 +843,15 @@ def main():
             env.update(OPENCLAW_BUN_PATH=str(bun), BUN_BIN=str(bun), PATH=str(bun.parent) + ":" + env["PATH"],
                        OPENCLAW_INVITATION_STACK_ROOT=str(stack_root), OPENCLAW_INVITATION_STACK_COMMANDS=str(commands))
             report["activeBunSHA256"] = common["sha"](bun)
+            payload = Path(__file__).with_name("invitation-stack-checkpoint.ts").read_bytes()
+            assert hashlib.sha256(payload).hexdigest() == INVITATION_STACK_PAYLOAD_SHA256
+            preflight = root / "attach-preflight.ts"
+            preflight.write_bytes(payload.replace(b"export function ", b"function ") +
+                                  b"\ninvitationStackCheckpoint(undefined, undefined, true);\n")
+            checked([str(bun), str(preflight)], "lldb-attach", env, timeout=90)
+            report["stackAttachPreflight"] = stack_observations((out / "lldb-attach.log").read_text(), attach_only=True)
+            report["settlementUncertain"] = not report["stackAttachPreflight"]["complete"]
+            assert report["stackAttachPreflight"]["complete"], "minimal profile attachment did not settle; full test not started"
         report["settlementUncertain"] = True
         host = json.loads(subprocess.check_output([str(node), "-e",
             "console.log(JSON.stringify({node:process.version,nodePath:process.execPath,cores:require('os').availableParallelism(),memoryBytes:require('os').totalmem(),platform:process.platform,arch:process.arch}))"],

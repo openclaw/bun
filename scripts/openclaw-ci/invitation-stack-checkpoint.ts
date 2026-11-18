@@ -1,5 +1,9 @@
 // Inserted only into the temporary hosted diagnostic test.
-export function invitationStackCheckpoint(snapshot: unknown, address: bigint | undefined) {
+export function invitationStackCheckpoint(
+  snapshot: unknown,
+  address: bigint | undefined,
+  attachOnly = false,
+) {
   let debuggerExitCode: number | null = null;
   let debuggerSignal: string | null = null;
   let receipt: unknown;
@@ -12,7 +16,8 @@ export function invitationStackCheckpoint(snapshot: unknown, address: bigint | u
     const { spawnSync } = require("node:child_process") as typeof import("node:child_process");
     const root = process.env.OPENCLAW_INVITATION_STACK_ROOT;
     const commands = process.env.OPENCLAW_INVITATION_STACK_COMMANDS;
-    if (!root || !commands || address === undefined) throw new Error("checkpoint-input");
+    if (!root || !commands || (!attachOnly && address === undefined))
+      throw new Error("checkpoint-input");
     const directory = fs.mkdtempSync(path.join(root, "worker-"));
     const startTime = fs
       .readFileSync(`/proc/${process.pid}/stat`, "utf8")
@@ -23,7 +28,7 @@ export function invitationStackCheckpoint(snapshot: unknown, address: bigint | u
       pid: process.pid,
       revision: Bun.revision,
       startTime,
-      address: `0x${address.toString(16)}`,
+      address: address === undefined ? undefined : `0x${address.toString(16)}`,
       snapshot,
     });
     if (Buffer.byteLength(data) > 128 * 1024 * 1024) throw new Error("snapshot-budget");
@@ -36,12 +41,15 @@ export function invitationStackCheckpoint(snapshot: unknown, address: bigint | u
         "-i",
         "PATH=/usr/bin:/bin",
         `OPENCLAW_INVITATION_STACK_DIR=${directory}`,
+        `OPENCLAW_INVITATION_STACK_ATTACH_ONLY=${attachOnly ? "1" : "0"}`,
         "/usr/bin/timeout",
         "--kill-after=5s",
         "60s",
         "/usr/bin/lldb",
         "--no-lldbinit",
         "--batch",
+        "--one-line-before-file",
+        "settings set target.preload-symbols false",
         "--one-line-before-file",
         "script import os,pathlib; pathlib.Path(os.environ['OPENCLAW_INVITATION_STACK_DIR'],'phase.txt').write_text('debugger-started')",
         "--attach-pid",

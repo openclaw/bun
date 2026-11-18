@@ -159,6 +159,10 @@ def __lldb_init_module(debugger, _internal_dict):
         assert digest == PROFILE_SHA256
         receipt.update(identityQualified=True, executableSHA256=digest)
         phase("identity-qualified")
+        if os.environ.get("OPENCLAW_INVITATION_STACK_ATTACH_ONLY") == "1":
+            receipt["captureMode"] = "attachment-only"
+            return
+        receipt["captureMode"] = "stack"
         cells, records = snapshot_plan(snapshot["snapshot"], int(snapshot["address"], 16))
         phase("snapshot-indexed")
         receipt["snapshotCells"] = records
