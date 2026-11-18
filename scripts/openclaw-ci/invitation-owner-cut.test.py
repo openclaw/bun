@@ -6,6 +6,7 @@ import unittest
 
 controller = runpy.run_path(str(Path(__file__).with_name("openclaw-linux-repin.py")))
 observe = controller["invitation_owner_cut_observations"]
+observe_references = controller["invitation_references_observations"]
 
 
 def marker(outcome, **changes):
@@ -33,6 +34,33 @@ class OwnerCutEvidenceTests(unittest.TestCase):
         ):
             with self.subTest(lines=lines), self.assertRaises(AssertionError):
                 observe(lines)
+
+
+class ReferenceEvidenceTests(unittest.TestCase):
+    @staticmethod
+    def marker(outcome, **changes):
+        row = {"version": 1, "outcome": outcome, "preparationAlive": False, "guardAlive": outcome == "commit",
+               "writeAlive": False, "sentinelAlive": outcome == "commit", "controlAlive": False}
+        row.update(changes)
+        return "[shard:bun:core-runtime-config-hosted-3] [invitation-references] " + json.dumps(row)
+
+    def test_liveness_is_recorded_without_claiming_a_retainer_or_qualification(self):
+        report = observe_references(self.marker("commit") + "\n" + self.marker("rollback"))
+        self.assertTrue(report["cases"][0]["guardAlive"])
+        self.assertFalse(report["cases"][1]["guardAlive"])
+        self.assertTrue(report["diagnosticOnly"])
+        self.assertFalse(report["qualifiesRepin"])
+
+    def test_missing_duplicate_invalid_and_unexpected_fields_are_rejected(self):
+        for lines in (
+            self.marker("commit"),
+            self.marker("commit") + "\n" + self.marker("commit"),
+            self.marker("commit", guardAlive=None) + "\n" + self.marker("rollback"),
+            self.marker("commit", writeAlive="false") + "\n" + self.marker("rollback"),
+            self.marker("commit", privatePath="not-exportable") + "\n" + self.marker("rollback"),
+        ):
+            with self.subTest(lines=lines), self.assertRaises(AssertionError):
+                observe_references(lines)
 
 
 if __name__ == "__main__":
