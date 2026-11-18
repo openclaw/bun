@@ -58,7 +58,7 @@ export function invitationStackCheckpoint(
         "--one-line-before-file",
         "settings set target.preload-symbols false",
         "--one-line-before-file",
-        "script import os,json; lldb.debugger.HandleCommand('log enable -f ' + json.dumps(os.path.join(os.environ['OPENCLAW_INVITATION_STACK_DIR'],'attach.log')) + ' gdb-remote packets')",
+        "script import os,json; d=os.environ['OPENCLAW_INVITATION_STACK_DIR']; p=os.path.join(d,'attach.log'); lldb.debugger.HandleCommand('log enable -f ' + json.dumps(p) + ' gdb-remote packets'); st=os.stat(d); os.chown(p,st.st_uid,st.st_gid)",
         "--one-line-before-file",
         "script import os,pathlib; pathlib.Path(os.environ['OPENCLAW_INVITATION_STACK_DIR'],'phase.txt').write_text('debugger-started')",
         "--attach-pid",
