@@ -5,6 +5,7 @@ export function invitationStackCheckpoint(snapshot: unknown, address: bigint | u
   let receipt: unknown;
   let errorCategory: string | undefined;
   let debuggerEvents: string[] = [];
+  let debuggerPhase: string | undefined;
   try {
     const fs = require("node:fs") as typeof import("node:fs");
     const path = require("node:path") as typeof import("node:path");
@@ -41,6 +42,8 @@ export function invitationStackCheckpoint(snapshot: unknown, address: bigint | u
         "/usr/bin/lldb",
         "--no-lldbinit",
         "--batch",
+        "--one-line-before-file",
+        "script import os,pathlib; pathlib.Path(os.environ['OPENCLAW_INVITATION_STACK_DIR'],'phase.txt').write_text('debugger-started')",
         "--attach-pid",
         String(process.pid),
         "--source",
@@ -68,6 +71,23 @@ export function invitationStackCheckpoint(snapshot: unknown, address: bigint | u
       "Failed to attach",
       "error:",
     ].filter((event) => output.includes(event));
+    const phasePath = path.join(directory, "phase.txt");
+    if (fs.existsSync(phasePath) && fs.statSync(phasePath).size <= 64) {
+      const phase = fs.readFileSync(phasePath, "utf8");
+      if (
+        [
+          "debugger-started",
+          "collector-entered",
+          "identity-qualified",
+          "snapshot-indexed",
+          "frames-read",
+          "memory-read",
+          "detached",
+        ].includes(phase)
+      ) {
+        debuggerPhase = phase;
+      }
+    }
     if (child.error) throw child.error;
     const receiptPath = path.join(directory, "receipt.json");
     if (fs.statSync(receiptPath).size > 64 * 1024) throw new Error("receipt-budget");
@@ -83,6 +103,7 @@ export function invitationStackCheckpoint(snapshot: unknown, address: bigint | u
         debuggerExitCode,
         debuggerSignal,
         debuggerEvents,
+        debuggerPhase,
         errorCategory,
         receipt,
       }) +

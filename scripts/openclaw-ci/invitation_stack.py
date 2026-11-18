@@ -133,6 +133,8 @@ def __lldb_init_module(debugger, _internal_dict):
         print("openclaw-lldb-module-ready")
         return
     root = Path(os.environ["OPENCLAW_INVITATION_STACK_DIR"])
+    phase = lambda name: (root / "phase.txt").write_text(name)
+    phase("collector-entered")
     output = root / "receipt.json"
     receipt = {"version": 1, "attached": False, "detached": False, "captured": False,
                "diagnosticOnly": True, "qualifiesRepin": False,
@@ -156,7 +158,9 @@ def __lldb_init_module(debugger, _internal_dict):
             digest = hashlib.file_digest(stream, "sha256").hexdigest()
         assert digest == PROFILE_SHA256
         receipt.update(identityQualified=True, executableSHA256=digest)
+        phase("identity-qualified")
         cells, records = snapshot_plan(snapshot["snapshot"], int(snapshot["address"], 16))
+        phase("snapshot-indexed")
         receipt["snapshotCells"] = records
         thread = process.GetThreadByID(pid)
         assert thread.IsValid(), "Linux main thread missing"
@@ -179,6 +183,7 @@ def __lldb_init_module(debugger, _internal_dict):
                            "boundsAvailable": 0 < sp < cfa})
         receipt["frames"] = frames
         receipt["framesCapped"] = thread.GetNumFrames() > 64
+        phase("frames-read")
         frame = thread.GetFrameAtIndex(0)
         start = frame.GetSP() & ~7
         region = lldb.SBMemoryRegionInfo()
@@ -200,12 +205,15 @@ def __lldb_init_module(debugger, _internal_dict):
                 if cell is not None:
                     receipt["registerMatches"].append({"cell": cell, "register": register.GetName()})
         receipt["captured"] = True
+        phase("memory-read")
     except Exception as error:
         receipt["errorCategory"] = type(error).__name__
     finally:
         if process.IsValid():
             error = process.Detach()
             receipt["detached"] = error.Success()
+            if receipt["detached"]:
+                phase("detached")
         data = json.dumps(receipt, indent=2) + "\n"
         assert len(data.encode()) <= 64 * 1024
         output.write_text(data)
