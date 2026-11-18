@@ -95,6 +95,26 @@ class StackEvidenceTests(unittest.TestCase):
             self.assertFalse(controller["stack_observations"](
                 "[invitation-stack] " + json.dumps({**row, **extra}), attach_only=True)["complete"])
 
+    def test_stack_graph_admission_does_not_claim_a_root_path(self):
+        row = {"version": 1, "kind": "commit-retainer-snapshot", "complete": False,
+               "diagnosticOnly": True, "qualifiesRepin": False, "duplicateAddresses": 0,
+               "identity": {"addressCaptured": True, "addressMatches": 1, "compatibleClass": True},
+               "unrepresentedZeroSourceEdges": 0, "truncation": [],
+               "recordedReverseGraph": {"completeRecordedReverseGraph": True, "captureCapped": False}}
+        observe = lambda value, **kwargs: controller["snapshot_observations"](
+            "[invitation-snapshot] " + json.dumps(value), **kwargs)
+        original = observe(row)
+        self.assertFalse(original["complete"])
+        self.assertNotIn("stackGraphAdmitted", original)
+        admitted = observe(row, recorded_graph=True)
+        self.assertTrue(admitted["stackGraphAdmitted"])
+        self.assertFalse(admitted["complete"])
+        self.assertFalse(admitted["rootPathAbsenceProven"])
+        for change in ({"duplicateAddresses": 1}, {"truncation": ["graph-limit"]},
+                       {"recordedReverseGraph": {"completeRecordedReverseGraph": False, "captureCapped": False}},
+                       {"identity": {"addressCaptured": True, "addressMatches": 2, "compatibleClass": True}}):
+            self.assertFalse(observe({**row, **change}, recorded_graph=True)["stackGraphAdmitted"])
+
 
 if __name__ == "__main__":
     unittest.main()

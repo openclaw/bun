@@ -29,6 +29,7 @@ on:
             linux-openclaw-invitation-snapshot,
             linux-openclaw-invitation-stack,
             linux-openclaw-invitation-gdb-attach,
+            linux-openclaw-invitation-gdb-stack,
             linux-openclaw-anchor-preparation,
             linux-openclaw-anchor-full-context,
             linux-openclaw-anchor-fixture-fix,
@@ -56,7 +57,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: aot-operation-origins-${{ github.ref }}${{ inputs.platform == 'linux-openclaw-bun-only' && '-bun-only' || inputs.platform == 'linux-openclaw-repin' && '-linux-repin' || inputs.platform == 'darwin-openclaw-app-host' && '-app-host' || inputs.platform == 'linux-openclaw-doctor-causes' && '-doctor-causes' || inputs.platform == 'linux-openclaw-doctor-readiness' && '-doctor-readiness' || inputs.platform == 'linux-openclaw-doctor-phases' && '-doctor-phases' || inputs.platform == 'linux-openclaw-doctor-fixture-fix' && '-doctor-fixture-fix' || inputs.platform == 'linux-openclaw-doctor-fixture-phases' && '-doctor-fixture-phases' || inputs.platform == 'linux-openclaw-invitation-reduction' && '-invitation-reduction' || inputs.platform == 'linux-openclaw-invitation-operations' && '-invitation-operations' || inputs.platform == 'linux-openclaw-invitation-references' && '-invitation-references' || inputs.platform == 'linux-openclaw-invitation-owner-cut' && '-invitation-owner-cut' || inputs.platform == 'linux-openclaw-invitation-cache-code' && '-invitation-cache-code' || inputs.platform == 'linux-openclaw-invitation-retention' && '-invitation-retention' || inputs.platform == 'linux-openclaw-invitation-callback' && '-invitation-callback' || inputs.platform == 'linux-openclaw-invitation-gdb-attach' && '-invitation-gdb-attach' || inputs.platform == 'linux-openclaw-invitation-stack' && '-invitation-stack' || inputs.platform == 'linux-openclaw-invitation-snapshot' && '-invitation-snapshot' || inputs.platform == 'linux-openclaw-anchor-fixture-fix' && '-anchor-fixture-fix' || inputs.platform == 'linux-openclaw-anchor-full-context' && '-anchor-full-context' || inputs.platform == 'linux-openclaw-anchor-preparation' && '-anchor-preparation' || inputs.platform == 'linux-openclaw-doctor-continuation' && '-doctor-continuation' || inputs.platform == 'linux-openclaw-profile-symbols' && '-profile-symbols' || inputs.platform == 'linux-openclaw-profile-layout' && '-profile-layout' || inputs.platform == 'linux-openclaw-doctor-fixture-regression' && '-doctor-fixture-regression' || '' }}
+  group: aot-operation-origins-${{ github.ref }}${{ inputs.platform == 'linux-openclaw-bun-only' && '-bun-only' || inputs.platform == 'linux-openclaw-repin' && '-linux-repin' || inputs.platform == 'darwin-openclaw-app-host' && '-app-host' || inputs.platform == 'linux-openclaw-doctor-causes' && '-doctor-causes' || inputs.platform == 'linux-openclaw-doctor-readiness' && '-doctor-readiness' || inputs.platform == 'linux-openclaw-doctor-phases' && '-doctor-phases' || inputs.platform == 'linux-openclaw-doctor-fixture-fix' && '-doctor-fixture-fix' || inputs.platform == 'linux-openclaw-doctor-fixture-phases' && '-doctor-fixture-phases' || inputs.platform == 'linux-openclaw-invitation-reduction' && '-invitation-reduction' || inputs.platform == 'linux-openclaw-invitation-operations' && '-invitation-operations' || inputs.platform == 'linux-openclaw-invitation-references' && '-invitation-references' || inputs.platform == 'linux-openclaw-invitation-owner-cut' && '-invitation-owner-cut' || inputs.platform == 'linux-openclaw-invitation-cache-code' && '-invitation-cache-code' || inputs.platform == 'linux-openclaw-invitation-retention' && '-invitation-retention' || inputs.platform == 'linux-openclaw-invitation-callback' && '-invitation-callback' || inputs.platform == 'linux-openclaw-invitation-gdb-stack' && '-invitation-gdb-stack' || inputs.platform == 'linux-openclaw-invitation-gdb-attach' && '-invitation-gdb-attach' || inputs.platform == 'linux-openclaw-invitation-stack' && '-invitation-stack' || inputs.platform == 'linux-openclaw-invitation-snapshot' && '-invitation-snapshot' || inputs.platform == 'linux-openclaw-anchor-fixture-fix' && '-anchor-fixture-fix' || inputs.platform == 'linux-openclaw-anchor-full-context' && '-anchor-full-context' || inputs.platform == 'linux-openclaw-anchor-preparation' && '-anchor-preparation' || inputs.platform == 'linux-openclaw-doctor-continuation' && '-doctor-continuation' || inputs.platform == 'linux-openclaw-profile-symbols' && '-profile-symbols' || inputs.platform == 'linux-openclaw-profile-layout' && '-profile-layout' || inputs.platform == 'linux-openclaw-doctor-fixture-regression' && '-doctor-fixture-regression' || '' }}
   cancel-in-progress: true
 
 jobs:
@@ -316,7 +317,7 @@ jobs:
           retention-days: 7
 
   openclaw-invitation-snapshot:
-    if: inputs.platform == 'linux-openclaw-invitation-snapshot' || inputs.platform == 'linux-openclaw-invitation-stack' || inputs.platform == 'linux-openclaw-invitation-gdb-attach'
+    if: inputs.platform == 'linux-openclaw-invitation-snapshot' || inputs.platform == 'linux-openclaw-invitation-stack' || inputs.platform == 'linux-openclaw-invitation-gdb-attach' || inputs.platform == 'linux-openclaw-invitation-gdb-stack'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     permissions:
@@ -345,14 +346,14 @@ jobs:
           sudo apt-get install -y --no-install-recommends lldb
           test -x /usr/bin/lldb
       - name: Admit the published profile companion
-        if: inputs.platform == 'linux-openclaw-invitation-stack' || inputs.platform == 'linux-openclaw-invitation-gdb-attach'
+        if: inputs.platform == 'linux-openclaw-invitation-stack' || inputs.platform == 'linux-openclaw-invitation-gdb-attach' || inputs.platform == 'linux-openclaw-invitation-gdb-stack'
         env:
           CONTROLLER_SHA: ${{ github.sha }}
           BUN_RELEASE_METADATA_TOKEN: ${{ github.token }}
         run: |
           python3 scripts/openclaw-ci/profile-layout.py --phase metadata --controller-sha "$CONTROLLER_SHA" --out invitation-profile-proof
-      - name: Install the attachment-only debugger
-        if: inputs.platform == 'linux-openclaw-invitation-gdb-attach'
+      - name: Install the GDB diagnostic debugger
+        if: inputs.platform == 'linux-openclaw-invitation-gdb-attach' || inputs.platform == 'linux-openclaw-invitation-gdb-stack'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends gdb
@@ -369,10 +370,12 @@ jobs:
           CONTROLLER_SHA: ${{ github.sha }}
           OBSERVE_STACK: ${{ inputs.platform == 'linux-openclaw-invitation-stack' }}
           GDB_ATTACH: ${{ inputs.platform == 'linux-openclaw-invitation-gdb-attach' }}
+          GDB_STACK: ${{ inputs.platform == 'linux-openclaw-invitation-gdb-stack' }}
         run: |
           stack_args=()
           if [ "$OBSERVE_STACK" = true ]; then stack_args+=(--invitation-stack); fi
           if [ "$GDB_ATTACH" = true ]; then stack_args+=(--invitation-stack --invitation-gdb-attach); fi
+          if [ "$GDB_STACK" = true ]; then stack_args+=(--invitation-stack --invitation-gdb-stack); fi
           controller_home="$RUNNER_TEMP/invitation-snapshot-controller-home"
           controller_tmp="$RUNNER_TEMP/invitation-snapshot-controller-tmp"
           install -d -m 0700 "$controller_home" "$controller_tmp"

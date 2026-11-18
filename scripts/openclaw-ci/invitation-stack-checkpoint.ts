@@ -16,10 +16,9 @@ export function invitationStackCheckpoint(
     const { spawnSync } = require("node:child_process") as typeof import("node:child_process");
     const root = process.env.OPENCLAW_INVITATION_STACK_ROOT;
     const commands = process.env.OPENCLAW_INVITATION_STACK_COMMANDS;
-    const gdbAttach = process.env.OPENCLAW_INVITATION_GDB_ATTACH === "1";
+    const gdb = process.env.OPENCLAW_INVITATION_GDB === "1";
     if (!root || !commands || (!attachOnly && address === undefined))
       throw new Error("checkpoint-input");
-    if (gdbAttach && !attachOnly) throw new Error("gdb-attachment-only");
     const directory = fs.mkdtempSync(path.join(root, "worker-"));
     fs.writeFileSync(path.join(directory, "mode.txt"), attachOnly ? "attachment-only" : "stack", {
       mode: 0o600,
@@ -54,7 +53,7 @@ export function invitationStackCheckpoint(
         "/usr/bin/timeout",
         "--kill-after=5s",
         "60s",
-        ...(gdbAttach
+        ...(gdb
           ? [
               "/usr/bin/gdb",
               "--nx",
