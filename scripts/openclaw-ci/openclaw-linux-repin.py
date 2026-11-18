@@ -66,7 +66,7 @@ INVITATION_REDUCTION_CASES = tuple(f"releases reduced invitation callbacks after
 INVITATION_CALLBACK_SHA256 = "1775321fae85b26fca81575d9910aa3118e8e67955cd9d1774d8335e3f310fe7"
 INVITATION_SNAPSHOT_PAYLOAD_SHA256 = "69473344a9e3a29e74c72552c9b43b98be691c274869ecd4a917bfe9d66cf67b"
 INVITATION_SNAPSHOT_SHA256 = "f03c29b4b9b38678328ef5f0d63e593af4a7ca847095a41f86175cd23163b695"
-INVITATION_STACK_PAYLOAD_SHA256 = "aeaa29b5d95d0e637c3b73185eaf364dafadaf450d45affc1e9a99e12ddcdf3d"
+INVITATION_STACK_PAYLOAD_SHA256 = "7fec35f9a575f40d14a4e31654658b05c2419ba23d007ad7c08cde9147849d35"
 READINESS_PATCH_SHA256 = "cb2aedd7cf89ae1298d1335fcc461ca932060a58b63a1489a128eef57ba94b4c"
 READINESS_FILES = {
     "src/process/spawn-broker/resource-protocol.ts": ("3f66dcd70bc32b798930d3f11a8e575e0915206bb6ad5c0417a8ccb4975ed5c2", "89cdfbb498eb09cd6233459ac6d8c1ba74cd4c53e8f20bf79f7cc8ffce411d68"),
@@ -830,6 +830,7 @@ def main():
         if args.invitation_stack:
             collector = Path(__file__).with_name("invitation_stack.py").resolve()
             assert Path("/usr/bin/lldb").is_file(), "LLDB unavailable"
+            assert Path("/usr/bin/prlimit").is_file(), "debugger file-size limiter unavailable"
             checked(["/usr/bin/lldb", "--no-lldbinit", "--batch", "-o",
                      "command script import " + json.dumps(str(collector)), "-o", "quit"], "lldb-python", timeout=30)
             assert "\nopenclaw-lldb-module-ready\n" in (out / "lldb-python.log").read_text()
@@ -850,8 +851,10 @@ def main():
                                   b"\ninvitationStackCheckpoint(undefined, undefined, true);\n")
             checked([str(bun), str(preflight)], "lldb-attach", env, timeout=90)
             report["stackAttachPreflight"] = stack_observations((out / "lldb-attach.log").read_text(), attach_only=True)
+            report["debuggerPacketTraces"] = stack_module["packet_traces"](stack_root)
             report["settlementUncertain"] = not report["stackAttachPreflight"]["complete"]
             assert report["stackAttachPreflight"]["complete"], "minimal profile attachment did not settle; full test not started"
+            assert len(report["debuggerPacketTraces"]) == 1 and report["debuggerPacketTraces"][0].get("parsedRecords", 0) > 0, "packet logging preflight failed; full test not started"
         report["settlementUncertain"] = True
         host = json.loads(subprocess.check_output([str(node), "-e",
             "console.log(JSON.stringify({node:process.version,nodePath:process.execPath,cores:require('os').availableParallelism(),memoryBytes:require('os').totalmem(),platform:process.platform,arch:process.arch}))"],
@@ -1062,6 +1065,7 @@ def main():
         assert not outcome["settlementUncertain"], "native settlement uncertain; state retained for runner teardown"
         log = (out / "native-shard.log").read_text()
         if args.invitation_stack:
+            report["debuggerPacketTraces"] = stack_module["packet_traces"](stack_root)
             report["stack"] = stack_observations(log)
             assert report["stack"]["complete"], "stack capture or verified debugger detach/parent continuation missing"
         completions = [json.loads(line.removeprefix("[shard:completion] "))

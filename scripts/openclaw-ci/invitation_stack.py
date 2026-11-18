@@ -17,6 +17,74 @@ CLASSES = {"<root>", "Object", "FinalObject", "Function", "JSFunction", "AsyncFu
            "JSGenerator", "AsyncGenerator", "FunctionExecutable", "UnlinkedFunctionExecutable"}
 
 
+def packet_tail(data):
+    assert len(data) <= 65536
+    records, rejected = [], 0
+    lines = data.decode("utf-8", errors="replace").splitlines()
+    if data and not data.endswith(b"\n"):
+        lines.pop()
+        rejected += 1
+    for line in lines:
+        if "history[" in line:
+            continue
+        match = re.search(r"<\s*\d+(?::\d+)?> (send|read) packet: (.*)$", line)
+        if not match:
+            if "send packet:" in line or "read packet:" in line:
+                rejected += 1
+            continue
+        direction, packet = match.groups()
+        if len(packet) > 32768 or not packet:
+            rejected += 1
+            continue
+        body = packet[1:].split("#", 1)[0] if packet[0] in "$%" else packet
+        if direction == "send":
+            kind = next((name for name in ("qSupported", "QStartNoAckMode", "vAttach", "qProcessInfo",
+                "qfThreadInfo", "qsThreadInfo", "qThreadStopInfo", "qRegisterInfo", "qXfer",
+                "qSymbol", "jModulesInfo", "jThreadsInfo") if body.startswith(name)), "other")
+            if body == "qC":
+                kind = "qC"
+            elif body == "g" or re.fullmatch(r"p[0-9a-fA-F]+", body):
+                kind = "register-read"
+            elif re.match(r"[mx][0-9a-fA-F]+,", body):
+                kind = "memory-read"
+            elif body == "D" or body.startswith("D;"):
+                kind = "detach"
+        else:
+            kind = ("ack" if packet == "+" else "nack" if packet == "-" else
+                    "notification" if packet.startswith("%") else "unsupported" if not body else
+                    "OK" if body == "OK" else "error" if re.fullmatch(r"E[0-9a-fA-F]{2}(?:;[0-9a-fA-F]*)?", body) else
+                    "stop" if body.startswith(("T", "S")) else
+                    "exit" if body.startswith(("W", "X")) else "data")
+        records.append({"direction": direction, "class": kind})
+    return {"tailRecords": records[-32:], "parsedRecords": len(records), "rejectedRecords": rejected,
+            "limit": "observed log records only; missing records do not prove no write attempt or partial response"}
+
+
+def packet_traces(root):
+    directories = list(root.iterdir())
+    assert len(directories) <= 2 and all(p.is_dir() and not p.is_symlink() for p in directories)
+    reports = []
+    for directory in directories:
+        mode = (directory / "mode.txt").read_text()
+        assert mode in {"attachment-only", "stack"}
+        log = directory / "attach.log"
+        if not log.exists():
+            reports.append({"mode": mode, "logPresent": False})
+            continue
+        assert not log.is_symlink() and log.is_file()
+        size = log.stat().st_size
+        with log.open("rb") as stream:
+            offset = max(0, size - 65536)
+            stream.seek(offset)
+            tail = stream.read(65536)
+        if offset:
+            tail = tail.partition(b"\n")[2]
+        reports.append({"mode": mode, "logPresent": True, "fileBytes": size,
+                        "tailTruncated": bool(offset), "fileLimitReached": size >= 8388608,
+                        **packet_tail(tail)})
+    return reports
+
+
 def stage_profile(root, metadata_path, controller):
     profile = runpy.run_path(str(Path(__file__).with_name("profile-layout.py")))
     assert metadata_path.stat().st_size <= 64 * 1024

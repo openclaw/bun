@@ -21,6 +21,32 @@ def snapshot():
 
 
 class StackEvidenceTests(unittest.TestCase):
+    def test_packet_tail_exports_classes_without_addresses_paths_or_payloads(self):
+        data = b"\n".join([
+            b"0xabc <  15> send packet: $vAttach;1234#00",
+            b"0xabc <  50> read packet: $T05thread:1234;name:private-name;#00",
+            b"history[12] tid=1234 < 10> send packet: $qProcessInfo#00",
+            b"0xabc <  90> send packet: $mdeadbeef,1234#00",
+            b"0xabc <  90> read packet: $private-data#00",
+            b"0xabc <  10> send packet: $D#00",
+            b"0xabc <  10> read packet: $OK#00",
+            b"0xabc <  10> read packet: $E7abc0#00",
+            b"failed to send packet: $vAttach;private#00",
+        ])
+        result = stack["packet_tail"](data + b"\n")
+        self.assertEqual([r["class"] for r in result["tailRecords"]],
+                         ["vAttach", "stop", "memory-read", "data", "detach", "OK", "data"])
+        self.assertEqual(result["rejectedRecords"], 1)
+        self.assertNotIn("private", json.dumps(result))
+        self.assertNotIn("deadbeef", json.dumps(result))
+        self.assertNotIn("1234", json.dumps(result))
+
+    def test_packet_tail_caps_egress_and_rejects_oversized_records(self):
+        result = stack["packet_tail"](b"< 10> read packet: $OK#00\n" * 100 + b"< 10> read packet: " + b"x" * 32769)
+        self.assertEqual(len(result["tailRecords"]), 32)
+        self.assertEqual(result["parsedRecords"], 100)
+        self.assertEqual(result["rejectedRecords"], 1)
+
     def test_reverse_graph_maps_stack_words_to_cells_without_exporting_addresses(self):
         cells, records = stack["snapshot_plan"](snapshot(), 0x1000)
         matches = stack["stack_matches"](struct.pack("<QQQQ", 0, 0x2000, 0x1000, 0x2000), 128,

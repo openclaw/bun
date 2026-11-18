@@ -19,6 +19,10 @@ export function invitationStackCheckpoint(
     if (!root || !commands || (!attachOnly && address === undefined))
       throw new Error("checkpoint-input");
     const directory = fs.mkdtempSync(path.join(root, "worker-"));
+    fs.writeFileSync(path.join(directory, "mode.txt"), attachOnly ? "attachment-only" : "stack", {
+      mode: 0o600,
+      flag: "wx",
+    });
     const startTime = fs
       .readFileSync(`/proc/${process.pid}/stat`, "utf8")
       .split(") ")
@@ -42,6 +46,9 @@ export function invitationStackCheckpoint(
         "PATH=/usr/bin:/bin",
         `OPENCLAW_INVITATION_STACK_DIR=${directory}`,
         `OPENCLAW_INVITATION_STACK_ATTACH_ONLY=${attachOnly ? "1" : "0"}`,
+        "/usr/bin/prlimit",
+        "--fsize=8388608:8388608",
+        "--",
         "/usr/bin/timeout",
         "--kill-after=5s",
         "60s",
@@ -50,6 +57,8 @@ export function invitationStackCheckpoint(
         "--batch",
         "--one-line-before-file",
         "settings set target.preload-symbols false",
+        "--one-line-before-file",
+        "script import os,json; lldb.debugger.HandleCommand('log enable -f ' + json.dumps(os.path.join(os.environ['OPENCLAW_INVITATION_STACK_DIR'],'attach.log')) + ' gdb-remote packets')",
         "--one-line-before-file",
         "script import os,pathlib; pathlib.Path(os.environ['OPENCLAW_INVITATION_STACK_DIR'],'phase.txt').write_text('debugger-started')",
         "--attach-pid",
