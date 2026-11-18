@@ -8,6 +8,7 @@ controller = runpy.run_path(str(Path(__file__).with_name("openclaw-linux-repin.p
 observe = controller["invitation_owner_cut_observations"]
 observe_references = controller["invitation_references_observations"]
 observe_operations = controller["invitation_operations_observations"]
+observe_invitation = controller["invitation_observations"]
 
 
 def marker(outcome, **changes):
@@ -82,6 +83,27 @@ class OperationEvidenceTests(unittest.TestCase):
         for operations in ([], [operation] * 9, [{**operation, "paramsAlive": None}], [{**operation, "privatePath": "invalid"}]):
             with self.subTest(operations=operations), self.assertRaises(AssertionError):
                 observe_operations(self.marker("commit", operations) + "\n" + rollback)
+
+
+class ReducedCaseEvidenceTests(unittest.TestCase):
+    @staticmethod
+    def row(outcome, status="✓"):
+        return ("[shard:bun:core-runtime-config-hosted-3] " + status +
+                " |runtime-config| src/config/sessions/session-mention-invitation.test.ts > " +
+                "releases reduced invitation callbacks after " + outcome + " 3ms")
+
+    def test_reduced_failure_is_preserved_as_native_evidence(self):
+        report = observe_invitation(self.row("commit", "×") + "\n" + self.row("rollback"),
+                                    1, controller["INVITATION_REDUCTION_CASES"])
+        self.assertEqual([row["status"] for row in report["cases"]], ["failed", "passed"])
+
+    def test_reduction_requires_both_cases_and_cannot_qualify_original_cases(self):
+        cases = controller["INVITATION_REDUCTION_CASES"]
+        pair = self.row("commit") + "\n" + self.row("rollback")
+        for log, expected in ((self.row("commit"), cases), (pair, controller["INVITATION_CASES"]),
+                              (pair + "\n" + self.row("rollback"), cases)):
+            with self.subTest(log=log, expected=expected), self.assertRaises(AssertionError):
+                observe_invitation(log, 0, expected)
 
 
 if __name__ == "__main__":

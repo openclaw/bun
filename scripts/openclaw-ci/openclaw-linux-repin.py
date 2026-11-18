@@ -61,6 +61,8 @@ INVITATION_OPERATIONS_SHA256 = "f51f94f08ab876f8c3a59396f876fa967ef7c1549f669a99
 INVITATION_OPERATION_FILE = "src/config/sessions/session-entry-patch.ts"
 INVITATION_OPERATION_SOURCE_SHA256 = "3b0a83b7733deb1269cb4ee406781ba870251b8a1f6797ee943f69f964d325ff"
 INVITATION_OPERATION_PATCHED_SHA256 = "c9a98f8da836c79f49357d27801fd2c73bf32eca9a3a15c6c3da429ff5bcb0b7"
+INVITATION_REDUCTION_SHA256 = "35ad033d173eb5e860395032eeb303c2527d3c9e623c72fb404ab01d002a8449"
+INVITATION_REDUCTION_CASES = tuple(f"releases reduced invitation callbacks after {outcome}" for outcome in ("commit", "rollback"))
 INVITATION_CALLBACK_SHA256 = "1775321fae85b26fca81575d9910aa3118e8e67955cd9d1774d8335e3f310fe7"
 INVITATION_SNAPSHOT_PAYLOAD_SHA256 = "69473344a9e3a29e74c72552c9b43b98be691c274869ecd4a917bfe9d66cf67b"
 INVITATION_SNAPSHOT_SHA256 = "f03c29b4b9b38678328ef5f0d63e593af4a7ca847095a41f86175cd23163b695"
@@ -393,7 +395,14 @@ def snapshot_observations(log):
     return row
 
 
-def invitation_observations(log, exit_code):
+def invitation_reduction_bytes(original):
+    assert hashlib.sha256(original).hexdigest() == INVITATION_SOURCE_SHA256
+    payload = Path(__file__).with_name("invitation-disposal-reduction.ts").read_bytes()
+    assert hashlib.sha256(payload).hexdigest() == INVITATION_REDUCTION_SHA256
+    return payload
+
+
+def invitation_observations(log, exit_code, expected_cases=INVITATION_CASES):
     rows, summaries = [], []
     prefix = "[shard:bun:core-runtime-config-hosted-3]"
     for raw in log.splitlines():
@@ -408,14 +417,14 @@ def invitation_observations(log, exit_code):
         match = re.fullmatch(r"(.*?)\|([^|]+)\|\s+(.+?) > (.+?)(?: \d+(?:\.\d+)?ms)?", body)
         assert match, "malformed diagnostic case row"
         assert match[2] == "runtime-config" and match[3] == INVITATION_FILE, "unexpected diagnostic file"
-        assert match[4] in INVITATION_CASES, "unexpected diagnostic case"
+        assert match[4] in expected_cases, "unexpected diagnostic case"
         marker = match[1].strip()
         if marker == "FAIL":
             continue  # Native failure summaries repeat the primary case result.
         assert marker in {"✓", "√", "×", "↓"}, "unsupported diagnostic case status"
         rows.append({"file": match[3], "fullName": match[4],
                      "status": {"✓": "passed", "√": "passed", "×": "failed", "↓": "skipped"}[marker]})
-    assert len(rows) == 8 and {row["fullName"] for row in rows} == set(INVITATION_CASES), "incomplete or duplicate diagnostic cases"
+    assert len(rows) == len(expected_cases) and {row["fullName"] for row in rows} == set(expected_cases), "incomplete or duplicate diagnostic cases"
     assert all(row["status"] in {"passed", "failed"} for row in rows), "diagnostic case skipped"
     assert exit_code != 0 or all(row["status"] == "passed" for row in rows), "successful exit contradicts failed case"
     return {"cases": rows, "nativeSummaries": summaries}
@@ -613,6 +622,7 @@ def main():
     parser.add_argument("--invitation-owner-cut", action="store_true")
     parser.add_argument("--invitation-references", action="store_true")
     parser.add_argument("--invitation-operations", action="store_true")
+    parser.add_argument("--invitation-reduction", action="store_true")
     parser.add_argument("--invitation-native-callback", action="store_true")
     parser.add_argument("--invitation-snapshot", action="store_true")
     parser.add_argument("--anchor-preparation", action="store_true")
@@ -637,6 +647,9 @@ def main():
                      args.doctor_readiness, args.doctor_continuation, args.invitation_retention,
                      args.invitation_cache_code, args.invitation_native_callback, args.invitation_snapshot)))
     assert not args.invitation_cache_code or (args.invitation_retention and args.pin == "new")
+    assert not args.invitation_reduction or (args.invitation_retention and not any((
+        args.invitation_references, args.invitation_operations, args.invitation_owner_cut,
+        args.invitation_cache_code, args.invitation_native_callback, args.invitation_snapshot)))
     assert not args.invitation_operations or args.invitation_references
     assert not args.invitation_references or (args.invitation_retention and not args.invitation_owner_cut
                                             and not args.invitation_cache_code and not args.invitation_native_callback
@@ -745,8 +758,14 @@ def main():
             group_json = json.dumps([effective_group], separators=(",", ":"))
             report["invitationRetention"] = {"originalGroupSHA256": report["groupSHA256"],
                 "effectiveGroup": effective_group, "effectiveGroupSHA256": hashlib.sha256(group_json.encode()).hexdigest(),
-                "expectedCases": INVITATION_CASES,
+                "expectedCases": INVITATION_REDUCTION_CASES if args.invitation_reduction else INVITATION_CASES,
                 "scope": "standalone file; a pass does not explain or waive the original 309-file failure"}
+        if args.invitation_reduction:
+            report["reduction"] = {
+                "diagnosticOnly": True, "qualifiesRepin": False,
+                "scope": "two-case async/disposal reduction through the original Vitest configuration; no database or publication owners",
+                "limit": "a pass means the reduction lost a required condition; it does not qualify the original test or identify a retainer",
+            }
         if args.anchor_preparation:
             assert len(selected["group"]["includePatterns"]) == 168 and ANCHOR_FILE in selected["group"]["includePatterns"]
             if args.anchor_full_context:
@@ -920,14 +939,16 @@ def main():
             report["anchorProjection"]["state"] = "applied"
             assert all(common["sha"](path) == ANCHOR_FILES[name][1] for name, path in anchor_paths.items())
             assert set(git("diff", "HEAD", "--name-only").splitlines()) == set(ANCHOR_FILES)
-        if args.invitation_native_callback or args.invitation_snapshot or args.invitation_owner_cut or args.invitation_references:
+        if args.invitation_native_callback or args.invitation_snapshot or args.invitation_owner_cut or args.invitation_references or args.invitation_reduction:
             test_path = source / INVITATION_FILE
             assert test_path.is_file() and not test_path.is_symlink()
             original = test_path.read_bytes()
-            patched = (invitation_references_bytes(original, args.invitation_operations) if args.invitation_references else
+            patched = (invitation_reduction_bytes(original) if args.invitation_reduction else
+                       invitation_references_bytes(original, args.invitation_operations) if args.invitation_references else
                        invitation_owner_cut_bytes(original) if args.invitation_owner_cut else
                        invitation_snapshot_bytes(original) if args.invitation_snapshot else invitation_callback_bytes(original))
-            patched_test_sha = (INVITATION_OPERATIONS_SHA256 if args.invitation_operations else
+            patched_test_sha = (INVITATION_REDUCTION_SHA256 if args.invitation_reduction else
+                                INVITATION_OPERATIONS_SHA256 if args.invitation_operations else
                                 INVITATION_REFERENCES_SHA256 if args.invitation_references else
                                 INVITATION_OWNER_CUT_SHA256 if args.invitation_owner_cut else
                                 INVITATION_SNAPSHOT_SHA256 if args.invitation_snapshot else INVITATION_CALLBACK_SHA256)
@@ -936,6 +957,8 @@ def main():
                 "diff": "".join(difflib.unified_diff(original.decode().splitlines(True),
                     patched.decode().splitlines(True), fromfile="a/" + INVITATION_FILE, tofile="b/" + INVITATION_FILE)),
                 "scope": "one immediate and one GC per retention case; Promise/closure roots and GC/resumption ordering differ; no qualification or leak-cause verdict"}
+            if args.invitation_reduction:
+                report["testProjection"]["scope"] = "replaced by two-case async/disposal reduction; same Vitest transform and one original nextTurn/queryObjects boundary; diagnostic only"
             if args.invitation_owner_cut:
                 report["testProjection"]["scope"] = "remove test-held closed admissions after their assertions; retain original timer, GC and sentinel assertions; diagnostic only"
             if args.invitation_references:
@@ -1011,7 +1034,8 @@ def main():
             assert report["anchorPreparation"]["framingComplete"], "anchor observation missing, capped, invalid or interrupted"
             report["status"] = "DIAGNOSTIC"
         elif args.invitation_retention or args.invitation_native_callback or args.invitation_snapshot:
-            report["invitationRetention"].update(invitation_observations(log, outcome["exitCode"]))
+            report["invitationRetention"].update(invitation_observations(log, outcome["exitCode"],
+                INVITATION_REDUCTION_CASES if args.invitation_reduction else INVITATION_CASES))
             report["diagnosticNativeStatus"] = "PASS" if outcome["exitCode"] == 0 else "FAIL"
             if args.invitation_owner_cut:
                 report["ownerCut"] = invitation_owner_cut_observations(log)
@@ -1057,6 +1081,9 @@ def main():
         elif candidate_bytes is not None:
             restore_allowed = original_test_bytes is None or (test_path.is_file() and not test_path.is_symlink()
                               and common["sha"](test_path) == patched_test_sha)
+            if args.invitation_reduction and original_test_bytes is not None:
+                expected_files = {INVITATION_FILE} | ({common["PIN"]} if args.pin == "old" else set())
+                restore_allowed &= set(git("diff", "HEAD", "--name-only").splitlines()) == expected_files
             if original_operation_bytes is not None:
                 restore_allowed &= (operation_path.is_file() and not operation_path.is_symlink()
                                     and common["sha"](operation_path) == INVITATION_OPERATION_PATCHED_SHA256)
