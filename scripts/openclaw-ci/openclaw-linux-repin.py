@@ -57,6 +57,7 @@ INVITATION_FILE = "src/config/sessions/session-mention-invitation.test.ts"
 INVITATION_SOURCE_SHA256 = "a3fe4f0f54f7daceaa7ce53e1df5525f067cb5699b0096a6c527e366b24a8cf4"
 INVITATION_OWNER_CUT_SHA256 = "1538b03ef36b0f57b5fe62dc89de2de6524c44aa97b10cc0f74a5ef22ca353ae"
 INVITATION_REFERENCES_SHA256 = "0cbb0453e94e48f51abd54ff708ccf5f636a7cccc3b186addae175c4b1819e7f"
+INVITATION_OPERATIONS_SHA256 = "c37641de3cd6b1c7207dce99bc0f70d75357ab9efb239b057755b25d08b147cf"
 INVITATION_CALLBACK_SHA256 = "1775321fae85b26fca81575d9910aa3118e8e67955cd9d1774d8335e3f310fe7"
 INVITATION_SNAPSHOT_PAYLOAD_SHA256 = "69473344a9e3a29e74c72552c9b43b98be691c274869ecd4a917bfe9d66cf67b"
 INVITATION_SNAPSHOT_SHA256 = "f03c29b4b9b38678328ef5f0d63e593af4a7ca847095a41f86175cd23163b695"
@@ -163,7 +164,7 @@ def invitation_callback_bytes(original):
     return patched
 
 
-def invitation_references_bytes(original):
+def invitation_references_bytes(original, operations=False):
     assert hashlib.sha256(original).hexdigest() == INVITATION_SOURCE_SHA256
     additions = (
         (b"      async function settle() {", b"""      const references: Partial<Record<"preparation" | "guard" | "write", WeakRef<object>>> = {};
@@ -203,6 +204,48 @@ def invitation_references_bytes(original):
         assert patched.count(before) == 1
         patched = patched.replace(before, after)
     assert hashlib.sha256(patched).hexdigest() == INVITATION_REFERENCES_SHA256
+    if operations:
+        additions = (
+            (b'import * as admission from "../../infra/sqlite-worker-operation-admission.js";',
+             b'import * as admission from "../../infra/sqlite-worker-operation-admission.js";\nimport * as entryPatch from "./session-entry-patch.js";'),
+            (b'      const references: Partial<Record<"preparation"', b'''      const operationReferences: Array<{
+        params: WeakRef<object>;
+        run: WeakRef<object>;
+        acknowledged: WeakRef<object> | undefined;
+        committed: WeakRef<object>;
+      }> = [];
+      const runOperation = entryPatch.runSessionEntryWorkerOperation;
+      const observeOperation = vi.spyOn(entryPatch, "runSessionEntryWorkerOperation")
+        .mockImplementation((params) => {
+          if (params.candidateKind === "session-turn") {
+            operationReferences.push({
+              params: new WeakRef(params),
+              run: new WeakRef(params.run),
+              acknowledged: params.onAcknowledged ? new WeakRef(params.onAcknowledged) : undefined,
+              committed: new WeakRef(params.onCommitted),
+            });
+          }
+          return runOperation(params);
+        });
+      const references: Partial<Record<"preparation"'''),
+            (b"        reference = await settle();\n      } finally {\n        observe.mockRestore();",
+             b"        reference = await settle();\n      } finally {\n        observe.mockRestore();\n        observeOperation.mockRestore();"),
+            (b"      expect(control.deref()).toBeUndefined();", b'''      process.stderr.write("[invitation-operations] " + JSON.stringify({
+        version: 1,
+        outcome,
+        operations: operationReferences.map((operation) => ({
+          paramsAlive: operation.params.deref() !== undefined,
+          runAlive: operation.run.deref() !== undefined,
+          acknowledgedAlive: operation.acknowledged ? operation.acknowledged.deref() !== undefined : null,
+          committedAlive: operation.committed.deref() !== undefined,
+        })),
+      }) + "\\n");
+      expect(control.deref()).toBeUndefined();'''),
+        )
+        for before, after in additions:
+            assert patched.count(before) == 1
+            patched = patched.replace(before, after)
+        assert hashlib.sha256(patched).hexdigest() == INVITATION_OPERATIONS_SHA256
     return patched
 
 
@@ -223,6 +266,28 @@ def invitation_references_observations(log):
     return {"cases": rows, "diagnosticOnly": True, "qualifiesRepin": False,
             "scope": "WeakRefs to original preparation, guard and persistence Promise; original timer, GC and assertions retained",
             "limit": "instrumentation changes allocation and closure layout; liveness alone does not identify a retainer"}
+
+
+def invitation_operations_observations(log):
+    rows = []
+    for raw in log.splitlines():
+        line = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", raw)
+        match = re.fullmatch(r"(?:\[shard:bun:core-runtime-config-hosted-3\] )?\[invitation-operations\] (.*)", line)
+        if not match:
+            continue
+        assert len(line.encode()) <= 2048, "operation marker exceeds byte budget"
+        row = json.loads(match[1])
+        assert set(row) == {"version", "outcome", "operations"}
+        assert type(row["version"]) is int and row["version"] == 1 and row["outcome"] in {"commit", "rollback"}
+        assert isinstance(row["operations"], list) and 0 < len(row["operations"]) <= 8
+        for operation in row["operations"]:
+            assert set(operation) == {"paramsAlive", "runAlive", "acknowledgedAlive", "committedAlive"}
+            assert all(type(value) is bool for value in operation.values())
+        rows.append(row)
+    assert len(rows) == 2 and {row["outcome"] for row in rows} == {"commit", "rollback"}, "operation cases missing or duplicated"
+    return {"cases": rows, "diagnosticOnly": True, "qualifiesRepin": False,
+            "scope": "delegating operation spy restored before original GC; only WeakRefs retain observed params and callbacks",
+            "limit": "spy and allocation change execution layout; collection excludes these identities, not all internal continuations"}
 
 
 def invitation_owner_cut_bytes(original):
@@ -537,6 +602,7 @@ def main():
     parser.add_argument("--invitation-cache-code", action="store_true")
     parser.add_argument("--invitation-owner-cut", action="store_true")
     parser.add_argument("--invitation-references", action="store_true")
+    parser.add_argument("--invitation-operations", action="store_true")
     parser.add_argument("--invitation-native-callback", action="store_true")
     parser.add_argument("--invitation-snapshot", action="store_true")
     parser.add_argument("--anchor-preparation", action="store_true")
@@ -561,6 +627,7 @@ def main():
                      args.doctor_readiness, args.doctor_continuation, args.invitation_retention,
                      args.invitation_cache_code, args.invitation_native_callback, args.invitation_snapshot)))
     assert not args.invitation_cache_code or (args.invitation_retention and args.pin == "new")
+    assert not args.invitation_operations or args.invitation_references
     assert not args.invitation_references or (args.invitation_retention and not args.invitation_owner_cut
                                             and not args.invitation_cache_code and not args.invitation_native_callback
                                             and not args.invitation_snapshot)
@@ -846,10 +913,11 @@ def main():
             test_path = source / INVITATION_FILE
             assert test_path.is_file() and not test_path.is_symlink()
             original = test_path.read_bytes()
-            patched = (invitation_references_bytes(original) if args.invitation_references else
+            patched = (invitation_references_bytes(original, args.invitation_operations) if args.invitation_references else
                        invitation_owner_cut_bytes(original) if args.invitation_owner_cut else
                        invitation_snapshot_bytes(original) if args.invitation_snapshot else invitation_callback_bytes(original))
-            patched_test_sha = (INVITATION_REFERENCES_SHA256 if args.invitation_references else
+            patched_test_sha = (INVITATION_OPERATIONS_SHA256 if args.invitation_operations else
+                                INVITATION_REFERENCES_SHA256 if args.invitation_references else
                                 INVITATION_OWNER_CUT_SHA256 if args.invitation_owner_cut else
                                 INVITATION_SNAPSHOT_SHA256 if args.invitation_snapshot else INVITATION_CALLBACK_SHA256)
             report["testProjection"] = {"path": INVITATION_FILE, "state": "prepared",
@@ -861,6 +929,8 @@ def main():
                 report["testProjection"]["scope"] = "remove test-held closed admissions after their assertions; retain original timer, GC and sentinel assertions; diagnostic only"
             if args.invitation_references:
                 report["testProjection"]["scope"] = "WeakRefs to original functions and Promise; same identities, timer, GC and assertions; allocation/layout perturbation; diagnostic only"
+            if args.invitation_operations:
+                report["testProjection"]["scope"] += "; operation spy delegates unchanged params and is restored before GC"
             if args.invitation_snapshot:
                 report["testProjection"].update(payloadSHA256=INVITATION_SNAPSHOT_PAYLOAD_SHA256,
                     scope="commit-only address capture and one synchronous debug snapshot after original timer/queryObjects; extra full GC and allocation/root/layout perturbation; reported structure only, no strong-retainer, scanner, leak-cause or qualification verdict")
@@ -922,6 +992,8 @@ def main():
                 report["ownerCut"] = invitation_owner_cut_observations(log)
             if args.invitation_references:
                 report["references"] = invitation_references_observations(log)
+            if args.invitation_operations:
+                report["operations"] = invitation_operations_observations(log)
             if args.invitation_snapshot:
                 report["snapshot"] = snapshot_observations(log)
                 assert report["snapshot"]["complete"] is True, "snapshot identity or reported structure incomplete; no absence inference"

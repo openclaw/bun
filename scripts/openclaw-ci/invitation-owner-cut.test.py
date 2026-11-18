@@ -7,6 +7,7 @@ import unittest
 controller = runpy.run_path(str(Path(__file__).with_name("openclaw-linux-repin.py")))
 observe = controller["invitation_owner_cut_observations"]
 observe_references = controller["invitation_references_observations"]
+observe_operations = controller["invitation_operations_observations"]
 
 
 def marker(outcome, **changes):
@@ -61,6 +62,26 @@ class ReferenceEvidenceTests(unittest.TestCase):
         ):
             with self.subTest(lines=lines), self.assertRaises(AssertionError):
                 observe_references(lines)
+
+
+class OperationEvidenceTests(unittest.TestCase):
+    @staticmethod
+    def marker(outcome, operations):
+        return "[invitation-operations] " + json.dumps({"version": 1, "outcome": outcome, "operations": operations})
+
+    def test_operation_identity_liveness_is_diagnostic_only(self):
+        operation = dict.fromkeys(("paramsAlive", "runAlive", "acknowledgedAlive", "committedAlive"), False)
+        report = observe_operations(self.marker("commit", [operation]) + "\n" + self.marker("rollback", [operation]))
+        self.assertEqual(report["cases"][0]["operations"], [operation])
+        self.assertTrue(report["diagnosticOnly"])
+        self.assertFalse(report["qualifiesRepin"])
+
+    def test_missing_or_invalid_operation_witnesses_are_rejected(self):
+        operation = dict.fromkeys(("paramsAlive", "runAlive", "acknowledgedAlive", "committedAlive"), False)
+        rollback = self.marker("rollback", [operation])
+        for operations in ([], [operation] * 9, [{**operation, "paramsAlive": None}], [{**operation, "privatePath": "invalid"}]):
+            with self.subTest(operations=operations), self.assertRaises(AssertionError):
+                observe_operations(self.marker("commit", operations) + "\n" + rollback)
 
 
 if __name__ == "__main__":
