@@ -11,6 +11,8 @@ import runpy
 import shutil
 import signal
 import stat
+import subprocess
+import sys
 import tempfile
 import time
 import urllib.request
@@ -35,6 +37,65 @@ TYPES = ("JSC::JSFunction", "JSC::FunctionRareData", "JSC::FunctionExecutable",
 FIELDS = {"JSC::JSFunction": ("m_executableOrRareData",), "JSC::ScriptExecutable": ("m_source",)}
 SECTIONS = (".debug_info", ".debug_abbrev", ".debug_str", ".debug_line", ".debug_types",
             ".symtab", ".dynsym", ".gnu_debuglink", ".note.gnu.build-id")
+SYMBOL_FAMILIES = ("JSFunction", "FunctionExecutable", "ScriptExecutable", "JSLexicalEnvironment",
+                   "JSPromise", "Heap", "SlotVisitor", "AbstractSlotVisitor")
+
+
+def symbol_inventory(lines):
+    families = {name: set() for name in SYMBOL_FAMILIES}
+    counts = dict.fromkeys(SYMBOL_FAMILIES, 0)
+    rejected = dict.fromkeys(SYMBOL_FAMILIES, 0)
+    capped = dict.fromkeys(SYMBOL_FAMILIES, False)
+    size = 0
+    for line in lines:
+        size += len(line)
+        assert size <= 128 * 1024 * 1024 and len(line) <= 64 * 1024, "symbol input budget"
+        name = line.decode("utf-8").strip()
+        match = re.search(r"(?:^| )JSC::(" + "|".join(SYMBOL_FAMILIES) + r")::", name)
+        if not match or "(" in name[:match.start()]:
+            continue
+        family = match[1]
+        counts[family] += 1
+        name = name[match.end() - len("JSC::" + family + "::"):]
+        # Export symbol signatures only, never source paths, string literals or addresses.
+        if len(name) > 256 or not re.fullmatch(r"[A-Za-z0-9_:~<>,*&()\[\] .+\-=]+", name):
+            rejected[family] += 1
+            continue
+        if len(families[family]) < 24:
+            families[family].add(name)
+        elif name not in families[family]:
+            capped[family] = True
+    return {"inputBytes": size, "complete": True,
+            "families": {name: {"matches": counts[name], "names": sorted(families[name]),
+                                 "rejected": rejected[name],
+                                 "namesCapped": capped[name]}
+                         for name in SYMBOL_FAMILIES},
+            "scope": "defined demangled symbols only; names do not establish callability, layout or a retaining edge"}
+
+
+def collect_symbols(command, timeout=45):
+    def interrupt(signum, frame):
+        raise TimeoutError("symbol inspection interrupted")
+    proc = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT)
+    handlers = {signum: signal.signal(signum, interrupt) for signum in (signal.SIGALRM, signal.SIGTERM, signal.SIGINT)}
+    signal.setitimer(signal.ITIMER_REAL, timeout)
+    try:
+        report = symbol_inventory(iter(lambda: proc.stdout.readline(64 * 1024 + 1), b""))
+        assert proc.wait(timeout=3) == 0, "symbol tool failed"
+        return report
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=3)
+        proc.stdout.close()
+        for signum, handler in handlers.items():
+            signal.signal(signum, handler)
 
 
 def binding(controller):
@@ -198,11 +259,20 @@ def extract(archive, destination, deadline):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--phase", choices=("metadata", "inspect"), required=True)
+    parser.add_argument("--phase", choices=("metadata", "inspect", "symbols", "collect-symbols"), required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--controller-sha", required=True)
+    parser.add_argument("--symbol-tool", type=Path)
+    parser.add_argument("--binary", type=Path)
     args = parser.parse_args()
     assert re.fullmatch("[0-9a-f]{40}", args.controller_sha)
+    if args.phase == "collect-symbols":
+        assert args.symbol_tool is not None and args.binary is not None
+        data = json.dumps(collect_symbols([str(args.symbol_tool), "--defined-only", "--demangle",
+                                          "--format=just-symbols", str(args.binary)]))
+        assert len(data.encode()) <= REPORT_LIMIT
+        print(data)
+        return
     out = args.out.resolve()
     out.mkdir(mode=0o700, exist_ok=True)
     report = {"binding": binding(args.controller_sha), "status": "INCONCLUSIVE", "diagnosticOnly": True,
@@ -251,8 +321,8 @@ def main():
             return captured[0]
         tools = {}
         report["toolVersions"] = {}
-        for name in ("readelf", "llvm-dwarfdump"):
-            choices = [name] + ([name + "-" + str(v) for v in range(23, 17, -1)] if name == "llvm-dwarfdump" else [])
+        for name in ("readelf", "llvm-nm" if args.phase == "symbols" else "llvm-dwarfdump"):
+            choices = [name] + ([name + "-" + str(v) for v in range(23, 17, -1)] if name.startswith("llvm-") else [])
             path = next((shutil.which(n) for n in choices if shutil.which(n)), None)
             assert path, "required installed tool missing"
             tools[name] = str(Path(path).resolve())
@@ -262,6 +332,7 @@ def main():
             report["toolVersions"][name] = match[1]
             help_text = checked([tools[name], "--help"], name + "-options")
             options = {"readelf": ("--wide", "--file-header", "--section-headers", "--notes"),
+                       "llvm-nm": ("--defined-only", "--demangle", "--format"),
                        "llvm-dwarfdump": ("--debug-info", "--name", "--show-parents", "--show-children")}[name]
             assert all(option in help_text for option in options), "required tool option missing"
         report["toolPreflightComplete"] = True
@@ -282,6 +353,13 @@ def main():
         report["step"] = "single-member-extraction"
         report["member"] = extract(archive, binary, deadline)
         report["elf"] = elf_summary(checked([tools["readelf"], "--wide", "--file-header", "--section-headers", "--notes", str(binary)], "elf"))
+        if args.phase == "symbols":
+            command = [sys.executable, str(Path(__file__).resolve()), "--phase", "collect-symbols",
+                       "--symbol-tool", tools["llvm-nm"], "--binary", str(binary),
+                       "--controller-sha", args.controller_sha, "--out", str(out)]
+            report["symbols"] = json.loads(checked(command, "defined-symbol-inventory"))
+            report["status"] = "SYMBOLS_INSPECTED"
+            return
         for name in TYPES:
             text = checked([tools["llvm-dwarfdump"], "--debug-info", "--name=" + name.split("::")[1],
                             "--show-parents", "--show-children", str(binary)], name)
@@ -296,7 +374,7 @@ def main():
         # Foreign errors may contain build paths or transport URLs; only their category leaves this job.
         report["errorCategory"] = type(error).__name__
     finally:
-        if args.phase == "inspect":
+        if args.phase in ("inspect", "symbols"):
             signal.alarm(0)
         save()
     if report["status"] not in ("METADATA_ADMITTED", "NECESSARY_LAYOUTS_PRESENT", "LAYOUT_UNAVAILABLE"):

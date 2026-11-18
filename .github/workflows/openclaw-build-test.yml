@@ -32,6 +32,7 @@ on:
             linux-openclaw-anchor-fixture-fix,
             linux-openclaw-doctor-continuation,
             linux-openclaw-profile-layout,
+            linux-openclaw-profile-symbols,
             linux-openclaw-doctor-fixture-regression,
           ]
         default: linux-x64
@@ -53,7 +54,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: aot-operation-origins-${{ github.ref }}${{ inputs.platform == 'linux-openclaw-bun-only' && '-bun-only' || inputs.platform == 'linux-openclaw-repin' && '-linux-repin' || inputs.platform == 'darwin-openclaw-app-host' && '-app-host' || inputs.platform == 'linux-openclaw-doctor-causes' && '-doctor-causes' || inputs.platform == 'linux-openclaw-doctor-readiness' && '-doctor-readiness' || inputs.platform == 'linux-openclaw-doctor-phases' && '-doctor-phases' || inputs.platform == 'linux-openclaw-doctor-fixture-fix' && '-doctor-fixture-fix' || inputs.platform == 'linux-openclaw-doctor-fixture-phases' && '-doctor-fixture-phases' || inputs.platform == 'linux-openclaw-invitation-reduction' && '-invitation-reduction' || inputs.platform == 'linux-openclaw-invitation-operations' && '-invitation-operations' || inputs.platform == 'linux-openclaw-invitation-references' && '-invitation-references' || inputs.platform == 'linux-openclaw-invitation-owner-cut' && '-invitation-owner-cut' || inputs.platform == 'linux-openclaw-invitation-cache-code' && '-invitation-cache-code' || inputs.platform == 'linux-openclaw-invitation-retention' && '-invitation-retention' || inputs.platform == 'linux-openclaw-invitation-callback' && '-invitation-callback' || inputs.platform == 'linux-openclaw-invitation-snapshot' && '-invitation-snapshot' || inputs.platform == 'linux-openclaw-anchor-fixture-fix' && '-anchor-fixture-fix' || inputs.platform == 'linux-openclaw-anchor-full-context' && '-anchor-full-context' || inputs.platform == 'linux-openclaw-anchor-preparation' && '-anchor-preparation' || inputs.platform == 'linux-openclaw-doctor-continuation' && '-doctor-continuation' || inputs.platform == 'linux-openclaw-profile-layout' && '-profile-layout' || inputs.platform == 'linux-openclaw-doctor-fixture-regression' && '-doctor-fixture-regression' || '' }}
+  group: aot-operation-origins-${{ github.ref }}${{ inputs.platform == 'linux-openclaw-bun-only' && '-bun-only' || inputs.platform == 'linux-openclaw-repin' && '-linux-repin' || inputs.platform == 'darwin-openclaw-app-host' && '-app-host' || inputs.platform == 'linux-openclaw-doctor-causes' && '-doctor-causes' || inputs.platform == 'linux-openclaw-doctor-readiness' && '-doctor-readiness' || inputs.platform == 'linux-openclaw-doctor-phases' && '-doctor-phases' || inputs.platform == 'linux-openclaw-doctor-fixture-fix' && '-doctor-fixture-fix' || inputs.platform == 'linux-openclaw-doctor-fixture-phases' && '-doctor-fixture-phases' || inputs.platform == 'linux-openclaw-invitation-reduction' && '-invitation-reduction' || inputs.platform == 'linux-openclaw-invitation-operations' && '-invitation-operations' || inputs.platform == 'linux-openclaw-invitation-references' && '-invitation-references' || inputs.platform == 'linux-openclaw-invitation-owner-cut' && '-invitation-owner-cut' || inputs.platform == 'linux-openclaw-invitation-cache-code' && '-invitation-cache-code' || inputs.platform == 'linux-openclaw-invitation-retention' && '-invitation-retention' || inputs.platform == 'linux-openclaw-invitation-callback' && '-invitation-callback' || inputs.platform == 'linux-openclaw-invitation-snapshot' && '-invitation-snapshot' || inputs.platform == 'linux-openclaw-anchor-fixture-fix' && '-anchor-fixture-fix' || inputs.platform == 'linux-openclaw-anchor-full-context' && '-anchor-full-context' || inputs.platform == 'linux-openclaw-anchor-preparation' && '-anchor-preparation' || inputs.platform == 'linux-openclaw-doctor-continuation' && '-doctor-continuation' || inputs.platform == 'linux-openclaw-profile-symbols' && '-profile-symbols' || inputs.platform == 'linux-openclaw-profile-layout' && '-profile-layout' || inputs.platform == 'linux-openclaw-doctor-fixture-regression' && '-doctor-fixture-regression' || '' }}
   cancel-in-progress: true
 
 jobs:
@@ -124,7 +125,7 @@ jobs:
           retention-days: 7
 
   openclaw-profile-layout:
-    if: inputs.platform == 'linux-openclaw-profile-layout'
+    if: inputs.platform == 'linux-openclaw-profile-layout' || inputs.platform == 'linux-openclaw-profile-symbols'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -143,12 +144,13 @@ jobs:
       - name: Inspect profile metadata without credentials or binary execution
         env:
           CONTROLLER_SHA: ${{ github.sha }}
+          INSPECT_PHASE: ${{ inputs.platform == 'linux-openclaw-profile-symbols' && 'symbols' || 'inspect' }}
         run: |
           controller_home="$RUNNER_TEMP/profile-layout-home"
           controller_tmp="$RUNNER_TEMP/profile-layout-tmp"
           install -d -m 0700 "$controller_home" "$controller_tmp"
           env -i PATH="$PATH" HOME="$controller_home" TMPDIR="$controller_tmp" LANG=C CI=true \
-            python3 scripts/openclaw-ci/profile-layout.py --phase inspect \
+            python3 scripts/openclaw-ci/profile-layout.py --phase "$INSPECT_PHASE" \
             --controller-sha "$CONTROLLER_SHA" --out profile-layout-proof
       - name: Check bounded structural-only evidence
         id: profile-layout-budget
