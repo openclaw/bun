@@ -57,7 +57,10 @@ INVITATION_FILE = "src/config/sessions/session-mention-invitation.test.ts"
 INVITATION_SOURCE_SHA256 = "a3fe4f0f54f7daceaa7ce53e1df5525f067cb5699b0096a6c527e366b24a8cf4"
 INVITATION_OWNER_CUT_SHA256 = "1538b03ef36b0f57b5fe62dc89de2de6524c44aa97b10cc0f74a5ef22ca353ae"
 INVITATION_REFERENCES_SHA256 = "0cbb0453e94e48f51abd54ff708ccf5f636a7cccc3b186addae175c4b1819e7f"
-INVITATION_OPERATIONS_SHA256 = "c37641de3cd6b1c7207dce99bc0f70d75357ab9efb239b057755b25d08b147cf"
+INVITATION_OPERATIONS_SHA256 = "f51f94f08ab876f8c3a59396f876fa967ef7c1549f669a9904bd2b106d0209a4"
+INVITATION_OPERATION_FILE = "src/config/sessions/session-entry-patch.ts"
+INVITATION_OPERATION_SOURCE_SHA256 = "3b0a83b7733deb1269cb4ee406781ba870251b8a1f6797ee943f69f964d325ff"
+INVITATION_OPERATION_PATCHED_SHA256 = "c9a98f8da836c79f49357d27801fd2c73bf32eca9a3a15c6c3da429ff5bcb0b7"
 INVITATION_CALLBACK_SHA256 = "1775321fae85b26fca81575d9910aa3118e8e67955cd9d1774d8335e3f310fe7"
 INVITATION_SNAPSHOT_PAYLOAD_SHA256 = "69473344a9e3a29e74c72552c9b43b98be691c274869ecd4a917bfe9d66cf67b"
 INVITATION_SNAPSHOT_SHA256 = "f03c29b4b9b38678328ef5f0d63e593af4a7ca847095a41f86175cd23163b695"
@@ -207,29 +210,9 @@ def invitation_references_bytes(original, operations=False):
     if operations:
         additions = (
             (b'import * as admission from "../../infra/sqlite-worker-operation-admission.js";',
-             b'import * as admission from "../../infra/sqlite-worker-operation-admission.js";\nimport * as entryPatch from "./session-entry-patch.js";'),
-            (b'      const references: Partial<Record<"preparation"', b'''      const operationReferences: Array<{
-        params: WeakRef<object>;
-        run: WeakRef<object>;
-        acknowledged: WeakRef<object> | undefined;
-        committed: WeakRef<object>;
-      }> = [];
-      const runOperation = entryPatch.runSessionEntryWorkerOperation;
-      const observeOperation = vi.spyOn(entryPatch, "runSessionEntryWorkerOperation")
-        .mockImplementation((params) => {
-          if (params.candidateKind === "session-turn") {
-            operationReferences.push({
-              params: new WeakRef(params),
-              run: new WeakRef(params.run),
-              acknowledged: params.onAcknowledged ? new WeakRef(params.onAcknowledged) : undefined,
-              committed: new WeakRef(params.onCommitted),
-            });
-          }
-          return runOperation(params);
-        });
+             b'import * as admission from "../../infra/sqlite-worker-operation-admission.js";\nimport { invitationOperationReferences as operationReferences } from "./session-entry-patch.js";'),
+            (b'      const references: Partial<Record<"preparation"', b'''      operationReferences.length = 0;
       const references: Partial<Record<"preparation"'''),
-            (b"        reference = await settle();\n      } finally {\n        observe.mockRestore();",
-             b"        reference = await settle();\n      } finally {\n        observe.mockRestore();\n        observeOperation.mockRestore();"),
             (b"      expect(control.deref()).toBeUndefined();", b'''      process.stderr.write("[invitation-operations] " + JSON.stringify({
         version: 1,
         outcome,
@@ -246,6 +229,33 @@ def invitation_references_bytes(original, operations=False):
             assert patched.count(before) == 1
             patched = patched.replace(before, after)
         assert hashlib.sha256(patched).hexdigest() == INVITATION_OPERATIONS_SHA256
+    return patched
+
+
+def invitation_operation_bytes(original):
+    assert hashlib.sha256(original).hexdigest() == INVITATION_OPERATION_SOURCE_SHA256
+    before = b"export async function runSessionEntryWorkerOperation<"
+    declaration = b"""export const invitationOperationReferences: Array<{
+  params: WeakRef<object>;
+  run: WeakRef<object>;
+  acknowledged: WeakRef<object> | undefined;
+  committed: WeakRef<object>;
+}> = [];
+
+export async function runSessionEntryWorkerOperation<"""
+    entry = b"""}): Promise<Result> {
+  if (params.candidateKind === "session-turn") {
+    invitationOperationReferences.push({
+      params: new WeakRef(params),
+      run: new WeakRef(params.run),
+      acknowledged: params.onAcknowledged ? new WeakRef(params.onAcknowledged) : undefined,
+      committed: new WeakRef(params.onCommitted),
+    });
+  }
+  let publication:"""
+    assert original.count(before) == original.count(b"}): Promise<Result> {\n  let publication:") == 1
+    patched = original.replace(before, declaration).replace(b"}): Promise<Result> {\n  let publication:", entry)
+    assert hashlib.sha256(patched).hexdigest() == INVITATION_OPERATION_PATCHED_SHA256
     return patched
 
 
@@ -286,8 +296,8 @@ def invitation_operations_observations(log):
         rows.append(row)
     assert len(rows) == 2 and {row["outcome"] for row in rows} == {"commit", "rollback"}, "operation cases missing or duplicated"
     return {"cases": rows, "diagnosticOnly": True, "qualifiesRepin": False,
-            "scope": "delegating operation spy restored before original GC; only WeakRefs retain observed params and callbacks",
-            "limit": "spy and allocation change execution layout; collection excludes these identities, not all internal continuations"}
+            "scope": "direct operation-entry WeakRefs; original call, result and GC ordering retained without Promise observers",
+            "limit": "allocation and module layout change; collection excludes these identities, not all internal continuations"}
 
 
 def invitation_owner_cut_bytes(original):
@@ -664,6 +674,7 @@ def main():
         report.update(diagnosticOnly=True, qualifiesRepin=False)
     candidate_bytes = None
     original_test_bytes = None
+    original_operation_bytes = None
     doctor_originals = None
     anchor_originals = None
     fixture_original = None
@@ -930,15 +941,29 @@ def main():
             if args.invitation_references:
                 report["testProjection"]["scope"] = "WeakRefs to original functions and Promise; same identities, timer, GC and assertions; allocation/layout perturbation; diagnostic only"
             if args.invitation_operations:
-                report["testProjection"]["scope"] += "; operation spy delegates unchanged params and is restored before GC"
+                report["testProjection"]["scope"] += "; direct operation WeakRefs, no call wrapper or additional Promise reactions"
             if args.invitation_snapshot:
                 report["testProjection"].update(payloadSHA256=INVITATION_SNAPSHOT_PAYLOAD_SHA256,
                     scope="commit-only address capture and one synchronous debug snapshot after original timer/queryObjects; extra full GC and allocation/root/layout perturbation; reported structure only, no strong-retainer, scanner, leak-cause or qualification verdict")
+            if args.invitation_operations:
+                operation_path = source / INVITATION_OPERATION_FILE
+                assert operation_path.is_file() and not operation_path.is_symlink()
+                operation_original = operation_path.read_bytes()
+                operation_patched = invitation_operation_bytes(operation_original)
             original_test_bytes = original
             test_path.write_bytes(patched)
             report["testProjection"]["state"] = "applied"
             assert common["sha"](test_path) == patched_test_sha
             projected_files = {INVITATION_FILE}
+            if args.invitation_operations:
+                report["operationProjection"] = {"path": INVITATION_OPERATION_FILE, "state": "prepared",
+                    "originalSHA256": INVITATION_OPERATION_SOURCE_SHA256, "patchedSHA256": INVITATION_OPERATION_PATCHED_SHA256,
+                    "scope": "temporary direct WeakRefs only; no additional calls, Promise reactions, waits or changes to production decisions"}
+                original_operation_bytes = operation_original
+                operation_path.write_bytes(operation_patched)
+                report["operationProjection"]["state"] = "applied"
+                assert common["sha"](operation_path) == INVITATION_OPERATION_PATCHED_SHA256
+                projected_files.add(INVITATION_OPERATION_FILE)
             if args.pin == "old":
                 projected_files.add(common["PIN"])
             assert set(git("diff", "HEAD", "--name-only").splitlines()) == projected_files, "unexpected tracked source projection"
@@ -1021,6 +1046,8 @@ def main():
             report["restoration"] = "not-attempted-indeterminate-settlement"
             if original_test_bytes is not None:
                 report["testProjection"]["state"] = "retained-indeterminate-settlement"
+            if original_operation_bytes is not None:
+                report["operationProjection"]["state"] = "retained-indeterminate-settlement"
             if doctor_originals is not None:
                 report[projection_key]["state"] = "retained-indeterminate-settlement"
             if anchor_originals is not None:
@@ -1030,6 +1057,10 @@ def main():
         elif candidate_bytes is not None:
             restore_allowed = original_test_bytes is None or (test_path.is_file() and not test_path.is_symlink()
                               and common["sha"](test_path) == patched_test_sha)
+            if original_operation_bytes is not None:
+                restore_allowed &= (operation_path.is_file() and not operation_path.is_symlink()
+                                    and common["sha"](operation_path) == INVITATION_OPERATION_PATCHED_SHA256)
+                restore_allowed &= set(git("diff", "HEAD", "--name-only").splitlines()) == projected_files
             if fixture_original is not None:
                 restore_allowed = (fixture_path.is_file() and not fixture_path.is_symlink()
                     and common["sha"](fixture_path) == ANCHOR_FIX_SHA256
@@ -1063,6 +1094,10 @@ def main():
                 else:
                     report["anchorProjection"]["state"] = "retained-unexpected-source-bytes"
             if restore_allowed:
+                if original_operation_bytes is not None:
+                    operation_path.write_bytes(original_operation_bytes)
+                    report["operationProjection"].update(state="restored", restoredSHA256=common["sha"](operation_path))
+                    assert report["operationProjection"]["restoredSHA256"] == INVITATION_OPERATION_SOURCE_SHA256
                 if original_test_bytes is not None:
                     (source / INVITATION_FILE).write_bytes(original_test_bytes)
                     report["testProjection"].update(state="restored", restoredSHA256=common["sha"](source / INVITATION_FILE))
@@ -1070,6 +1105,8 @@ def main():
                 (source / common["PIN"]).write_bytes(candidate_bytes)
                 report["candidatePinRestored"] = (source / common["PIN"]).read_bytes() == candidate_bytes
             else:
+                if original_operation_bytes is not None:
+                    report["operationProjection"]["state"] = "retained-unexpected-source-bytes"
                 if original_test_bytes is not None:
                     report["testProjection"]["state"] = "retained-unexpected-test-bytes"
                 report.update(status="INCONCLUSIVE", error="diagnostic source changed unexpectedly; no restoration attempted")
