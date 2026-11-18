@@ -56,6 +56,8 @@ export function invitationStackCheckpoint(
         "--no-lldbinit",
         "--batch",
         "--one-line-before-file",
+        "settings set plugin.jit-loader.gdb.enable off",
+        "--one-line-before-file",
         "settings set target.preload-symbols false",
         "--one-line-before-file",
         "script import os,json; d=os.environ['OPENCLAW_INVITATION_STACK_DIR']; p=os.path.join(d,'attach.log'); lldb.debugger.HandleCommand('log enable -f ' + json.dumps(p) + ' gdb-remote packets'); st=os.stat(d); os.chown(p,st.st_uid,st.st_gid)",

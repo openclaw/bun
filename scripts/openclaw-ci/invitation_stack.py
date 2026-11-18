@@ -206,7 +206,8 @@ def __lldb_init_module(debugger, _internal_dict):
     output = root / "receipt.json"
     receipt = {"version": 1, "attached": False, "detached": False, "captured": False,
                "diagnosticOnly": True, "qualifiesRepin": False,
-               "limitation": "Post-GC stack occurrences only; frame bounds do not prove ownership, a root, or what GC scanned. Other threads are not inspected."}
+               "jitModuleLoading": False,
+               "limitation": "Post-GC stack occurrences only; frame bounds do not prove ownership, a root, or what GC scanned. Other threads are not inspected. JIT module names and unwinding are unqualified with the debugger JIT loader disabled."}
     try:
         assert process.IsValid() and process.GetState() == lldb.eStateStopped
         receipt["attached"] = True
