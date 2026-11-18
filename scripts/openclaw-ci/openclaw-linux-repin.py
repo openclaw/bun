@@ -66,6 +66,7 @@ INVITATION_REDUCTION_CASES = tuple(f"releases reduced invitation callbacks after
 INVITATION_CALLBACK_SHA256 = "1775321fae85b26fca81575d9910aa3118e8e67955cd9d1774d8335e3f310fe7"
 INVITATION_SNAPSHOT_PAYLOAD_SHA256 = "69473344a9e3a29e74c72552c9b43b98be691c274869ecd4a917bfe9d66cf67b"
 INVITATION_SNAPSHOT_SHA256 = "f03c29b4b9b38678328ef5f0d63e593af4a7ca847095a41f86175cd23163b695"
+INVITATION_STACK_PAYLOAD_SHA256 = "e312f84862bb59e2b7959ceb50ab5a443ef319226211319ce73b32637ff7c1f7"
 READINESS_PATCH_SHA256 = "cb2aedd7cf89ae1298d1335fcc461ca932060a58b63a1489a128eef57ba94b4c"
 READINESS_FILES = {
     "src/process/spawn-broker/resource-protocol.ts": ("3f66dcd70bc32b798930d3f11a8e575e0915206bb6ad5c0417a8ccb4975ed5c2", "89cdfbb498eb09cd6233459ac6d8c1ba74cd4c53e8f20bf79f7cc8ffce411d68"),
@@ -345,7 +346,7 @@ def invitation_owner_cut_observations(log):
             "limit": "allocation and root removal can change collection; surviving admissions leave the owner hypothesis unresolved"}
 
 
-def invitation_snapshot_bytes(original):
+def invitation_snapshot_bytes(original, stack=False):
     assert hashlib.sha256(original).hexdigest() == INVITATION_SOURCE_SHA256
     payload = Path(__file__).with_name("invitation-retainer-snapshot.ts").read_bytes()
     assert hashlib.sha256(payload).hexdigest() == INVITATION_SNAPSHOT_PAYLOAD_SHA256
@@ -377,6 +378,15 @@ def invitation_snapshot_bytes(original):
         assert patched.count(before) == 1
         patched = patched.replace(before, after)
     assert hashlib.sha256(patched).hexdigest() == INVITATION_SNAPSHOT_SHA256
+    if stack:
+        checkpoint = Path(__file__).with_name("invitation-stack-checkpoint.ts").read_bytes()
+        assert hashlib.sha256(checkpoint).hexdigest() == INVITATION_STACK_PAYLOAD_SHA256
+        patched = patched.replace(b"function fixture() {", checkpoint.replace(b"export function ", b"function ") + b"\nfunction fixture() {")
+        before = b"          emitInvitationRetainerSnapshot(generateHeapSnapshotForDebugging(), snapshotAddress);"
+        assert patched.count(before) == 1
+        patched = patched.replace(before, b"""          const snapshot = generateHeapSnapshotForDebugging();
+          emitInvitationRetainerSnapshot(snapshot, snapshotAddress);
+          invitationStackCheckpoint(snapshot, snapshotAddress);""")
     return patched
 
 
@@ -393,6 +403,25 @@ def snapshot_observations(log):
     assert row["version"] == 1 and row["kind"] == "commit-retainer-snapshot"
     assert row["diagnosticOnly"] is True and row["qualifiesRepin"] is False
     return row
+
+
+def stack_observations(log):
+    rows = []
+    for raw in log.splitlines():
+        line = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", raw)
+        match = re.fullmatch(r"(?:\[shard:[^]]+\] )?\[invitation-stack\] (.*)", line)
+        if match:
+            assert len(line.encode()) <= 80 * 1024
+            rows.append(json.loads(match[1]))
+    assert len(rows) == 1, "stack checkpoint missing or duplicated"
+    row = rows[0]
+    receipt = row.get("receipt", {})
+    complete = (row.get("version") == 1 and row.get("parentContinued") is True
+                and row.get("debuggerExitCode") == 0 and row.get("debuggerSignal") is None
+                and "errorCategory" not in row and "errorCategory" not in receipt
+                and all(receipt.get(key) is True for key in
+                        ("attached", "identityQualified", "detached", "captured", "mainThreadQualified")))
+    return {"checkpoint": row, "complete": complete, "diagnosticOnly": True, "qualifiesRepin": False}
 
 
 def invitation_reduction_bytes(original):
@@ -625,11 +654,13 @@ def main():
     parser.add_argument("--invitation-reduction", action="store_true")
     parser.add_argument("--invitation-native-callback", action="store_true")
     parser.add_argument("--invitation-snapshot", action="store_true")
+    parser.add_argument("--invitation-stack", action="store_true")
     parser.add_argument("--anchor-preparation", action="store_true")
     parser.add_argument("--anchor-full-context", action="store_true")
     parser.add_argument("--anchor-fixture-fix", action="store_true")
     parser.add_argument("--doctor-continuation", action="store_true")
     args = parser.parse_args()
+    assert not args.invitation_stack or args.invitation_snapshot
     assert not args.doctor_fixture_phases or ((args.group, args.pin) == ("large5", "new") and not any((
         args.doctor_causes, args.doctor_readiness, args.doctor_phases, args.doctor_fixture_fix, args.doctor_continuation,
         args.invitation_retention, args.invitation_cache_code, args.invitation_native_callback,
@@ -794,6 +825,22 @@ def main():
         assert common["sha"](bun) == pins[args.pin]["artifacts"]["linux-x64"]["executableSha256"]
         report["bunSHA256"] = common["sha"](bun)
         env.update(OPENCLAW_BUN_PATH=str(bun), BUN_BIN=str(bun), PATH=str(bun.parent) + ":" + env["PATH"])
+        if args.invitation_stack:
+            collector = Path(__file__).with_name("invitation-stack.py").resolve()
+            assert Path("/usr/bin/lldb").is_file(), "LLDB unavailable"
+            checked(["/usr/bin/lldb", "--no-lldbinit", "--batch", "-o",
+                     "script print('openclaw-lldb-python-ready')", "-o", "quit"], "lldb-python", timeout=30)
+            assert "\nopenclaw-lldb-python-ready\n" in (out / "lldb-python.log").read_text()
+            stack_module = runpy.run_path(str(collector))
+            bun, profile = stack_module["stage_profile"](root, out.parent / "invitation-profile-proof/metadata.json", args.controller_sha)
+            report["stackProfile"] = {**profile, "collectorSHA256": common["sha"](collector)}
+            commands = root / "stack-commands.txt"
+            commands.write_text("command script import " + json.dumps(str(collector)) + "\nquit\n")
+            stack_root = root / "stack"
+            stack_root.mkdir(mode=0o700)
+            env.update(OPENCLAW_BUN_PATH=str(bun), BUN_BIN=str(bun), PATH=str(bun.parent) + ":" + env["PATH"],
+                       OPENCLAW_INVITATION_STACK_ROOT=str(stack_root), OPENCLAW_INVITATION_STACK_COMMANDS=str(commands))
+            report["activeBunSHA256"] = common["sha"](bun)
         report["settlementUncertain"] = True
         host = json.loads(subprocess.check_output([str(node), "-e",
             "console.log(JSON.stringify({node:process.version,nodePath:process.execPath,cores:require('os').availableParallelism(),memoryBytes:require('os').totalmem(),platform:process.platform,arch:process.arch}))"],
@@ -946,8 +993,9 @@ def main():
             patched = (invitation_reduction_bytes(original) if args.invitation_reduction else
                        invitation_references_bytes(original, args.invitation_operations) if args.invitation_references else
                        invitation_owner_cut_bytes(original) if args.invitation_owner_cut else
-                       invitation_snapshot_bytes(original) if args.invitation_snapshot else invitation_callback_bytes(original))
-            patched_test_sha = (INVITATION_REDUCTION_SHA256 if args.invitation_reduction else
+                       invitation_snapshot_bytes(original, args.invitation_stack) if args.invitation_snapshot else invitation_callback_bytes(original))
+            patched_test_sha = (hashlib.sha256(patched).hexdigest() if args.invitation_stack else
+                                INVITATION_REDUCTION_SHA256 if args.invitation_reduction else
                                 INVITATION_OPERATIONS_SHA256 if args.invitation_operations else
                                 INVITATION_REFERENCES_SHA256 if args.invitation_references else
                                 INVITATION_OWNER_CUT_SHA256 if args.invitation_owner_cut else
@@ -968,6 +1016,9 @@ def main():
             if args.invitation_snapshot:
                 report["testProjection"].update(payloadSHA256=INVITATION_SNAPSHOT_PAYLOAD_SHA256,
                     scope="commit-only address capture and one synchronous debug snapshot after original timer/queryObjects; extra full GC and allocation/root/layout perturbation; reported structure only, no strong-retainer, scanner, leak-cause or qualification verdict")
+            if args.invitation_stack:
+                report["testProjection"].update(stackPayloadSHA256=INVITATION_STACK_PAYLOAD_SHA256,
+                    scope=report["testProjection"]["scope"] + "; read-only debugger attached by stopped worker's synchronous child; main-thread stack occurrences only")
             if args.invitation_operations:
                 operation_path = source / INVITATION_OPERATION_FILE
                 assert operation_path.is_file() and not operation_path.is_symlink()
@@ -999,6 +1050,9 @@ def main():
         report["nativeOutcome"] = outcome
         assert not outcome["settlementUncertain"], "native settlement uncertain; state retained for runner teardown"
         log = (out / "native-shard.log").read_text()
+        if args.invitation_stack:
+            report["stack"] = stack_observations(log)
+            assert report["stack"]["complete"], "stack capture or verified debugger detach/parent continuation missing"
         completions = [json.loads(line.removeprefix("[shard:completion] "))
                        for line in log.splitlines() if line.startswith("[shard:completion] ")]
         assert len(completions) == 1, \
