@@ -65,7 +65,7 @@ INVITATION_FULFILLMENT_FILE = "src/config/sessions/session-turn.ts"
 INVITATION_FULFILLMENT_PATCHED_SHA256 = "f95ab23243b46fe0857355711ea284a984856a61d845434d0753584e44f02135"
 INVITATION_FULFILLMENT_TEST_SHA256 = "31c0b3380aa6dc2a1ed7d361faf4a528ef888bc14d6a7d73e13fd2d1e52d2e9d"
 INVITATION_FULFILLMENT_SOURCE_SHA256 = "35a0a57ef09687a1b46aa8123f7c4a92c3355bccce808fa4820ef8c33dfb8ccc"
-INVITATION_OUTCOME_MAPPERS_SHA256 = "1ed75fa8fb0e195edc4885502bf199a90b22455a6299c69cf02d8c7c5027bb27"
+INVITATION_OUTCOME_MAPPERS_SHA256 = "bf4abb5852f07d92b4ad3a697fc09513815ec2aebbd776bc2445562ad7765657"
 INVITATION_REDUCTION_SHA256 = "35ad033d173eb5e860395032eeb303c2527d3c9e623c72fb404ab01d002a8449"
 INVITATION_REDUCTION_CASES = tuple(f"releases reduced invitation callbacks after {outcome}" for outcome in ("commit", "rollback"))
 INVITATION_CALLBACK_SHA256 = "1775321fae85b26fca81575d9910aa3118e8e67955cd9d1774d8335e3f310fe7"
@@ -293,13 +293,9 @@ type TurnResult ="""
 def invitation_outcome_mapper_bytes(original):
     assert hashlib.sha256(original).hexdigest() == INVITATION_FULFILLMENT_SOURCE_SHA256
     before = b"export async function appendSessionTurnInWorker("
-    declaration = b"""// Shared outcome handlers cannot retain a completed turn's lexical environment.
+    declaration = b"""// The shared fulfillment handler cannot retain a completed turn's lexical environment.
 function sessionTurnSucceeded(value: SqliteExpectedSessionTranscriptTurnResult) {
   return { ok: true as const, value };
-}
-
-function sessionTurnFailed(error: unknown) {
-  return { ok: false as const, error };
 }
 
 export async function appendSessionTurnInWorker("""
@@ -309,7 +305,7 @@ export async function appendSessionTurnInWorker("""
   );"""
     assert original.count(before) == original.count(handlers) == 1
     patched = original.replace(before, declaration).replace(handlers,
-        b"  })().then(sessionTurnSucceeded, sessionTurnFailed);")
+        b"  })().then(sessionTurnSucceeded, (error: unknown) => ({ ok: false as const, error }));")
     assert hashlib.sha256(patched).hexdigest() == INVITATION_OUTCOME_MAPPERS_SHA256
     return patched
 
@@ -910,7 +906,7 @@ def main():
             assert report["groupSHA256"] == "ca48f718417d6221da686ce5b504f2b88e5a512f9ac2a226bc12098c1ea2eec4"
             assert len(selected["group"]["includePatterns"]) == 309
             report["outcomeMappers"] = {"originalGroupSHA256": report["groupSHA256"],
-                "scope": "C plus only module-level outcome handlers; original test, timers, GC and assertions unchanged",
+                "scope": "C plus only a module-level fulfillment handler; original test, timers, GC and assertions unchanged",
                 "fullContext": not args.invitation_retention}
         if args.anchor_fixture_fix:
             assert report["groupSHA256"] == ANCHOR_GROUP_SHA256
