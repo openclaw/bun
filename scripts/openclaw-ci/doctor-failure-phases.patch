@@ -1,0 +1,134 @@
+--- a/src/commands/doctor-maintenance.continuation-scope.test.ts
++++ b/src/commands/doctor-maintenance.continuation-scope.test.ts
+@@ -1,6 +1,6 @@
+ import fs from "node:fs";
+ import path from "node:path";
+-import { expect, it, vi } from "vitest";
++import { expect, it, onTestFailed, vi } from "vitest";
+ import type { maybeStopManagedServiceBeforeMutableUpdate } from "../cli/update-cli/update-command-service-maintenance.js";
+ import { acquireGatewayLock } from "../infra/gateway-lock.js";
+ import * as snapshots from "../infra/sqlite-snapshot-source.js";
+@@ -42,15 +42,28 @@
+   inspectStaleDoctorGateway: async () => undefined,
+ }));
+ 
+-const fixture = setupDoctorAdmissionFixture();
++const teardown = { phase: "not-started", restore: "not-started" };
++const fixture = setupDoctorAdmissionFixture(teardown);
+ 
+ it.each([true, false])(
+   "keeps Doctor continuation with its repair scope (cached writer: %s)",
+   async (keepWriter) => {
++    let phase = "fixture";
++    let cycle = -1;
++    let cleanup = "not-started";
++    teardown.phase = "not-started";
++    teardown.restore = "not-started";
++    onTestFailed(() => {
++      process.stderr.write("[doctor-failure-phase] " + JSON.stringify({
++        v: 1, case: keepWriter ? "cached-true" : "cached-false", phase, cycle,
++        cleanup, teardown: teardown.phase, restore: teardown.restore,
++      }) + "\n");
++    });
+     const { env, database, family, assertIsolation } = fixture(true);
+     vi.stubEnv("OPENCLAW_STATE_DIR", env.OPENCLAW_STATE_DIR);
+     vi.stubEnv("OPENCLAW_SERVICE_REPAIR_POLICY", undefined);
+     vi.stubEnv("OPENCLAW_UPDATE_IN_PROGRESS", undefined);
++    phase = "create-run";
+     const run = createUpdateRun(
+       { trigger: "cli", origin: { driver: readUpdateRunDriver() } },
+       { env },
+@@ -94,17 +107,22 @@
+         return inspected;
+       }
+       params.assertCurrent?.();
++      phase = "gateway-release";
+       await gateway!.release();
++      phase = "gateway-released";
+       gateway = undefined;
+       if (!keepWriter) {
++        phase = "database-close";
+         await closeOpenClawStateDatabaseAsync();
++        phase = "database-closed";
+       }
+       const stopped = { ...inspected, stopped: true, running: false, offline: true };
+       params.onStopped?.(stopped);
+       return stopped;
+     });
+     try {
+-      for (let cycle = 0; cycle < (keepWriter ? 2 : 1); cycle++) {
++      for (cycle = 0; cycle < (keepWriter ? 2 : 1); cycle++) {
++        phase = "gateway-acquire";
+         gateway = await acquireGatewayLock({
+           env: process.env,
+           role: "gateway",
+@@ -113,15 +131,18 @@
+           port: 1,
+           allowInTests: true,
+         });
++        phase = "maintenance-acquire";
+         maintenance = await beginDoctorRepair({
+           root: install,
+           beforeStateMutation: async () => {
++            phase = "before-state-mutation";
+             const original = family();
+             listUpdateRuns({}, { env }, openDoctorStateSchemaReadAdmission);
+             if (!keepWriter) {
+               expect(isOpenClawStateDatabaseOpen(database)).toBe(false);
+               const scope = getOpenClawDatabaseMaintenanceScope()!;
+               hashes.mockClear();
++              phase = "baseline-capture";
+               const { ref } = await captureUpdateRecoveryBaseline({
+                 runId: "doctor-plugin-capture",
+                 installRoot: install,
+@@ -149,14 +170,22 @@
+             expect(family()).toEqual(original);
+           },
+         });
++        phase = "maintenance-read";
+         maintenance!.run(() => listUpdateRuns({}, { env }, openDoctorStateSchemaReadAdmission));
++        phase = "maintenance-release";
+         await maintenance!.release();
++        phase = "maintenance-released";
+         maintenance = undefined;
+       }
++      phase = "complete";
+     } finally {
++      cleanup = "maintenance-release";
+       await maintenance?.release();
++      cleanup = "gateway-release";
+       await gateway?.release();
++      cleanup = "isolation";
+       assertIsolation();
++      cleanup = "complete";
+     }
+   },
+ );
+--- a/src/commands/doctor-maintenance.admission.test-support.ts
++++ b/src/commands/doctor-maintenance.admission.test-support.ts
+@@ -48,17 +48,24 @@
+   });
+ }
+ 
+-export function setupDoctorAdmissionFixture() {
++export function setupDoctorAdmissionFixture(diagnostic?: { phase: string; restore: string }) {
+   const directories = createTempDirTracker();
+   useDoctorMaintenanceRuntimeDirectory(() => directories.make("doctor-admission-custody-"));
+   afterEach(async () => {
+     try {
++      if (diagnostic) diagnostic.phase = "close-async";
+       await closeOpenClawStateDatabaseAsync();
++      if (diagnostic) diagnostic.phase = "close-sync";
+       closeOpenClawStateDatabaseForTest();
++      if (diagnostic) diagnostic.phase = "directories";
+       directories.cleanup();
++      if (diagnostic) diagnostic.phase = "complete";
+     } finally {
++      if (diagnostic) diagnostic.restore = "mocks";
+       vi.restoreAllMocks();
++      if (diagnostic) diagnostic.restore = "env";
+       vi.unstubAllEnvs();
++      if (diagnostic) diagnostic.restore = "complete";
+     }
+   });
+   return (keepWriter = false) => {

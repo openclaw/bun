@@ -320,6 +320,12 @@ def collect_reports(native, destination, source, redact):
     return rows, totals
 
 
+def baseline_for_candidate(candidate):
+    if candidate == "bf665f2db8cbfed047cd084d9ee4ed333653549b":
+        return "8db39f34886f082ead5a84183d359d9535eb15b7"
+    return BASE
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", type=Path, required=True)
@@ -328,13 +334,14 @@ def main():
     parser.add_argument("--phase", choices=("metadata", "execute"), required=True)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
+    baseline = baseline_for_candidate(args.candidate_sha)
     source, out = args.source.resolve(), args.out.resolve()
     if args.phase == "metadata":
         out.mkdir(mode=0o700)
     else:
         assert out.is_dir(), "metadata admission must finish first"
     report = {"diagnosticComplete": False, "noNewRegression": False, "source": args.candidate_sha,
-              "baselineSource": BASE, "inventoryKind": "current-derived-15", "tests": TESTS,
+              "baselineSource": baseline, "inventoryKind": "current-derived-15", "tests": TESTS,
               "controller": args.controller_sha, "phase": args.phase, "runs": [], "staging": [],
               "settlementUncertain": False}
     candidate_bytes = None
@@ -380,18 +387,18 @@ def main():
             assert git("remote", "get-url", "origin").removesuffix(".git") == "https://github.com/openclaw/openclaw"
             assert not git("status", "--porcelain", "--untracked-files=no")
             if args.phase == "metadata":
-                git("fetch", "--no-tags", "--no-auto-maintenance", "--depth=1", "origin", BASE)
-            changes = git("diff", "--name-status", BASE, args.candidate_sha).splitlines()
+                git("fetch", "--no-tags", "--no-auto-maintenance", "--depth=1", "origin", baseline)
+            changes = git("diff", "--name-status", baseline, args.candidate_sha).splitlines()
             assert changes and all(line.startswith("M\t") and line[2:] in ALLOWED for line in changes)
             assert "M\t" + PIN in changes
             assert git("ls-tree", "HEAD", PIN).startswith("100644 blob ")
             candidate_bytes = (source / PIN).read_bytes()
-            old_bytes = (git("show", BASE + ":" + PIN) + "\n").encode()
+            old_bytes = (git("show", baseline + ":" + PIN) + "\n").encode()
             pins = {"old": json.loads(old_bytes), "new": json.loads(candidate_bytes)}
             report.update(sourceTree=git("rev-parse", "HEAD^{tree}"), changedPaths=changes,
                           testSHA256={test: sha(source / test) for test in TESTS}, childEnvironmentKeys=sorted(env))
             binding = {"source": args.candidate_sha, "controller": args.controller_sha,
-                       "sourceTree": report["sourceTree"], "baselineSource": BASE,
+                       "sourceTree": report["sourceTree"], "baselineSource": baseline,
                        "pinSHA256": {"old": hashlib.sha256(old_bytes).hexdigest(),
                                      "new": hashlib.sha256(candidate_bytes).hexdigest()}}
             metadata_path = out / "metadata-admission.json"
