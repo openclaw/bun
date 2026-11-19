@@ -21,6 +21,21 @@ def snapshot():
 
 
 class StackEvidenceTests(unittest.TestCase):
+    def test_full_group_keeps_invitation_failures_and_requires_every_case(self):
+        prefix = "[shard:bun:core-runtime-config-hosted-3] "
+        rows = [prefix + "✓ |runtime-config| src/config/sessions/other.test.ts > unrelated 1ms"]
+        rows += [prefix + "✓ |runtime-config| " + controller["INVITATION_FILE"] + " > " + name + " 1ms"
+                 for name in controller["INVITATION_CASES"]]
+        observe = controller["invitation_observations"]
+        result = observe("\n".join(rows), 0, full_context=True)
+        self.assertEqual(len(result["cases"]), 8)
+        with self.assertRaises(AssertionError):
+            observe("\n".join(rows[:-1]), 0, full_context=True)
+        with self.assertRaises(AssertionError):
+            observe("\n".join(rows[:-1] + [rows[-1].replace("✓", "×")]), 0, full_context=True)
+        self.assertEqual(observe("\n".join(rows[:-1] + [rows[-1].replace("✓", "×")]), 1,
+                                 full_context=True)["cases"][-1]["status"], "failed")
+
     def test_fulfillment_observations_require_bounded_complete_boolean_records(self):
         rows = [{"version": 1, "outcome": outcome, "overflow": False, "alive": [outcome == "commit"],
                  "sentinelAlive": outcome == "commit", "controlAlive": False} for outcome in ("commit", "rollback")]

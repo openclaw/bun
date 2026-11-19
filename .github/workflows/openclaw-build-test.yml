@@ -32,6 +32,7 @@ on:
             linux-openclaw-invitation-gdb-attach,
             linux-openclaw-invitation-gdb-stack,
             linux-openclaw-invitation-fulfillment-stack,
+            linux-openclaw-invitation-outcome-mappers,
             linux-openclaw-anchor-preparation,
             linux-openclaw-anchor-full-context,
             linux-openclaw-anchor-fixture-fix,
@@ -59,7 +60,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: aot-operation-origins-${{ github.ref }}${{ inputs.platform == 'linux-openclaw-bun-only' && '-bun-only' || inputs.platform == 'linux-openclaw-repin' && '-linux-repin' || inputs.platform == 'darwin-openclaw-app-host' && '-app-host' || inputs.platform == 'linux-openclaw-doctor-causes' && '-doctor-causes' || inputs.platform == 'linux-openclaw-doctor-readiness' && '-doctor-readiness' || inputs.platform == 'linux-openclaw-doctor-phases' && '-doctor-phases' || inputs.platform == 'linux-openclaw-doctor-fixture-fix' && '-doctor-fixture-fix' || inputs.platform == 'linux-openclaw-doctor-fixture-phases' && '-doctor-fixture-phases' || inputs.platform == 'linux-openclaw-invitation-reduction' && '-invitation-reduction' || inputs.platform == 'linux-openclaw-invitation-fulfillment' && '-invitation-fulfillment' || inputs.platform == 'linux-openclaw-invitation-operations' && '-invitation-operations' || inputs.platform == 'linux-openclaw-invitation-references' && '-invitation-references' || inputs.platform == 'linux-openclaw-invitation-owner-cut' && '-invitation-owner-cut' || inputs.platform == 'linux-openclaw-invitation-cache-code' && '-invitation-cache-code' || inputs.platform == 'linux-openclaw-invitation-retention' && '-invitation-retention' || inputs.platform == 'linux-openclaw-invitation-callback' && '-invitation-callback' || inputs.platform == 'linux-openclaw-invitation-fulfillment-stack' && '-invitation-fulfillment-stack' || inputs.platform == 'linux-openclaw-invitation-gdb-stack' && '-invitation-gdb-stack' || inputs.platform == 'linux-openclaw-invitation-gdb-attach' && '-invitation-gdb-attach' || inputs.platform == 'linux-openclaw-invitation-stack' && '-invitation-stack' || inputs.platform == 'linux-openclaw-invitation-snapshot' && '-invitation-snapshot' || inputs.platform == 'linux-openclaw-anchor-fixture-fix' && '-anchor-fixture-fix' || inputs.platform == 'linux-openclaw-anchor-full-context' && '-anchor-full-context' || inputs.platform == 'linux-openclaw-anchor-preparation' && '-anchor-preparation' || inputs.platform == 'linux-openclaw-doctor-continuation' && '-doctor-continuation' || inputs.platform == 'linux-openclaw-profile-symbols' && '-profile-symbols' || inputs.platform == 'linux-openclaw-profile-layout' && '-profile-layout' || inputs.platform == 'linux-openclaw-doctor-fixture-regression' && '-doctor-fixture-regression' || '' }}
+  group: aot-operation-origins-${{ github.ref }}${{ inputs.platform == 'linux-openclaw-bun-only' && '-bun-only' || inputs.platform == 'linux-openclaw-repin' && '-linux-repin' || inputs.platform == 'darwin-openclaw-app-host' && '-app-host' || inputs.platform == 'linux-openclaw-doctor-causes' && '-doctor-causes' || inputs.platform == 'linux-openclaw-doctor-readiness' && '-doctor-readiness' || inputs.platform == 'linux-openclaw-doctor-phases' && '-doctor-phases' || inputs.platform == 'linux-openclaw-doctor-fixture-fix' && '-doctor-fixture-fix' || inputs.platform == 'linux-openclaw-doctor-fixture-phases' && '-doctor-fixture-phases' || inputs.platform == 'linux-openclaw-invitation-reduction' && '-invitation-reduction' || inputs.platform == 'linux-openclaw-invitation-fulfillment' && '-invitation-fulfillment' || inputs.platform == 'linux-openclaw-invitation-operations' && '-invitation-operations' || inputs.platform == 'linux-openclaw-invitation-references' && '-invitation-references' || inputs.platform == 'linux-openclaw-invitation-owner-cut' && '-invitation-owner-cut' || inputs.platform == 'linux-openclaw-invitation-cache-code' && '-invitation-cache-code' || inputs.platform == 'linux-openclaw-invitation-retention' && '-invitation-retention' || inputs.platform == 'linux-openclaw-invitation-callback' && '-invitation-callback' || inputs.platform == 'linux-openclaw-invitation-outcome-mappers' && '-invitation-outcome-mappers' || inputs.platform == 'linux-openclaw-invitation-fulfillment-stack' && '-invitation-fulfillment-stack' || inputs.platform == 'linux-openclaw-invitation-gdb-stack' && '-invitation-gdb-stack' || inputs.platform == 'linux-openclaw-invitation-gdb-attach' && '-invitation-gdb-attach' || inputs.platform == 'linux-openclaw-invitation-stack' && '-invitation-stack' || inputs.platform == 'linux-openclaw-invitation-snapshot' && '-invitation-snapshot' || inputs.platform == 'linux-openclaw-anchor-fixture-fix' && '-anchor-fixture-fix' || inputs.platform == 'linux-openclaw-anchor-full-context' && '-anchor-full-context' || inputs.platform == 'linux-openclaw-anchor-preparation' && '-anchor-preparation' || inputs.platform == 'linux-openclaw-doctor-continuation' && '-doctor-continuation' || inputs.platform == 'linux-openclaw-profile-symbols' && '-profile-symbols' || inputs.platform == 'linux-openclaw-profile-layout' && '-profile-layout' || inputs.platform == 'linux-openclaw-doctor-fixture-regression' && '-doctor-fixture-regression' || '' }}
   cancel-in-progress: true
 
 jobs:
@@ -551,6 +552,100 @@ jobs:
         with:
           name: openclaw-invitation-retention-${{ matrix.pin }}-${{ github.sha }}-attempt${{ github.run_attempt }}
           path: invitation-retention-proof/
+          if-no-files-found: error
+          retention-days: 7
+
+  openclaw-invitation-outcome-mappers:
+    if: inputs.platform == 'linux-openclaw-invitation-outcome-mappers'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - name: Require the reviewed diagnostic candidate
+        env:
+          CANDIDATE_SHA: ${{ inputs.openclaw_candidate_sha }}
+        run: test "$CANDIDATE_SHA" = 4ea5babab09c338812ae50dbcdaed990f48cd0fc
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: openclaw/openclaw
+          ref: 4ea5babab09c338812ae50dbcdaed990f48cd0fc
+          path: source
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.22.1"
+      - name: Admit source and published Bun for both proof scopes
+        env:
+          CONTROLLER_SHA: ${{ github.sha }}
+          BUN_RELEASE_METADATA_TOKEN: ${{ github.token }}
+        run: |
+          install -d -m 0700 invitation-outcome-proof
+          for scope in focused full; do
+            python3 scripts/openclaw-ci/openclaw-repin-regression.py --phase metadata --source source \
+              --candidate-sha 4ea5babab09c338812ae50dbcdaed990f48cd0fc --controller-sha "$CONTROLLER_SHA" \
+              --out "invitation-outcome-proof/$scope"
+          done
+      - name: Prove the unchanged eight cases with source-only handlers
+        env:
+          CONTROLLER_SHA: ${{ github.sha }}
+        run: |
+          controller_home="$RUNNER_TEMP/invitation-outcome-focused-home"
+          controller_tmp="$RUNNER_TEMP/invitation-outcome-focused-tmp"
+          install -d -m 0700 "$controller_home" "$controller_tmp"
+          env -i PATH="$PATH" HOME="$controller_home" TMPDIR="$controller_tmp" LANG=C.UTF-8 CI=true \
+            python3 scripts/openclaw-ci/openclaw-linux-repin.py --source source --out invitation-outcome-proof/focused \
+            --controller-sha "$CONTROLLER_SHA" --group small4 --pin new --invitation-retention --invitation-outcome-mappers
+      - name: Require focused proof and clean restoration before the full group
+        run: |
+          python3 - <<'PYTHON'
+          import json
+          from pathlib import Path
+          r = json.loads(Path("invitation-outcome-proof/focused/report.json").read_text())
+          assert r["status"] == "DIAGNOSTIC" and r["diagnosticNativeStatus"] == "PASS"
+          assert r["nativeOutcome"]["exitCode"] == 0 and not r["settlementUncertain"]
+          assert r["nativeCompletion"] == {"version": 1, "planned": 1, "completed": 1, "invocations": 1, "failedInvocations": 0}
+          assert r["outcomeMappers"]["testUnchanged"] and not r["outcomeMappers"]["fullContext"]
+          assert len(r["outcomeMappers"]["cases"]) == 8
+          assert all(row["status"] == "passed" for row in r["outcomeMappers"]["cases"])
+          assert r["operationProjection"]["state"] == "restored"
+          assert r["candidatePinRestored"] and r["trackedSourceClean"]
+          PYTHON
+      - name: Validate the original 309-file native group without observers
+        env:
+          CONTROLLER_SHA: ${{ github.sha }}
+        run: |
+          controller_home="$RUNNER_TEMP/invitation-outcome-full-home"
+          controller_tmp="$RUNNER_TEMP/invitation-outcome-full-tmp"
+          install -d -m 0700 "$controller_home" "$controller_tmp"
+          env -i PATH="$PATH" HOME="$controller_home" TMPDIR="$controller_tmp" LANG=C.UTF-8 CI=true \
+            python3 scripts/openclaw-ci/openclaw-linux-repin.py --source source --out invitation-outcome-proof/full \
+            --controller-sha "$CONTROLLER_SHA" --group small4 --pin new --invitation-outcome-mappers
+      - name: Check bounded text-only mapper evidence
+        id: invitation-outcome-budget
+        if: always()
+        run: |
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          root = Path("invitation-outcome-proof")
+          files = list(root.rglob("*"))
+          assert (root / "focused/report.json").is_file()
+          assert len(files) <= 42
+          assert all(not p.is_symlink() and (p.is_dir() or (p.is_file() and p.suffix in {".json", ".log"})) for p in files)
+          assert sum(p.stat().st_size for p in files if p.is_file()) <= 128 * 1024 * 1024
+          for p in files:
+              if p.is_file():
+                  p.read_text(encoding="utf-8")
+          PYTHON
+      - name: Upload only text mapper evidence
+        if: ${{ always() && steps.invitation-outcome-budget.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: openclaw-invitation-outcome-mappers-${{ github.sha }}-attempt${{ github.run_attempt }}
+          path: invitation-outcome-proof/
           if-no-files-found: error
           retention-days: 7
 

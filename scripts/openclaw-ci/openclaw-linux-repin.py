@@ -65,6 +65,7 @@ INVITATION_FULFILLMENT_FILE = "src/config/sessions/session-turn.ts"
 INVITATION_FULFILLMENT_PATCHED_SHA256 = "f95ab23243b46fe0857355711ea284a984856a61d845434d0753584e44f02135"
 INVITATION_FULFILLMENT_TEST_SHA256 = "31c0b3380aa6dc2a1ed7d361faf4a528ef888bc14d6a7d73e13fd2d1e52d2e9d"
 INVITATION_FULFILLMENT_SOURCE_SHA256 = "35a0a57ef09687a1b46aa8123f7c4a92c3355bccce808fa4820ef8c33dfb8ccc"
+INVITATION_OUTCOME_MAPPERS_SHA256 = "1ed75fa8fb0e195edc4885502bf199a90b22455a6299c69cf02d8c7c5027bb27"
 INVITATION_REDUCTION_SHA256 = "35ad033d173eb5e860395032eeb303c2527d3c9e623c72fb404ab01d002a8449"
 INVITATION_REDUCTION_CASES = tuple(f"releases reduced invitation callbacks after {outcome}" for outcome in ("commit", "rollback"))
 INVITATION_CALLBACK_SHA256 = "1775321fae85b26fca81575d9910aa3118e8e67955cd9d1774d8335e3f310fe7"
@@ -287,6 +288,30 @@ type TurnResult ="""
     assert original.count(before) == original.count(handler) == 1
     return original.replace(before, declaration).replace(handler,
         b"    observeInvitationFulfillment((value: TurnResult) => ({ ok: true as const, value })),")
+
+
+def invitation_outcome_mapper_bytes(original):
+    assert hashlib.sha256(original).hexdigest() == INVITATION_FULFILLMENT_SOURCE_SHA256
+    before = b"export async function appendSessionTurnInWorker("
+    declaration = b"""// Shared outcome handlers cannot retain a completed turn's lexical environment.
+function sessionTurnSucceeded(value: SqliteExpectedSessionTranscriptTurnResult) {
+  return { ok: true as const, value };
+}
+
+function sessionTurnFailed(error: unknown) {
+  return { ok: false as const, error };
+}
+
+export async function appendSessionTurnInWorker("""
+    handlers = b"""  })().then(
+    (value) => ({ ok: true as const, value }),
+    (error: unknown) => ({ ok: false as const, error }),
+  );"""
+    assert original.count(before) == original.count(handlers) == 1
+    patched = original.replace(before, declaration).replace(handlers,
+        b"  })().then(sessionTurnSucceeded, sessionTurnFailed);")
+    assert hashlib.sha256(patched).hexdigest() == INVITATION_OUTCOME_MAPPERS_SHA256
+    return patched
 
 
 def invitation_fulfillment_test_bytes(original, stack=False):
@@ -516,7 +541,7 @@ def invitation_reduction_bytes(original):
     return payload
 
 
-def invitation_observations(log, exit_code, expected_cases=INVITATION_CASES):
+def invitation_observations(log, exit_code, expected_cases=INVITATION_CASES, full_context=False):
     rows, summaries = [], []
     prefix = "[shard:bun:core-runtime-config-hosted-3]"
     for raw in log.splitlines():
@@ -530,6 +555,8 @@ def invitation_observations(log, exit_code, expected_cases=INVITATION_CASES):
             continue
         match = re.fullmatch(r"(.*?)\|([^|]+)\|\s+(.+?) > (.+?)(?: \d+(?:\.\d+)?ms)?", body)
         assert match, "malformed diagnostic case row"
+        if full_context and match[3] != INVITATION_FILE:
+            continue
         assert match[2] == "runtime-config" and match[3] == INVITATION_FILE, "unexpected diagnostic file"
         assert match[4] in expected_cases, "unexpected diagnostic case"
         marker = match[1].strip()
@@ -737,6 +764,7 @@ def main():
     parser.add_argument("--invitation-references", action="store_true")
     parser.add_argument("--invitation-operations", action="store_true")
     parser.add_argument("--invitation-fulfillment", action="store_true")
+    parser.add_argument("--invitation-outcome-mappers", action="store_true")
     parser.add_argument("--invitation-reduction", action="store_true")
     parser.add_argument("--invitation-native-callback", action="store_true")
     parser.add_argument("--invitation-snapshot", action="store_true")
@@ -748,6 +776,14 @@ def main():
     parser.add_argument("--anchor-fixture-fix", action="store_true")
     parser.add_argument("--doctor-continuation", action="store_true")
     args = parser.parse_args()
+    assert not args.invitation_outcome_mappers or ((args.group, args.pin) == ("small4", "new")
+        and not any((args.doctor_causes, args.doctor_readiness, args.doctor_phases,
+                     args.doctor_fixture_fix, args.doctor_fixture_phases, args.doctor_continuation,
+                     args.anchor_preparation, args.anchor_full_context, args.anchor_fixture_fix,
+                     args.invitation_cache_code, args.invitation_owner_cut, args.invitation_references,
+                     args.invitation_operations, args.invitation_fulfillment, args.invitation_reduction,
+                     args.invitation_native_callback, args.invitation_snapshot, args.invitation_stack,
+                     args.invitation_gdb_attach, args.invitation_gdb_stack)))
     assert not args.invitation_fulfillment or ((args.invitation_retention or args.invitation_gdb_stack) and not any((
         args.invitation_references, args.invitation_operations, args.invitation_owner_cut,
         args.invitation_reduction, args.invitation_native_callback, args.invitation_cache_code))
@@ -808,7 +844,7 @@ def main():
               "pin": args.pin, "status": "INCONCLUSIVE", "settlementUncertain": False,
               "stateDisposition": "retained-for-hosted-runner-teardown", "preparation": [],
               "cacheProfile": "cold-private-caches; original CI cache restore status unknown"}
-    if args.doctor_causes or args.doctor_readiness or args.doctor_phases or args.doctor_fixture_fix or args.doctor_fixture_phases or args.invitation_retention or args.invitation_native_callback or args.invitation_snapshot or args.anchor_preparation or args.doctor_continuation or args.anchor_fixture_fix:
+    if args.doctor_causes or args.doctor_readiness or args.doctor_phases or args.doctor_fixture_fix or args.doctor_fixture_phases or args.invitation_retention or args.invitation_native_callback or args.invitation_snapshot or args.anchor_preparation or args.doctor_continuation or args.anchor_fixture_fix or args.invitation_outcome_mappers:
         report.update(diagnosticOnly=True, qualifiesRepin=False)
     candidate_bytes = None
     original_test_bytes = None
@@ -870,6 +906,12 @@ def main():
         group_json = json.dumps([selected["group"]], separators=(",", ":"))
         report.update(payloadSHA256=common["sha"](payload_path), originalPayloadSHA256=payload["originalPayloadSHA256"],
                       groupSHA256=hashlib.sha256(group_json.encode()).hexdigest(), selectedInput=selected)
+        if args.invitation_outcome_mappers:
+            assert report["groupSHA256"] == "ca48f718417d6221da686ce5b504f2b88e5a512f9ac2a226bc12098c1ea2eec4"
+            assert len(selected["group"]["includePatterns"]) == 309
+            report["outcomeMappers"] = {"originalGroupSHA256": report["groupSHA256"],
+                "scope": "C plus only module-level outcome handlers; original test, timers, GC and assertions unchanged",
+                "fullContext": not args.invitation_retention}
         if args.anchor_fixture_fix:
             assert report["groupSHA256"] == ANCHOR_GROUP_SHA256
             report["anchorFix"] = {"originalGroupSHA256": report["groupSHA256"],
@@ -1169,6 +1211,28 @@ def main():
             if args.pin == "old":
                 projected_files.add(common["PIN"])
             assert set(git("diff", "HEAD", "--name-only").splitlines()) == projected_files, "unexpected tracked source projection"
+        if args.invitation_outcome_mappers:
+            test_path = source / INVITATION_FILE
+            assert test_path.is_file() and not test_path.is_symlink()
+            assert common["sha"](test_path) == INVITATION_SOURCE_SHA256
+            operation_file = INVITATION_FULFILLMENT_FILE
+            operation_source_sha = INVITATION_FULFILLMENT_SOURCE_SHA256
+            operation_patched_sha = INVITATION_OUTCOME_MAPPERS_SHA256
+            operation_path = source / operation_file
+            assert operation_path.is_file() and not operation_path.is_symlink()
+            operation_original = operation_path.read_bytes()
+            operation_patched = invitation_outcome_mapper_bytes(operation_original)
+            assert not git("diff", "HEAD", "--name-only")
+            report["operationProjection"] = {"path": operation_file, "state": "prepared",
+                "originalSHA256": operation_source_sha, "patchedSHA256": operation_patched_sha,
+                "scope": "source-only outcome lifetime fix; no test or diagnostic observer changes"}
+            report["outcomeMappers"]["testSHA256"] = INVITATION_SOURCE_SHA256
+            projected_files = {operation_file}
+            original_operation_bytes = operation_original
+            operation_path.write_bytes(operation_patched)
+            report["operationProjection"]["state"] = "applied"
+            assert common["sha"](operation_path) == operation_patched_sha
+            assert set(git("diff", "HEAD", "--name-only").splitlines()) == projected_files
         remaining = deadline - time.monotonic()
         assert remaining > 0, "controller preparation exhausted the diagnostic budget"
         report["settlementUncertain"] = True
@@ -1199,7 +1263,14 @@ def main():
         assert completion["invocations"] > 0 and 0 <= completion["failedInvocations"] <= completion["invocations"]
         assert (completion["failedInvocations"] == 0) == (outcome["exitCode"] == 0)
         report.update(nativeCompletion=completion, settlementUncertain=False)
-        if args.anchor_fixture_fix:
+        if args.invitation_outcome_mappers:
+            assert common["sha"](test_path) == INVITATION_SOURCE_SHA256
+            report["outcomeMappers"].update(invitation_observations(log, outcome["exitCode"],
+                full_context=not args.invitation_retention))
+            report["outcomeMappers"]["testUnchanged"] = True
+            report["diagnosticNativeStatus"] = "PASS" if outcome["exitCode"] == 0 else "FAIL"
+            report["status"] = "DIAGNOSTIC"
+        elif args.anchor_fixture_fix:
             report["diagnosticNativeStatus"] = "PASS" if outcome["exitCode"] == 0 else "FAIL"
             observations = anchor_observations(log, outcome["exitCode"], full_context=True)
             report["anchorFix"].update({key: observations[key] for key in ("cases", "nativeSummaries")})
@@ -1272,6 +1343,8 @@ def main():
                 report["anchorProjection"]["state"] = "retained-indeterminate-settlement"
             if fixture_original is not None:
                 report["fixtureProjection"]["state"] = "retained-indeterminate-settlement"
+            if original_operation_bytes is not None:
+                report["operationProjection"]["state"] = "retained-indeterminate-settlement"
         elif candidate_bytes is not None:
             restore_allowed = original_test_bytes is None or (test_path.is_file() and not test_path.is_symlink()
                               and common["sha"](test_path) == patched_test_sha)
@@ -1282,6 +1355,9 @@ def main():
                 restore_allowed &= (operation_path.is_file() and not operation_path.is_symlink()
                                     and common["sha"](operation_path) == operation_patched_sha)
                 restore_allowed &= set(git("diff", "HEAD", "--name-only").splitlines()) == projected_files
+                if args.invitation_outcome_mappers:
+                    restore_allowed &= (test_path.is_file() and not test_path.is_symlink()
+                                        and common["sha"](test_path) == INVITATION_SOURCE_SHA256)
             if fixture_original is not None:
                 restore_allowed = (fixture_path.is_file() and not fixture_path.is_symlink()
                     and common["sha"](fixture_path) == ANCHOR_FIX_SHA256
