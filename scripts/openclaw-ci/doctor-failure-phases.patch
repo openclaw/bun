@@ -412,3 +412,103 @@
          live = [
            ...new Set(
              (
+--- a/src/commands/doctor-maintenance.admission-warm.test.ts
++++ b/src/commands/doctor-maintenance.admission-warm.test.ts
+@@ -3,7 +3,7 @@
+ import fs from "node:fs";
+ import path from "node:path";
+ import { DatabaseSync } from "node:sqlite";
+-import { expect, it, vi } from "vitest";
++import { expect, it, onTestFailed, vi } from "vitest";
+ import { awaitGateBeforeSettlement, withinTest } from "../../test/helpers/promise.js";
+ import { stopChildProcess } from "../../test/helpers/stop-child-process.js";
+ import { createSystemdCommandQuery } from "../daemon/systemd-command-query.js";
+@@ -37,25 +37,44 @@
+ it("observes readonly worker requests without adding IPC listeners to other children", async ({
+   signal,
+ }) => {
+-  using context = fixture();
++  let phase = "fixture";
++  let readerCleanup = "not-started";
++  let childCleanup = "not-started";
++  let closeObserved = false;
++  const teardown = { phase: "not-started", restore: "not-started" };
++  onTestFailed(() => {
++    process.stderr.write("[doctor-warm-phase] " + JSON.stringify({
++      v: 1, phase, readerCleanup, childCleanup, closeObserved,
++      teardown: teardown.phase, restore: teardown.restore,
++    }) + "\n");
++  });
++  using context = fixture(false, teardown);
++  phase = "database-close";
+   await closeOpenClawStateDatabaseAsync();
+   // Complete the real session first so fixture disposal can verify its recorded requests.
+   await withSqliteReadOnlyWorkerScope(async () => {
++    phase = "snapshot-request";
+     const snapshot = await runSqliteReadOnlyWorker(context.database, {
+       mode: "sync",
+       stagingRoot: context.createStateDir(),
+       signal,
+     });
++    phase = "sqlite-open";
+     const reader = new DatabaseSync(snapshot, { readOnly: true });
+     try {
++      phase = "sqlite-query";
+       expect(reader.prepare("SELECT status FROM update_runs").all()).toEqual([
+         { status: "succeeded" },
+       ]);
+     } finally {
++      readerCleanup = "close";
+       reader.close();
++      readerCleanup = "complete";
+     }
+-  });
+-
++    phase = "scope-callback-complete";
++  });
++
++  phase = "child-spawn";
+   const child = spawn(
+     process.execPath,
+     [
+@@ -70,9 +89,13 @@
+   );
+   // An error can reject readiness, but cleanup still joins the actual close event.
+   const closed = new Promise<[number | null, NodeJS.Signals | null]>((resolve) => {
+-    child.once("close", (code, exitSignal) => resolve([code, exitSignal]));
++    child.once("close", (code, exitSignal) => {
++      closeObserved = true;
++      resolve([code, exitSignal]);
++    });
+   });
+   try {
++    phase = "message-wait";
+     const [listeners] = await withinTest(
+       awaitGateBeforeSettlement(
+         once(child, "message"),
+@@ -81,7 +104,9 @@
+       ),
+       signal,
+     );
++    phase = "close-wait";
+     expect(await withinTest(closed, signal)).toEqual([0, null]);
++    phase = "witness-assertions";
+     const witness = JSON.parse(
+       fs.readFileSync(
+         path.join(context.env.OPENCLAW_STATE_DIR, `sqlite-open-guard-${child.pid}.json`),
+@@ -93,11 +118,15 @@
+       databasePath: resolveManagedUpdateLeaseDatabasePath(),
+     });
+     expect(listeners).toBe(0);
++    phase = "complete";
+   } finally {
+     try {
++      childCleanup = "stop";
+       await stopChildProcess(child, 1_000, { force: true });
+     } finally {
++      childCleanup = "close-wait";
+       await closed;
++      childCleanup = "complete";
+     }
+   }
+ });

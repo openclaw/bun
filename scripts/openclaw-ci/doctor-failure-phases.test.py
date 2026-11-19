@@ -118,5 +118,52 @@ class DoctorFailureEvidenceTests(unittest.TestCase):
                          controller["DOCTOR_FAILURE_PATCH_SHA256"])
 
 
+class DoctorWarmEvidenceTests(unittest.TestCase):
+    def observe(self, lines, code):
+        return controller["doctor_warm_observations"]("\n".join(lines), code)
+
+    def case(self, failed=False):
+        return prefix + ("×" if failed else "✓") + " |commands| src/commands/doctor-maintenance.admission-warm.test.ts > observes readonly worker requests without adding IPC listeners to other children 120012ms"
+
+    def frame(self, **changes):
+        row = {"v": 1, "phase": "message-wait", "readerCleanup": "complete",
+               "childCleanup": "close-wait", "closeObserved": False,
+               "teardown": "complete", "restore": "complete"}
+        row.update(changes)
+        return prefix + "[doctor-warm-phase] " + json.dumps(row)
+
+    def test_failure_keeps_primary_wait_separate_from_cleanup(self):
+        result = self.observe([self.case(True), self.frame()], 1)
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["failureFrame"]["phase"], "message-wait")
+        self.assertEqual(result["failureFrame"]["childCleanup"], "close-wait")
+
+    def test_success_does_not_hide_another_group_failure(self):
+        self.assertEqual(self.observe([self.case()], 0)["status"], "passed")
+        self.assertIsNone(self.observe([self.case()], 1)["failureFrame"])
+
+    def test_all_observed_boundaries_are_supported(self):
+        for phase in ("fixture", "database-close", "snapshot-request", "sqlite-open",
+                      "sqlite-query", "scope-callback-complete", "child-spawn",
+                      "message-wait", "close-wait", "witness-assertions", "complete"):
+            self.assertEqual(self.observe([self.case(True), self.frame(phase=phase)], 1)
+                             ["failureFrame"]["phase"], phase)
+
+    def test_missing_duplicate_inconsistent_or_unbounded_evidence_is_rejected(self):
+        invalid = [([], 0), ([self.case(True)], 1),
+                   ([self.case(), self.frame()], 0),
+                   ([self.case(True), self.frame()], 0),
+                   ([self.case(True), self.frame(), self.frame()], 1),
+                   ([self.case(), self.case()], 0)]
+        for changes in ({"v": True}, {"phase": "unknown"}, {"closeObserved": 1},
+                        {"readerCleanup": "unknown"}, {"childCleanup": "unknown"},
+                        {"teardown": "unknown"}, {"restore": "unknown"},
+                        {"privatePath": "private"}, {"phase": "x" * 600}):
+            invalid.append(([self.case(True), self.frame(**changes)], 1))
+        for lines, code in invalid:
+            with self.subTest(lines=lines), self.assertRaises(AssertionError):
+                self.observe(lines, code)
+
+
 if __name__ == "__main__":
     unittest.main()

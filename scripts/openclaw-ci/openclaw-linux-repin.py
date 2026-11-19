@@ -21,8 +21,9 @@ GROUPS = ("large10", "large5", "small4", "large2", "large42_storage", "large42_p
 DOCTOR_FILE = "src/commands/doctor-maintenance.continuation-scope.test.ts"
 DOCTOR_FAILURE_CANDIDATE = "bf665f2db8cbfed047cd084d9ee4ed333653549b"
 DOCTOR_FAILURE_MANIFEST_SHA256 = "d946224b1aa9ffd41f5fae82b68fb88fad9dc87d1f97d3226dcdfee7c3dc3968"
-DOCTOR_FAILURE_PATCH_SHA256 = 'aeb7fc5b71f30f7b8502765e6b6a1bb0d7925c81636273a8362e4973c344faf8'
+DOCTOR_FAILURE_PATCH_SHA256 = 'e0b0212d6a0611aa829894f10f209aeea96f24c8651ef0fa0b28da9b3b72ede7'
 DOCTOR_FAILURE_FILES = {
+    'src/commands/doctor-maintenance.admission-warm.test.ts': ('1f90b35919ad642611dc614bd05a3bca80834363c71783cdfdbec705d6277e5d', '693f9bca9d0e0ca3bea2a69de438e7b7cbeec31797c9777322ed47c8926c1381'),
     'src/commands/doctor-maintenance.continuation-scope.test.ts': ('31af4b9968716bf8e4ccade9b184bd810bb4e3096df3488d4a6f66f3d1a34f2f', 'd1455f767660ca1fa3d6ab055e0c9eacd56a3bd4868cb148615fb05425121c31'),
     'src/commands/doctor-maintenance.admission.test-support.ts': ('80cc7c47700e9d5e77beb98fd31ec5a73eb8d31945b24ac0dc40f4ffe0266314', 'e297f64cdeec9305fcc645815e23b2a4b72778478da2cacefce34fdce45e73f2'),
     'src/infra/gateway-owner-lease.ts': ('ba584a190558f6d04e5895c208058b101801d044767f02af8c80dfd3b34e72e5', '261917d99da8c7f9fbe53164e547eadf6bf7b234395ade64dfa186487f629110'),
@@ -170,6 +171,40 @@ def doctor_failure_observations(log, exit_code):
             "reproduced": bool(failed), "otherGroupFailure": exit_code != 0 and not failed,
             "framingComplete": True}
 
+
+
+def doctor_warm_observations(log, exit_code):
+    prefix = "[shard:bun:agentic-commands-doctor-hosted-2]"
+    pathname = "src/commands/doctor-maintenance.admission-warm.test.ts"
+    name = "observes readonly worker requests without adding IPC listeners to other children"
+    phases = set("fixture database-close snapshot-request sqlite-open sqlite-query scope-callback-complete child-spawn message-wait close-wait witness-assertions complete".split())
+    status, frame = None, None
+    for raw in log.splitlines():
+        line = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", raw)
+        if not line.startswith(prefix):
+            continue
+        body = line[len(prefix):].strip()
+        if body.startswith("[doctor-warm-phase]"):
+            assert body.startswith("[doctor-warm-phase] ") and len(body.encode()) <= 512
+            assert frame is None, "duplicate warm failure frame"
+            frame = json.loads(body.removeprefix("[doctor-warm-phase] "))
+            assert set(frame) == {"v", "phase", "readerCleanup", "childCleanup", "closeObserved", "teardown", "restore"}
+            assert type(frame["v"]) is int and frame["v"] == 1
+            assert frame["phase"] in phases
+            assert frame["readerCleanup"] in {"not-started", "close", "complete"}
+            assert frame["childCleanup"] in {"not-started", "stop", "close-wait", "complete"}
+            assert type(frame["closeObserved"]) is bool
+            assert frame["teardown"] in {"not-started", "close-async", "close-sync", "directories", "complete"}
+            assert frame["restore"] in {"not-started", "mocks", "env", "complete"}
+        match = re.fullmatch(r"([✓√×↓])\s+(?:commands|\|commands\|)\s+" + re.escape(pathname) + " > " + re.escape(name) + r"\s+\d+(?:\.\d+)?ms", body)
+        if match:
+            assert status is None and match[1] != "↓", "duplicate or skipped warm case"
+            status = "failed" if match[1] == "×" else "passed"
+    assert status is not None, "missing warm case"
+    assert (frame is not None) == (status == "failed"), "missing or unexpected warm frame"
+    assert exit_code != 0 or status == "passed", "successful exit contradicts warm failure"
+    return {"fullName": name, "status": status, "failureFrame": frame,
+            "framingComplete": True, "boundaryOnly": True}
 
 
 BEAM_FILE = "src/gateway/server.beam-owned-view.test.ts"
@@ -1352,13 +1387,13 @@ def main():
                           for name, hashes in doctor_files.items()},
                 "egress": ("up to8 failure-only records per module plus overflow; below4096B each; fixed classes and repository locations only; whole native log32MiB" if args.beam_owned_view else
                            "one fixed-schema receipt record per failed case below2048B; at most eight classified steps; whole native log32MiB" if args.resident_receipt else
-                           "one fixed-schema phase record with up to8 direct lease checks per failed case below2048B; whole native log32MiB" if args.doctor_failure_phases else
+                           "one continuation frame below2048B and one warm IPC frame below512B, failure-only; whole native log32MiB" if args.doctor_failure_phases else
                            "native verbose output only; whole native log32MiB" if args.doctor_fixture_fix else
                            "64 combined test/fixture frames per case plus one overflow; fixed schema below512B; whole native log32MiB"
                            if args.doctor_phases or args.doctor_fixture_phases else "4 guard receipts plus one overflow per guard; 2048 fixed frames plus one limit marker per loaded diagnostic module instance; each frame below512B; whole native log32MiB"),
                 "scope": ("one Beam handler projection; no message, parameters, identity or external paths; no added await or success logging; handler records are not case-bound" if args.beam_owned_view else
                           "classifies only existing returned steps after a failed outcome; no additional await, database read, or success-path logging; no write-failure attribution" if args.resident_receipt else
-                          "test, fixture, direct lease reader and repair-admission projections in the exact56-file Doctor group; per-case synchronous phase assignments and onTestFailed output only; no added awaits or success-path logging" if args.doctor_failure_phases else
+                          "continuation/warm tests, fixture, direct lease reader and repair-admission projections in the exact56-file Doctor group; per-case synchronous phase assignments and onTestFailed output only; no added awaits or success-path logging" if args.doctor_failure_phases else
                           "C plus existing phase writes and readonly fixture guard in original116-pattern group; no observation reporter; boundaries only, not cause or unchanged-C qualification" if args.doctor_fixture_phases else
                           "C plus one fixture IPC-observer ownership guard in original116-pattern group; no observation reporter or markers; not unchanged-C qualification" if args.doctor_fixture_fix else
                           "two test/fixture projections in original116-pattern group; stderr writes can perturb scheduling; observed operation boundaries only, no cause or qualification verdict"
@@ -1524,6 +1559,7 @@ def main():
         elif args.doctor_failure_phases:
             report["diagnosticNativeStatus"] = "PASS" if outcome["exitCode"] == 0 else "FAIL"
             report["doctorFailurePhases"].update(doctor_failure_observations(log, outcome["exitCode"]))
+            report["doctorWarmPhases"] = doctor_warm_observations(log, outcome["exitCode"])
             report["status"] = "DIAGNOSTIC"
         elif args.invitation_outcome_mappers:
             assert common["sha"](test_path) == INVITATION_SOURCE_SHA256
