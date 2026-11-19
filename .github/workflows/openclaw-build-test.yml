@@ -24,6 +24,7 @@ on:
             linux-openclaw-invitation-owner-cut,
             linux-openclaw-invitation-references,
             linux-openclaw-invitation-operations,
+            linux-openclaw-invitation-fulfillment,
             linux-openclaw-invitation-reduction,
             linux-openclaw-invitation-callback,
             linux-openclaw-invitation-snapshot,
@@ -57,7 +58,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: aot-operation-origins-${{ github.ref }}${{ inputs.platform == 'linux-openclaw-bun-only' && '-bun-only' || inputs.platform == 'linux-openclaw-repin' && '-linux-repin' || inputs.platform == 'darwin-openclaw-app-host' && '-app-host' || inputs.platform == 'linux-openclaw-doctor-causes' && '-doctor-causes' || inputs.platform == 'linux-openclaw-doctor-readiness' && '-doctor-readiness' || inputs.platform == 'linux-openclaw-doctor-phases' && '-doctor-phases' || inputs.platform == 'linux-openclaw-doctor-fixture-fix' && '-doctor-fixture-fix' || inputs.platform == 'linux-openclaw-doctor-fixture-phases' && '-doctor-fixture-phases' || inputs.platform == 'linux-openclaw-invitation-reduction' && '-invitation-reduction' || inputs.platform == 'linux-openclaw-invitation-operations' && '-invitation-operations' || inputs.platform == 'linux-openclaw-invitation-references' && '-invitation-references' || inputs.platform == 'linux-openclaw-invitation-owner-cut' && '-invitation-owner-cut' || inputs.platform == 'linux-openclaw-invitation-cache-code' && '-invitation-cache-code' || inputs.platform == 'linux-openclaw-invitation-retention' && '-invitation-retention' || inputs.platform == 'linux-openclaw-invitation-callback' && '-invitation-callback' || inputs.platform == 'linux-openclaw-invitation-gdb-stack' && '-invitation-gdb-stack' || inputs.platform == 'linux-openclaw-invitation-gdb-attach' && '-invitation-gdb-attach' || inputs.platform == 'linux-openclaw-invitation-stack' && '-invitation-stack' || inputs.platform == 'linux-openclaw-invitation-snapshot' && '-invitation-snapshot' || inputs.platform == 'linux-openclaw-anchor-fixture-fix' && '-anchor-fixture-fix' || inputs.platform == 'linux-openclaw-anchor-full-context' && '-anchor-full-context' || inputs.platform == 'linux-openclaw-anchor-preparation' && '-anchor-preparation' || inputs.platform == 'linux-openclaw-doctor-continuation' && '-doctor-continuation' || inputs.platform == 'linux-openclaw-profile-symbols' && '-profile-symbols' || inputs.platform == 'linux-openclaw-profile-layout' && '-profile-layout' || inputs.platform == 'linux-openclaw-doctor-fixture-regression' && '-doctor-fixture-regression' || '' }}
+  group: aot-operation-origins-${{ github.ref }}${{ inputs.platform == 'linux-openclaw-bun-only' && '-bun-only' || inputs.platform == 'linux-openclaw-repin' && '-linux-repin' || inputs.platform == 'darwin-openclaw-app-host' && '-app-host' || inputs.platform == 'linux-openclaw-doctor-causes' && '-doctor-causes' || inputs.platform == 'linux-openclaw-doctor-readiness' && '-doctor-readiness' || inputs.platform == 'linux-openclaw-doctor-phases' && '-doctor-phases' || inputs.platform == 'linux-openclaw-doctor-fixture-fix' && '-doctor-fixture-fix' || inputs.platform == 'linux-openclaw-doctor-fixture-phases' && '-doctor-fixture-phases' || inputs.platform == 'linux-openclaw-invitation-reduction' && '-invitation-reduction' || inputs.platform == 'linux-openclaw-invitation-fulfillment' && '-invitation-fulfillment' || inputs.platform == 'linux-openclaw-invitation-operations' && '-invitation-operations' || inputs.platform == 'linux-openclaw-invitation-references' && '-invitation-references' || inputs.platform == 'linux-openclaw-invitation-owner-cut' && '-invitation-owner-cut' || inputs.platform == 'linux-openclaw-invitation-cache-code' && '-invitation-cache-code' || inputs.platform == 'linux-openclaw-invitation-retention' && '-invitation-retention' || inputs.platform == 'linux-openclaw-invitation-callback' && '-invitation-callback' || inputs.platform == 'linux-openclaw-invitation-gdb-stack' && '-invitation-gdb-stack' || inputs.platform == 'linux-openclaw-invitation-gdb-attach' && '-invitation-gdb-attach' || inputs.platform == 'linux-openclaw-invitation-stack' && '-invitation-stack' || inputs.platform == 'linux-openclaw-invitation-snapshot' && '-invitation-snapshot' || inputs.platform == 'linux-openclaw-anchor-fixture-fix' && '-anchor-fixture-fix' || inputs.platform == 'linux-openclaw-anchor-full-context' && '-anchor-full-context' || inputs.platform == 'linux-openclaw-anchor-preparation' && '-anchor-preparation' || inputs.platform == 'linux-openclaw-doctor-continuation' && '-doctor-continuation' || inputs.platform == 'linux-openclaw-profile-symbols' && '-profile-symbols' || inputs.platform == 'linux-openclaw-profile-layout' && '-profile-layout' || inputs.platform == 'linux-openclaw-doctor-fixture-regression' && '-doctor-fixture-regression' || '' }}
   cancel-in-progress: true
 
 jobs:
@@ -469,7 +470,7 @@ jobs:
           retention-days: 7
 
   openclaw-invitation-retention:
-    if: inputs.platform == 'linux-openclaw-invitation-retention' || inputs.platform == 'linux-openclaw-invitation-cache-code' || inputs.platform == 'linux-openclaw-invitation-owner-cut' || inputs.platform == 'linux-openclaw-invitation-references' || inputs.platform == 'linux-openclaw-invitation-operations' || inputs.platform == 'linux-openclaw-invitation-reduction'
+    if: inputs.platform == 'linux-openclaw-invitation-retention' || inputs.platform == 'linux-openclaw-invitation-cache-code' || inputs.platform == 'linux-openclaw-invitation-owner-cut' || inputs.platform == 'linux-openclaw-invitation-references' || inputs.platform == 'linux-openclaw-invitation-operations' || inputs.platform == 'linux-openclaw-invitation-reduction' || inputs.platform == 'linux-openclaw-invitation-fulfillment'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     strategy:
@@ -511,6 +512,7 @@ jobs:
           CUT_OWNER_ROOTS: ${{ inputs.platform == 'linux-openclaw-invitation-owner-cut' }}
           OBSERVE_REFERENCES: ${{ inputs.platform == 'linux-openclaw-invitation-references' || inputs.platform == 'linux-openclaw-invitation-operations' }}
           OBSERVE_OPERATIONS: ${{ inputs.platform == 'linux-openclaw-invitation-operations' }}
+          OBSERVE_FULFILLMENT: ${{ inputs.platform == 'linux-openclaw-invitation-fulfillment' }}
           REDUCE_DISPOSAL: ${{ inputs.platform == 'linux-openclaw-invitation-reduction' }}
         run: |
           capture_args=()
@@ -518,6 +520,7 @@ jobs:
           if [ "$CUT_OWNER_ROOTS" = true ]; then capture_args+=(--invitation-owner-cut); fi
           if [ "$OBSERVE_REFERENCES" = true ]; then capture_args+=(--invitation-references); fi
           if [ "$OBSERVE_OPERATIONS" = true ]; then capture_args+=(--invitation-operations); fi
+          if [ "$OBSERVE_FULFILLMENT" = true ]; then capture_args+=(--invitation-fulfillment); fi
           if [ "$REDUCE_DISPOSAL" = true ]; then capture_args+=(--invitation-reduction); fi
           controller_home="$RUNNER_TEMP/invitation-retention-controller-home"
           controller_tmp="$RUNNER_TEMP/invitation-retention-controller-tmp"

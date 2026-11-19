@@ -21,6 +21,17 @@ def snapshot():
 
 
 class StackEvidenceTests(unittest.TestCase):
+    def test_fulfillment_observations_require_bounded_complete_boolean_records(self):
+        rows = [{"version": 1, "outcome": outcome, "overflow": False, "alive": [outcome == "commit"],
+                 "sentinelAlive": outcome == "commit", "controlAlive": False} for outcome in ("commit", "rollback")]
+        log = lambda values: "\n".join("[invitation-fulfillment] " + json.dumps(row) for row in values)
+        self.assertEqual(controller["invitation_fulfillment_observations"](log(rows))["cases"], rows)
+        for change in ({"overflow": True}, {"alive": [True] * 17}, {"alive": ["true"]}, {"alive": []}):
+            with self.assertRaises(AssertionError):
+                controller["invitation_fulfillment_observations"](log([{**rows[0], **change}, rows[1]]))
+        with self.assertRaises(AssertionError):
+            controller["invitation_fulfillment_observations"](log(rows[:1]))
+
     def test_packet_tail_exports_classes_without_addresses_paths_or_payloads(self):
         data = b"\n".join([
             b"0xabc <  15> send packet: $vAttach;1234#00",

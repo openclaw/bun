@@ -61,6 +61,10 @@ INVITATION_OPERATIONS_SHA256 = "f51f94f08ab876f8c3a59396f876fa967ef7c1549f669a99
 INVITATION_OPERATION_FILE = "src/config/sessions/session-entry-patch.ts"
 INVITATION_OPERATION_SOURCE_SHA256 = "3b0a83b7733deb1269cb4ee406781ba870251b8a1f6797ee943f69f964d325ff"
 INVITATION_OPERATION_PATCHED_SHA256 = "c9a98f8da836c79f49357d27801fd2c73bf32eca9a3a15c6c3da429ff5bcb0b7"
+INVITATION_FULFILLMENT_FILE = "src/config/sessions/session-turn.ts"
+INVITATION_FULFILLMENT_PATCHED_SHA256 = "f95ab23243b46fe0857355711ea284a984856a61d845434d0753584e44f02135"
+INVITATION_FULFILLMENT_TEST_SHA256 = "31c0b3380aa6dc2a1ed7d361faf4a528ef888bc14d6a7d73e13fd2d1e52d2e9d"
+INVITATION_FULFILLMENT_SOURCE_SHA256 = "35a0a57ef09687a1b46aa8123f7c4a92c3355bccce808fa4820ef8c33dfb8ccc"
 INVITATION_REDUCTION_SHA256 = "35ad033d173eb5e860395032eeb303c2527d3c9e623c72fb404ab01d002a8449"
 INVITATION_REDUCTION_CASES = tuple(f"releases reduced invitation callbacks after {outcome}" for outcome in ("commit", "rollback"))
 INVITATION_CALLBACK_SHA256 = "1775321fae85b26fca81575d9910aa3118e8e67955cd9d1774d8335e3f310fe7"
@@ -260,6 +264,72 @@ export async function runSessionEntryWorkerOperation<"""
     patched = original.replace(before, declaration).replace(b"}): Promise<Result> {\n  let publication:", entry)
     assert hashlib.sha256(patched).hexdigest() == INVITATION_OPERATION_PATCHED_SHA256
     return patched
+
+
+def invitation_fulfillment_bytes(original):
+    assert hashlib.sha256(original).hexdigest() == INVITATION_FULFILLMENT_SOURCE_SHA256
+    before = b"type TurnResult ="
+    declaration = b"""export const invitationFulfillment = {
+  references: [] as WeakRef<object>[],
+  overflow: false,
+};
+function observeInvitationFulfillment<T extends object>(callback: T): T {
+  if (invitationFulfillment.references.length < 16) {
+    invitationFulfillment.references.push(new WeakRef(callback));
+  } else {
+    invitationFulfillment.overflow = true;
+  }
+  return callback;
+}
+
+type TurnResult ="""
+    handler = b"    (value) => ({ ok: true as const, value }),"
+    assert original.count(before) == original.count(handler) == 1
+    return original.replace(before, declaration).replace(handler,
+        b"    observeInvitationFulfillment((value: TurnResult) => ({ ok: true as const, value })),")
+
+
+def invitation_fulfillment_test_bytes(original):
+    assert hashlib.sha256(original).hexdigest() == INVITATION_SOURCE_SHA256
+    changes = (
+        (b'import * as admission from "../../infra/sqlite-worker-operation-admission.js";',
+         b'import * as admission from "../../infra/sqlite-worker-operation-admission.js";\nimport { invitationFulfillment } from "./session-turn.js";'),
+        (b"      async function settle() {", b"""      invitationFulfillment.references.length = 0;
+      invitationFulfillment.overflow = false;
+      async function settle() {"""),
+        (b"      queryObjects(WeakRef);", b"""      queryObjects(WeakRef);
+      process.stderr.write("[invitation-fulfillment] " + JSON.stringify({
+        version: 1,
+        outcome,
+        overflow: invitationFulfillment.overflow,
+        alive: invitationFulfillment.references.map((reference) => reference.deref() !== undefined),
+        sentinelAlive: reference.deref() !== undefined,
+        controlAlive: control.deref() !== undefined,
+      }) + "\\n");"""),
+    )
+    patched = original
+    for before, after in changes:
+        assert patched.count(before) == 1
+        patched = patched.replace(before, after)
+    return patched
+
+
+def invitation_fulfillment_observations(log):
+    rows = []
+    for raw in log.splitlines():
+        line = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", raw)
+        match = re.fullmatch(r"(?:\[shard:[^]]+\] )?\[invitation-fulfillment\] (.*)", line)
+        if match:
+            assert len(line.encode()) <= 1024
+            row = json.loads(match[1])
+            assert set(row) == {"version", "outcome", "overflow", "alive", "sentinelAlive", "controlAlive"}
+            assert row["version"] == 1 and row["overflow"] is False
+            assert isinstance(row["alive"], list) and 0 < len(row["alive"]) <= 16
+            assert all(type(value) is bool for value in [*row["alive"], row["sentinelAlive"], row["controlAlive"]])
+            rows.append(row)
+    assert len(rows) == 2 and {row["outcome"] for row in rows} == {"commit", "rollback"}
+    return {"cases": rows, "diagnosticOnly": True, "qualifiesRepin": False,
+            "scope": "WeakRefs to existing fulfillment handlers; no additional Promise reaction; allocation and layout perturbation remain"}
 
 
 def invitation_references_observations(log):
@@ -662,6 +732,7 @@ def main():
     parser.add_argument("--invitation-owner-cut", action="store_true")
     parser.add_argument("--invitation-references", action="store_true")
     parser.add_argument("--invitation-operations", action="store_true")
+    parser.add_argument("--invitation-fulfillment", action="store_true")
     parser.add_argument("--invitation-reduction", action="store_true")
     parser.add_argument("--invitation-native-callback", action="store_true")
     parser.add_argument("--invitation-snapshot", action="store_true")
@@ -673,6 +744,10 @@ def main():
     parser.add_argument("--anchor-fixture-fix", action="store_true")
     parser.add_argument("--doctor-continuation", action="store_true")
     args = parser.parse_args()
+    assert not args.invitation_fulfillment or (args.invitation_retention and not any((
+        args.invitation_references, args.invitation_operations, args.invitation_owner_cut,
+        args.invitation_reduction, args.invitation_snapshot, args.invitation_native_callback,
+        args.invitation_cache_code)))
     assert not args.invitation_stack or args.invitation_snapshot
     assert not args.invitation_gdb_attach or args.invitation_stack
     assert not args.invitation_gdb_stack or (args.invitation_stack and not args.invitation_gdb_attach)
@@ -1026,15 +1101,17 @@ def main():
             report["anchorProjection"]["state"] = "applied"
             assert all(common["sha"](path) == ANCHOR_FILES[name][1] for name, path in anchor_paths.items())
             assert set(git("diff", "HEAD", "--name-only").splitlines()) == set(ANCHOR_FILES)
-        if args.invitation_native_callback or args.invitation_snapshot or args.invitation_owner_cut or args.invitation_references or args.invitation_reduction:
+        if args.invitation_native_callback or args.invitation_snapshot or args.invitation_owner_cut or args.invitation_references or args.invitation_reduction or args.invitation_fulfillment:
             test_path = source / INVITATION_FILE
             assert test_path.is_file() and not test_path.is_symlink()
             original = test_path.read_bytes()
-            patched = (invitation_reduction_bytes(original) if args.invitation_reduction else
+            patched = (invitation_fulfillment_test_bytes(original) if args.invitation_fulfillment else
+                       invitation_reduction_bytes(original) if args.invitation_reduction else
                        invitation_references_bytes(original, args.invitation_operations) if args.invitation_references else
                        invitation_owner_cut_bytes(original) if args.invitation_owner_cut else
                        invitation_snapshot_bytes(original, args.invitation_stack) if args.invitation_snapshot else invitation_callback_bytes(original))
-            patched_test_sha = (hashlib.sha256(patched).hexdigest() if args.invitation_stack else
+            patched_test_sha = (INVITATION_FULFILLMENT_TEST_SHA256 if args.invitation_fulfillment else
+                                hashlib.sha256(patched).hexdigest() if args.invitation_stack else
                                 INVITATION_REDUCTION_SHA256 if args.invitation_reduction else
                                 INVITATION_OPERATIONS_SHA256 if args.invitation_operations else
                                 INVITATION_REFERENCES_SHA256 if args.invitation_references else
@@ -1053,31 +1130,38 @@ def main():
                 report["testProjection"]["scope"] = "WeakRefs to original functions and Promise; same identities, timer, GC and assertions; allocation/layout perturbation; diagnostic only"
             if args.invitation_operations:
                 report["testProjection"]["scope"] += "; direct operation WeakRefs, no call wrapper or additional Promise reactions"
+            if args.invitation_fulfillment:
+                report["testProjection"]["scope"] = "WeakRefs to existing fulfillment callbacks; original Promise reactions, timer, GC and assertions retained; allocation/layout perturbation; diagnostic only"
             if args.invitation_snapshot:
                 report["testProjection"].update(payloadSHA256=INVITATION_SNAPSHOT_PAYLOAD_SHA256,
                     scope="commit-only address capture and one synchronous debug snapshot after original timer/queryObjects; extra full GC and allocation/root/layout perturbation; reported structure only, no strong-retainer, scanner, leak-cause or qualification verdict")
             if args.invitation_stack:
                 report["testProjection"].update(stackPayloadSHA256=INVITATION_STACK_PAYLOAD_SHA256,
                     scope=report["testProjection"]["scope"] + "; read-only debugger attached by stopped worker's synchronous child; main-thread stack occurrences only")
-            if args.invitation_operations:
-                operation_path = source / INVITATION_OPERATION_FILE
+            if args.invitation_operations or args.invitation_fulfillment:
+                operation_file = INVITATION_FULFILLMENT_FILE if args.invitation_fulfillment else INVITATION_OPERATION_FILE
+                operation_source_sha = INVITATION_FULFILLMENT_SOURCE_SHA256 if args.invitation_fulfillment else INVITATION_OPERATION_SOURCE_SHA256
+                operation_patched_sha = INVITATION_FULFILLMENT_PATCHED_SHA256 if args.invitation_fulfillment else INVITATION_OPERATION_PATCHED_SHA256
+                operation_path = source / operation_file
                 assert operation_path.is_file() and not operation_path.is_symlink()
                 operation_original = operation_path.read_bytes()
-                operation_patched = invitation_operation_bytes(operation_original)
+                operation_patched = (invitation_fulfillment_bytes(operation_original) if args.invitation_fulfillment
+                                     else invitation_operation_bytes(operation_original))
+                assert hashlib.sha256(operation_patched).hexdigest() == operation_patched_sha
             original_test_bytes = original
             test_path.write_bytes(patched)
             report["testProjection"]["state"] = "applied"
             assert common["sha"](test_path) == patched_test_sha
             projected_files = {INVITATION_FILE}
-            if args.invitation_operations:
-                report["operationProjection"] = {"path": INVITATION_OPERATION_FILE, "state": "prepared",
-                    "originalSHA256": INVITATION_OPERATION_SOURCE_SHA256, "patchedSHA256": INVITATION_OPERATION_PATCHED_SHA256,
-                    "scope": "temporary direct WeakRefs only; no additional calls, Promise reactions, waits or changes to production decisions"}
+            if args.invitation_operations or args.invitation_fulfillment:
+                report["operationProjection"] = {"path": operation_file, "state": "prepared",
+                    "originalSHA256": operation_source_sha, "patchedSHA256": operation_patched_sha,
+                    "scope": "temporary WeakRefs to existing functions; no additional Promise reactions, waits or changes to production decisions"}
                 original_operation_bytes = operation_original
                 operation_path.write_bytes(operation_patched)
                 report["operationProjection"]["state"] = "applied"
-                assert common["sha"](operation_path) == INVITATION_OPERATION_PATCHED_SHA256
-                projected_files.add(INVITATION_OPERATION_FILE)
+                assert common["sha"](operation_path) == operation_patched_sha
+                projected_files.add(operation_file)
             if args.pin == "old":
                 projected_files.add(common["PIN"])
             assert set(git("diff", "HEAD", "--name-only").splitlines()) == projected_files, "unexpected tracked source projection"
@@ -1139,6 +1223,8 @@ def main():
                 report["references"] = invitation_references_observations(log)
             if args.invitation_operations:
                 report["operations"] = invitation_operations_observations(log)
+            if args.invitation_fulfillment:
+                report["fulfillment"] = invitation_fulfillment_observations(log)
             if args.invitation_snapshot:
                 report["snapshot"] = snapshot_observations(log, recorded_graph=args.invitation_gdb_stack)
                 admitted = "stackGraphAdmitted" if args.invitation_gdb_stack else "complete"
@@ -1183,7 +1269,7 @@ def main():
                 restore_allowed &= set(git("diff", "HEAD", "--name-only").splitlines()) == expected_files
             if original_operation_bytes is not None:
                 restore_allowed &= (operation_path.is_file() and not operation_path.is_symlink()
-                                    and common["sha"](operation_path) == INVITATION_OPERATION_PATCHED_SHA256)
+                                    and common["sha"](operation_path) == operation_patched_sha)
                 restore_allowed &= set(git("diff", "HEAD", "--name-only").splitlines()) == projected_files
             if fixture_original is not None:
                 restore_allowed = (fixture_path.is_file() and not fixture_path.is_symlink()
@@ -1221,7 +1307,7 @@ def main():
                 if original_operation_bytes is not None:
                     operation_path.write_bytes(original_operation_bytes)
                     report["operationProjection"].update(state="restored", restoredSHA256=common["sha"](operation_path))
-                    assert report["operationProjection"]["restoredSHA256"] == INVITATION_OPERATION_SOURCE_SHA256
+                    assert report["operationProjection"]["restoredSHA256"] == operation_source_sha
                 if original_test_bytes is not None:
                     (source / INVITATION_FILE).write_bytes(original_test_bytes)
                     report["testProjection"].update(state="restored", restoredSHA256=common["sha"](source / INVITATION_FILE))
