@@ -1,5 +1,5 @@
 // What the compiler reads in place of src/js/internal/fs/streams.ts, which `bun run` evaluates. The two do the same.
-// Written against that file with the SHA-256 f7c416ef353d379aa01979773acad22ae5c2d6c09c4edfafa5e2b2eb5009baad.
+// Written against that file with the SHA-256 5c18c17ff935bb90d35191cfd4a473baea8d3d9362713666dd33a2206bb55b0e.
 // When that file changes, bring the change here and write the new hash: test/internal/second-texts-of-modules.test.ts.
 
 // fs.ReadStream and fs.WriteStream are lazily loaded to avoid importing 'node:stream' until required

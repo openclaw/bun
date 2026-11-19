@@ -71,20 +71,6 @@ interface StreamFs {
   close?(fd: number, callback: ErrorCallback): void;
 }
 
-interface FileStreamOptions extends $Node.ReadableOptions, $Node.WritableOptions {
-  fd?: number | FileHandle | null;
-  fs?: StreamFs | null;
-  flags?: string | number;
-  mode?: number;
-  autoClose?: boolean;
-  start?: number;
-  end?: number;
-  flush?: boolean | null;
-  /** A raw Win32 `HANDLE`, wrapped in a file descriptor the stream owns. Windows only. */
-  windowsHandle?: bigint | null;
-  $fastPath?: boolean | FileSink;
-}
-
 declare global {
   namespace $Node {
     /** What `fs.ReadStream` and `fs.WriteStream` share. */

@@ -1,5 +1,5 @@
 // What the compiler reads in place of src/js/node/net.ts, which `bun run` evaluates. The two do the same.
-// Written against that file with the SHA-256 639ea1150755d0634da2d90ed46816c6e78705012d91e2bea7ee30ebd879f6c2.
+// Written against that file with the SHA-256 927cc067e8da73f309ef663acdd221b6c8fdd96faa32f049d5fe79d1d5af8fd6.
 // When that file changes, bring the change here and write the new hash: test/internal/second-texts-of-modules.test.ts.
 
 // Hardcoded module "node:net"
@@ -30,7 +30,6 @@ const { getDefaultHighWaterMark } = require("internal/streams/state");
 const EventEmitter = require("node:events");
 // Socket lifecycle callbacks must run even when user code replaces timer APIs.
 const setImmediate = $newCppFunction("node/NodeTimers.cpp", "functionSetImmediate", 1);
-let dns: typeof import("./dns").default;
 
 const normalizedArgsSymbol = Symbol("normalizedArgs");
 const {

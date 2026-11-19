@@ -39,8 +39,8 @@ const {
   stopPerf,
   isStoppedModuleGraphRunning,
 } = require("internal/shared");
-import type { Socket, SocketHandler, SocketListener } from "bun";
-import type { Server as NetServer, Socket as NetSocket, ServerOpts } from "node:net";
+import type { Socket, SocketHandler } from "bun";
+import type { ServerOpts } from "node:net";
 const { kTimeout, getTimerDuration } = require("internal/timers");
 const { validateFunction, validateNumber, validatePort, validateBoolean, validateInt32, validateString } = require("internal/validators"); // prettier-ignore
 const { isIPv4, isIPv6, isIP } = require("internal/net/isIP");
@@ -61,7 +61,6 @@ type ListenerHandle = $Node.ListenerHandle;
 type NativeSocketError = Error & { errno?: number };
 type NativeConnectError = Error & { errno: number };
 type ConnectException = InstanceType<typeof ExceptionWithHostPort> & { localAddress?: string; localPort?: number };
-type SystemError = Error & { errno?: number; syscall?: string };
 type WriteCallback = $Node.ErrorCallback;
 type Chunk = string | Uint8Array;
 
@@ -159,37 +158,6 @@ interface ConnectOptions {
   rejectUnauthorized?: boolean;
   checkServerIdentity?: CheckServerIdentity;
   session?: string | Uint8Array;
-}
-
-interface ConnectMultipleContext {
-  socket: $Node.Socket;
-  addresses: LookupAddress[];
-  current: number;
-  port: number;
-  localPort: number | undefined;
-  timeout: number;
-  [kTimeout]: Timer | null;
-  errors: Error[];
-  options: ConnectOptions;
-  _flags?: undefined;
-  [kPerfHooksNetConnectContext]?: unknown;
-}
-
-// What `doConnect` takes: src/runtime/socket/SocketConfig.bind.ts.
-interface NativeConnectOptions {
-  hostname?: string;
-  port?: number;
-  unix?: string;
-  fd?: number;
-  fdIsRawSocket?: boolean;
-  localAddress?: string;
-  localPort?: number;
-  ipv6Only?: boolean;
-  allowHalfOpen: boolean;
-  tls?: TLSConnectOptions;
-  pauseOnConnect?: boolean;
-  data: $Node.Socket | ConnectData;
-  socket: InternalSocketHandler<$Node.Socket> | InternalSocketHandler<ConnectData>;
 }
 
 declare global {

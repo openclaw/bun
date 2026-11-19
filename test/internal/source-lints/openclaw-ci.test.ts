@@ -58,7 +58,7 @@ test.each(["linux", "darwin"])("TLS certificate changes qualify removal and HTTP
 test("both Windows architectures use the complete Windows compatibility selection", () => {
   expect(selectTests([], tracked, false, "windows")).toEqual([...windowsSmoke].sort());
   expect(selectTests([], tracked, true, "windows")).toEqual([...windowsSmoke].sort());
-  expect(windowsSmoke).toHaveLength(42);
+  expect(windowsSmoke).toHaveLength(43);
   for (const file of tracked.filter(file => file.startsWith("test/js/node/worker_threads/") && isTest(file))) {
     expect(windowsSmoke).toContain(file);
   }
