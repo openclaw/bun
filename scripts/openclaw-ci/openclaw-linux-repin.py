@@ -28,6 +28,12 @@ DOCTOR_FAILURE_FILES = {
 }
 DOCTOR_CASES = tuple(f"keeps Doctor continuation with its repair scope (cached writer: {writer})"
                      for writer in ("true", "false"))
+RESIDENT_FILE = "src/cli/update-cli/update-command-service-resident-restart.test.ts"
+RESIDENT_CASES = tuple("stops the Gateway that restarted itself for the replaced installation " + when
+                       for when in ("before the resident answers", "after the resident answers"))
+RESIDENT_MANIFEST_SHA256 = "0dd87ded4404428d11034f80518e2dab154f90d916e2cccdf3c9bd280a92d039"
+RESIDENT_PATCH_SHA256 = "b22b98d160190453bbd47ca9efe7f8e4accdd5018e78669ba9bf67cb724e1a8c"
+RESIDENT_FILES = {RESIDENT_FILE: ("9b997db8037a1de514db8c62d93759c9cb39e91c6d92294a5cdb3cb52ae97312", "916ee23c79e1566a11b4a53d0890c4de84c594fde1872c9b2e62997b8b1e272c")}
 DOCTOR_PHASE_PATCH_SHA256 = "033fdf2c27913a7b8fc23ffc09da536ab9f21052054090a42b8c387591aff800"
 DOCTOR_PHASE_FILES = {
     DOCTOR_FILE: ("31af4b9968716bf8e4ccade9b184bd810bb4e3096df3488d4a6f66f3d1a34f2f", "a8f0f9d3f39d7c940f118e2c17a5abb671f5ce109481cea4c42ff539f495d3c0"),
@@ -139,6 +145,49 @@ def doctor_failure_observations(log, exit_code):
     assert exit_code != 0 or not failed, "successful exit contradicts failed Doctor case"
     return {"cases": [{"fullName": name, "status": cases[name]} for name in DOCTOR_CASES],
             "nativeSummaries": summaries, "failureFrames": list(frames.values()),
+            "reproduced": bool(failed), "otherGroupFailure": exit_code != 0 and not failed,
+            "framingComplete": True}
+
+
+def resident_receipt_observations(log, exit_code):
+    prefix = "[shard:bun:core-runtime-infra-storage-state-hosted-25]"
+    cases, frames, summaries = {}, {}, []
+    for raw in log.splitlines():
+        line = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", raw)
+        if not line.startswith(prefix):
+            continue
+        body = line[len(prefix):].strip()
+        if "[resident-receipt]" in body:
+            assert body.startswith("[resident-receipt] ") and len(body.encode()) <= 2048
+            row = json.loads(body.removeprefix("[resident-receipt] "))
+            assert set(row) == {"v", "case", "truncated", "steps"}
+            assert type(row["v"]) is int and row["v"] == 1
+            assert row["case"] in {"before", "after"} and row["case"] not in frames
+            assert row["truncated"] is False, "returned-step evidence exceeded eight steps"
+            assert isinstance(row["steps"], list) and len(row["steps"]) <= 8
+            for step in row["steps"]:
+                assert set(step) == {"kind", "completed", "inProgress", "expectedSuccessor", "detailPresent"}
+                assert step["kind"] in {"requested", "predecessor-stop", "maintenance-warning", "other"}
+                assert all(type(step[key]) is bool for key in ("completed", "inProgress", "detailPresent"))
+                assert not (step["completed"] and step["inProgress"])
+                assert (type(step["expectedSuccessor"]) is bool if step["kind"] == "predecessor-stop"
+                        else step["expectedSuccessor"] is None)
+            frames[row["case"]] = row
+            continue
+        if body.startswith(("Test Files ", "Tests ")):
+            summaries.append(body)
+        match = re.fullmatch(r"([✓√×↓])\s+infra\s+" + re.escape(RESIDENT_FILE) + r" > (.+?)\s+\d+(?:\.\d+)?ms", body)
+        if not match or match[2] not in RESIDENT_CASES:
+            continue
+        assert match[2] not in cases and match[1] != "↓", "duplicate or skipped resident case"
+        cases[match[2]] = "failed" if match[1] == "×" else "passed"
+    assert set(cases) == set(RESIDENT_CASES), "missing resident cases"
+    failed = {"before" if name == RESIDENT_CASES[0] else "after"
+              for name, status in cases.items() if status == "failed"}
+    assert set(frames) == failed, "missing failed-outcome evidence or unexpected success frame"
+    assert exit_code != 0 or not failed, "successful exit contradicts failed resident case"
+    return {"cases": [{"fullName": name, "status": cases[name]} for name in RESIDENT_CASES],
+            "nativeSummaries": summaries, "returnedStepFrames": list(frames.values()),
             "reproduced": bool(failed), "otherGroupFailure": exit_code != 0 and not failed,
             "framingComplete": True}
 
@@ -797,7 +846,7 @@ def main():
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--controller-sha", required=True)
-    parser.add_argument("--group", choices=(*GROUPS, "doctor-current"), required=True)
+    parser.add_argument("--group", choices=(*GROUPS, "doctor-current", "resident-current"), required=True)
     parser.add_argument("--pin", choices=("old", "new"), required=True)
     parser.add_argument("--doctor-causes", action="store_true")
     parser.add_argument("--doctor-readiness", action="store_true")
@@ -822,14 +871,18 @@ def main():
     parser.add_argument("--anchor-fixture-fix", action="store_true")
     parser.add_argument("--doctor-continuation", action="store_true")
     parser.add_argument("--doctor-failure-phases", action="store_true")
+    parser.add_argument("--resident-receipt", action="store_true")
     args = parser.parse_args()
-    candidate = DOCTOR_FAILURE_CANDIDATE if args.doctor_failure_phases else CANDIDATE
+    current_diagnostic = args.doctor_failure_phases or args.resident_receipt
+    candidate = DOCTOR_FAILURE_CANDIDATE if current_diagnostic else CANDIDATE
     baseline = common["baseline_for_candidate"](candidate)
     assert args.doctor_failure_phases == (args.group == "doctor-current")
-    if args.doctor_failure_phases:
+    assert args.resident_receipt == (args.group == "resident-current")
+    assert not (args.doctor_failure_phases and args.resident_receipt)
+    if current_diagnostic:
         assert args.pin == "new"
         assert not any(value for name, value in vars(args).items()
-                       if name not in {"source", "out", "controller_sha", "group", "pin", "doctor_failure_phases"})
+                       if name not in {"source", "out", "controller_sha", "group", "pin", "doctor_failure_phases", "resident_receipt"})
     assert not args.invitation_outcome_mappers or ((args.group, args.pin) == ("small4", "new")
         and not any((args.doctor_causes, args.doctor_readiness, args.doctor_phases,
                      args.doctor_fixture_fix, args.doctor_fixture_phases, args.doctor_continuation,
@@ -898,7 +951,7 @@ def main():
               "pin": args.pin, "status": "INCONCLUSIVE", "settlementUncertain": False,
               "stateDisposition": "retained-for-hosted-runner-teardown", "preparation": [],
               "cacheProfile": "cold-private-caches; original CI cache restore status unknown"}
-    if args.doctor_causes or args.doctor_readiness or args.doctor_phases or args.doctor_fixture_fix or args.doctor_fixture_phases or args.invitation_retention or args.invitation_native_callback or args.invitation_snapshot or args.anchor_preparation or args.doctor_continuation or args.anchor_fixture_fix or args.invitation_outcome_mappers or args.doctor_failure_phases:
+    if args.doctor_causes or args.doctor_readiness or args.doctor_phases or args.doctor_fixture_fix or args.doctor_fixture_phases or args.invitation_retention or args.invitation_native_callback or args.invitation_snapshot or args.anchor_preparation or args.doctor_continuation or args.anchor_fixture_fix or args.invitation_outcome_mappers or current_diagnostic:
         report.update(diagnosticOnly=True, qualifiesRepin=False)
     candidate_bytes = None
     original_test_bytes = None
@@ -952,18 +1005,19 @@ def main():
         metadata = common["read_admission_receipt"](out / "metadata-admission.json", binding, pins)
         report.update(binding=binding, release=metadata["releases"][args.pin],
                       metadataSHA256=common["sha"](out / "metadata-admission.json"))
-        if args.doctor_failure_phases:
-            payload_path = Path(__file__).with_name("doctor-failure-ci-group.json")
-            assert common["sha"](payload_path) == DOCTOR_FAILURE_MANIFEST_SHA256
+        if current_diagnostic:
+            payload_path = Path(__file__).with_name("resident-receipt-ci-group.json" if args.resident_receipt else "doctor-failure-ci-group.json")
+            assert common["sha"](payload_path) == (RESIDENT_MANIFEST_SHA256 if args.resident_receipt else DOCTOR_FAILURE_MANIFEST_SHA256)
             manifest = json.loads(payload_path.read_text())
             assert manifest["candidate"] == candidate and manifest["baseline"] == baseline
             selected = {key: manifest[key] for key in ("group", "env", "nativeArgv")}
-            assert len(selected["group"]["includePatterns"]) == 56
-            assert DOCTOR_FILE in selected["group"]["includePatterns"]
+            assert len(selected["group"]["includePatterns"]) == (64 if args.resident_receipt else 56)
+            assert (RESIDENT_FILE if args.resident_receipt else DOCTOR_FILE) in selected["group"]["includePatterns"]
             payload = {"originalPayloadSHA256": manifest["originalInputSha256"]}
-            report["doctorFailurePhases"] = {
+            report["residentReceipt" if args.resident_receipt else "doctorFailurePhases"] = {
                 "sourceRun": manifest["runId"], "sourceJob": manifest["jobId"],
-                "scope": "exact 56-file Doctor group with failure-only phase capture; preceding groups and passing Node runs omitted",
+                "scope": ("exact 64-file group with failure-only returned-step classification; preceding groups and passing Node runs omitted" if args.resident_receipt else
+                          "exact 56-file Doctor group with failure-only phase capture; preceding groups and passing Node runs omitted"),
                 "limit": "cold caches differ from the original run; a pass leaves that failure unresolved",
             }
         else:
@@ -1147,8 +1201,13 @@ def main():
             report["fixtureProjection"]["state"] = "applied"
             assert common["sha"](fixture_path) == ANCHOR_FIX_SHA256
             assert git("diff", "HEAD", "--name-only") == ANCHOR_FIX_FILE
-        if args.doctor_failure_phases or args.doctor_readiness or args.doctor_phases or args.doctor_fixture_fix or args.doctor_fixture_phases:
-            if args.doctor_failure_phases:
+        if current_diagnostic or args.doctor_readiness or args.doctor_phases or args.doctor_fixture_fix or args.doctor_fixture_phases:
+            if args.resident_receipt:
+                doctor_files = RESIDENT_FILES
+                projection_key = "residentReceiptProjection"
+                patch_sha = RESIDENT_PATCH_SHA256
+                patch = Path(__file__).with_name("resident-receipt.patch").resolve()
+            elif args.doctor_failure_phases:
                 doctor_files = DOCTOR_FAILURE_FILES
                 projection_key = "doctorFailureProjection"
                 patch_sha = DOCTOR_FAILURE_PATCH_SHA256
@@ -1181,11 +1240,13 @@ def main():
             report[projection_key] = {"state": "prepared", "patchSHA256": patch_sha,
                 "files": {name: {"originalSHA256": hashes[0], "patchedSHA256": hashes[1]}
                           for name, hashes in doctor_files.items()},
-                "egress": ("one fixed-schema phase record per failed case below512B; whole native log32MiB" if args.doctor_failure_phases else
+                "egress": ("one fixed-schema receipt record per failed case below2048B; at most eight classified steps; whole native log32MiB" if args.resident_receipt else
+                           "one fixed-schema phase record per failed case below512B; whole native log32MiB" if args.doctor_failure_phases else
                            "native verbose output only; whole native log32MiB" if args.doctor_fixture_fix else
                            "64 combined test/fixture frames per case plus one overflow; fixed schema below512B; whole native log32MiB"
                            if args.doctor_phases or args.doctor_fixture_phases else "4 guard receipts plus one overflow per guard; 2048 fixed frames plus one limit marker per loaded diagnostic module instance; each frame below512B; whole native log32MiB"),
-                "scope": ("two test-only projections in the exact56-file Doctor group; synchronous phase assignments and onTestFailed output only; no success-path logging" if args.doctor_failure_phases else
+                "scope": ("classifies only existing returned steps after a failed outcome; no additional await, database read, or success-path logging; no write-failure attribution" if args.resident_receipt else
+                          "two test-only projections in the exact56-file Doctor group; synchronous phase assignments and onTestFailed output only; no success-path logging" if args.doctor_failure_phases else
                           "C plus existing phase writes and readonly fixture guard in original116-pattern group; no observation reporter; boundaries only, not cause or unchanged-C qualification" if args.doctor_fixture_phases else
                           "C plus one fixture IPC-observer ownership guard in original116-pattern group; no observation reporter or markers; not unchanged-C qualification" if args.doctor_fixture_fix else
                           "two test/fixture projections in original116-pattern group; stderr writes can perturb scheduling; observed operation boundaries only, no cause or qualification verdict"
@@ -1339,7 +1400,11 @@ def main():
         assert completion["invocations"] > 0 and 0 <= completion["failedInvocations"] <= completion["invocations"]
         assert (completion["failedInvocations"] == 0) == (outcome["exitCode"] == 0)
         report.update(nativeCompletion=completion, settlementUncertain=False)
-        if args.doctor_failure_phases:
+        if args.resident_receipt:
+            report["diagnosticNativeStatus"] = "PASS" if outcome["exitCode"] == 0 else "FAIL"
+            report["residentReceipt"].update(resident_receipt_observations(log, outcome["exitCode"]))
+            report["status"] = "DIAGNOSTIC"
+        elif args.doctor_failure_phases:
             report["diagnosticNativeStatus"] = "PASS" if outcome["exitCode"] == 0 else "FAIL"
             report["doctorFailurePhases"].update(doctor_failure_observations(log, outcome["exitCode"]))
             report["status"] = "DIAGNOSTIC"

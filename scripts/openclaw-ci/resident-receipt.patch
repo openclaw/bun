@@ -1,0 +1,27 @@
+--- a/src/cli/update-cli/update-command-service-resident-restart.test.ts
++++ b/src/cli/update-cli/update-command-service-resident-restart.test.ts
+@@ -196,6 +196,24 @@
+   (restart) =>
+     withServiceHome(async (home) => {
+       const result = await runPredecessorStop(home, restart, "installation replacement");
++      if (result.outcome !== true) {
++        const steps = result.steps.slice(0, 8).map((step) => {
++          const kind = step.step === "requested" ? "requested"
++            : step.step.startsWith("finalize:predecessor-stop:") ? "predecessor-stop"
++            : step.step.startsWith("warning:gateway-maintenance:") ? "maintenance-warning" : "other";
++          return {
++            kind,
++            completed: step.status === "completed",
++            inProgress: step.status === "in_progress",
++            expectedSuccessor: kind === "predecessor-stop" ? step.step.split(":")[4] === String(successorPid) : null,
++            detailPresent: Boolean(step.detail),
++          };
++        });
++        process.stderr.write("[resident-receipt] " + JSON.stringify({
++          v: 1, case: restart === "before the resident answers" ? "before" : "after",
++          truncated: result.steps.length > 8, steps,
++        }) + "\n");
++      }
+       expect(result.outcome).toBe(true);
+       expect(result.stop).toHaveBeenCalledOnce();
+       // The stop receipt names the process that was stopped, not the one that exited.
