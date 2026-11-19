@@ -59,11 +59,10 @@ export { original as default, original as "module.exports" };`,
   console.log("SAID", jest.requireActual("./value.mjs").label);
 });`,
   });
-  const { stdout, stderr, exitCode } = await run(
-    [bunExe(), "test", ...(aot ? ["--aot"] : [])],
-    String(directory),
-    { ...bunEnv, BUN_DEBUG_TEST_AOT_WORDS: "" },
-  );
+  const { stdout, stderr, exitCode } = await run([bunExe(), "test", ...(aot ? ["--aot"] : [])], String(directory), {
+    ...bunEnv,
+    BUN_DEBUG_TEST_AOT_WORDS: "",
+  });
   const all = stdout + "\n" + stderr;
   expect(all.split("\n").filter(line => line.startsWith("SAID "))).toEqual(["SAID mock", "SAID original"]);
   expect(all).toContain(" 1 pass");
