@@ -21,15 +21,17 @@ GROUPS = ("large10", "large5", "small4", "large2", "large42_storage", "large42_p
 DOCTOR_FILE = "src/commands/doctor-maintenance.continuation-scope.test.ts"
 DOCTOR_FAILURE_CANDIDATE = "bf665f2db8cbfed047cd084d9ee4ed333653549b"
 DOCTOR_FAILURE_MANIFEST_SHA256 = "d946224b1aa9ffd41f5fae82b68fb88fad9dc87d1f97d3226dcdfee7c3dc3968"
-DOCTOR_FAILURE_PATCH_SHA256 = 'e0b0212d6a0611aa829894f10f209aeea96f24c8651ef0fa0b28da9b3b72ede7'
+DOCTOR_FAILURE_PATCH_SHA256 = '6f1f97feb30799332dfe5eebed34416b1a7d8532d2368e812120af70b7bdb5b5'
 DOCTOR_FAILURE_FILES = {
     'src/commands/doctor-maintenance.admission-warm.test.ts': ('1f90b35919ad642611dc614bd05a3bca80834363c71783cdfdbec705d6277e5d', '693f9bca9d0e0ca3bea2a69de438e7b7cbeec31797c9777322ed47c8926c1381'),
-    'src/commands/doctor-maintenance.continuation-scope.test.ts': ('31af4b9968716bf8e4ccade9b184bd810bb4e3096df3488d4a6f66f3d1a34f2f', 'd1455f767660ca1fa3d6ab055e0c9eacd56a3bd4868cb148615fb05425121c31'),
+    'src/commands/doctor-maintenance.continuation-scope.test.ts': ('31af4b9968716bf8e4ccade9b184bd810bb4e3096df3488d4a6f66f3d1a34f2f', '9baa0cb94a988aafbb547fbd1ef743d7d551a2a3a5ec6642d231a689dbcac60c'),
     'src/commands/doctor-maintenance.admission.test-support.ts': ('80cc7c47700e9d5e77beb98fd31ec5a73eb8d31945b24ac0dc40f4ffe0266314', 'e297f64cdeec9305fcc645815e23b2a4b72778478da2cacefce34fdce45e73f2'),
-    'src/infra/gateway-owner-lease.ts': ('ba584a190558f6d04e5895c208058b101801d044767f02af8c80dfd3b34e72e5', '261917d99da8c7f9fbe53164e547eadf6bf7b234395ade64dfa186487f629110'),
+    'src/infra/gateway-owner-lease.ts': ('ba584a190558f6d04e5895c208058b101801d044767f02af8c80dfd3b34e72e5', 'e5c04c33014f61ae429f3fc2c68f3ef169f540903edbacf609d37b00a09c13e7'),
     'src/commands/doctor-maintenance.ts': ('3ba27a8a9a2caf614986efc33688604f6de75a82288da768776b7dd2fbc4c1ea', '8a1bbf7161ded9da215868cf4426767dc590e9faa6be724adc74da206a1fcb71'),
     'src/commands/doctor-agent-lease-refusal.ts': ('84c5025a533e9a709b38a6fc1b81c4b9cd052637f6b07a0848b1b29d2ebdc88e', 'bbc3190e3f87527707943f0b05f35f53f03fa36e2e1154b76a5e5e90a163db99'),
+    'src/infra/sqlite-snapshot-source.ts': ('0c024520fe1dcdd263e2600c978165fbafb6945af98bf0ee73fce083e822c81e', '56e06a51ecf218ec2f10a58bcebbed508d7437d07d091344a98d952c49810592'),
 }
+
 DOCTOR_CASES = tuple(f"keeps Doctor continuation with its repair scope (cached writer: {writer})"
                      for writer in ("true", "false"))
 BEAM_MANIFEST_SHA256 = "fe09cead770eb5e12a716d431a84a13404a66d0fe95f759356b66cb0f29a2e4c"
@@ -131,7 +133,7 @@ def doctor_failure_observations(log, exit_code):
             assert body.startswith("[doctor-failure-phase] "), "malformed failure frame"
             assert len(body.encode()) <= 2048, "oversized failure frame"
             row = json.loads(body.removeprefix("[doctor-failure-phase] "))
-            assert type(row["v"]) is int and row["v"] in (1, 2)
+            assert type(row["v"]) is int and row["v"] in (1, 2, 3)
             fields = {"v", "case", "phase", "cycle", "cleanup", "teardown", "restore"}
             if row["v"] == 1:
                 assert len(body.encode()) <= 512, "oversized original failure frame"
@@ -142,15 +144,21 @@ def doctor_failure_observations(log, exit_code):
             assert row["phase"] in phases and row["cleanup"] in cleanup
             assert row["teardown"] in teardown and row["restore"] in restore
             assert type(row["cycle"]) is int and -1 <= row["cycle"] <= (2 if row["case"] == "cached-true" else 1)
-            if row["v"] == 2:
+            if row["v"] >= 2:
                 assert row["leaseOverflow"] is False, "direct lease checks exceeded eight records"
                 assert isinstance(row["leaseChecks"], list) and len(row["leaseChecks"]) <= 8
                 for check in row["leaseChecks"]:
-                    assert set(check) == {"cycle", "schemaMaintenance", "phase", "cleanup"}
+                    assert set(check) == {"cycle", "schemaMaintenance", "phase", "cleanup"} | ({"snapshot"} if row["v"] == 3 else set())
                     assert type(check["cycle"]) is int and -1 <= check["cycle"] <= row["cycle"]
                     assert type(check["schemaMaintenance"]) is bool
                     assert check["phase"] in {"entry", "context", "transport", "snapshot-prepare", "query", "query-complete", "validate", "complete"}
                     assert check["cleanup"] in {"not-started", "read-join", "transport-close", "snapshot-cleanup", "complete"}
+                    if row["v"] == 3:
+                        snapshot = check["snapshot"]
+                        assert isinstance(snapshot, dict) and set(snapshot) == {"route", "phase", "cleanup"}
+                        assert snapshot["route"] in {"not-started", "reusable-lease", "active-reuse", "awaited-worker"}
+                        assert snapshot["phase"] in {"not-started", "reuse-check", "flight-wait", "producer-entered", "staging-create", "allocation-returned", "copy-wait", "copy-returned", "publishing", "producer-complete"}
+                        assert snapshot["cleanup"] in {"not-started", "directory-retire", "worker-close", "worker-closed", "complete"}
             frames[row["case"]] = row
             continue
         if body.startswith(("Test Files ", "Tests ")):

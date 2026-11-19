@@ -25,6 +25,30 @@ def frame(writer, **changes):
 
 
 class DoctorFailureEvidenceTests(unittest.TestCase):
+    def test_snapshot_routes_preserve_inner_work_and_cleanup_boundaries(self):
+        for route in ("not-started", "reusable-lease", "active-reuse", "awaited-worker"):
+            for phase in ("not-started", "reuse-check", "flight-wait", "producer-entered",
+                          "staging-create", "allocation-returned", "copy-wait",
+                          "copy-returned", "publishing", "producer-complete"):
+                snapshot = {"route": route, "phase": phase, "cleanup": "directory-retire"}
+                check = {"cycle": 0, "schemaMaintenance": True, "phase": "snapshot-prepare",
+                         "cleanup": "not-started", "snapshot": snapshot}
+                log = "\n".join((case(True, True), case(False),
+                    frame(True, v=3, leaseChecks=[check], leaseOverflow=False)))
+                self.assertEqual(observe(log, 1)["failureFrames"][0]["leaseChecks"][0]
+                                 ["snapshot"], snapshot)
+
+    def test_snapshot_records_reject_unknown_or_private_fields(self):
+        valid = {"route": "awaited-worker", "phase": "copy-wait", "cleanup": "not-started"}
+        check = {"cycle": 0, "schemaMaintenance": True, "phase": "snapshot-prepare",
+                 "cleanup": "not-started", "snapshot": valid}
+        invalid = [None, {}, {**valid, "route": "unknown"}, {**valid, "phase": "unknown"},
+                   {**valid, "cleanup": "unknown"}, {**valid, "path": "private"}]
+        for snapshot in invalid:
+            with self.subTest(snapshot=snapshot), self.assertRaises(AssertionError):
+                observe("\n".join((case(True, True), case(False), frame(True, v=3,
+                    leaseChecks=[{**check, "snapshot": snapshot}], leaseOverflow=False))), 1)
+
     def test_repair_admission_frames_identify_legacy_and_schema_waits(self):
         for phase in ("legacy-owner-check", "lease-schema-preflight"):
             with self.subTest(phase=phase):

@@ -11,7 +11,7 @@
  import * as snapshots from "../infra/sqlite-snapshot-source.js";
  import { UPDATE_RUN_ID_ENV } from "../infra/update-control-plane-sentinel.js";
  import { captureUpdateRecoveryBaseline } from "../infra/update-recovery-baseline-capture.js";
-@@ -43,14 +44,34 @@
+@@ -43,14 +44,35 @@
  }));
 
  const fixture = setupDoctorAdmissionFixture();
@@ -25,16 +25,17 @@
 +    let cycle = -1;
 +    let cleanup = "not-started";
 +    const teardown = { phase: "not-started", restore: "not-started" };
-+    const leaseChecks: Array<{ cycle: number; schemaMaintenance: boolean; phase: string; cleanup: string }> = [];
++    const leaseChecks: Array<{ cycle: number; schemaMaintenance: boolean; phase: string; cleanup: string; snapshot: { route: string; phase: string; cleanup: string } }> = [];
 +    let leaseOverflow = false;
 +    onTestFailed(() => {
 +      process.stderr.write("[doctor-failure-phase] " + JSON.stringify({
-+        v: 2, case: keepWriter ? "cached-true" : "cached-false", phase, cycle,
++        v: 3, case: keepWriter ? "cached-true" : "cached-false", phase, cycle,
 +        cleanup, teardown: teardown.phase, restore: teardown.restore, leaseChecks, leaseOverflow,
 +      }) + "\n");
 +    });
 +    vi.spyOn(ownerLease, "assertGatewayOwnerLeaseStopped").mockImplementation((env, owner, schemaMaintenance = false) => {
-+      const diagnostic = { cycle, schemaMaintenance, phase: "entry", cleanup: "not-started" };
++      const diagnostic = { cycle, schemaMaintenance, phase: "entry", cleanup: "not-started",
++        snapshot: { route: "not-started", phase: "not-started", cleanup: "not-started" } };
 +      if (leaseChecks.length < 8) leaseChecks.push(diagnostic);
 +      else leaseOverflow = true;
 +      return originalLeaseCheck(env, owner, schemaMaintenance, diagnostic);
@@ -47,7 +48,7 @@
      const run = createUpdateRun(
        { trigger: "cli", origin: { driver: readUpdateRunDriver() } },
        { env },
-@@ -94,17 +115,22 @@
+@@ -94,17 +116,22 @@
          return inspected;
        }
        params.assertCurrent?.();
@@ -71,7 +72,7 @@
          gateway = await acquireGatewayLock({
            env: process.env,
            role: "gateway",
-@@ -113,15 +139,18 @@
+@@ -113,15 +140,18 @@
            port: 1,
            allowInTests: true,
          });
@@ -90,7 +91,7 @@
                const { ref } = await captureUpdateRecoveryBaseline({
                  runId: "doctor-plugin-capture",
                  installRoot: install,
-@@ -148,15 +177,25 @@
+@@ -148,15 +178,25 @@
              }
              expect(family()).toEqual(original);
            },
@@ -170,7 +171,7 @@
    env: NodeJS.ProcessEnv,
    owner: StateDatabaseSchemaLease,
    schemaMaintenance = false,
-+  diagnostic?: { phase: string; cleanup: string },
++  diagnostic?: { phase: string; cleanup: string; snapshot: { route: string; phase: string; cleanup: string } },
  ): Promise<void> {
 +  if (diagnostic) diagnostic.phase = "entry";
    const pathname = resolveOpenClawStateSqlitePath(env);
@@ -206,7 +207,7 @@
      })().finally(() => {
        closing = undefined;
      }));
-@@ -153,6 +161,7 @@
+@@ -153,17 +161,20 @@
    try {
      authority.assertCurrent();
      if (schemaMaintenance && !isStatePostgres() && !isLiveStateRead()) {
@@ -214,7 +215,12 @@
        prepared = await prepareSqliteReadOnlyLocationAwaited(pathname, {
          signal,
          // Offline custody follows restored files; cached read admission can retain the old inode.
-@@ -164,6 +173,7 @@
+         expectedSourceIdentity: readDatabasePathIdentitySync(pathname),
+         reuse: true,
++        diagnostic: diagnostic?.snapshot,
+       });
+       authority.assertCurrent();
+       releaseSnapshot = retainSnapshotTempDirectory(
          prepared.cleanupRoot ?? path.dirname(prepared.location),
        );
      }
@@ -222,7 +228,7 @@
      read = transport.startRead(
        {
          context,
-@@ -175,6 +185,7 @@
+@@ -175,6 +186,7 @@
        authority,
      );
      outcome = await read;
@@ -230,7 +236,7 @@
      if ("error" in outcome) {
        errors.push(outcome.error);
      }
-@@ -189,6 +200,7 @@
+@@ -189,6 +201,7 @@
      cleanupErrors.push(error);
    }
    try {
@@ -238,7 +244,7 @@
      authority.assertCurrent();
      if (outcome && "value" in outcome) {
        const reply = outcome.value;
-@@ -211,6 +223,7 @@
+@@ -211,6 +224,7 @@
      [...errors, ...cleanupErrors],
      "Gateway owner lease inspection and cleanup failed",
    );
@@ -512,3 +518,204 @@
      }
    }
  });
+--- a/src/infra/sqlite-snapshot-source.ts
++++ b/src/infra/sqlite-snapshot-source.ts
+@@ -67,6 +67,8 @@
+   type DatabasePathIdentity,
+ } from "./sqlite-worker-identity.js";
+ import { isUpdateRehearsalPrivateDatabase } from "./update-rehearsal-paths.js";
++
++type SnapshotPreparationDiagnostic = { route: string; phase: string; cleanup: string };
+
+ type ArtifactReadScope = Exclude<
+   ReturnType<typeof artifactPreservingReads.getStore>,
+@@ -238,8 +240,10 @@
+     /** Read-only consumers may borrow an unchanged artifact-preserving image. */
+     reuse?: true;
+     expectedSourceIdentity?: DatabaseFileIdentity;
++    diagnostic?: SnapshotPreparationDiagnostic;
+   } = {},
+ ): Promise<PreparedSqliteReadOnlyLocation> {
++  const diagnostic = options.diagnostic;
+   const signal = resolveSqliteInspectionSignal(options.signal);
+   const preserveSourceArtifacts =
+     options.preserveSourceArtifacts === true || isArtifactPreservingStateRead("agent", pathname);
+@@ -254,23 +258,30 @@
+     // The worker path preserves cleanup failures ahead of cancellation.
+     signal?.throwIfAborted();
+     const reusable = options.reuse === true && preserveSourceArtifacts;
++    if (diagnostic) diagnostic.phase = "reuse-check";
+     const lease = reusable
+       ? leaseReusableSqliteSnapshot(pathname, options.expectedSourceIdentity)
+       : undefined;
+     if (lease) {
++      if (diagnostic) diagnostic.route = "reusable-lease";
++      if (diagnostic) diagnostic.phase = "producer-complete";
+       return lease;
+     }
+     const requireCleanup = options.requireCleanup ?? options.signal !== undefined;
++    if (diagnostic) diagnostic.phase = "flight-wait";
+     const flight = prepareSingleFlightSqliteSnapshot(
+       pathname,
+       `${preserveSourceArtifacts ? "worker-sync" : "worker-async"}:${requireCleanup ? "strict" : "best-effort"}:sync-token${options.expectedSourceIdentity ? `:${JSON.stringify(options.expectedSourceIdentity)}` : ""}`,
+       async (flightSignal, recordCleanupFailure) => {
++        if (diagnostic) diagnostic.phase = "producer-entered";
+         let stagingRoot: string | undefined;
+         const source = reusable ? captureReusableSqliteSource(pathname) : undefined;
+         try {
+           flightSignal.throwIfAborted();
++          if (diagnostic) diagnostic.phase = "staging-create";
+           stagingRoot = await createSqliteSnapshotStagingDirectory(undefined, false, flightSignal);
+           flightSignal.throwIfAborted();
++          if (diagnostic) diagnostic.phase = "copy-wait";
+           const location = await runSqliteReadOnlyWorker(pathname, {
+             mode: preserveSourceArtifacts ? "sync" : "async",
+             signal: flightSignal,
+@@ -278,14 +289,17 @@
+             expectedSourceIdentity: options.expectedSourceIdentity,
+           });
+           flightSignal.throwIfAborted();
++          if (diagnostic) diagnostic.phase = "copy-returned";
+           bindReusableSqliteSource(location, source);
+           const prepared = adoptPreparedLocation(location, stagingRoot, requireCleanup);
+           if (reusable) {
+             // A source too fresh to retain still gives its one reader a forkable family.
+             prepared.privateFamily = captureFamily(prepared);
+           }
++          if (diagnostic) diagnostic.phase = "producer-complete";
+           return prepared;
+         } catch (error) {
++          if (diagnostic) diagnostic.cleanup = "directory-retire";
+           if (stagingRoot && !(await removeTempDirectoryAsync(stagingRoot))) {
+             const failure = new SqliteSnapshotCleanupError(
+               `${coerceErrorMessage(error)}; SQLite snapshot cleanup failed: ${stagingRoot}`,
+@@ -294,6 +308,7 @@
+             recordCleanupFailure?.(failure);
+             throw failure;
+           }
++          if (diagnostic) diagnostic.cleanup = "complete";
+           if (error instanceof SqliteSnapshotCleanupError) {
+             recordCleanupFailure(error);
+             throw error;
+@@ -306,10 +321,13 @@
+       options.shared === false ? { scope: {} } : undefined,
+     );
+     return reusable
+-      ? flight.then((prepared) =>
++      ? flight.then((prepared) => {
++          if (diagnostic) diagnostic.phase = "publishing";
+           // Synchronous: a following sync copy's space admission must see these bytes gone.
+-          publishBoundReusableSqliteSnapshot(pathname, prepared, () => prepared.cleanup()),
+-        )
++          const result = publishBoundReusableSqliteSnapshot(pathname, prepared, () => prepared.cleanup());
++          if (diagnostic) diagnostic.phase = "producer-complete";
++          return result;
++        })
+       : flight;
+   } catch (error) {
+     signal?.throwIfAborted();
+@@ -403,8 +421,11 @@
+     allowLiveOwner?: boolean;
+     /** Read-only consumers may borrow an unchanged artifact-preserving image. */
+     reuse?: true;
++    diagnostic?: SnapshotPreparationDiagnostic;
+   },
+ ): Promise<AsyncPreparedSqliteReadOnlyLocation> {
++  const diagnostic = options.diagnostic;
++  if (diagnostic) diagnostic.phase = "reuse-check";
+   const signal = resolveSqliteInspectionSignal(options.signal);
+   const pathname = path.resolve(inputPathname);
+   const expectedSourceIdentity = readDatabaseFileIdentity(options.expectedSourceIdentity);
+@@ -413,9 +434,12 @@
+     ? leaseReusableSqliteSnapshot(pathname, expectedSourceIdentity)
+     : undefined;
+   if (lease) {
++    if (diagnostic) diagnostic.route = "reusable-lease";
++    if (diagnostic) diagnostic.phase = "producer-complete";
+     return lease;
+   }
+   if (options.reuse && !options.allowLiveOwner && isSqliteSnapshotReuseActive()) {
++    if (diagnostic) diagnostic.route = "active-reuse";
+     // A one-shot child leaves nothing behind, so this image can outlive its first reader.
+     return prepareSqliteReadOnlyLocation(pathname, {
+       preserveSourceArtifacts: true,
+@@ -423,12 +447,16 @@
+       requireCleanup: true,
+       reuse: true,
+       expectedSourceIdentity,
++      diagnostic,
+     });
+   }
++  if (diagnostic) diagnostic.route = "awaited-worker";
++  if (diagnostic) diagnostic.phase = "flight-wait";
+   return prepareSingleFlightSqliteSnapshot(
+     pathname,
+     `worker-${options.allowLiveOwner ? "metadata" : "sync"}:strict:awaited-token:${JSON.stringify(expectedSourceIdentity)}`,
+     async (flightSignal, recordCleanupFailure) => {
++      if (diagnostic) diagnostic.phase = "producer-entered";
+       const allowLiveOwner = options.allowLiveOwner;
+       return useAwaitedSnapshotWorker(
+         flightSignal,
+@@ -441,15 +469,18 @@
+             signal: flightSignal,
+           };
+           // Native backup completion must not share the staging owner's persistent IPC session.
++          if (diagnostic) diagnostic.phase = "copy-wait";
+           const location = allowLiveOwner
+             ? await runSqliteReadOnlyWorkerOnce(pathname, request)
+             : await worker.run(pathname, request);
++          if (diagnostic) diagnostic.phase = "copy-returned";
+           if (typeof location !== "string") {
+             throw new Error("SQLite snapshot preparation returned an invalid location");
+           }
+           flightSignal.throwIfAborted();
+           return adoptPreparedLocation(location, directory, true);
+         },
++        diagnostic,
+       );
+     },
+     signal,
+@@ -463,6 +494,7 @@
+     worker: ReturnType<typeof createScopedSqliteReadOnlyWorker>,
+     directory: string,
+   ) => Promise<T>,
++  diagnostic?: SnapshotPreparationDiagnostic,
+ ): Promise<T> {
+   signal.throwIfAborted();
+   const launch = captureSqliteReadOnlyWorkerLaunch();
+@@ -499,10 +531,12 @@
+     return retirement;
+   };
+   try {
++    if (diagnostic) diagnostic.phase = "staging-create";
+     const allocated = await worker.run(resolvePrivateSqliteSnapshotStagingRoot(), {
+       mode: "staging-create",
+       signal,
+     });
++    if (diagnostic) diagnostic.phase = "allocation-returned";
+     if (typeof allocated !== "string") {
+       throw new Error("SQLite snapshot allocation returned an invalid directory");
+     }
+@@ -511,17 +545,22 @@
+     signal.throwIfAborted();
+     const value = await inspect(worker, directory);
+     signal.throwIfAborted();
++    if (diagnostic) diagnostic.phase = "producer-complete";
+     return value;
+   } catch (error) {
+     try {
+       if (directory) {
++        if (diagnostic) diagnostic.cleanup = "directory-retire";
+         if (!(await removeTempDirectoryAsync(directory))) {
+           throw new SqliteSnapshotCleanupError(`SQLite snapshot cleanup failed: ${directory}`);
+         }
+       } else {
++        if (diagnostic) diagnostic.cleanup = "worker-close";
+         await worker.close();
++        if (diagnostic) diagnostic.cleanup = "worker-closed";
+         await worker.closed;
+       }
++      if (diagnostic) diagnostic.cleanup = "complete";
+     } catch (cleanupError) {
+       const failure = new AggregateError(
+         [error, cleanupError],
