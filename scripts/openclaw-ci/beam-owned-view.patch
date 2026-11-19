@@ -1,0 +1,86 @@
+--- a/extensions/beam/src/owned-view.ts
++++ b/extensions/beam/src/owned-view.ts
+@@ -11,6 +11,71 @@
+ import { BeamSourceOwnershipError } from "./store.js";
+
+ class BeamOwnedViewForbiddenError extends Error {}
++
++// Diagnostic projection only: no messages, arguments, identities or external paths.
++const beamDiagnosticRoot = process.cwd().replaceAll("\\", "/") + "/";
++let beamDiagnosticSequence = 0;
++function recordBeamOwnedFailure(error: unknown) {
++  try {
++    if (beamDiagnosticSequence > 8) return;
++    const sequence = ++beamDiagnosticSequence;
++    const runtime = process.versions.bun ? "bun" : "node";
++    if (sequence > 8) {
++      process.stderr.write("[beam-owned-failure] " + JSON.stringify({
++        v: 1, runtime, sequence, errors: [], truncated: true, overflow: true,
++      }) + "\n");
++      return;
++    }
++    const pending: Array<{ edge: string; value: unknown }> = [{ edge: "root", value: error }];
++    const seen = new Set<unknown>();
++    const errors: Array<{ edge: string; kind: string; frames: Array<{ path: string; line: number; column: number }> }> = [];
++    let truncated = false;
++    while (pending.length && errors.length < 4) {
++      const { edge, value } = pending.shift()!;
++      if (seen.has(value)) continue;
++      seen.add(value);
++      const object = value !== null && (typeof value === "object" || typeof value === "function")
++        ? value as { name?: unknown; stack?: unknown; cause?: unknown; error?: unknown; suppressed?: unknown; errors?: unknown }
++        : undefined;
++      const name = object?.name;
++      const kind = typeof name === "string" &&
++        ["Error", "TypeError", "RangeError", "ReferenceError", "SyntaxError", "AggregateError", "SuppressedError", "AbortError"].includes(name)
++        ? name : "other";
++      const stack = object?.stack;
++      const frames: Array<{ path: string; line: number; column: number }> = [];
++      if (typeof stack === "string") {
++        truncated ||= stack.length > 8192;
++        for (const line of stack.slice(0, 8192).split("\n").slice(1, 33)) {
++          const start = line.indexOf(beamDiagnosticRoot);
++          if (start < 0) continue;
++          const match = line.slice(start + beamDiagnosticRoot.length).match(/^((?:src|extensions|packages)\/[A-Za-z0-9_./-]+):(\d+):(\d+)/);
++          if (!match || match[1]!.includes("..") || match[1]!.length > 160) continue;
++          if (frames.length === 4) { truncated = true; break; }
++          frames.push({ path: match[1]!, line: Number(match[2]), column: Number(match[3]) });
++        }
++      }
++      errors.push({ edge, kind, frames });
++      if (object) {
++        if (Array.isArray(object.errors)) {
++          truncated ||= object.errors.length > 4;
++          for (const nested of object.errors.slice(0, 4)) {
++            if (!seen.has(nested)) pending.push({ edge: "aggregate", value: nested });
++          }
++        }
++        for (const child of ["cause", "error", "suppressed"] as const) {
++          const nested = object[child];
++          if (nested !== undefined && !seen.has(nested)) pending.push({ edge: child, value: nested });
++        }
++      }
++    }
++    truncated ||= pending.length > 0;
++    let frame = { v: 1, runtime, sequence, errors, truncated, overflow: false };
++    if (JSON.stringify(frame).length > 4096) frame = { ...frame, errors: [], truncated: true };
++    process.stderr.write("[beam-owned-failure] " + JSON.stringify(frame) + "\n");
++  } catch {
++    // Diagnostic failure cannot replace the original response.
++  }
++}
+
+ function limit(value: unknown): number | undefined {
+   if (value === undefined) {
+@@ -232,6 +297,11 @@
+       try {
+         assertCurrent();
+         if (!(error instanceof BeamOwnedViewForbiddenError)) {
++          if (operation === "continue" &&
++              !(error instanceof BeamSourceOwnershipError) &&
++              !(error instanceof BeamTranscriptCursorError)) {
++            recordBeamOwnedFailure(error);
++          }
+           failure =
+             error instanceof BeamSourceOwnershipError
+               ? { code: "INVALID_REQUEST", message: error.message }

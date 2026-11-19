@@ -39,6 +39,7 @@ on:
             linux-openclaw-doctor-continuation,
             linux-openclaw-doctor-failure-phases,
             linux-openclaw-resident-receipt,
+            linux-openclaw-beam-owned-view,
             linux-openclaw-profile-layout,
             linux-openclaw-profile-symbols,
             linux-openclaw-doctor-fixture-regression,
@@ -62,7 +63,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: aot-operation-origins-${{ github.ref }}${{ inputs.platform == 'linux-openclaw-bun-only' && '-bun-only' || inputs.platform == 'linux-openclaw-repin' && '-linux-repin' || inputs.platform == 'darwin-openclaw-app-host' && '-app-host' || inputs.platform == 'linux-openclaw-doctor-causes' && '-doctor-causes' || inputs.platform == 'linux-openclaw-doctor-readiness' && '-doctor-readiness' || inputs.platform == 'linux-openclaw-doctor-phases' && '-doctor-phases' || inputs.platform == 'linux-openclaw-doctor-fixture-fix' && '-doctor-fixture-fix' || inputs.platform == 'linux-openclaw-doctor-fixture-phases' && '-doctor-fixture-phases' || inputs.platform == 'linux-openclaw-invitation-reduction' && '-invitation-reduction' || inputs.platform == 'linux-openclaw-invitation-fulfillment' && '-invitation-fulfillment' || inputs.platform == 'linux-openclaw-invitation-operations' && '-invitation-operations' || inputs.platform == 'linux-openclaw-invitation-references' && '-invitation-references' || inputs.platform == 'linux-openclaw-invitation-owner-cut' && '-invitation-owner-cut' || inputs.platform == 'linux-openclaw-invitation-cache-code' && '-invitation-cache-code' || inputs.platform == 'linux-openclaw-invitation-retention' && '-invitation-retention' || inputs.platform == 'linux-openclaw-invitation-callback' && '-invitation-callback' || inputs.platform == 'linux-openclaw-invitation-outcome-mappers' && '-invitation-outcome-mappers' || inputs.platform == 'linux-openclaw-invitation-fulfillment-stack' && '-invitation-fulfillment-stack' || inputs.platform == 'linux-openclaw-invitation-gdb-stack' && '-invitation-gdb-stack' || inputs.platform == 'linux-openclaw-invitation-gdb-attach' && '-invitation-gdb-attach' || inputs.platform == 'linux-openclaw-invitation-stack' && '-invitation-stack' || inputs.platform == 'linux-openclaw-invitation-snapshot' && '-invitation-snapshot' || inputs.platform == 'linux-openclaw-anchor-fixture-fix' && '-anchor-fixture-fix' || inputs.platform == 'linux-openclaw-anchor-full-context' && '-anchor-full-context' || inputs.platform == 'linux-openclaw-anchor-preparation' && '-anchor-preparation' || inputs.platform == 'linux-openclaw-doctor-continuation' && '-doctor-continuation' || inputs.platform == 'linux-openclaw-profile-symbols' && '-profile-symbols' || inputs.platform == 'linux-openclaw-profile-layout' && '-profile-layout' || inputs.platform == 'linux-openclaw-doctor-fixture-regression' && '-doctor-fixture-regression' || inputs.platform == 'linux-openclaw-doctor-failure-phases' && '-doctor-failure-phases' || inputs.platform == 'linux-openclaw-resident-receipt' && '-resident-receipt' || '' }}
+  group: aot-operation-origins-${{ github.ref }}${{ inputs.platform == 'linux-openclaw-bun-only' && '-bun-only' || inputs.platform == 'linux-openclaw-repin' && '-linux-repin' || inputs.platform == 'darwin-openclaw-app-host' && '-app-host' || inputs.platform == 'linux-openclaw-doctor-causes' && '-doctor-causes' || inputs.platform == 'linux-openclaw-doctor-readiness' && '-doctor-readiness' || inputs.platform == 'linux-openclaw-doctor-phases' && '-doctor-phases' || inputs.platform == 'linux-openclaw-doctor-fixture-fix' && '-doctor-fixture-fix' || inputs.platform == 'linux-openclaw-doctor-fixture-phases' && '-doctor-fixture-phases' || inputs.platform == 'linux-openclaw-invitation-reduction' && '-invitation-reduction' || inputs.platform == 'linux-openclaw-invitation-fulfillment' && '-invitation-fulfillment' || inputs.platform == 'linux-openclaw-invitation-operations' && '-invitation-operations' || inputs.platform == 'linux-openclaw-invitation-references' && '-invitation-references' || inputs.platform == 'linux-openclaw-invitation-owner-cut' && '-invitation-owner-cut' || inputs.platform == 'linux-openclaw-invitation-cache-code' && '-invitation-cache-code' || inputs.platform == 'linux-openclaw-invitation-retention' && '-invitation-retention' || inputs.platform == 'linux-openclaw-invitation-callback' && '-invitation-callback' || inputs.platform == 'linux-openclaw-invitation-outcome-mappers' && '-invitation-outcome-mappers' || inputs.platform == 'linux-openclaw-invitation-fulfillment-stack' && '-invitation-fulfillment-stack' || inputs.platform == 'linux-openclaw-invitation-gdb-stack' && '-invitation-gdb-stack' || inputs.platform == 'linux-openclaw-invitation-gdb-attach' && '-invitation-gdb-attach' || inputs.platform == 'linux-openclaw-invitation-stack' && '-invitation-stack' || inputs.platform == 'linux-openclaw-invitation-snapshot' && '-invitation-snapshot' || inputs.platform == 'linux-openclaw-anchor-fixture-fix' && '-anchor-fixture-fix' || inputs.platform == 'linux-openclaw-anchor-full-context' && '-anchor-full-context' || inputs.platform == 'linux-openclaw-anchor-preparation' && '-anchor-preparation' || inputs.platform == 'linux-openclaw-doctor-continuation' && '-doctor-continuation' || inputs.platform == 'linux-openclaw-profile-symbols' && '-profile-symbols' || inputs.platform == 'linux-openclaw-profile-layout' && '-profile-layout' || inputs.platform == 'linux-openclaw-doctor-fixture-regression' && '-doctor-fixture-regression' || inputs.platform == 'linux-openclaw-doctor-failure-phases' && '-doctor-failure-phases' || inputs.platform == 'linux-openclaw-resident-receipt' && '-resident-receipt' || inputs.platform == 'linux-openclaw-beam-owned-view' && '-beam-owned-view' || '' }}
   cancel-in-progress: true
 
 jobs:
@@ -307,6 +308,69 @@ jobs:
         with:
           name: openclaw-doctor-failure-phases-${{ github.sha }}-attempt${{ github.run_attempt }}
           path: doctor-failure-phases-proof/
+          if-no-files-found: error
+          retention-days: 7
+
+  openclaw-beam-owned-view:
+    if: inputs.platform == 'linux-openclaw-beam-owned-view'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - name: Require the reviewed diagnostic candidate
+        env:
+          CANDIDATE_SHA: ${{ inputs.openclaw_candidate_sha }}
+        run: test "$CANDIDATE_SHA" = bf665f2db8cbfed047cd084d9ee4ed333653549b
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: openclaw/openclaw
+          ref: bf665f2db8cbfed047cd084d9ee4ed333653549b
+          path: source
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.22.1"
+      - name: Admit source and published Bun before candidate execution
+        env:
+          CONTROLLER_SHA: ${{ github.sha }}
+          BUN_RELEASE_METADATA_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/openclaw-ci/openclaw-repin-regression.py --phase metadata --source source \
+            --candidate-sha bf665f2db8cbfed047cd084d9ee4ed333653549b --controller-sha "$CONTROLLER_SHA" --out beam-owned-view-proof
+      - name: Replay the frozen Beam group with failure-only location capture
+        env:
+          CONTROLLER_SHA: ${{ github.sha }}
+        run: |
+          controller_home="$RUNNER_TEMP/beam-owned-view-controller-home"
+          controller_tmp="$RUNNER_TEMP/beam-owned-view-controller-tmp"
+          install -d -m 0700 "$controller_home" "$controller_tmp"
+          env -i PATH="$PATH" HOME="$controller_home" TMPDIR="$controller_tmp" LANG=C.UTF-8 CI=true \
+            python3 scripts/openclaw-ci/openclaw-linux-repin.py --source source --out beam-owned-view-proof \
+            --controller-sha "$CONTROLLER_SHA" --group beam-current --pin new --beam-owned-view
+      - name: Check bounded text-only diagnostic evidence
+        id: beam-owned-view-budget
+        if: always()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path("beam-owned-view-proof")
+          assert (root / "report.json").is_file(), "missing diagnostic receipt"
+          files = list(root.iterdir())
+          assert len(files) <= 20 and all(p.is_file() and not p.is_symlink() and p.suffix in {".json", ".log"} for p in files)
+          assert sum(p.stat().st_size for p in files) <= 64 * 1024 * 1024
+          for p in files:
+              p.read_text(encoding="utf-8")
+          PY
+      - name: Upload only text Beam failure-location evidence
+        if: ${{ always() && steps.beam-owned-view-budget.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: openclaw-beam-owned-view-${{ github.sha }}-attempt${{ github.run_attempt }}
+          path: beam-owned-view-proof/
           if-no-files-found: error
           retention-days: 7
 

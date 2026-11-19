@@ -31,6 +31,11 @@ DOCTOR_FAILURE_FILES = {
 }
 DOCTOR_CASES = tuple(f"keeps Doctor continuation with its repair scope (cached writer: {writer})"
                      for writer in ("true", "false"))
+BEAM_MANIFEST_SHA256 = "fe09cead770eb5e12a716d431a84a13404a66d0fe95f759356b66cb0f29a2e4c"
+BEAM_PATCH_SHA256 = "244fa7b084aaccf9bcaf0225f4dd905c6100a852bedbbb885a3e3cfbb0d56be7"
+BEAM_FILES = {
+    "extensions/beam/src/owned-view.ts": ("a13b96123b1d1630ec7480beb3ca3963a5f529ff51beb89494b43e5b5402771f", "c84f3258bd16a9647bbf9a1518d7234168120d9907baf12fb3f99720cef4c3d4"),
+}
 RESIDENT_FILE = "src/cli/update-cli/update-command-service-resident-restart.test.ts"
 RESIDENT_CASES = tuple("stops the Gateway that restarted itself for the replaced installation " + when
                        for when in ("before the resident answers", "after the resident answers"))
@@ -165,6 +170,72 @@ def doctor_failure_observations(log, exit_code):
             "reproduced": bool(failed), "otherGroupFailure": exit_code != 0 and not failed,
             "framingComplete": True}
 
+
+
+BEAM_FILE = "src/gateway/server.beam-owned-view.test.ts"
+BEAM_CASES = (
+    "HTTP Visitor publications are privately readable by their initial publisher through admitted RPC",
+    "preserves model admission and rolls back revoked owned Beam adoption",
+)
+
+
+def beam_owned_observations(log, exit_code):
+    prefixes = {
+        "[shard:agentic-control-plane-runtime-state]": "node",
+        "[shard:bun:agentic-control-plane-runtime-state]": "bun",
+    }
+    cases = {runtime: {} for runtime in ("node", "bun")}
+    frames, summaries = [], []
+    for raw in log.splitlines():
+        line = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", raw)
+        prefix = next((value for value in prefixes if line.startswith(value)), None)
+        if prefix is None:
+            continue
+        runtime = prefixes[prefix]
+        body = line[len(prefix):].strip()
+        if body.startswith("[beam-owned-failure]"):
+            assert body.startswith("[beam-owned-failure] ") and len(body.encode()) <= 4096
+            row = json.loads(body.removeprefix("[beam-owned-failure] "))
+            assert set(row) == {"v", "runtime", "sequence", "errors", "truncated", "overflow"}
+            assert type(row["v"]) is int and row["v"] == 1 and row["runtime"] == runtime
+            assert type(row["sequence"]) is int and 1 <= row["sequence"] <= 8
+            assert row["overflow"] is False and type(row["truncated"]) is bool
+            assert isinstance(row["errors"], list) and 1 <= len(row["errors"]) <= 4
+            for error in row["errors"]:
+                assert set(error) == {"edge", "kind", "frames"}
+                assert error["edge"] in {"root", "cause", "error", "suppressed", "aggregate"}
+                assert error["kind"] in {"Error", "TypeError", "RangeError", "ReferenceError", "SyntaxError", "AggregateError", "SuppressedError", "AbortError", "other"}
+                assert isinstance(error["frames"], list) and len(error["frames"]) <= 4
+                for frame in error["frames"]:
+                    assert set(frame) == {"path", "line", "column"}
+                    path = frame["path"]
+                    assert isinstance(path, str) and len(path) <= 160
+                    assert re.fullmatch(r"(?:src|extensions|packages)/[A-Za-z0-9_./-]+", path)
+                    assert all(part not in {"", ".", ".."} for part in path.split("/"))
+                    assert all(type(frame[key]) is int and 0 < frame[key] <= 10_000_000
+                               for key in ("line", "column"))
+            frames.append(row)
+            assert len(frames) <= 32, "too many Beam failure frames"
+            continue
+        if body.startswith(("Test Files ", "Tests ")):
+            summaries.append({"runtime": runtime, "summary": body})
+        match = re.fullmatch(r"([✓√×↓])\s+.+?\s+" + re.escape(BEAM_FILE) + r" > (.+?)\s+\d+(?:\.\d+)?ms", body)
+        if match and match[2] in BEAM_CASES:
+            assert match[2] not in cases[runtime] and match[1] != "↓"
+            cases[runtime][match[2]] = "failed" if match[1] == "×" else "passed"
+    assert all(set(value) == set(BEAM_CASES) for value in cases.values()), "missing Node/Bun Beam cases"
+    failed = {runtime: sum(status == "failed" for status in rows.values())
+              for runtime, rows in cases.items()}
+    assert all(sum(frame["runtime"] == runtime for frame in frames) >= count
+               for runtime, count in failed.items()), "missing Beam failure frames"
+    assert exit_code != 0 or not any(failed.values()), "exit contradicts failed Beam cases"
+    return {"cases": [{"runtime": runtime, "fullName": name, "status": cases[runtime][name]}
+                      for runtime in ("node", "bun") for name in BEAM_CASES],
+            "failureFrames": frames, "nativeSummaries": summaries,
+            "reproduced": any(failed.values()),
+            "otherGroupFailure": exit_code != 0 and not any(failed.values()),
+            "frameAttribution": "handler observations are not individually bound to test cases",
+            "framingComplete": True}
 
 def resident_receipt_observations(log, exit_code):
     prefix = "[shard:bun:core-runtime-infra-storage-state-hosted-25]"
@@ -863,7 +934,7 @@ def main():
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--controller-sha", required=True)
-    parser.add_argument("--group", choices=(*GROUPS, "doctor-current", "resident-current"), required=True)
+    parser.add_argument("--group", choices=(*GROUPS, "doctor-current", "resident-current", "beam-current"), required=True)
     parser.add_argument("--pin", choices=("old", "new"), required=True)
     parser.add_argument("--doctor-causes", action="store_true")
     parser.add_argument("--doctor-readiness", action="store_true")
@@ -889,17 +960,19 @@ def main():
     parser.add_argument("--doctor-continuation", action="store_true")
     parser.add_argument("--doctor-failure-phases", action="store_true")
     parser.add_argument("--resident-receipt", action="store_true")
+    parser.add_argument("--beam-owned-view", action="store_true")
     args = parser.parse_args()
-    current_diagnostic = args.doctor_failure_phases or args.resident_receipt
+    current_diagnostic = args.doctor_failure_phases or args.resident_receipt or args.beam_owned_view
     candidate = DOCTOR_FAILURE_CANDIDATE if current_diagnostic else CANDIDATE
     baseline = common["baseline_for_candidate"](candidate)
     assert args.doctor_failure_phases == (args.group == "doctor-current")
     assert args.resident_receipt == (args.group == "resident-current")
-    assert not (args.doctor_failure_phases and args.resident_receipt)
+    assert args.beam_owned_view == (args.group == "beam-current")
+    assert sum((args.doctor_failure_phases, args.resident_receipt, args.beam_owned_view)) <= 1
     if current_diagnostic:
         assert args.pin == "new"
         assert not any(value for name, value in vars(args).items()
-                       if name not in {"source", "out", "controller_sha", "group", "pin", "doctor_failure_phases", "resident_receipt"})
+                       if name not in {"source", "out", "controller_sha", "group", "pin", "doctor_failure_phases", "resident_receipt", "beam_owned_view"})
     assert not args.invitation_outcome_mappers or ((args.group, args.pin) == ("small4", "new")
         and not any((args.doctor_causes, args.doctor_readiness, args.doctor_phases,
                      args.doctor_fixture_fix, args.doctor_fixture_phases, args.doctor_continuation,
@@ -1023,18 +1096,33 @@ def main():
         report.update(binding=binding, release=metadata["releases"][args.pin],
                       metadataSHA256=common["sha"](out / "metadata-admission.json"))
         if current_diagnostic:
-            payload_path = Path(__file__).with_name("resident-receipt-ci-group.json" if args.resident_receipt else "doctor-failure-ci-group.json")
-            assert common["sha"](payload_path) == (RESIDENT_MANIFEST_SHA256 if args.resident_receipt else DOCTOR_FAILURE_MANIFEST_SHA256)
+            if args.beam_owned_view:
+                filename, digest, count, test_file, record = ("beam-owned-view-ci-group.json",
+                    BEAM_MANIFEST_SHA256, 80, BEAM_FILE, "beamOwnedView")
+                scope = "exact 80-file group, Node then Bun; failure-only handler locations, not bound to individual cases; other original groups omitted"
+            elif args.resident_receipt:
+                filename, digest, count, test_file, record = ("resident-receipt-ci-group.json",
+                    RESIDENT_MANIFEST_SHA256, 64, RESIDENT_FILE, "residentReceipt")
+                scope = "exact 64-file group with failure-only returned-step classification; preceding groups and passing Node runs omitted"
+            else:
+                filename, digest, count, test_file, record = ("doctor-failure-ci-group.json",
+                    DOCTOR_FAILURE_MANIFEST_SHA256, 56, DOCTOR_FILE, "doctorFailurePhases")
+                scope = "exact 56-file Doctor group with failure-only phase capture; preceding groups and passing Node runs omitted"
+            payload_path = Path(__file__).with_name(filename)
+            assert common["sha"](payload_path) == digest
             manifest = json.loads(payload_path.read_text())
             assert manifest["candidate"] == candidate and manifest["baseline"] == baseline
             selected = {key: manifest[key] for key in ("group", "env", "nativeArgv")}
-            assert len(selected["group"]["includePatterns"]) == (64 if args.resident_receipt else 56)
-            assert (RESIDENT_FILE if args.resident_receipt else DOCTOR_FILE) in selected["group"]["includePatterns"]
+            assert len(selected["group"]["includePatterns"]) == count
+            assert test_file in selected["group"]["includePatterns"]
+            if args.beam_owned_view:
+                assert selected["env"]["OPENCLAW_CI_TEST_RUNTIME_POLICY"] == "dual-all"
+                assert selected["env"]["OPENCLAW_CI_TEST_RUNTIME"] == ""
+                assert selected["group"]["env"]["OPENCLAW_VITEST_MAX_WORKERS"] == "2"
             payload = {"originalPayloadSHA256": manifest["originalInputSha256"]}
-            report["residentReceipt" if args.resident_receipt else "doctorFailurePhases"] = {
+            report[record] = {
                 "sourceRun": manifest["runId"], "sourceJob": manifest["jobId"],
-                "scope": ("exact 64-file group with failure-only returned-step classification; preceding groups and passing Node runs omitted" if args.resident_receipt else
-                          "exact 56-file Doctor group with failure-only phase capture; preceding groups and passing Node runs omitted"),
+                "scope": scope,
                 "limit": "cold caches differ from the original run; a pass leaves that failure unresolved",
             }
         else:
@@ -1219,7 +1307,12 @@ def main():
             assert common["sha"](fixture_path) == ANCHOR_FIX_SHA256
             assert git("diff", "HEAD", "--name-only") == ANCHOR_FIX_FILE
         if current_diagnostic or args.doctor_readiness or args.doctor_phases or args.doctor_fixture_fix or args.doctor_fixture_phases:
-            if args.resident_receipt:
+            if args.beam_owned_view:
+                doctor_files = BEAM_FILES
+                projection_key = "beamOwnedProjection"
+                patch_sha = BEAM_PATCH_SHA256
+                patch = Path(__file__).with_name("beam-owned-view.patch").resolve()
+            elif args.resident_receipt:
                 doctor_files = RESIDENT_FILES
                 projection_key = "residentReceiptProjection"
                 patch_sha = RESIDENT_PATCH_SHA256
@@ -1257,12 +1350,14 @@ def main():
             report[projection_key] = {"state": "prepared", "patchSHA256": patch_sha,
                 "files": {name: {"originalSHA256": hashes[0], "patchedSHA256": hashes[1]}
                           for name, hashes in doctor_files.items()},
-                "egress": ("one fixed-schema receipt record per failed case below2048B; at most eight classified steps; whole native log32MiB" if args.resident_receipt else
+                "egress": ("up to8 failure-only records per module plus overflow; below4096B each; fixed classes and repository locations only; whole native log32MiB" if args.beam_owned_view else
+                           "one fixed-schema receipt record per failed case below2048B; at most eight classified steps; whole native log32MiB" if args.resident_receipt else
                            "one fixed-schema phase record with up to8 direct lease checks per failed case below2048B; whole native log32MiB" if args.doctor_failure_phases else
                            "native verbose output only; whole native log32MiB" if args.doctor_fixture_fix else
                            "64 combined test/fixture frames per case plus one overflow; fixed schema below512B; whole native log32MiB"
                            if args.doctor_phases or args.doctor_fixture_phases else "4 guard receipts plus one overflow per guard; 2048 fixed frames plus one limit marker per loaded diagnostic module instance; each frame below512B; whole native log32MiB"),
-                "scope": ("classifies only existing returned steps after a failed outcome; no additional await, database read, or success-path logging; no write-failure attribution" if args.resident_receipt else
+                "scope": ("one Beam handler projection; no message, parameters, identity or external paths; no added await or success logging; handler records are not case-bound" if args.beam_owned_view else
+                          "classifies only existing returned steps after a failed outcome; no additional await, database read, or success-path logging; no write-failure attribution" if args.resident_receipt else
                           "test, fixture, direct lease reader and repair-admission projections in the exact56-file Doctor group; per-case synchronous phase assignments and onTestFailed output only; no added awaits or success-path logging" if args.doctor_failure_phases else
                           "C plus existing phase writes and readonly fixture guard in original116-pattern group; no observation reporter; boundaries only, not cause or unchanged-C qualification" if args.doctor_fixture_phases else
                           "C plus one fixture IPC-observer ownership guard in original116-pattern group; no observation reporter or markers; not unchanged-C qualification" if args.doctor_fixture_fix else
@@ -1417,7 +1512,12 @@ def main():
         assert completion["invocations"] > 0 and 0 <= completion["failedInvocations"] <= completion["invocations"]
         assert (completion["failedInvocations"] == 0) == (outcome["exitCode"] == 0)
         report.update(nativeCompletion=completion, settlementUncertain=False)
-        if args.resident_receipt:
+        if args.beam_owned_view:
+            assert completion["invocations"] == 2, "Beam diagnostic must run Node and Bun"
+            report["diagnosticNativeStatus"] = "PASS" if outcome["exitCode"] == 0 else "FAIL"
+            report["beamOwnedView"].update(beam_owned_observations(log, outcome["exitCode"]))
+            report["status"] = "DIAGNOSTIC"
+        elif args.resident_receipt:
             report["diagnosticNativeStatus"] = "PASS" if outcome["exitCode"] == 0 else "FAIL"
             report["residentReceipt"].update(resident_receipt_observations(log, outcome["exitCode"]))
             report["status"] = "DIAGNOSTIC"
