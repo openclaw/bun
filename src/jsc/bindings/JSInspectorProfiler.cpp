@@ -1,6 +1,7 @@
 #include "root.h"
 #include "helpers.h"
 #include "BunCPUProfiler.h"
+#include "JSDOMOperation.h"
 #include "NodeValidator.h"
 #include "ZigGlobalObject.h"
 #include <JavaScriptCore/DeferredWorkTimer.h>

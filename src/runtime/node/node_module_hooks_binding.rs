@@ -18,15 +18,12 @@ pub(crate) fn set_module_hooks_counts(
     let arguments = [arg0.to_js(), arg1.to_js()];
     let resolve_count = arguments[0].to_int32();
     let load_count = arguments[1].to_int32();
-    let vm = global.bun_vm_ptr();
-    // SAFETY: per-thread VM is live (host functions run on the JS thread).
-    unsafe {
-        (*vm).module_hooks_resolve_count = resolve_count.max(0) as u32;
-        (*vm).module_hooks_load_count = load_count.max(0) as u32;
-        if resolve_count > 0 || load_count > 0 {
-            (*vm).module_hooks_ever_registered = true;
-            (*vm).transpiler.resolver.runtime_mutable_directories = true;
-        }
+    let vm = global.bun_vm();
+    vm.module_hooks_resolve_count.set(resolve_count.max(0) as u32);
+    vm.module_hooks_load_count.set(load_count.max(0) as u32);
+    if resolve_count > 0 || load_count > 0 {
+        vm.module_hooks_ever_registered.set(true);
+        vm.transpiler.with_mut(|t| t.resolver.runtime_mutable_directories = true);
     }
     Ok(JSValue::UNDEFINED)
 }
@@ -58,10 +55,11 @@ pub(crate) fn get_default_conditions_for_hooks(
     let arguments = [arg0.to_js()];
     let is_esm = arguments[0].is_truthy();
     let vm = global.bun_vm();
+    let transpiler = vm.transpiler.get();
     let map = if is_esm {
-        &vm.transpiler.resolver.opts.conditions.import
+        &transpiler.resolver.opts.conditions.import
     } else {
-        &vm.transpiler.resolver.opts.conditions.require
+        &transpiler.resolver.opts.conditions.require
     };
     let defaults: &[&[u8]] = if is_esm {
         &[b"node", b"import", b"module-sync", b"node-addons"]
@@ -76,7 +74,7 @@ pub(crate) fn get_default_conditions_for_hooks(
     if map.contains(b"bun") {
         conditions.push(b"bun".as_slice().into());
     }
-    for condition in &vm.transpiler.options.transform_options.conditions {
+    for condition in &transpiler.options.transform_options.conditions {
         if is_esm || !conditions.contains(condition) {
             conditions.push(condition.clone());
         }
@@ -123,32 +121,29 @@ pub(crate) fn default_resolve_for_hooks(
         condition_map = Some(map);
     }
 
-    let vm = global.bun_vm_ptr();
-    // SAFETY: only this JS thread uses the VM; no field borrow spans resolution.
-    let previous_skip = unsafe { core::mem::replace(&mut (*vm).module_hooks_skip, true) };
+    let vm = global.bun_vm();
+    let previous_skip = vm.module_hooks_skip.replace(true);
     let previous_conditions = condition_map.map(|map| {
-        // SAFETY: the old map is restored before returning, including exceptions.
-        unsafe {
+        vm.transpiler.with_mut(|t| {
             let slot = if is_esm {
-                &mut (*vm).transpiler.resolver.opts.conditions.import
+                &mut t.resolver.opts.conditions.import
             } else {
-                &mut (*vm).transpiler.resolver.opts.conditions.require
+                &mut t.resolver.opts.conditions.require
             };
             core::mem::replace(slot, map)
-        }
+        })
     });
     scopeguard::defer! {
-        // SAFETY: the synchronous native resolution has returned on this JS thread.
-        unsafe {
-            (*vm).module_hooks_skip = previous_skip;
-            if let Some(map) = previous_conditions {
+        vm.module_hooks_skip.set(previous_skip);
+        if let Some(map) = previous_conditions {
+            vm.transpiler.with_mut(|t| {
                 let slot = if is_esm {
-                    &mut (*vm).transpiler.resolver.opts.conditions.import
+                    &mut t.resolver.opts.conditions.import
                 } else {
-                    &mut (*vm).transpiler.resolver.opts.conditions.require
+                    &mut t.resolver.opts.conditions.require
                 };
                 *slot = map;
-            }
+            });
         }
     }
 
@@ -161,11 +156,10 @@ pub(crate) fn default_resolve_for_hooks(
         };
         let parent = parent.to_utf8();
         let name = specifier.to_utf8();
-        let resolver_vm = global.bun_vm_ptr();
-        // SAFETY: this synchronous resolver call cannot execute JavaScript;
-        // its options are restored before returning to the hook chain.
-        let resolved = unsafe {
-            let resolver = &mut (*resolver_vm).transpiler.resolver;
+        // This synchronous resolver call cannot execute JavaScript; its options
+        // are restored before returning to the hook chain.
+        let resolved = vm.transpiler.with_mut(|t| {
+            let resolver = &mut t.resolver;
             let old_target = core::mem::replace(&mut resolver.opts.target, bun_ast::Target::Node);
             let old_fields = core::mem::replace(
                 &mut resolver.opts.main_fields,
@@ -189,7 +183,7 @@ pub(crate) fn default_resolve_for_hooks(
             result
                 .ok()
                 .and_then(|result| result.path_const().map(|path| path.text.to_vec()))
-        };
+        });
         if let Some(path) = resolved.filter(|path| bun_paths::is_absolute(path)) {
             return bun_url::file_url_from_string(&bun_core::String::clone_utf8(&path))
                 .into_js(global);
@@ -213,9 +207,8 @@ pub(crate) fn get_package_type_for_hooks(
     let arguments = [arg0.to_js()];
     let filename = arguments[0].to_utf8(global)?;
     let dir = bun_resolver::fs::PathName::init(filename.slice()).dir;
-    let vm = global.bun_vm_ptr();
-    // SAFETY: the resolver belongs to the live VM on its JS thread.
-    let package = unsafe { (*vm).transpiler.resolver.read_dir_info(dir) }
+    let vm = global.bun_vm();
+    let package = vm.transpiler.with_mut(|t| t.resolver.read_dir_info(dir))
         .ok()
         .flatten()
         .and_then(|info| info.package_json_for_node_scope());

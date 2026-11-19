@@ -1,5 +1,5 @@
 // What the compiler reads in place of src/js/internal/http1_server_fallback.ts, which `bun run` evaluates. The two do the same.
-// Written against that file with the SHA-256 cc567914ada44faf05fd3a1b6009af957a9078632a37d8df65bacc1e958b8ab3.
+// Written against that file with the SHA-256 800e44aad57f37f79f62075792af4c53b619921ec80089fba8fb648d77febf67.
 // When that file changes, bring the change here and write the new hash: test/internal/second-texts-of-modules.test.ts.
 
 // JS HTTP/1 server path over an arbitrary Duplex with a JS stand-in for NodeHTTPResponse.
@@ -417,7 +417,12 @@ function connectionListenerHTTP1(
     MAX_HEADER_PAIRS,
   } = require("node:_http_common");
   const { ConnResetException } = require("internal/shared");
-  const { kHandle: kHttp1ResponseHandle, kHeaderSource, http1ServerPipeline } = require("internal/http");
+  const {
+    kHandle: kHttp1ResponseHandle,
+    kHeaderSource,
+    kReqShouldKeepAlive,
+    http1ServerPipeline,
+  } = require("internal/http");
   // Populated by node:_http_server, which the require("node:http") above loads.
   const {
     queuePipelinedResponse,
@@ -513,6 +518,7 @@ function connectionListenerHTTP1(
     req!.url = url;
     req!.method = (typeof methodNum === "number" ? allMethods[methodNum] : methodNum)!;
     req!.upgrade = upgrade;
+    if (!shouldKeepAlive) req![kReqShouldKeepAlive] = false;
     // _addHeaderLine reads this off the request (Node's parserOnHeadersComplete copies it the same way).
     if (server.joinDuplicateHeaders) {
       req!.joinDuplicateHeaders = true;
@@ -520,7 +526,7 @@ function connectionListenerHTTP1(
     req!._addHeaderLines(rawHeaders, rawHeaders.length);
 
     // Node's parserOnIncoming: upgrade only sticks for CONNECT or when an 'upgrade' listener
-    // exists; otherwise fall through to normal dispatch. Returning 2 makes llhttp stop after
+    // exists; otherwise fall through to normal dispatch. Returning 2 makes the parser stop after
     // this message so tunnel bytes are never parsed as HTTP.
     if (upgrade) {
       req!.upgrade =
@@ -709,7 +715,7 @@ function connectionListenerHTTP1(
   function onHttp1SocketErrorListener(err: Error) {
     onHttp1SocketError(err, undefined);
   }
-  // Node's socketOnEnd: let llhttp detect a message cut short by EOF, then end
+  // Node's socketOnEnd: let the parser detect a message cut short by EOF, then end
   // the connection the way Node does (httpAllowHalfOpen / _last / idle end).
   function onHttp1SocketEnd() {
     const ret = parser.finish();

@@ -16,7 +16,7 @@
 // the expected site) and the process exited cleanly; on the ASAN build the
 // release paths are also checked for use-after-free and leaks. Builds with
 // debug assertions only (debug, ASAN): the gate does not exist in release.
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { bunEnv, bunExe, isAndroid, isASAN, isDebug, isLinux, isMacOS, isWindows, tempDir } from "harness";
 import { mkfifo } from "mkfifo";
 import fs from "node:fs";
@@ -139,6 +139,12 @@ const ROWS: Row[] = [
     ticket: "node_fs.rs",
     files: { "src/a/b/c.txt": "x", "src/d.txt": "y", "src/e/f.txt": "z" },
   },
+  {
+    // The input and the output are JS buffers.
+    name: "zlib.gzip",
+    worker: `require("node:zlib").gzip(Buffer.alloc(1 << 20, 3), () => {});`,
+    ticket: "node_zlib_binding.rs",
+  },
   // ── thread pool: Bun.$ builtins (interpreter state a JS wrapper owns) ────
   {
     // Subtasks created on the pool inherit the parent's ticket (new_child).
@@ -148,8 +154,8 @@ const ROWS: Row[] = [
     files: { "a/b/c/d.txt": "x", "a/e.txt": "y", "f/g/h.txt": "z" },
   },
   {
-    // The builtin's pool task hands the copy to an fs.cp task carrying a
-    // clone of its poster; that task's last subtask posts the completion.
+    // The builtin's pool task hands itself and its poster to an fs.cp task;
+    // that task's last subtask posts the completion.
     name: "$ cp -R",
     worker: `Bun.$\`cp -R \${workerData.dir}/src \${workerData.dir}/dst\`.quiet().catch(() => {});`,
     ticket: "cp.rs",
@@ -163,13 +169,7 @@ const ROWS: Row[] = [
     ticket: "rm.rs",
     files: { "gone/a/b/c.txt": "x", "gone/d.txt": "y", "gone/e/f/g.txt": "z" },
   },
-  // ── thread pool: storage inside a JS-owned object ────────────────────────
-  {
-    // The zlib stream's native part is the pool task; input/output are JS buffers.
-    name: "zlib.gzip",
-    worker: `require("node:zlib").gzip(Buffer.alloc(1 << 20, 3), () => {});`,
-    ticket: "node_zlib_binding.rs",
-  },
+  // ── thread pool: storage inside the VM ───────────────────────────────────
   {
     // The transpile job is a slot inside the VM itself.
     name: "import() of a TypeScript module",
@@ -271,11 +271,12 @@ describe.skipIf(!isDebug && !isASAN)("work that comes back after its worker bega
 });
 
 const cc = isWindows ? null : process.env.CC || Bun.which("cc") || Bun.which("gcc") || Bun.which("clang");
-test.concurrent.skipIf(!cc)(
-  "napi_queue_async_work from environment cleanup is drained before a worker exits",
-  async () => {
-    using dir = tempDir("worker-late-napi", {});
-    const addon = path.join(String(dir), "addon.node");
+describe.skipIf(!cc)("native addon", () => {
+  let dir: ReturnType<typeof tempDir>;
+  let addon: string;
+  beforeAll(async () => {
+    dir = tempDir("worker-late-napi", {});
+    addon = path.join(String(dir), "addon.node");
     await using build = Bun.spawn({
       cmd: [
         cc!,
@@ -283,6 +284,7 @@ test.concurrent.skipIf(!cc)(
         "-fPIC",
         ...(isMacOS ? ["-undefined", "dynamic_lookup"] : []),
         `-I${path.resolve(import.meta.dir, "../../../../src/runtime/napi")}`,
+        `-I${path.resolve(import.meta.dir, "../../../../src/jsc/bindings/libuv")}`,
         path.join(import.meta.dir, "worker-late-completion-napi-fixture.c"),
         "-o",
         addon,
@@ -291,15 +293,23 @@ test.concurrent.skipIf(!cc)(
       stderr: "inherit",
     });
     expect(await build.exited).toBe(0);
-    // The fork finalizes reachable externals during environment cleanup, before the VM closes.
+  });
+  afterAll(() => dir[Symbol.dispose]());
+
+  test.concurrent.each([
+    // Reachable externals finalize during environment cleanup while work is still accepted.
+    ["napi_queue_async_work", "queueFromFinalizer", "queued from finalizer: 0\n"],
+    ["uv_queue_work", "queueUvWorkFromFinalizer", "cancelled: 0\n"],
+  ])("%s from environment cleanup is drained before a worker exits", async (_, makeExternal, expected) => {
+    // Keep the external reachable until environment cleanup, before the VM closes.
     await using proc = Bun.spawn({
       cmd: [
         bunExe(),
         "-e",
         `new (require("node:worker_threads").Worker)(
-        "globalThis.keep = require(" + JSON.stringify(process.argv[1]) + ").queueFromFinalizer();",
-        { eval: true },
-      );`,
+          "globalThis.keep = require(" + JSON.stringify(process.argv[1]) + ").${makeExternal}();",
+          { eval: true },
+        );`,
         addon,
       ],
       env: bunEnv,
@@ -307,10 +317,9 @@ test.concurrent.skipIf(!cc)(
       stderr: "pipe",
     });
     const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
-    // Work is still accepted during native cleanup and must be drained before VM destruction.
-    expect({ stdout, stderr, exitCode }).toEqual({ stdout: "queued from finalizer: 0\n", stderr: "", exitCode: 0 });
-  },
-);
+    expect({ stdout, stderr, exitCode }).toEqual({ stdout: expected, stderr: "", exitCode: 0 });
+  });
+});
 
 // A `Bun.file()` / `Bun.stdin` read of a pipe or tty that has no data yet
 // parks on the io loop instead of blocking a pool thread, so terminate() can

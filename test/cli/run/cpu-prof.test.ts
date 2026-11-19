@@ -3,19 +3,14 @@ import { readdirSync, readFileSync } from "fs";
 import { bunEnv, bunExe, isWindows, tempDir } from "harness";
 import { join } from "path";
 
-// Metadata-only workloads below run for 100ms. On Windows JSC's
-// SamplingProfiler effectively ticks at the ~15.6ms default timer quantum, and
-// the entry module evaluates via an async fetch/link/evaluate chain — so
-// shorter windows (the previous 32/50ms) can elapse before a single sample is
-// taken, leaving "No samples collected." in --cpu-prof-md output.
-// Sample-dependent fixtures also need actual CPU time: descheduling can consume the wall-clock window.
+// Sample-dependent fixtures need both 500ms for the sampler thread and actual CPU time.
 const profilingWorkTimer = `
   function profilingWorkRemaining() {
     const wallStart = performance.now();
     const cpuStart = process.cpuUsage();
     return () => {
       const cpu = process.cpuUsage(cpuStart);
-      return performance.now() - wallStart < 100 || cpu.user + cpu.system < 100_000;
+      return performance.now() - wallStart < 500 || cpu.user + cpu.system < 100_000;
     };
   }
 `;
@@ -31,7 +26,7 @@ describe.concurrent("--cpu-prof", () => {
         }
 
         const now = performance.now();
-        while (now + 100 > performance.now()) {
+        while (now + 500 > performance.now()) {
             Bun.inspect(fibonacci(20));
         }
       `,
@@ -113,7 +108,7 @@ describe.concurrent("--cpu-prof", () => {
     using dir = tempDir("cpu-prof-name", {
       "test.js": `
         function loop() {
-          const end = Date.now() + 100;
+          const end = Date.now() + 500;
           while (Date.now() < end) {}
         }
         loop();
@@ -274,7 +269,7 @@ describe.concurrent("--cpu-prof", () => {
     using dir = tempDir("cpu-prof-dir", {
       "test.js": `
         function loop() {
-          const end = Date.now() + 100;
+          const end = Date.now() + 500;
           while (Date.now() < end) {}
         }
         loop();
@@ -573,7 +568,7 @@ describe.concurrent("--cpu-prof", () => {
       }
       test("${name}", () => {
         const now = performance.now();
-        while (now + 100 > performance.now()) Bun.inspect(${name}(20));
+        while (now + 500 > performance.now()) Bun.inspect(${name}(20));
       });`;
     const files = { "a.test.js": file("inFileA"), "b.test.js": file("inFileB") };
     const functionNames = (dir: string, profile: string) =>

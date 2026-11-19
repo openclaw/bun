@@ -1,13 +1,11 @@
-use core::ptr::NonNull;
-
 use bun_io::file_poll::Flags;
-use bun_io::{EventLoopCtx, FilePoll, Owner};
-use bun_sys::{Fd, FdExt, File, Result};
+use bun_io::{EventLoopCtx, OwnedFilePoll, Owner};
+use bun_sys::{File, Result};
 
 pub(crate) struct DarwinFileWatch {
-    // The poll is deregistered before the owned descriptor is closed.
-    fd: Fd,
-    poll: NonNull<FilePoll>,
+    // Field drop order deregisters the poll before closing the descriptor.
+    poll: OwnedFilePoll<true>,
+    _file: File,
     pub(crate) filename: Box<[u8]>,
 }
 
@@ -18,27 +16,14 @@ impl DarwinFileWatch {
         file: File,
         filename: Box<[u8]>,
     ) -> Result<Self> {
-        let poll = FilePoll::init(ctx, file.fd(), Default::default(), owner);
-        let watch = Self {
-            fd: file.into_raw(),
-            // SAFETY: FilePoll::init returns a live hive slot or aborts on OOM.
-            poll: unsafe { NonNull::new_unchecked(poll) },
-            filename,
-        };
+        // SAFETY: the heap-stable watcher owns this poll until it is dropped.
+        let poll = unsafe { OwnedFilePoll::new(ctx, file.fd(), owner) };
+        let watch = Self { poll, _file: file, filename };
         watch.arm(ctx)?;
         Ok(watch)
     }
 
-    pub(crate) fn arm(&self, ctx: EventLoopCtx) -> Result<()> {
-        // SAFETY: owned live poll and owning event loop; registration cannot enter JS or re-enter this owner.
-        unsafe { (*self.poll.as_ptr()).register(&*ctx.loop_(), Flags::Vnode, true) }
-    }
-}
-
-impl Drop for DarwinFileWatch {
-    fn drop(&mut self) {
-        // SAFETY: the slot belongs to this watch; deinit defers reuse of registered slots.
-        unsafe { (*self.poll.as_ptr()).deinit() };
-        self.fd.close();
+    pub(crate) fn arm(&self, _ctx: EventLoopCtx) -> Result<()> {
+        self.poll.register(Flags::Vnode, true)
     }
 }

@@ -1,4 +1,4 @@
-declare const self: EventTarget & {
+declare const self: Omit<typeof globalThis, "onmessage"> & {
   onmessage: ((this: typeof globalThis, ev: MessageEvent) => unknown) | null;
   onmessageerror: ((this: typeof globalThis, ev: MessageEvent) => unknown) | null;
 };
@@ -26,7 +26,7 @@ const {
 
 // node's name handling (lib/internal/worker.js): truthy → validateString + trim,
 // falsy (undefined/null/0/"") → default "". So {name: 0|null} is silently ignored.
-function normalizeWorkerName(rawName: string | null | undefined) {
+function normalizeWorkerName(rawName) {
   if (rawName) {
     validateString(rawName, "options.name");
     return rawName.trim();
@@ -162,14 +162,7 @@ function injectFakeEmitter(Class: { prototype: EventTarget }) {
   // (It has no @get/@set private names, so the $-intrinsics don't apply to it.)
   // Keyed by a module-local symbol, not a WeakMap — WeakMap has neither defence.
   const kListenerRegistry = Symbol("listenerRegistry");
-  type Registry = Map<string, Map<Listener, EventListener>>;
-  type Target = EventTarget & {
-    [kListenerRegistry]?: Registry;
-    [kMaxListeners]?: number;
-    /** Throws: the native function requires a listener. */
-    removeEventListener(type: string): void;
-  };
-  function registryFor(target: Target, create: boolean): Registry | undefined {
+  function registryFor(target, create) {
     let map = target[kListenerRegistry];
     if (!map && create) target[kListenerRegistry] = map = new SafeMap();
     return map;
@@ -218,13 +211,7 @@ function injectFakeEmitter(Class: { prototype: EventTarget }) {
   // EventTarget dedupes on (type, callback), so in node the FIRST registration of
   // a listener wins outright -- including its once-ness -- and later adds of the
   // same function are no-ops. Keying wrappers per listener reproduces that.
-  function register(
-    target: Target,
-    event: string,
-    listener: Listener,
-    wrapper: EventListener,
-    options: AddEventListenerOptions | undefined,
-  ) {
+  function register(target, event, listener, wrapper, options) {
     const map = registryFor(target, true)!;
     let byListener = map.get(event);
     if (!byListener) map.set(event, (byListener = new SafeMap()));
@@ -234,12 +221,12 @@ function injectFakeEmitter(Class: { prototype: EventTarget }) {
     return true;
   }
 
-  function on(this: Target, event: string, listener: Listener) {
+  function on(event, listener) {
     register(this, event, listener, functionForEventType(event, listener), undefined);
     return this;
   }
 
-  function off(this: Target, event: string, listener?: Listener) {
+  function off(event, listener) {
     if (listener) {
       const byListener = registryFor(this, false)?.get(event);
       const wrapper = byListener?.get(listener) ?? listener;
@@ -251,7 +238,7 @@ function injectFakeEmitter(Class: { prototype: EventTarget }) {
     return this;
   }
 
-  function once(this: Target, event: string, listener: Listener) {
+  function once(event, listener) {
     const wrapper = functionForEventType(event, listener);
     const target = this;
     // EventTarget drops a {once:true} listener natively, without telling the
@@ -278,11 +265,11 @@ function injectFakeEmitter(Class: { prototype: EventTarget }) {
   }
 
   const kMaxListeners = Symbol("kMaxListeners");
-  function setMaxListeners(this: Target, n: number) {
+  function setMaxListeners(n) {
     this[kMaxListeners] = n;
     return this;
   }
-  function getMaxListeners(this: Target) {
+  function getMaxListeners() {
     return this[kMaxListeners] ?? 10;
   }
   const getEventListenersForEventTarget = $newCppFunction(
@@ -298,17 +285,17 @@ function injectFakeEmitter(Class: { prototype: EventTarget }) {
       return registryFor(this, false)?.get(type)?.size ?? 0;
     }
   }
-  function eventNames(this: Target) {
+  function eventNames() {
     const map = registryFor(this, false);
     if (!map) return [];
     const out: string[] = [];
     for (const [k, v] of map) if (v.size > 0) out.push(k);
     return out;
   }
-  function removeAllListeners(this: Target, type?: string) {
+  function removeAllListeners(type) {
     const map = registryFor(this, false);
     if (!map) return this;
-    const removeType = (t: string) => {
+    const removeType = t => {
       const byListener = map.get(t);
       if (byListener) {
         for (const w of byListener.values()) this.removeEventListener(t, w);
@@ -320,7 +307,7 @@ function injectFakeEmitter(Class: { prototype: EventTarget }) {
       // entry it just yielded — so no snapshot copy is needed here.
       for (const t of map.keys()) removeType(t);
     } else {
-      removeType(type!);
+      removeType(type);
     }
     return this;
   }
@@ -358,7 +345,7 @@ const MessagePort = _MessagePort;
 const closedMessagePorts = new WeakSet();
 const nativeMessagePortClose = MessagePort.prototype.close;
 Object.defineProperty(MessagePort.prototype, "close", {
-  value: function close(this: MessagePort, cb?: () => void) {
+  value: function close(cb) {
     closedMessagePorts.add(this);
     // node's mechanism is literally `this.once('close', cb)`, so cb interleaves
     // with other close listeners in registration order. The close event fires at
@@ -376,7 +363,7 @@ Object.defineProperty(MessagePort.prototype, "close", {
 // still active). Symbol-keyed so it does not appear in getOwnPropertyNames.
 const kInspectCustom = Symbol.for("nodejs.util.inspect.custom");
 Object.defineProperty(MessagePort.prototype, kInspectCustom, {
-  value: function (this: MessagePort, _depth: unknown, _options: unknown) {
+  value: function (_depth, _options) {
     return `MessagePort [EventTarget] { active: ${_isMessagePortActive(this)}, refed: ${this.hasRef()} }`;
   },
   writable: true,
@@ -408,7 +395,7 @@ function setupWorkerStdio(stdio) {
   // node routes console.log through process.stdout/stderr; Bun's global console
   // writes the fd directly, so rebind it to the port-backed streams.
   const { Console } = require("node:console");
-  (globalThis as unknown as { console: unknown }).console = new Console(stdoutStream, stderrStream);
+  (globalThis as { console: unknown }).console = new Console(stdoutStream, stderrStream);
 }
 
 // Emulation of Node's JSTransferable protocol (kTransfer/kTransferList/kDeserialize) for
@@ -786,48 +773,41 @@ function applyWorkerProcessOverrides() {
     Object.defineProperty(proc, "debugPort", { value: 9229, writable: true, configurable: true, enumerable: true });
   } catch {}
   // process.umask(setMask) is unsupported in workers; the getter still works.
-  const realUmask: (this: unknown, mask?: number) => number = proc.umask;
+  const realUmask = proc.umask;
   function umask(mask?: unknown) {
     if (mask === undefined) return realUmask.$call(proc);
     throw $ERR_WORKER_UNSUPPORTED_OPERATION("Setting process.umask() is not supported in workers");
   }
   proc.umask = umask;
   // Disabled, throwing stubs (each carries `.disabled === true`, like node).
-  // Each name is spelled where it is defined: the ahead-of-time compiler locks the members of `process` that no code is seen to write, and under a name out of a list it sees a write to all of them.
-  function disabled(name: string) {
+  const disabled = ["abort", "chdir"];
+  if (process.platform !== "win32") {
+    disabled.push("setuid", "seteuid", "setgid", "setegid", "setgroups", "initgroups");
+  }
+  // node only disables send/disconnect/channel/connected in workers that inherited an
+  // IPC channel (NODE_CHANNEL_FD); otherwise they stay absent so `if (process.send)` works.
+  const hasIpc = !!process.env.NODE_CHANNEL_FD;
+  if (hasIpc) {
+    disabled.push("send", "disconnect");
+  }
+  for (const name of disabled) {
     const stub: any = function () {
       throw $ERR_WORKER_UNSUPPORTED_OPERATION(`process.${name}() is not supported in workers`);
     };
     stub.disabled = true;
-    return { configurable: true, writable: true, enumerable: true, value: stub };
+    Object.defineProperty(proc, name, { configurable: true, writable: true, enumerable: true, value: stub });
   }
-  Object.defineProperty(proc, "abort", disabled("abort"));
-  Object.defineProperty(proc, "chdir", disabled("chdir"));
-  if (process.platform !== "win32") {
-    Object.defineProperty(proc, "setuid", disabled("setuid"));
-    Object.defineProperty(proc, "seteuid", disabled("seteuid"));
-    Object.defineProperty(proc, "setgid", disabled("setgid"));
-    Object.defineProperty(proc, "setegid", disabled("setegid"));
-    Object.defineProperty(proc, "setgroups", disabled("setgroups"));
-    Object.defineProperty(proc, "initgroups", disabled("initgroups"));
-  }
-  // node only disables send/disconnect/channel/connected in workers that inherited an
-  // IPC channel (NODE_CHANNEL_FD); otherwise they stay absent so `if (process.send)` works.
-  if (process.env.NODE_CHANNEL_FD) {
-    Object.defineProperty(proc, "send", disabled("send"));
-    Object.defineProperty(proc, "disconnect", disabled("disconnect"));
-    // IPC accessors throw on access only in a worker that inherited an IPC channel.
-    function throwing(name: string) {
-      return {
+  // IPC accessors throw on access only in a worker that inherited an IPC channel.
+  if (hasIpc) {
+    for (const name of ["channel", "connected"]) {
+      Object.defineProperty(proc, name, {
         configurable: true,
         enumerable: false,
         get() {
           throw $ERR_WORKER_UNSUPPORTED_OPERATION(`process.${name} is not supported in workers`);
         },
-      };
+      });
     }
-    Object.defineProperty(proc, "channel", throwing("channel"));
-    Object.defineProperty(proc, "connected", throwing("connected"));
   }
 }
 
@@ -1425,7 +1405,7 @@ class Worker extends EventEmitter {
   }
 }
 
-let _HeapSnapshotStream: (new (json: string) => $Node.Readable) | undefined;
+let _HeapSnapshotStream;
 function makeHeapSnapshotStream(json: string) {
   _HeapSnapshotStream ??= class HeapSnapshotStream extends require("internal/streams/readable") {
     #json: string | undefined;
