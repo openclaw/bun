@@ -1,36 +1,45 @@
 --- a/src/commands/doctor-maintenance.continuation-scope.test.ts
 +++ b/src/commands/doctor-maintenance.continuation-scope.test.ts
-@@ -1,6 +1,6 @@
+@@ -1,8 +1,9 @@
  import fs from "node:fs";
  import path from "node:path";
 -import { expect, it, vi } from "vitest";
 +import { expect, it, onTestFailed, vi } from "vitest";
  import type { maybeStopManagedServiceBeforeMutableUpdate } from "../cli/update-cli/update-command-service-maintenance.js";
  import { acquireGatewayLock } from "../infra/gateway-lock.js";
++import * as ownerLease from "../infra/gateway-owner-lease.js";
  import * as snapshots from "../infra/sqlite-snapshot-source.js";
-@@ -42,15 +42,28 @@
-   inspectStaleDoctorGateway: async () => undefined,
+ import { UPDATE_RUN_ID_ENV } from "../infra/update-control-plane-sentinel.js";
+ import { captureUpdateRecoveryBaseline } from "../infra/update-recovery-baseline-capture.js";
+@@ -43,14 +44,34 @@
  }));
  
--const fixture = setupDoctorAdmissionFixture();
-+const teardown = { phase: "not-started", restore: "not-started" };
-+const fixture = setupDoctorAdmissionFixture(teardown);
+ const fixture = setupDoctorAdmissionFixture();
++const originalLeaseCheck = ownerLease.assertGatewayOwnerLeaseStopped;
  
  it.each([true, false])(
    "keeps Doctor continuation with its repair scope (cached writer: %s)",
    async (keepWriter) => {
+-    const { env, database, family, assertIsolation } = fixture(true);
 +    let phase = "fixture";
 +    let cycle = -1;
 +    let cleanup = "not-started";
-+    teardown.phase = "not-started";
-+    teardown.restore = "not-started";
++    const teardown = { phase: "not-started", restore: "not-started" };
++    const leaseChecks: Array<{ cycle: number; schemaMaintenance: boolean; phase: string; cleanup: string }> = [];
++    let leaseOverflow = false;
 +    onTestFailed(() => {
 +      process.stderr.write("[doctor-failure-phase] " + JSON.stringify({
-+        v: 1, case: keepWriter ? "cached-true" : "cached-false", phase, cycle,
-+        cleanup, teardown: teardown.phase, restore: teardown.restore,
++        v: 2, case: keepWriter ? "cached-true" : "cached-false", phase, cycle,
++        cleanup, teardown: teardown.phase, restore: teardown.restore, leaseChecks, leaseOverflow,
 +      }) + "\n");
 +    });
-     const { env, database, family, assertIsolation } = fixture(true);
++    vi.spyOn(ownerLease, "assertGatewayOwnerLeaseStopped").mockImplementation((env, owner, schemaMaintenance = false) => {
++      const diagnostic = { cycle, schemaMaintenance, phase: "entry", cleanup: "not-started" };
++      if (leaseChecks.length < 8) leaseChecks.push(diagnostic);
++      else leaseOverflow = true;
++      return originalLeaseCheck(env, owner, schemaMaintenance, diagnostic);
++    });
++    const { env, database, family, assertIsolation } = fixture(true, teardown);
      vi.stubEnv("OPENCLAW_STATE_DIR", env.OPENCLAW_STATE_DIR);
      vi.stubEnv("OPENCLAW_SERVICE_REPAIR_POLICY", undefined);
      vi.stubEnv("OPENCLAW_UPDATE_IN_PROGRESS", undefined);
@@ -38,7 +47,7 @@
      const run = createUpdateRun(
        { trigger: "cli", origin: { driver: readUpdateRunDriver() } },
        { env },
-@@ -94,17 +107,22 @@
+@@ -94,17 +115,22 @@
          return inspected;
        }
        params.assertCurrent?.();
@@ -62,7 +71,7 @@
          gateway = await acquireGatewayLock({
            env: process.env,
            role: "gateway",
-@@ -113,15 +131,18 @@
+@@ -113,15 +139,18 @@
            port: 1,
            allowInTests: true,
          });
@@ -81,7 +90,7 @@
                const { ref } = await captureUpdateRecoveryBaseline({
                  runId: "doctor-plugin-capture",
                  installRoot: install,
-@@ -149,14 +170,22 @@
+@@ -149,14 +178,22 @@
              expect(family()).toEqual(original);
            },
          });
@@ -106,15 +115,15 @@
  );
 --- a/src/commands/doctor-maintenance.admission.test-support.ts
 +++ b/src/commands/doctor-maintenance.admission.test-support.ts
-@@ -48,17 +48,24 @@
-   });
+@@ -49,19 +49,29 @@
  }
  
--export function setupDoctorAdmissionFixture() {
-+export function setupDoctorAdmissionFixture(diagnostic?: { phase: string; restore: string }) {
+ export function setupDoctorAdmissionFixture() {
++  let currentDiagnostic: { phase: string; restore: string } | undefined;
    const directories = createTempDirTracker();
    useDoctorMaintenanceRuntimeDirectory(() => directories.make("doctor-admission-custody-"));
    afterEach(async () => {
++    const diagnostic = currentDiagnostic;
      try {
 +      if (diagnostic) diagnostic.phase = "close-async";
        await closeOpenClawStateDatabaseAsync();
@@ -131,4 +140,89 @@
 +      if (diagnostic) diagnostic.restore = "complete";
      }
    });
-   return (keepWriter = false) => {
+-  return (keepWriter = false) => {
++  return (keepWriter = false, diagnostic?: { phase: string; restore: string }) => {
++    currentDiagnostic = diagnostic;
+     const root = fs.realpathSync(directories.make("doctor-admission-source-"));
+     const binding = createManagedHandoffTestBinding(root);
+     // Children that never resolve shared scratch still fence every real native
+--- a/src/infra/gateway-owner-lease.ts
++++ b/src/infra/gateway-owner-lease.ts
+@@ -96,14 +96,18 @@
+   env: NodeJS.ProcessEnv,
+   owner: StateDatabaseSchemaLease,
+   schemaMaintenance = false,
++  diagnostic?: { phase: string; cleanup: string },
+ ): Promise<void> {
++  if (diagnostic) diagnostic.phase = "entry";
+   const pathname = resolveOpenClawStateSqlitePath(env);
+   owner.assertDatabaseAccess(pathname);
+   if (existingPathOrUndefined(pathname) === undefined) {
+     return;
+   }
++  if (diagnostic) diagnostic.phase = "context";
+   const context = captureOpenClawStateReadWorkerContext({ env, path: pathname });
+   const source = captureOpenClawStateReadSource();
++  if (diagnostic) diagnostic.phase = "transport";
+   const transport = source.createTransport(
+     { type: "gatewayOwnerLease.read", schemaMaintenance },
+     undefined,
+@@ -131,16 +135,20 @@
+   const close = (): Promise<void> =>
+     (closing ??= (async () => {
+       // Read failure belongs to the caller; cleanup must still retire its native task.
++      if (diagnostic) diagnostic.cleanup = "read-join";
+       await read?.catch(() => undefined);
++      if (diagnostic) diagnostic.cleanup = "transport-close";
+       await transport.startClose();
+       releaseSnapshot?.();
+       releaseSnapshot = undefined;
+       if (prepared) {
+         // Disposable cleanup warnings and retries belong to the snapshot owner.
++        if (diagnostic) diagnostic.cleanup = "snapshot-cleanup";
+         await prepared.cleanupAsync();
+         prepared = undefined;
+       }
+       releaseSource();
++      if (diagnostic) diagnostic.cleanup = "complete";
+     })().finally(() => {
+       closing = undefined;
+     }));
+@@ -153,6 +161,7 @@
+   try {
+     authority.assertCurrent();
+     if (schemaMaintenance && !isStatePostgres() && !isLiveStateRead()) {
++      if (diagnostic) diagnostic.phase = "snapshot-prepare";
+       prepared = await prepareSqliteReadOnlyLocationAwaited(pathname, {
+         signal,
+         // Offline custody follows restored files; cached read admission can retain the old inode.
+@@ -164,6 +173,7 @@
+         prepared.cleanupRoot ?? path.dirname(prepared.location),
+       );
+     }
++    if (diagnostic) diagnostic.phase = "query";
+     read = transport.startRead(
+       {
+         context,
+@@ -175,6 +185,7 @@
+       authority,
+     );
+     outcome = await read;
++    if (diagnostic) diagnostic.phase = "query-complete";
+     if ("error" in outcome) {
+       errors.push(outcome.error);
+     }
+@@ -189,6 +200,7 @@
+     cleanupErrors.push(error);
+   }
+   try {
++    if (diagnostic) diagnostic.phase = "validate";
+     authority.assertCurrent();
+     if (outcome && "value" in outcome) {
+       const reply = outcome.value;
+@@ -211,4 +223,5 @@
+     [...errors, ...cleanupErrors],
+     "Gateway owner lease inspection and cleanup failed",
+   );
++  if (diagnostic) diagnostic.phase = "complete";
+ }

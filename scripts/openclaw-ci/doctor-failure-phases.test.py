@@ -25,6 +25,36 @@ def frame(writer, **changes):
 
 
 class DoctorFailureEvidenceTests(unittest.TestCase):
+    def test_direct_lease_records_keep_completed_and_pending_cycles(self):
+        checks = [
+            {"cycle": 0, "schemaMaintenance": True, "phase": "complete", "cleanup": "complete"},
+            {"cycle": 1, "schemaMaintenance": True, "phase": "query-complete", "cleanup": "transport-close"},
+        ]
+        log = "\n".join((case(True, True), case(False),
+                         frame(True, v=2, phase="maintenance-acquire", cycle=1,
+                               leaseChecks=checks, leaseOverflow=False)))
+        self.assertEqual(observe(log, 1)["failureFrames"][0]["leaseChecks"], checks)
+
+    def test_direct_lease_frames_reject_overflow_and_unbounded_or_unknown_fields(self):
+        check = {"cycle": 1, "schemaMaintenance": True, "phase": "snapshot-prepare", "cleanup": "not-started"}
+        base = {"v": 2, "leaseChecks": [check], "leaseOverflow": False}
+        invalid = [
+            {**base, "leaseOverflow": True},
+            {**base, "leaseChecks": [check] * 9},
+            {**base, "leaseChecks": [{**check, "cycle": True}]},
+            {**base, "leaseChecks": [{**check, "schemaMaintenance": 1}]},
+            {**base, "leaseChecks": [{**check, "phase": "unknown"}]},
+            {**base, "leaseChecks": [{**check, "cleanup": "unknown"}]},
+            {**base, "leaseChecks": [{**check, "privatePath": "private"}]},
+        ]
+        for row in invalid:
+            with self.subTest(row=row), self.assertRaises(AssertionError):
+                observe("\n".join((case(True, True), case(False), frame(True, **row))), 1)
+        # No entry is meaningful when failure precedes the direct lease reader.
+        empty = frame(True, v=2, leaseChecks=[], leaseOverflow=False)
+        self.assertEqual(observe("\n".join((case(True, True), case(False), empty)), 1)
+                         ["failureFrames"][0]["leaseChecks"], [])
+
     def test_bar_delimited_projects_and_source_excerpts_from_failed_native_run(self):
         log = "\n".join((
             case(True, True).replace("  commands  ", " |commands| "),

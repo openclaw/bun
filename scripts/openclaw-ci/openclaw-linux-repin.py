@@ -21,10 +21,11 @@ GROUPS = ("large10", "large5", "small4", "large2", "large42_storage", "large42_p
 DOCTOR_FILE = "src/commands/doctor-maintenance.continuation-scope.test.ts"
 DOCTOR_FAILURE_CANDIDATE = "bf665f2db8cbfed047cd084d9ee4ed333653549b"
 DOCTOR_FAILURE_MANIFEST_SHA256 = "d946224b1aa9ffd41f5fae82b68fb88fad9dc87d1f97d3226dcdfee7c3dc3968"
-DOCTOR_FAILURE_PATCH_SHA256 = "60c42dad98a380daa973f3087d07bea4f6a9b8cfc3052796e056f0d620c0cb54"
+DOCTOR_FAILURE_PATCH_SHA256 = "e81c67df1a6b6f91b7f96c11e8caa2c31be80aa47f983a98c0bd293071b40f88"
 DOCTOR_FAILURE_FILES = {
-    DOCTOR_FILE: ("31af4b9968716bf8e4ccade9b184bd810bb4e3096df3488d4a6f66f3d1a34f2f", "60c61dec235724ff2ea1823a9c8a90ded80f94c1d3c656c251e57322b91161c3"),
-    "src/commands/doctor-maintenance.admission.test-support.ts": ("80cc7c47700e9d5e77beb98fd31ec5a73eb8d31945b24ac0dc40f4ffe0266314", "7e96380fcc243e8483dc090bd9a691bed36f055b1a566b9be304376391224c53"),
+    'src/commands/doctor-maintenance.continuation-scope.test.ts': ('31af4b9968716bf8e4ccade9b184bd810bb4e3096df3488d4a6f66f3d1a34f2f', '65c725f89eb04d5996a6544a033e5cb4086ecf3939d750a9cd8f3af65939c611'),
+    'src/commands/doctor-maintenance.admission.test-support.ts': ('80cc7c47700e9d5e77beb98fd31ec5a73eb8d31945b24ac0dc40f4ffe0266314', 'f86c09de96ccf2b878afbf7504dcae13453ac0b3aa6bb382e37d82dd71d21806'),
+    'src/infra/gateway-owner-lease.ts': ('ba584a190558f6d04e5895c208058b101801d044767f02af8c80dfd3b34e72e5', '261917d99da8c7f9fbe53164e547eadf6bf7b234395ade64dfa186487f629110'),
 }
 DOCTOR_CASES = tuple(f"keeps Doctor continuation with its repair scope (cached writer: {writer})"
                      for writer in ("true", "false"))
@@ -120,14 +121,28 @@ def doctor_failure_observations(log, exit_code):
         body = line[len(prefix):].strip()
         if body.startswith("[doctor-failure-phase]"):
             assert body.startswith("[doctor-failure-phase] "), "malformed failure frame"
-            assert len(body.encode()) <= 512, "oversized failure frame"
+            assert len(body.encode()) <= 2048, "oversized failure frame"
             row = json.loads(body.removeprefix("[doctor-failure-phase] "))
-            assert set(row) == {"v", "case", "phase", "cycle", "cleanup", "teardown", "restore"}
-            assert type(row["v"]) is int and row["v"] == 1
+            assert type(row["v"]) is int and row["v"] in (1, 2)
+            fields = {"v", "case", "phase", "cycle", "cleanup", "teardown", "restore"}
+            if row["v"] == 1:
+                assert len(body.encode()) <= 512, "oversized original failure frame"
+            else:
+                fields |= {"leaseChecks", "leaseOverflow"}
+            assert set(row) == fields
             assert row["case"] in {"cached-true", "cached-false"} and row["case"] not in frames
             assert row["phase"] in phases and row["cleanup"] in cleanup
             assert row["teardown"] in teardown and row["restore"] in restore
             assert type(row["cycle"]) is int and -1 <= row["cycle"] <= (2 if row["case"] == "cached-true" else 1)
+            if row["v"] == 2:
+                assert row["leaseOverflow"] is False, "direct lease checks exceeded eight records"
+                assert isinstance(row["leaseChecks"], list) and len(row["leaseChecks"]) <= 8
+                for check in row["leaseChecks"]:
+                    assert set(check) == {"cycle", "schemaMaintenance", "phase", "cleanup"}
+                    assert type(check["cycle"]) is int and -1 <= check["cycle"] <= row["cycle"]
+                    assert type(check["schemaMaintenance"]) is bool
+                    assert check["phase"] in {"entry", "context", "transport", "snapshot-prepare", "query", "query-complete", "validate", "complete"}
+                    assert check["cleanup"] in {"not-started", "read-join", "transport-close", "snapshot-cleanup", "complete"}
             frames[row["case"]] = row
             continue
         if body.startswith(("Test Files ", "Tests ")):
@@ -1241,12 +1256,12 @@ def main():
                 "files": {name: {"originalSHA256": hashes[0], "patchedSHA256": hashes[1]}
                           for name, hashes in doctor_files.items()},
                 "egress": ("one fixed-schema receipt record per failed case below2048B; at most eight classified steps; whole native log32MiB" if args.resident_receipt else
-                           "one fixed-schema phase record per failed case below512B; whole native log32MiB" if args.doctor_failure_phases else
+                           "one fixed-schema phase record with up to8 direct lease checks per failed case below2048B; whole native log32MiB" if args.doctor_failure_phases else
                            "native verbose output only; whole native log32MiB" if args.doctor_fixture_fix else
                            "64 combined test/fixture frames per case plus one overflow; fixed schema below512B; whole native log32MiB"
                            if args.doctor_phases or args.doctor_fixture_phases else "4 guard receipts plus one overflow per guard; 2048 fixed frames plus one limit marker per loaded diagnostic module instance; each frame below512B; whole native log32MiB"),
                 "scope": ("classifies only existing returned steps after a failed outcome; no additional await, database read, or success-path logging; no write-failure attribution" if args.resident_receipt else
-                          "two test-only projections in the exact56-file Doctor group; synchronous phase assignments and onTestFailed output only; no success-path logging" if args.doctor_failure_phases else
+                          "test, fixture and direct lease reader projections in the exact56-file Doctor group; per-case synchronous phase assignments and onTestFailed output only; no added awaits or success-path logging" if args.doctor_failure_phases else
                           "C plus existing phase writes and readonly fixture guard in original116-pattern group; no observation reporter; boundaries only, not cause or unchanged-C qualification" if args.doctor_fixture_phases else
                           "C plus one fixture IPC-observer ownership guard in original116-pattern group; no observation reporter or markers; not unchanged-C qualification" if args.doctor_fixture_fix else
                           "two test/fixture projections in original116-pattern group; stderr writes can perturb scheduling; observed operation boundaries only, no cause or qualification verdict"
