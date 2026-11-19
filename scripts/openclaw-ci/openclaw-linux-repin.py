@@ -118,7 +118,7 @@ def doctor_failure_observations(log, exit_code):
         if not line.startswith(prefix):
             continue
         body = line[len(prefix):].strip()
-        if "[doctor-failure-phase]" in body:
+        if body.startswith("[doctor-failure-phase]"):
             assert body.startswith("[doctor-failure-phase] "), "malformed failure frame"
             assert len(body.encode()) <= 512, "oversized failure frame"
             row = json.loads(body.removeprefix("[doctor-failure-phase] "))
@@ -132,7 +132,7 @@ def doctor_failure_observations(log, exit_code):
             continue
         if body.startswith(("Test Files ", "Tests ")):
             summaries.append(body)
-        match = re.fullmatch(r"([✓√×↓])\s+commands\s+" + re.escape(DOCTOR_FILE) + r" > (.+?)\s+\d+(?:\.\d+)?ms", body)
+        match = re.fullmatch(r"([✓√×↓])\s+(?:commands|\|commands\|)\s+" + re.escape(DOCTOR_FILE) + r" > (.+?)\s+\d+(?:\.\d+)?ms", body)
         if not match:
             continue
         assert match[2] in DOCTOR_CASES and match[2] not in cases, "unexpected or duplicate Doctor case"
@@ -157,7 +157,7 @@ def resident_receipt_observations(log, exit_code):
         if not line.startswith(prefix):
             continue
         body = line[len(prefix):].strip()
-        if "[resident-receipt]" in body:
+        if body.startswith("[resident-receipt]"):
             assert body.startswith("[resident-receipt] ") and len(body.encode()) <= 2048
             row = json.loads(body.removeprefix("[resident-receipt] "))
             assert set(row) == {"v", "case", "truncated", "steps"}
@@ -176,7 +176,7 @@ def resident_receipt_observations(log, exit_code):
             continue
         if body.startswith(("Test Files ", "Tests ")):
             summaries.append(body)
-        match = re.fullmatch(r"([✓√×↓])\s+infra\s+" + re.escape(RESIDENT_FILE) + r" > (.+?)\s+\d+(?:\.\d+)?ms", body)
+        match = re.fullmatch(r"([✓√×↓])\s+(?:infra|\|infra\|)\s+" + re.escape(RESIDENT_FILE) + r" > (.+?)\s+\d+(?:\.\d+)?ms", body)
         if not match or match[2] not in RESIDENT_CASES:
             continue
         assert match[2] not in cases and match[1] != "↓", "duplicate or skipped resident case"

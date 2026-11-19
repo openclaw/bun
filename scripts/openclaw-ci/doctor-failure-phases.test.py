@@ -25,6 +25,19 @@ def frame(writer, **changes):
 
 
 class DoctorFailureEvidenceTests(unittest.TestCase):
+    def test_bar_delimited_projects_and_source_excerpts_from_failed_native_run(self):
+        log = "\n".join((
+            case(True, True).replace("  commands  ", " |commands| "),
+            case(False, True).replace("  commands  ", " |commands| "),
+            frame(True, phase="maintenance-acquire", cycle=1),
+            frame(False, phase="fixture", cycle=-1),
+            prefix + '     57| process.stderr.write("[doctor-failure-phase] " + JSON.stringify({',
+        ))
+        report = observe(log, 1)
+        self.assertEqual([row["status"] for row in report["cases"]], ["failed", "failed"])
+        self.assertEqual([row["phase"] for row in report["failureFrames"]],
+                         ["maintenance-acquire", "fixture"])
+
     def test_current_native_output_keeps_failed_boundary_and_ignores_node_and_tail(self):
         log = "\n".join((case(True, True), case(False), frame(True),
                          case(True).replace("shard:bun:", "shard:"),

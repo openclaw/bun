@@ -25,6 +25,15 @@ def frame(before, **changes):
 
 
 class ResidentReceiptEvidenceTests(unittest.TestCase):
+    def test_bar_delimited_projects_and_source_excerpt_are_not_receipt_frames(self):
+        log = "\n".join((
+            case(True, True).replace(" infra ", " |infra| "),
+            case(False).replace(" infra ", " |infra| "),
+            frame(True),
+            prefix + '     213| process.stderr.write("[resident-receipt] " + JSON.stringify({',
+        ))
+        self.assertTrue(observe(log, 1)["reproduced"])
+
     def test_failed_outcome_preserves_classification_without_inferring_write_failure(self):
         report = observe("\n".join((case(True, True), case(False), frame(True))), 1)
         self.assertTrue(report["reproduced"])
