@@ -105,7 +105,9 @@ test("prebuilt archives verify bytes before extraction and key cache hits by dig
     expect(corruptError).toContain(`expected ${digest}`);
     expect(corruptExit).not.toBe(0);
     expect(existsSync(corruptDest)).toBe(false);
-    expect(readdirSync(String(dir)).filter(name => name.startsWith("corrupt-install.") && name.endsWith(".partial"))).toEqual([]);
+    expect(
+      readdirSync(String(dir)).filter(name => name.startsWith("corrupt-install.") && name.endsWith(".partial")),
+    ).toEqual([]);
   } finally {
     server.stop(true);
   }
@@ -353,7 +355,12 @@ describe("prebuilt tarballs", () => {
       unpacked: () =>
         existsSync(cache) && readdirSync(cache).length > 0 ? readFileSync(join(dest, "from"), "utf8") : undefined,
       prefetchFile: (path: string, bytes: Uint8Array, pinned = false) =>
-        write(pinned ? prefetchPathForSha256(sha256Of(bytes), prefetch)! : prefetchPathForUrl(server.url.href + path, prefetch)!, bytes),
+        write(
+          pinned
+            ? prefetchPathForSha256(sha256Of(bytes), prefetch)!
+            : prefetchPathForUrl(server.url.href + path, prefetch)!,
+          bytes,
+        ),
       prefetchTree(identity: string, from: string, checkedAgainst?: Uint8Array) {
         if (checkedAgainst) write(join(prefetch, "extracted", "webkit", ".sha256"), sha256Of(checkedAgainst) + "\n");
         write(join(prefetch, "extracted", "webkit", ".identity"), identity + "\n");

@@ -232,7 +232,9 @@ pub(super) mod ffi {
             arg: *mut c_void,
         );
         // The process-wide default root store.
-        pub(crate) safe fn us_get_shared_default_ca_store(use_system_ca: i32) -> Option<OwnedX509Store>;
+        pub(crate) safe fn us_get_shared_default_ca_store(
+            use_system_ca: i32,
+        ) -> Option<OwnedX509Store>;
         pub(crate) safe fn us_ssl_ctx_has_user_ca(ctx: &SSL_CTX) -> c_int;
         // Returns X509_V_OK (0) when `issuer` could have issued `subject`.
         pub(crate) safe fn X509_check_issued(issuer: &X509, subject: &X509) -> c_int;
@@ -1045,8 +1047,7 @@ fn peer_certificate_to_js(
         if cert_chain.is_null() {
             return Ok(JSValue::UNDEFINED);
         }
-        let cert =
-            ffi::sk_X509_value(boringssl::struct_stack_st_X509::opaque_ref(cert_chain), 0);
+        let cert = ffi::sk_X509_value(boringssl::struct_stack_st_X509::opaque_ref(cert_chain), 0);
         if cert.is_null() {
             return Ok(JSValue::UNDEFINED);
         }
@@ -1107,9 +1108,8 @@ fn peer_certificate_to_js(
     // certificate is reached, the way Node's getPeerCertificate(true) walks
     // X509_STORE_CTX_get1_issuer to surface the root that completed
     // verification even though the peer never sent it.
-    let ssl_ctx = boringssl::SSL_CTX::opaque_ref(ffi::SSL_get_SSL_CTX(
-        boringssl::SSL::opaque_ref(ssl_ptr),
-    ));
+    let ssl_ctx =
+        boringssl::SSL_CTX::opaque_ref(ffi::SSL_get_SSL_CTX(boringssl::SSL::opaque_ref(ssl_ptr)));
     let ctx_store = boringssl::SSL_CTX_get_cert_store(ssl_ctx);
     // Without `ca`, Node looks in the bundled roots.
     let shared_store = if ctx_store.is_none() || ffi::us_ssl_ctx_has_user_ca(ssl_ctx) == 0 {

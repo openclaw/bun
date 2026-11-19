@@ -190,9 +190,7 @@ impl TimeoutObject {
                 _ => return timer.cancel(),
             };
             // Keep the wrapper alive after cancellation releases the armed root.
-            let _root = unsafe {
-                WrapperGuard::from_parts(this, core::ptr::NonNull::from(timer))
-            };
+            let _root = unsafe { WrapperGuard::from_parts(this, core::ptr::NonNull::from(timer)) };
             timer.cancel_from_js(vm, this);
         }
     }

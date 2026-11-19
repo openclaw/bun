@@ -2180,9 +2180,8 @@ pub(crate) fn get_loop_elu(cx: &mut JsScope<'_>) -> JsResult<JSValue> {
     let vm = bun_jsc::virtual_machine::VirtualMachine::get();
     // Idle before elapsed, so the derived active (elapsed - idle) never dips negative.
     // SAFETY: the VM owns this live loop on the calling thread.
-    let raw_idle_ns = unsafe {
-        bun_uws::us_loop_idle_ns(core::ptr::from_ref(vm.event_loop().usockets_loop()))
-    };
+    let raw_idle_ns =
+        unsafe { bun_uws::us_loop_idle_ns(core::ptr::from_ref(vm.event_loop().usockets_loop())) };
     let idle_ms = vm.loop_idle_ms(raw_idle_ns);
     let Some(elapsed_ms) = vm.loop_elapsed_ms() else {
         return Ok(JSValue::NULL);

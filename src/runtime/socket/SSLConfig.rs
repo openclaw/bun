@@ -11,8 +11,8 @@
 //! rule on a foreign type), so they're provided via the [`SSLConfigFromJs`]
 //! extension trait. Import that trait to call `SSLConfig::from_js(..)`.
 
-use bun_jsc::bindgen::{JsLocal, JsScope};
 use bun_core::SensitiveCString;
+use bun_jsc::bindgen::{JsLocal, JsScope};
 use bun_jsc::virtual_machine::VirtualMachine;
 use bun_jsc::{self as jsc, JSGlobalObject, JSValue, JsError, JsResult, SysErrorJsc};
 

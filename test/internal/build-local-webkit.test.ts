@@ -15,9 +15,9 @@ import {
   prebuiltHasProgramObjects,
   webkit,
   webkitAotFile,
+  webkitArtifact,
   webkitEngineSources,
   webkitJSCPath,
-  webkitArtifact,
   webkitTestAotPath,
   type WebKitAotFile,
 } from "../../scripts/build/deps/webkit.ts";
@@ -25,7 +25,6 @@ import { BuildError } from "../../scripts/build/error.ts";
 import { Ninja, readManifest } from "../../scripts/build/ninja.ts";
 import { getProfile } from "../../scripts/build/profiles.ts";
 import { registerAllRules } from "../../scripts/build/rules.ts";
-import { quote } from "../../scripts/build/shell.ts";
 import {
   depSource,
   resolveDep,

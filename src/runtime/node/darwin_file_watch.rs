@@ -18,7 +18,11 @@ impl DarwinFileWatch {
     ) -> Result<Self> {
         // SAFETY: the heap-stable watcher owns this poll until it is dropped.
         let poll = unsafe { OwnedFilePoll::new(ctx, file.fd(), owner) };
-        let watch = Self { poll, _file: file, filename };
+        let watch = Self {
+            poll,
+            _file: file,
+            filename,
+        };
         watch.arm(ctx)?;
         Ok(watch)
     }

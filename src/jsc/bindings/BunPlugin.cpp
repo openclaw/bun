@@ -8313,10 +8313,10 @@ static ASCIILiteral onResolveKind(BunPlugin::OnResolve::Asker asker, bool isImpo
 {
     using Asker = BunPlugin::OnResolve::Asker;
     // Resolve-only calls describe what a dynamic import would load.
-    return asker == Asker::Require ? "require-call"_s
-        : asker == Asker::RequireResolve ? "require-resolve"_s
+    return asker == Asker::Require                    ? "require-call"_s
+        : asker == Asker::RequireResolve              ? "require-resolve"_s
         : asker == Asker::Import && isImportStatement ? "import-statement"_s
-                            : "dynamic-import"_s;
+                                                      : "dynamic-import"_s;
 }
 
 EncodedJSValue BunPlugin::OnResolve::run(JSC::JSGlobalObject* globalObject, const BunString* namespaceString, const BunString* path, const BunString* importer, const BunString* importerNamespace, const BunString* resolveDir, Asker asker)

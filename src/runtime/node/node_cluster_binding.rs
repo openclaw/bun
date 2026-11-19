@@ -314,11 +314,13 @@ pub(crate) fn set_channel_listener_count(global: &JSGlobalObject, count: u32) {
     }
     let vm = global.bun_vm();
     while vm.channel_listener_refs.get() < count {
-        vm.channel_listener_refs.set(vm.channel_listener_refs.get() + 1);
+        vm.channel_listener_refs
+            .set(vm.channel_listener_refs.get() + 1);
         step_channel_ref_count(vm, 1);
     }
     while vm.channel_listener_refs.get() > count {
-        vm.channel_listener_refs.set(vm.channel_listener_refs.get() - 1);
+        vm.channel_listener_refs
+            .set(vm.channel_listener_refs.get() - 1);
         step_channel_ref_count(vm, -1);
     }
 }

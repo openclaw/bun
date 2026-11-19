@@ -7,17 +7,17 @@ description: "What behaves differently in an executable built with bun compile, 
 
 Most programs behave the same under [`bun compile`](/compiler/aot) as under `bun run`. The language, every `node:` and `bun:` module, Workers, native addons and nearly all npm packages work. This page lists what differs.
 
-| What differs                                                          | What to do                                                       |
-| --------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| [Built-in objects are read-only](#built-in-objects-are-read-only)     | Add methods, don't replace them                                  |
-| [Code from a string is interpreted](#code-from-strings)               | Keep it out of hot paths                                         |
-| [Unused built-ins are left out](#unused-built-ins)                    | Write the name of one that you need                              |
-| [A dynamic import finds only what the build found](#dynamic-imports)  | Start the path with a folder, or pass the file as an entry point |
-| [Most loader hooks do not affect compiled modules](#loader-hooks-and-the-module-cache) | Use `registerHooks()` for `require()` and `paths` for aliases |
-| [Your files are inside the executable](#paths-of-the-running-file)    | Embed what you read with `--asset`                               |
-| [Packages are bundled](#packages)                                     | `--main-fields`, `--ignore-dce-annotations`                      |
-| [A few corners of the language follow the spec](#language)            | Rarely anything                                                  |
-| [Some flags and features aren't there](#not-supported)                | See the table                                                    |
+| What differs                                                                           | What to do                                                       |
+| -------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| [Built-in objects are read-only](#built-in-objects-are-read-only)                      | Add methods, don't replace them                                  |
+| [Code from a string is interpreted](#code-from-strings)                                | Keep it out of hot paths                                         |
+| [Unused built-ins are left out](#unused-built-ins)                                     | Write the name of one that you need                              |
+| [A dynamic import finds only what the build found](#dynamic-imports)                   | Start the path with a folder, or pass the file as an entry point |
+| [Most loader hooks do not affect compiled modules](#loader-hooks-and-the-module-cache) | Use `registerHooks()` for `require()` and `paths` for aliases    |
+| [Your files are inside the executable](#paths-of-the-running-file)                     | Embed what you read with `--asset`                               |
+| [Packages are bundled](#packages)                                                      | `--main-fields`, `--ignore-dce-annotations`                      |
+| [A few corners of the language follow the spec](#language)                             | Rarely anything                                                  |
+| [Some flags and features aren't there](#not-supported)                                 | See the table                                                    |
 
 The build also checks your types, and [a type error stops it](/compiler/aot). To run your tests under the same rules, use [`bun test --aot`](/compiler/debugging#run-your-tests-compiled).
 

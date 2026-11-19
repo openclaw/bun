@@ -1327,11 +1327,7 @@ fn set_termios(fd: Fd, termios_p: &Termios) -> bool {
 impl Terminal {
     /// Stop reading output without changing input handling or terminal settings.
     pub(crate) fn pause(&self) {
-        if self.is_reader_done() || self
-            .flags
-            .get()
-            .intersects(Flags::CLOSED | Flags::PAUSED)
-        {
+        if self.is_reader_done() || self.flags.get().intersects(Flags::CLOSED | Flags::PAUSED) {
             return;
         }
         self.update_flags(|f| f.insert(Flags::PAUSED));
@@ -1342,7 +1338,10 @@ impl Terminal {
     /// Resume output reads on a later event-loop turn.
     pub(crate) fn resume(&self) {
         let flags = self.flags.get();
-        if self.is_reader_done() || flags.intersects(Flags::CLOSED) || !flags.contains(Flags::PAUSED) {
+        if self.is_reader_done()
+            || flags.intersects(Flags::CLOSED)
+            || !flags.contains(Flags::PAUSED)
+        {
             return;
         }
         self.update_flags(|f| f.remove(Flags::PAUSED));
@@ -1369,11 +1368,7 @@ impl Terminal {
             .deferred_tasks
             .unregister_task(core::ptr::NonNull::new(ctx));
         this.update_flags(|f| f.remove(Flags::RESUME_PENDING));
-        if !this.is_reader_done() && !this
-            .flags
-            .get()
-            .intersects(Flags::PAUSED | Flags::CLOSED)
-        {
+        if !this.is_reader_done() && !this.flags.get().intersects(Flags::PAUSED | Flags::CLOSED) {
             let result = this.reader.unpause();
             let result = match result {
                 #[cfg(unix)]
@@ -1391,7 +1386,8 @@ impl Terminal {
         let flags = self.flags.get();
         let keep = flags.contains(Flags::KEEP_ALIVE)
             && flags.intersects(Flags::PAUSED | Flags::RESUME_PENDING)
-            && !flags.intersects(Flags::CLOSED) && !self.is_reader_done();
+            && !flags.intersects(Flags::CLOSED)
+            && !self.is_reader_done();
         let ctx = self.event_loop_handle.as_event_loop_ctx();
         if keep {
             self.paused_keep_alive.ref_(ctx);
@@ -1508,10 +1504,15 @@ impl Terminal {
     }
 
     pub(crate) fn read(&self, event: Option<IoEvent>) {
-        let result = self.reader.read_chunks(self.event_loop_handle, event, |chunk, _| {
-            self.on_read_chunk(&chunk);
-            !self.flags.get().intersects(Flags::PAUSED | Flags::RESUME_PENDING)
-        });
+        let result = self
+            .reader
+            .read_chunks(self.event_loop_handle, event, |chunk, _| {
+                self.on_read_chunk(&chunk);
+                !self
+                    .flags
+                    .get()
+                    .intersects(Flags::PAUSED | Flags::RESUME_PENDING)
+            });
         self.on_read_result(result);
     }
 

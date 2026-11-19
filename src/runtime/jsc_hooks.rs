@@ -2469,8 +2469,7 @@ fn transpile_source_code_of_any_provenance<const DATA_ONLY: bool>(
                                 // `read_dir_info` is re-entrant on the JS
                                 // thread and returns a stable cache slot.
                                 match unsafe {
-                                    (*transpiler).resolver
-                                        .read_dir_info(source.path.name().dir)
+                                    (*transpiler).resolver.read_dir_info(source.path.name().dir)
                                 } {
                                     Ok(Some(dir_info)) => dir_info.package_json_for_node_scope(),
                                     _ => None,
@@ -3951,9 +3950,10 @@ fn transpile_file<const DATA_ONLY: bool>(
     }
 
     if !lr.path.is_data_url() && matches!(lr.path.name().ext, b".js" | b".ts") {
-        if let Some(error) = jsc_vm.transpiler.with_mut(|t| {
-            t.resolver.node_package_scope_error(lr.path.text)
-        }) {
+        if let Some(error) = jsc_vm
+            .transpiler
+            .with_mut(|t| t.resolver.node_package_scope_error(lr.path.text))
+        {
             *ret = ErrorableResolvedSource::err(bun_jsc::ResolveMessage::from_node_module_error(
                 global, &error, false, b"", b"",
             ));
@@ -3967,7 +3967,8 @@ fn transpile_file<const DATA_ONLY: bool>(
 
     // SAFETY: the caller owns this live VM on its JS thread.
     let module_hooks_active = unsafe {
-        ((*jsc_vm).module_hooks_resolve_count.get() > 0 || (*jsc_vm).module_hooks_load_count.get() > 0)
+        ((*jsc_vm).module_hooks_resolve_count.get() > 0
+            || (*jsc_vm).module_hooks_load_count.get() > 0)
             && !(*jsc_vm).module_hooks_skip.get()
     };
     if module_hooks_active

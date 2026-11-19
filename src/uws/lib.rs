@@ -487,7 +487,9 @@ pub mod ssl_wrapper {
         fn on_data(&mut self, data: &[u8]);
         fn on_close(&mut self);
         /// The owner keeps its writable half open after peer EOF.
-        fn handles_peer_shutdown(&self) -> bool { false }
+        fn handles_peer_shutdown(&self) -> bool {
+            false
+        }
         fn on_end(&mut self) {}
         /// A new resumable TLS session arrived (serialized SSL_SESSION bytes)
         /// - node's `'session'` event.
@@ -1269,9 +1271,10 @@ pub mod ssl_wrapper {
                                 self.handle_writing(handler);
                             }
                             if reason.is_some() {
-                                self.trigger_handshake_callback(handler, HandshakeOutcome::HandshakeError(
-                                    reason,
-                                ));
+                                self.trigger_handshake_callback(
+                                    handler,
+                                    HandshakeOutcome::HandshakeError(reason),
+                                );
                             }
                             self.trigger_close_callback(handler);
                         }

@@ -337,7 +337,11 @@ impl All {
     pub(crate) fn next_async_hooks_id(&self) -> u64 {
         const MAX_SAFE_INTEGER: u64 = (1 << 53) - 1;
         let previous = self.last_async_hooks_id.get();
-        let id = if previous == MAX_SAFE_INTEGER { 2 } else { previous + 1 };
+        let id = if previous == MAX_SAFE_INTEGER {
+            2
+        } else {
+            previous + 1
+        };
         self.last_async_hooks_id.set(id);
         id
     }

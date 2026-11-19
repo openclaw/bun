@@ -388,8 +388,12 @@ impl FileSink {
         // A drain task may be followed by another write before it runs.
         if self.pending_flush.get()
             && self.writer.has_pending_data()
-            && !matches!(self.pending.get().result,
-                streams::Writable::Err(_) | streams::Writable::Done | streams::Writable::OwnedAndDone(_))
+            && !matches!(
+                self.pending.get().result,
+                streams::Writable::Err(_)
+                    | streams::Writable::Done
+                    | streams::Writable::OwnedAndDone(_)
+            )
         {
             return;
         }
@@ -1566,7 +1570,10 @@ bun_jsc::impl_abort_handle_owner!(FileSink, abort_handle, |this, cause| {
     }
     // Only a test-file swap drains stdio; VM teardown closes synchronously.
     if this.flush_on_abort.get()
-        && matches!(cause, bun_jsc::AbortCause::ContextStopped(bun_jsc::StopReason::Disposed))
+        && matches!(
+            cause,
+            bun_jsc::AbortCause::ContextStopped(bun_jsc::StopReason::Disposed)
+        )
     {
         #[cfg(not(windows))]
         if this.writer.has_pending_data() && !this.isolation_flush_pending.replace(true) {
@@ -1581,10 +1588,8 @@ bun_jsc::impl_abort_handle_owner!(FileSink, abort_handle, |this, cause| {
     // Closing the writer leaves no drain callback for an explicit flush.
     if this.pending.get().state == streams::PendingState::Pending {
         this.pending.with_mut(|pending| {
-            pending.result = streams::Writable::Err(sys::Error::from_code(
-                sys::E::ECANCELED,
-                sys::Tag::write,
-            ));
+            pending.result =
+                streams::Writable::Err(sys::Error::from_code(sys::E::ECANCELED, sys::Tag::write));
         });
     }
     #[cfg(windows)]

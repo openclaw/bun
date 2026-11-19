@@ -1254,10 +1254,7 @@ pub(crate) fn resolve_posix<'a>(cx: &mut JsScope<'a>, paths: &'a [JsLocal<'a>]) 
 }
 
 #[inline(always)]
-pub(crate) fn resolve_win32<'a>(
-    cx: &mut JsScope<'a>,
-    paths: &'a [JsLocal<'a>],
-) -> TextResult<'a> {
+pub(crate) fn resolve_win32<'a>(cx: &mut JsScope<'a>, paths: &'a [JsLocal<'a>]) -> TextResult<'a> {
     resolve::<true>(cx, paths)
 }
 

@@ -1159,7 +1159,13 @@ impl WebWorker {
                 use_system_ca_flag,
                 ..Default::default()
             };
-            let vm = match self.start_vm(&raw mut log, options, proxy_env_slots, exec_argv, has_own_exec_argv) {
+            let vm = match self.start_vm(
+                &raw mut log,
+                options,
+                proxy_env_slots,
+                exec_argv,
+                has_own_exec_argv,
+            ) {
                 Ok(vm) => vm,
                 Err(err) => {
                     bun_core::output::panic(format_args!(
@@ -1295,13 +1301,18 @@ impl WebWorker {
 
         // `preloads` is owned by `self` (heap `WebWorker` outlives the VM).
         // `preload: Vec<Box<[u8]>>` — clone the boxes (cheap, ≤handful).
-        vm.preload.with_mut(|value| value.clone_from(&self.preloads));
-        vm.worker_preloads.with_mut(|value| value.clone_from(&self.worker_preloads));
-        vm.worker_eval_preloads.with_mut(|value| value.clone_from(&self.worker_eval_preloads));
+        vm.preload
+            .with_mut(|value| value.clone_from(&self.preloads));
+        vm.worker_preloads
+            .with_mut(|value| value.clone_from(&self.worker_preloads));
+        vm.worker_eval_preloads
+            .with_mut(|value| value.clone_from(&self.worker_eval_preloads));
         vm.preload_require_start.set(self.preload_require_start);
         vm.preload_require_count.set(self.preload_require_count);
-        vm.worker_preload_require_start.set(self.worker_preload_require_start);
-        vm.worker_preload_require_count.set(self.worker_preload_require_count);
+        vm.worker_preload_require_start
+            .set(self.worker_preload_require_start);
+        vm.worker_preload_require_count
+            .set(self.worker_preload_require_count);
         vm.worker_eval_mode.set(self.worker_eval_mode);
 
         // The parent only stored the raw specifier.

@@ -465,7 +465,8 @@ impl Process {
                 // Only Subprocess owns the pipe drains paired with this
                 // publication path; shell/install owners keep their joins.
                 if this
-                    .exit_handler.get()
+                    .exit_handler
+                    .get()
                     .is_some_and(|handler| handler.kind() == ProcessExitKind::Subprocess)
                 {
                     // SAFETY: the live ProcessHandle owns this process and its registered primary poll.

@@ -852,7 +852,8 @@ impl ExitHandler {
     /// probe never runs there.
     #[unsafe(no_mangle)]
     pub(crate) extern "C" fn Bun__VM__entryEvaluationStarted(vm: &VirtualMachine) -> bool {
-        vm.entry_evaluation_started.get() || !(vm.worker.get().is_some() || vm.loop_start_deferred.get())
+        vm.entry_evaluation_started.get()
+            || !(vm.worker.get().is_some() || vm.loop_start_deferred.get())
     }
 
     /// The module-registry key of the current entry load's root: the
@@ -3195,7 +3196,11 @@ impl VirtualMachine {
             has_run_cleanup_hooks: Cell::new(false),
             is_main_thread: Cell::new(opts.is_main_thread),
             use_system_ca: opts.use_system_ca,
-            use_system_ca_flag: if opts.is_main_thread { opts.use_system_ca } else { opts.use_system_ca_flag },
+            use_system_ca_flag: if opts.is_main_thread {
+                opts.use_system_ca
+            } else {
+                opts.use_system_ca_flag
+            },
             exit_handler: Default::default(),
             default_tls_reject_unauthorized: Cell::new(None),
             default_verbose_fetch: Cell::new(None),
@@ -3422,7 +3427,9 @@ impl VirtualMachine {
             return;
         }
         // SAFETY: `event_loop` is this VM's own loop; the idle counter is read atomically.
-        let idle = self.event_loop().try_usockets_loop()
+        let idle = self
+            .event_loop()
+            .try_usockets_loop()
             .map_or(0, |l| unsafe { uws::us_loop_idle_ns(l) });
         // Base first: a reader that sees the start stamped also sees the base it belongs to.
         self.loop_idle_base_ns.store(idle, Ordering::Release);
@@ -3965,7 +3972,10 @@ pub(crate) struct OnResolveOptions {
 impl ResolveMode {
     #[inline]
     pub fn is_esm(self) -> bool {
-        matches!(self, Self::Esm | Self::ResolvedEsm | Self::DynamicImport | Self::EsmResolve)
+        matches!(
+            self,
+            Self::Esm | Self::ResolvedEsm | Self::DynamicImport | Self::EsmResolve
+        )
     }
 
     #[inline]
@@ -5551,7 +5561,8 @@ impl VirtualMachine {
                     }
                     // Resolve-only calls may return an absolute hook result without loading it.
                     if resolved.is_err() {
-                        let stands = mode.only_resolves() && bun_paths::is_absolute(&answer.to_utf8());
+                        let stands =
+                            mode.only_resolves() && bun_paths::is_absolute(&answer.to_utf8());
                         if stands || global.has_on_load(&answer.to_utf8())? {
                             return Ok(Some(Ok(answer)));
                         }
@@ -5780,9 +5791,13 @@ impl VirtualMachine {
 
         if mode.is_esm() && !mode.only_resolves() {
             let is_from_disk = jsc_vm.is_code_from_disk(source_utf8.slice());
-            jsc_vm.transpiler.with_mut(|t| t.resolver.resolves_for_code_from_disk = is_from_disk);
+            jsc_vm
+                .transpiler
+                .with_mut(|t| t.resolver.resolves_for_code_from_disk = is_from_disk);
         }
-        jsc_vm.transpiler.with_mut(|t| t.resolver.node_module_error = None);
+        jsc_vm
+            .transpiler
+            .with_mut(|t| t.resolver.node_module_error = None);
         let mut resolve_result = jsc_vm._resolve(
             &mut result,
             specifier_utf8.slice(),
@@ -5815,7 +5830,9 @@ impl VirtualMachine {
             );
         }
         if mode.is_esm() && !mode.only_resolves() {
-            jsc_vm.transpiler.with_mut(|t| t.resolver.resolves_for_code_from_disk = false);
+            jsc_vm
+                .transpiler
+                .with_mut(|t| t.resolver.resolves_for_code_from_disk = false);
         }
         if resolve_result.is_ok()
             && mode.is_esm()
@@ -5834,7 +5851,10 @@ impl VirtualMachine {
                 t.resolver.node_module_error = t.resolver.node_package_scope_error(result.path);
             });
         }
-        if let Some(error) = jsc_vm.transpiler.with_mut(|t| t.resolver.node_module_error.take()) {
+        if let Some(error) = jsc_vm
+            .transpiler
+            .with_mut(|t| t.resolver.node_module_error.take())
+        {
             if resolve_result.is_err() || error.is_fatal() {
                 return Ok(Err(crate::ResolveMessage::from_node_module_error(
                     global,
@@ -6128,7 +6148,8 @@ impl VirtualMachine {
     /// `fd` was closed, or transferred to another thread.
     #[inline]
     pub fn untrack_fd(&self, fd: bun_sys::Fd) -> bool {
-        self.exit_fds.with_mut(|fds| fds.as_mut().is_some_and(|set| set.remove(&fd)))
+        self.exit_fds
+            .with_mut(|fds| fds.as_mut().is_some_and(|set| set.remove(&fd)))
     }
 
     /// Tracks a listening socket so watch-mode reloads can close it.

@@ -1197,7 +1197,11 @@ impl Kqueue {
             };
 
             let mut locked = manager.lock();
-            let PathWatcherManager { by_path, watchers, platform } = &mut *locked;
+            let PathWatcherManager {
+                by_path,
+                watchers,
+                platform,
+            } = &mut *locked;
             let entries = &platform.entries;
             let mut touched: ArrayHashMap<WatcherId, ()> = ArrayHashMap::default();
 

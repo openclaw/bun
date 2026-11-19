@@ -2045,7 +2045,11 @@ pub fn resolve_posix_t<'a, T: PathCharCwd>(
     buf2: &mut [T],
 ) -> &'a [T] {
     match resolve_posix_t_with_cwd::<T, core::convert::Infallible, _>(
-        paths, buf, buf2, MAX_PATH_SIZE_UPPER, |cwd_buf| Ok(posix_cwd_t(cwd_buf)),
+        paths,
+        buf,
+        buf2,
+        MAX_PATH_SIZE_UPPER,
+        |cwd_buf| Ok(posix_cwd_t(cwd_buf)),
     ) {
         Ok(path) => path,
         Err(never) => match never {},
@@ -2177,7 +2181,11 @@ pub fn resolve_windows_t<'a, T: PathCharCwd>(
     buf2: &mut [T],
 ) -> &'a [T] {
     match resolve_windows_t_with_cwd::<T, core::convert::Infallible, _>(
-        paths, buf, buf2, MAX_PATH_SIZE_UPPER, |cwd_buf| Ok(get_cwd_t(cwd_buf)),
+        paths,
+        buf,
+        buf2,
+        MAX_PATH_SIZE_UPPER,
+        |cwd_buf| Ok(get_cwd_t(cwd_buf)),
     ) {
         Ok(path) => path,
         Err(never) => match never {},

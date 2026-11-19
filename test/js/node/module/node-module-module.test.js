@@ -16,7 +16,6 @@ const storesFixture = path.join(
   "stores-that-end-in-a-definition-fixture.js",
 );
 
-
 describe.concurrent("registerHooks Node 24 parity", () => {
   test.each([
     ...["plain", "base64", "short-circuit", "fragment-comma"].map(kind => [

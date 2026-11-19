@@ -210,7 +210,12 @@ function pipelineImpl(streams, callback, opts?) {
   }
 
   function finishImpl(err, final?) {
-    if (err && (!error || ReflectGet(ObjectConstructor(error), "code", error) === "ERR_STREAM_PREMATURE_CLOSE" || ReflectGet(ObjectConstructor(error), "name", error) === "AbortError")) {
+    if (
+      err &&
+      (!error ||
+        ReflectGet(ObjectConstructor(error), "code", error) === "ERR_STREAM_PREMATURE_CLOSE" ||
+        ReflectGet(ObjectConstructor(error), "name", error) === "AbortError")
+    ) {
       error = err;
     }
 
@@ -258,7 +263,11 @@ function pipelineImpl(streams, callback, opts?) {
 
       // Catch stream errors that occur after pipe/pump has completed.
       function onError(err) {
-        if (err && ReflectGet(ObjectConstructor(err), "name", err) !== "AbortError" && ReflectGet(ObjectConstructor(err), "code", err) !== "ERR_STREAM_PREMATURE_CLOSE") {
+        if (
+          err &&
+          ReflectGet(ObjectConstructor(err), "name", err) !== "AbortError" &&
+          ReflectGet(ObjectConstructor(err), "code", err) !== "ERR_STREAM_PREMATURE_CLOSE"
+        ) {
           finishOnlyHandleError(err);
         }
       }
@@ -431,7 +440,13 @@ function pipe(src, dst, finish, finishOnlyHandleError, { end }) {
 
   eos(src, { readable: true, writable: false }, err => {
     const rState = src._readableState;
-    if (err && ReflectGet(ObjectConstructor(err), "code", err) === "ERR_STREAM_PREMATURE_CLOSE" && rState?.ended && !rState.errored && !rState.errorEmitted) {
+    if (
+      err &&
+      ReflectGet(ObjectConstructor(err), "code", err) === "ERR_STREAM_PREMATURE_CLOSE" &&
+      rState?.ended &&
+      !rState.errored &&
+      !rState.errorEmitted
+    ) {
       // Some readable streams will emit 'close' before 'end'. However, since
       // this is on the readable side 'end' should still be emitted if the
       // stream has been ended and no error emitted. This should be allowed in

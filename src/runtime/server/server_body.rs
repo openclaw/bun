@@ -14,8 +14,8 @@ use crate::generated_bindgen::server_body::{
     BunServe__onRejectPlugins, BunServe__onResolvePlugins,
 };
 use crate::node::types::PathLikeExt as _;
-use crate::socket::{SSLConfig, SSLConfigFromJs as _};
 use crate::server::ServerLike as _;
+use crate::socket::{SSLConfig, SSLConfigFromJs as _};
 use crate::webcore::BlobExt;
 use crate::webcore::body::Value as BodyValue;
 use crate::webcore::fetch as Fetch;

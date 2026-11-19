@@ -266,8 +266,14 @@ Writable.prototype[kWriteOperation] = function (
     return false;
   }
   state.pendingcb!++;
-  return writeOrBuffer(this, state, operation, kWriteOperation, cb,
-    (state[kState] & Flag.ObjectMode) !== 0 ? 1 : operation.length);
+  return writeOrBuffer(
+    this,
+    state,
+    operation,
+    kWriteOperation,
+    cb,
+    (state[kState] & Flag.ObjectMode) !== 0 ? 1 : operation.length,
+  );
 };
 
 const writeBytes = function _write(stream: $Node.Writable, state: WritableState, chunk, encoding, cb: WriteCallback) {
@@ -1019,7 +1025,9 @@ Writable.prototype[SymbolAsyncDispose] = function (this: $Node.Writable) {
     this.destroy(error);
   }
   return new Promise((resolve, reject) =>
-    eos(this, err => (err && ReflectGet(ObjectConstructor(err), "name", err) !== "AbortError" ? reject(err) : resolve(null))),
+    eos(this, err =>
+      err && ReflectGet(ObjectConstructor(err), "name", err) !== "AbortError" ? reject(err) : resolve(null),
+    ),
   );
 };
 

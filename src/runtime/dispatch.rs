@@ -923,11 +923,13 @@ unsafe fn __bun_run_io(owner: Owner, event: IoEvent) {
             })
         }
         #[cfg(target_os = "macos")]
-        PollTag::FSWatcher => in_features!([NodeFs], (owner: Owner = owner, event: IoEvent = event) {
-            // SAFETY: this tag identifies the live watcher on its owning JS thread.
-            unsafe { &*owner.ptr().cast::<crate::node::node_fs_watcher::FSWatcher>() }
-                .on_file_poll(event.size_or_offset as u32);
-        }),
+        PollTag::FSWatcher => {
+            in_features!([NodeFs], (owner: Owner = owner, event: IoEvent = event) {
+                // SAFETY: this tag identifies the live watcher on its owning JS thread.
+                unsafe { &*owner.ptr().cast::<crate::node::node_fs_watcher::FSWatcher>() }
+                    .on_file_poll(event.size_or_offset as u32);
+            })
+        }
         #[cfg(not(windows))]
         PollTag::MemoryPressure => {
             crate::node::memory_pressure::on_poll(event.flags, event.size_or_offset);

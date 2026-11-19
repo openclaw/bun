@@ -1,5 +1,5 @@
 // What the compiler reads in place of src/js/internal/streams/pipeline.ts, which `bun run` evaluates. The two do the same.
-// Written against that file with the SHA-256 7388fafd395cdbe2b40c946ca22ae60b54ee501ad408d7f443787a328b124e40.
+// Written against that file with the SHA-256 74295927f4d71068673f99bb78f443784a291d185026615ec58a813926094f79.
 // When that file changes, bring the change here and write the new hash: test/internal/second-texts-of-modules.test.ts.
 
 // Ported from https://github.com/mafintosh/pump with
@@ -40,7 +40,8 @@ let addAbortListener: $BunModules["internal/abort_listener"]["addAbortListener"]
 
 type AnyIterable = Iterable<unknown> | AsyncIterable<unknown>;
 type PipelineCallback = (error?: unknown, value?: unknown) => void;
-type Then = ((onFulfilled: (value: unknown) => unknown, onRejected: (error: unknown) => unknown) => unknown) | undefined;
+type Then =
+  ((onFulfilled: (value: unknown) => unknown, onRejected: (error: unknown) => unknown) => unknown) | undefined;
 
 interface PipelineOptions {
   signal?: AbortSignal;
@@ -203,7 +204,7 @@ async function pumpToNode(
 
     finish();
   } catch (err) {
-    finish(error !== err ? aggregateTwoErrors(error, err) : (err));
+    finish(error !== err ? aggregateTwoErrors(error, err) : err);
   } finally {
     cleanup();
     writable.off("drain", resume);
@@ -304,7 +305,12 @@ function pipelineImpl(streams, callback: PipelineCallback, opts?: PipelineOption
   }
 
   function finishImpl(err?: unknown, final?: boolean) {
-    if (err && (!error || ReflectGet(ObjectConstructor(error), "code", error) === "ERR_STREAM_PREMATURE_CLOSE" || ReflectGet(ObjectConstructor(error), "name", error) === "AbortError")) {
+    if (
+      err &&
+      (!error ||
+        ReflectGet(ObjectConstructor(error), "code", error) === "ERR_STREAM_PREMATURE_CLOSE" ||
+        ReflectGet(ObjectConstructor(error), "name", error) === "AbortError")
+    ) {
       error = err;
     }
 
@@ -354,7 +360,11 @@ function pipelineImpl(streams, callback: PipelineCallback, opts?: PipelineOption
 
       // Catch stream errors that occur after pipe/pump has completed.
       function onError(err: unknown) {
-        if (err && ReflectGet(ObjectConstructor(err), "name", err) !== "AbortError" && ReflectGet(ObjectConstructor(err), "code", err) !== "ERR_STREAM_PREMATURE_CLOSE") {
+        if (
+          err &&
+          ReflectGet(ObjectConstructor(err), "name", err) !== "AbortError" &&
+          ReflectGet(ObjectConstructor(err), "code", err) !== "ERR_STREAM_PREMATURE_CLOSE"
+        ) {
           finishOnlyHandleError(err);
         }
       }

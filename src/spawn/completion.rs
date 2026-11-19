@@ -72,7 +72,13 @@ impl CompletionQueue {
                 libc::epoll_ctl(
                     self.fd.get().unwrap().native(),
                     libc::EPOLL_CTL_ADD,
-                    (*process).pidfd.get().as_ref().expect("registered process has a pidfd").fd().native(),
+                    (*process)
+                        .pidfd
+                        .get()
+                        .as_ref()
+                        .expect("registered process has a pidfd")
+                        .fd()
+                        .native(),
                     &raw mut event,
                 )
             })
@@ -141,7 +147,13 @@ impl CompletionQueue {
             libc::epoll_ctl(
                 self.fd.get().unwrap().native(),
                 libc::EPOLL_CTL_DEL,
-                (*process).pidfd.get().as_ref().expect("registered process has a pidfd").fd().native(),
+                (*process)
+                    .pidfd
+                    .get()
+                    .as_ref()
+                    .expect("registered process has a pidfd")
+                    .fd()
+                    .native(),
                 std::ptr::null_mut(),
             )
         });

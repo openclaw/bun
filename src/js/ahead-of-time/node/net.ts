@@ -669,7 +669,6 @@ const shutdownNativeTLSTransport: (socket: SocketHandle | null, callback: WriteC
   "shutdownNativeTLSTransport",
 );
 
-
 const bunTlsSymbol: typeof netSymbols.bunTlsSymbol = CAN_REPLACE_BUILT_IN_FUNCTIONS
   ? (Symbol.for("::buntls::") as typeof netSymbols.bunTlsSymbol)
   : netSymbols.bunTlsSymbol;

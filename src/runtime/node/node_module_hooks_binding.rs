@@ -19,11 +19,13 @@ pub(crate) fn set_module_hooks_counts(
     let resolve_count = arguments[0].to_int32();
     let load_count = arguments[1].to_int32();
     let vm = global.bun_vm();
-    vm.module_hooks_resolve_count.set(resolve_count.max(0) as u32);
+    vm.module_hooks_resolve_count
+        .set(resolve_count.max(0) as u32);
     vm.module_hooks_load_count.set(load_count.max(0) as u32);
     if resolve_count > 0 || load_count > 0 {
         vm.module_hooks_ever_registered.set(true);
-        vm.transpiler.with_mut(|t| t.resolver.runtime_mutable_directories = true);
+        vm.transpiler
+            .with_mut(|t| t.resolver.runtime_mutable_directories = true);
     }
     Ok(JSValue::UNDEFINED)
 }
@@ -208,7 +210,9 @@ pub(crate) fn get_package_type_for_hooks(
     let filename = arguments[0].to_utf8(global)?;
     let dir = bun_resolver::fs::PathName::init(filename.slice()).dir;
     let vm = global.bun_vm();
-    let package = vm.transpiler.with_mut(|t| t.resolver.read_dir_info(dir))
+    let package = vm
+        .transpiler
+        .with_mut(|t| t.resolver.read_dir_info(dir))
         .ok()
         .flatten()
         .and_then(|info| info.package_json_for_node_scope());

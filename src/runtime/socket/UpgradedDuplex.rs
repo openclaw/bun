@@ -232,7 +232,9 @@ impl ssl_wrapper::Handler for &UpgradedDuplex {
         self.finish_close();
     }
 
-    fn handles_peer_shutdown(&self) -> bool { true }
+    fn handles_peer_shutdown(&self) -> bool {
+        true
+    }
 
     fn on_end(&mut self) {
         (self.handlers.on_end)(self.handlers.ctx);

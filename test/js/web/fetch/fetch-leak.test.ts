@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { bunEnv, bunExe, tls as COMMON_CERT, expectRssDeltaBelow, gc, isASAN, isCI, isDebug } from "harness";
+import { bunEnv, bunExe, tls as COMMON_CERT, expectRssDeltaBelow, isASAN, isCI, isDebug } from "harness";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import net from "node:net";

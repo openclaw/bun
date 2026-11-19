@@ -83,12 +83,17 @@ impl ReplCommand {
 
         vm.preload.set(core::mem::take(&mut ctx.preloads));
         vm.worker_preloads.set(vm.preload.get().clone());
-        vm.worker_eval_preloads.set(core::mem::take(&mut ctx.worker_eval_preloads));
-        vm.worker_preload_require_start.set(ctx.worker_preload_require_start);
-        vm.worker_preload_require_count.set(ctx.worker_preload_require_count);
+        vm.worker_eval_preloads
+            .set(core::mem::take(&mut ctx.worker_eval_preloads));
+        vm.worker_preload_require_start
+            .set(ctx.worker_preload_require_start);
+        vm.worker_preload_require_count
+            .set(ctx.worker_preload_require_count);
         vm.worker_eval_mode.set(ctx.worker_eval_mode);
-        vm.preload_require_start.set(ctx.worker_preload_require_start);
-        vm.preload_require_count.set(ctx.worker_preload_require_count);
+        vm.preload_require_start
+            .set(ctx.worker_preload_require_start);
+        vm.preload_require_count
+            .set(ctx.worker_preload_require_count);
         vm.dns_result_order.set(dns_order as u8);
 
         // Configure bundler options
@@ -129,7 +134,12 @@ impl ReplCommand {
         // be done under the API lock, not before
         let mut runner = ReplRunner {
             repl,
-            eval_script: ctx.runtime_options.eval.script.as_deref().unwrap_or_default(),
+            eval_script: ctx
+                .runtime_options
+                .eval
+                .script
+                .as_deref()
+                .unwrap_or_default(),
             eval_and_print: ctx.runtime_options.eval.eval_and_print,
         };
 

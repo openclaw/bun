@@ -2838,12 +2838,17 @@ impl TestCommand {
         // Clone (not take): build_worker_argv reads ctx.preloads to forward --preload.
         vm.preload.set(ctx.preloads.clone());
         vm.worker_preloads.set(vm.preload.get().clone());
-        vm.worker_eval_preloads.set(ctx.worker_eval_preloads.clone());
-        vm.worker_preload_require_start.set(ctx.worker_preload_require_start);
-        vm.worker_preload_require_count.set(ctx.worker_preload_require_count);
+        vm.worker_eval_preloads
+            .set(ctx.worker_eval_preloads.clone());
+        vm.worker_preload_require_start
+            .set(ctx.worker_preload_require_start);
+        vm.worker_preload_require_count
+            .set(ctx.worker_preload_require_count);
         vm.worker_eval_mode.set(ctx.worker_eval_mode);
-        vm.preload_require_start.set(ctx.worker_preload_require_start);
-        vm.preload_require_count.set(ctx.worker_preload_require_count);
+        vm.preload_require_start
+            .set(ctx.worker_preload_require_start);
+        vm.preload_require_count
+            .set(ctx.worker_preload_require_count);
         if reporter.jest.reports_to_junit {
             vm.on_print_error_zig_exception
                 .set(Some(bun_test::BunTest::record_printed_error));
@@ -4224,7 +4229,6 @@ impl Drop for PrintLogAfterFile {
         Output::flush();
     }
 }
-
 
 pub(crate) fn handle_top_level_test_error_before_javascript_start(err: &crate::Error) -> ! {
     if cfg!(debug_assertions) {

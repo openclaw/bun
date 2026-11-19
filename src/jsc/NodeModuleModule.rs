@@ -251,7 +251,8 @@ pub extern "C" fn Bun__moduleHooksShouldIntercept(specifier: &BunString) -> bool
 
 #[unsafe(no_mangle)]
 pub extern "C" fn Bun__hasModuleHooks(vm: &VirtualMachine) -> bool {
-    (vm.module_hooks_resolve_count.get() > 0 || vm.module_hooks_load_count.get() > 0) && !vm.module_hooks_skip.get()
+    (vm.module_hooks_resolve_count.get() > 0 || vm.module_hooks_load_count.get() > 0)
+        && !vm.module_hooks_skip.get()
 }
 
 pub fn module_hooks_native_url(vm: &VirtualMachine, specifier: &BunString) -> bool {

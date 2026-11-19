@@ -801,9 +801,11 @@ impl EventLoop {
         crate::top_scope!(scope, self.global_ref());
         #[cfg(any(target_os = "linux", target_os = "android", target_os = "macos"))]
         let ready = if self.entered_event_loop_count.get() == 0
-            && self.uws_loop.get().is_none_or(|loop_| {
-                !loop_.internal_loop_data.is_in_tick()
-            }) {
+            && self
+                .uws_loop
+                .get()
+                .is_none_or(|loop_| !loop_.internal_loop_data.is_in_tick())
+        {
             self.process_completions
                 .get()
                 .map(|queue| queue.capture())

@@ -2075,7 +2075,11 @@ mod _async_tasks {
             Some(done)
         }
 
-        fn then(mut this: Self, js: AsyncFSJs, cx: &bun_jsc::JsThread<'_>) -> bun_jsc::JsResult<()> {
+        fn then(
+            mut this: Self,
+            js: AsyncFSJs,
+            cx: &bun_jsc::JsThread<'_>,
+        ) -> bun_jsc::JsResult<()> {
             let result = core::mem::replace(&mut this.result, Err(sys::Error::default()));
             let global_object = cx.global();
             let _dispatch = js.tracker.dispatch(global_object);
@@ -2093,7 +2097,8 @@ mod _async_tasks {
             completion.ensure_still_alive();
 
             let aborted = if Self::HAVE_ABORT_SIGNAL && converted.is_ok() {
-                this.args.signal()
+                this.args
+                    .signal()
                     .and_then(|signal| signal.node_abort_error_if_aborted(global_object))
             } else {
                 None

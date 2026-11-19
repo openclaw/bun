@@ -1055,12 +1055,17 @@ Full documentation is available at <magenta>https://bun.com/docs/cli/run<r>
 
         vm.preload.set(std::mem::take(&mut ctx.preloads));
         vm.worker_preloads.set(vm.preload.get().clone());
-        vm.worker_eval_preloads.set(std::mem::take(&mut ctx.worker_eval_preloads));
-        vm.worker_preload_require_start.set(ctx.worker_preload_require_start);
-        vm.worker_preload_require_count.set(ctx.worker_preload_require_count);
+        vm.worker_eval_preloads
+            .set(std::mem::take(&mut ctx.worker_eval_preloads));
+        vm.worker_preload_require_start
+            .set(ctx.worker_preload_require_start);
+        vm.worker_preload_require_count
+            .set(ctx.worker_preload_require_count);
         vm.worker_eval_mode.set(ctx.worker_eval_mode);
-        vm.preload_require_start.set(ctx.worker_preload_require_start);
-        vm.preload_require_count.set(ctx.worker_preload_require_count);
+        vm.preload_require_start
+            .set(ctx.worker_preload_require_start);
+        vm.preload_require_count
+            .set(ctx.worker_preload_require_count);
         vm.argv1.set(argv1);
         // `vm.dns_result_order` is a `u8` until the b2-cycle widens
         // it to `bun_dns::Order`; the enum is `#[repr(u8)]` so `as u8` is exact.
@@ -1086,8 +1091,12 @@ Full documentation is available at <magenta>https://bun.com/docs/cli/run<r>
             // the VM for the process duration) can backref into it.
             let script: &'static [u8] =
                 unsafe { ::core::slice::from_raw_parts(script.as_ptr(), script.len()) };
-            let _ = vm.module_loader.eval_source.set(Box::new(bun_ast::Source::init_path_string(entry, script)));
-            vm.module_loader.interactive_eval_script
+            let _ = vm
+                .module_loader
+                .eval_source
+                .set(Box::new(bun_ast::Source::init_path_string(entry, script)));
+            vm.module_loader
+                .interactive_eval_script
                 .set(ctx.runtime_options.eval.interactive_script.take());
             if ctx.runtime_options.eval.eval_and_print {
                 vm.transpiler
@@ -1269,12 +1278,17 @@ Full documentation is available at <magenta>https://bun.com/docs/cli/run<r>
 
         vm.preload.set(std::mem::take(&mut ctx.preloads));
         vm.worker_preloads.set(vm.preload.get().clone());
-        vm.worker_eval_preloads.set(std::mem::take(&mut ctx.worker_eval_preloads));
-        vm.worker_preload_require_start.set(ctx.worker_preload_require_start);
-        vm.worker_preload_require_count.set(ctx.worker_preload_require_count);
+        vm.worker_eval_preloads
+            .set(std::mem::take(&mut ctx.worker_eval_preloads));
+        vm.worker_preload_require_start
+            .set(ctx.worker_preload_require_start);
+        vm.worker_preload_require_count
+            .set(ctx.worker_preload_require_count);
         vm.worker_eval_mode.set(ctx.worker_eval_mode);
-        vm.preload_require_start.set(ctx.worker_preload_require_start);
-        vm.preload_require_count.set(ctx.worker_preload_require_count);
+        vm.preload_require_start
+            .set(ctx.worker_preload_require_start);
+        vm.preload_require_count
+            .set(ctx.worker_preload_require_count);
 
         // `vm.main` is a BACKREF (`*const [u8]`) into `entry_path`'s heap
         // buffer and the runner never returns, so the allocation is
@@ -1340,14 +1354,15 @@ pub(crate) fn start_profilers(vm: &VirtualMachine, ctx: &ContextData) {
     // ── CPU profiler ────────────────────────────────────────────────────
     if ctx.runtime_options.cpu_prof.enabled {
         let opts = &ctx.runtime_options.cpu_prof;
-        vm.cpu_profiler_config.set(Some(bun_jsc::bun_cpu_profiler::CPUProfilerConfig {
-            name: opts.name.clone(),
-            dir: opts.dir.clone(),
-            md_format: opts.md_format,
-            json_format: opts.json_format,
-            interval: opts.interval,
-            thread_id: 0,
-        }));
+        vm.cpu_profiler_config
+            .set(Some(bun_jsc::bun_cpu_profiler::CPUProfilerConfig {
+                name: opts.name.clone(),
+                dir: opts.dir.clone(),
+                md_format: opts.md_format,
+                json_format: opts.json_format,
+                interval: opts.interval,
+                thread_id: 0,
+            }));
         bun_jsc::bun_cpu_profiler::set_sampling_interval(opts.interval);
         bun_jsc::bun_cpu_profiler::start_cpu_profiler(vm.jsc_vm());
         bun_analytics::features::cpu_profile.fetch_add(1, Ordering::Relaxed);
@@ -1451,7 +1466,12 @@ impl Run<'_> {
         if ctx.runtime_options.eval.reads_configuration {
             bun_removable_features::removable_body_behind_value!(Tools, {
                 crate::read_ahead::enable(vm, true);
-                let script = ctx.runtime_options.eval.script.as_deref().unwrap_or_default();
+                let script = ctx
+                    .runtime_options
+                    .eval
+                    .script
+                    .as_deref()
+                    .unwrap_or_default();
                 let configuration = bun_lint_driver::configuration_read_by(script);
                 crate::read_ahead::expect(configuration.into_iter());
             });

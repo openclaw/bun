@@ -1,6 +1,6 @@
 import { estimateShallowMemoryUsageOf, heapStats } from "bun:jsc";
 import { describe, expect, test } from "bun:test";
-import { bunEnv, bunExe, tempDir, withoutAggressiveGC } from "harness";
+import { bunEnv, bunExe, tempDir } from "harness";
 import net from "net";
 import perf, { PerformanceObserver, type PerformanceNodeEntry } from "perf_hooks";
 
