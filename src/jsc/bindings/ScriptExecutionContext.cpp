@@ -301,19 +301,18 @@ bool ScriptExecutionContext::postTaskTo(ScriptExecutionContextIdentifier identif
 
 bool ScriptExecutionContext::postVMInspection(ScriptExecutionContextIdentifier identifier, Function<void(JSC::VM&)>&& inspection)
 {
-    const BunVmHandleRef* retained = nullptr;
+    RefPtr<const BunVmHandleRef> retained;
     {
         Locker locker { allScriptExecutionContextsMapLock };
         auto* context = allScriptExecutionContextsMap().get(identifier);
         if (!context || context->isTerminating())
             return false;
         context->m_vm->traps().requestVMInspection(WTF::move(inspection));
-        retained = Bun__VmHandle__retainRef(context->m_vmHandle);
+        retained = context->m_vmHandle;
     }
-    Bun__VmHandle__postAndRelease(retained, new EventLoopTask([](ScriptExecutionContext& context) {
+    postThroughHandle(retained.get(), BunLoopKind::Regular, [](ScriptExecutionContext& context) {
         context.vm().traps().runVMInspections();
-    }),
-        BunLoopKind::Regular);
+    });
     return true;
 }
 

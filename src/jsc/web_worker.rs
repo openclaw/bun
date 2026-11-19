@@ -297,7 +297,6 @@ unsafe extern "C" {
     );
     safe fn WebWorker__disarmHeapLimitObserver(proxy: *mut c_void);
     safe fn WebWorker__stackSize(proxy: *mut c_void) -> usize;
-    safe fn Bun__destroyEventNamesForThreadExit();
     safe fn WebWorker__postOutOfMemoryError(proxy: *mut c_void);
     safe fn WebWorker__postFailedToStartError(proxy: *mut c_void);
     /// The address space a compiled program's thread needs for its tables, taken
@@ -1551,9 +1550,6 @@ impl WebWorker {
             "[{}] shutdown: VirtualMachine destroyed",
             self.execution_context_id
         );
-        // C++ TLS destructors are disabled; release these after the VM, while
-        // the thread's atom table is still alive.
-        Bun__destroyEventNamesForThreadExit();
         exit_code
     }
 

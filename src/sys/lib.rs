@@ -2978,9 +2978,7 @@ mod posix_impl {
         {
             // Linux skips locks_remove_posix() when closing an FMODE_PATH file.
             if let Ok(fd) = open(path, O::PATH | O::CLOEXEC, 0) {
-                let _close = scopeguard::guard(fd, |fd| {
-                    let _ = close(fd);
-                });
+                let _close = CloseOnDrop::new(fd);
                 let mut proc = [0u8; 32];
                 let len = {
                     use std::io::Write as _;
@@ -3267,10 +3265,10 @@ mod posix_impl {
 
     /// Clear CLOEXEC and return whether it was previously set.
     pub fn clear_close_on_exec(fd: Fd) -> Maybe<bool> {
-        let flags = fcntl(fd, libc::F_GETFD, 0)?;
+        let flags = fcntl(fd, Fcntl::GetFd, 0)?;
         let was_set = flags & libc::FD_CLOEXEC as isize != 0;
         if was_set {
-            fcntl(fd, libc::F_SETFD, flags & !(libc::FD_CLOEXEC as isize))?;
+            fcntl(fd, Fcntl::SetFd, flags & !(libc::FD_CLOEXEC as isize))?;
         }
         Ok(was_set)
     }

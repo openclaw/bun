@@ -22,6 +22,7 @@
 #include "JSEventListenerOptions.h"
 #include "JavaScriptCore/JSCJSValue.h"
 #include "ScriptExecutionContext.h"
+#include "WebCoreJSBuiltins.h"
 #include <JavaScriptCore/StrongInlines.h>
 #include <JavaScriptCore/Identifier.h>
 #include <JavaScriptCore/JSCInlines.h>

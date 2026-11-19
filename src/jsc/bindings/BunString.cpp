@@ -677,7 +677,7 @@ extern "C" BunString URL__suffixFromFileURL(const BunString* input)
     if (!url.isValid() || url.isEmpty())
         return { BunStringTag::Dead };
 
-    return Bun::toStringRef(makeString(url.queryWithLeadingQuestionMark(), url.fragmentIdentifierWithLeadingNumberSign()));
+    return Bun::toStringRef(makeString(url.queryWithLeadingQuestionMark(), url.fragmentIdentifierWithLeadingNumberSign())).leak();
 }
 
 extern "C" BunString URL__getHrefJoin(const BunString* baseStr, const BunString* relativeStr)

@@ -1672,34 +1672,6 @@ void GlobalObject::promiseRejectionTracker(JSGlobalObject* obj, JSC::JSPromise* 
     }
 }
 
-JSC_DEFINE_CUSTOM_GETTER(errorConstructorPrepareStackTraceGetter,
-    (JSC::JSGlobalObject * lexicalGlobalObject, JSC::EncodedJSValue thisValue,
-        JSC::PropertyName))
-{
-    Zig::GlobalObject* thisObject = uncheckedDowncast<Zig::GlobalObject>(lexicalGlobalObject);
-    if (thisObject->m_errorConstructorPrepareStackTraceValue) {
-        return JSValue::encode(thisObject->m_errorConstructorPrepareStackTraceValue.get());
-    }
-
-    return JSValue::encode(thisObject->m_errorConstructorPrepareStackTraceInternalValue.get(thisObject));
-}
-
-JSC_DEFINE_CUSTOM_SETTER(errorConstructorPrepareStackTraceSetter,
-    (JSC::JSGlobalObject * lexicalGlobalObject, JSC::EncodedJSValue thisValue,
-        JSC::EncodedJSValue encodedValue, JSC::PropertyName property))
-{
-    auto& vm = JSC::getVM(lexicalGlobalObject);
-    Zig::GlobalObject* thisObject = uncheckedDowncast<Zig::GlobalObject>(lexicalGlobalObject);
-    JSValue value = JSValue::decode(encodedValue);
-    if (value == thisObject->m_errorConstructorPrepareStackTraceInternalValue.get(thisObject)) {
-        thisObject->m_errorConstructorPrepareStackTraceValue.clear();
-    } else {
-        thisObject->m_errorConstructorPrepareStackTraceValue.set(vm, thisObject, value);
-    }
-
-    return true;
-}
-
 #pragma mark - Globals
 
 // onmessage/onerror are CustomValue properties, so JSC invokes these callbacks

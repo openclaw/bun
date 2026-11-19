@@ -1886,7 +1886,7 @@ export default b.declarations(
     "jsFunctionDefaultErrorPrepareStackTrace",
     answering(b.string, b.hostCall),
   ),
-  // ZigGlobalObject.cpp errorConstructorPrepareStackTraceGetter: what the program has stored, and until then that function.
+  // ZigGlobalObject.cpp installs this function as the writable Error.prepareStackTrace property.
   // FormatStackTraceForJS.cpp: the function is handed the object whose stack is asked for and a new list of call sites, objects of a class that the table does not have.
   b.static(
     "Error.prepareStackTrace",

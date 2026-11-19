@@ -1151,10 +1151,10 @@ extern "C" napi_status napi_add_finalizer(napi_env env, napi_value js_object,
     ref->boundCleanup = &env->addFinalizer(wrap_cleanup, native_object, ref);
     ref->nativeObject = native_object;
     if (result) {
-        ref->weakValueRef.set(objectValue, Napi::NapiRefWeakHandleOwner::weakValueHandleOwner(), ref);
+        ref->weakValueRef = JSC::Weak<JSCell>(object, &Napi::NapiRefWeakHandleOwner::weakValueHandleOwner(), ref);
         *result = toNapi(ref);
     } else {
-        ref->weakValueRef.set(objectValue, Napi::NapiRefSelfDeletingWeakHandleOwner::weakValueHandleOwner(), ref);
+        ref->weakValueRef = JSC::Weak<JSCell>(object, &Napi::NapiRefSelfDeletingWeakHandleOwner::weakValueHandleOwner(), ref);
     }
 
     NAPI_RETURN_SUCCESS(env);
