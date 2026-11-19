@@ -70,7 +70,7 @@ INVITATION_REDUCTION_CASES = tuple(f"releases reduced invitation callbacks after
 INVITATION_CALLBACK_SHA256 = "1775321fae85b26fca81575d9910aa3118e8e67955cd9d1774d8335e3f310fe7"
 INVITATION_SNAPSHOT_PAYLOAD_SHA256 = "69473344a9e3a29e74c72552c9b43b98be691c274869ecd4a917bfe9d66cf67b"
 INVITATION_SNAPSHOT_SHA256 = "f03c29b4b9b38678328ef5f0d63e593af4a7ca847095a41f86175cd23163b695"
-INVITATION_STACK_PAYLOAD_SHA256 = "ee7908a6f3b9f0ce53229051d4f9774ed185e4ce39d08dcda3bc8afa078dfd49"
+INVITATION_STACK_PAYLOAD_SHA256 = "83d857d09d9dea47c942662cb352e5ae5a7d391d30386dd53ed35eab3a09924e"
 READINESS_PATCH_SHA256 = "cb2aedd7cf89ae1298d1335fcc461ca932060a58b63a1489a128eef57ba94b4c"
 READINESS_FILES = {
     "src/process/spawn-broker/resource-protocol.ts": ("3f66dcd70bc32b798930d3f11a8e575e0915206bb6ad5c0417a8ccb4975ed5c2", "89cdfbb498eb09cd6233459ac6d8c1ba74cd4c53e8f20bf79f7cc8ffce411d68"),
@@ -289,7 +289,7 @@ type TurnResult ="""
         b"    observeInvitationFulfillment((value: TurnResult) => ({ ok: true as const, value })),")
 
 
-def invitation_fulfillment_test_bytes(original):
+def invitation_fulfillment_test_bytes(original, stack=False):
     assert hashlib.sha256(original).hexdigest() == INVITATION_SOURCE_SHA256
     changes = (
         (b'import * as admission from "../../infra/sqlite-worker-operation-admission.js";',
@@ -297,20 +297,24 @@ def invitation_fulfillment_test_bytes(original):
         (b"      async function settle() {", b"""      invitationFulfillment.references.length = 0;
       invitationFulfillment.overflow = false;
       async function settle() {"""),
-        (b"      queryObjects(WeakRef);", b"""      queryObjects(WeakRef);
-      process.stderr.write("[invitation-fulfillment] " + JSON.stringify({
+        (b"      expect(control.deref()).toBeUndefined();" if stack else b"      queryObjects(WeakRef);",
+         (b"" if stack else b"      queryObjects(WeakRef);\n") + b"""      process.stderr.write("[invitation-fulfillment] " + JSON.stringify({
         version: 1,
         outcome,
         overflow: invitationFulfillment.overflow,
         alive: invitationFulfillment.references.map((reference) => reference.deref() !== undefined),
         sentinelAlive: reference.deref() !== undefined,
         controlAlive: control.deref() !== undefined,
-      }) + "\\n");"""),
+      }) + "\\n");""" + (b"\n      expect(control.deref()).toBeUndefined();" if stack else b"")),
     )
-    patched = original
+    patched = invitation_snapshot_bytes(original, stack=True) if stack else original
     for before, after in changes:
         assert patched.count(before) == 1
         patched = patched.replace(before, after)
+    if stack:
+        before = b"invitationStackCheckpoint(snapshot, snapshotAddress);"
+        assert patched.count(before) == 1
+        patched = patched.replace(before, b"invitationStackCheckpoint(snapshot, snapshotAddress, false, invitationFulfillment.references, invitationSnapshotAddress);")
     return patched
 
 
@@ -744,10 +748,10 @@ def main():
     parser.add_argument("--anchor-fixture-fix", action="store_true")
     parser.add_argument("--doctor-continuation", action="store_true")
     args = parser.parse_args()
-    assert not args.invitation_fulfillment or (args.invitation_retention and not any((
+    assert not args.invitation_fulfillment or ((args.invitation_retention or args.invitation_gdb_stack) and not any((
         args.invitation_references, args.invitation_operations, args.invitation_owner_cut,
-        args.invitation_reduction, args.invitation_snapshot, args.invitation_native_callback,
-        args.invitation_cache_code)))
+        args.invitation_reduction, args.invitation_native_callback, args.invitation_cache_code))
+        and (not args.invitation_snapshot or args.invitation_gdb_stack))
     assert not args.invitation_stack or args.invitation_snapshot
     assert not args.invitation_gdb_attach or args.invitation_stack
     assert not args.invitation_gdb_stack or (args.invitation_stack and not args.invitation_gdb_attach)
@@ -1105,13 +1109,13 @@ def main():
             test_path = source / INVITATION_FILE
             assert test_path.is_file() and not test_path.is_symlink()
             original = test_path.read_bytes()
-            patched = (invitation_fulfillment_test_bytes(original) if args.invitation_fulfillment else
+            patched = (invitation_fulfillment_test_bytes(original, stack=args.invitation_gdb_stack) if args.invitation_fulfillment else
                        invitation_reduction_bytes(original) if args.invitation_reduction else
                        invitation_references_bytes(original, args.invitation_operations) if args.invitation_references else
                        invitation_owner_cut_bytes(original) if args.invitation_owner_cut else
                        invitation_snapshot_bytes(original, args.invitation_stack) if args.invitation_snapshot else invitation_callback_bytes(original))
-            patched_test_sha = (INVITATION_FULFILLMENT_TEST_SHA256 if args.invitation_fulfillment else
-                                hashlib.sha256(patched).hexdigest() if args.invitation_stack else
+            patched_test_sha = (hashlib.sha256(patched).hexdigest() if args.invitation_stack else
+                                INVITATION_FULFILLMENT_TEST_SHA256 if args.invitation_fulfillment else
                                 INVITATION_REDUCTION_SHA256 if args.invitation_reduction else
                                 INVITATION_OPERATIONS_SHA256 if args.invitation_operations else
                                 INVITATION_REFERENCES_SHA256 if args.invitation_references else
@@ -1179,6 +1183,13 @@ def main():
                 report["debuggerPacketTraces"] = stack_module["packet_traces"](stack_root)
             report["stack"] = stack_observations(log)
             assert report["stack"]["complete"], "stack capture or verified debugger detach/parent continuation missing"
+            if args.invitation_fulfillment:
+                identity = report["stack"]["checkpoint"].get("identity", {})
+                assert identity.get("version") == 1 and isinstance(identity.get("callbacks"), list)
+                assert 0 < len(identity["callbacks"]) <= 16
+                assert all(row["status"] in {"matched", "unmatched", "collected", "unavailable"}
+                           for row in identity["callbacks"])
+                report["fulfillmentIdentity"] = identity
         completions = [json.loads(line.removeprefix("[shard:completion] "))
                        for line in log.splitlines() if line.startswith("[shard:completion] ")]
         assert len(completions) == 1, \

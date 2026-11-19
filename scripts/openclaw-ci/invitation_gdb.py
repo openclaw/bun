@@ -96,6 +96,19 @@ def capture():
             receipt["registerMatches"].append({"cell": cell, "register": name})
     receipt.update(captured=True,
                    limitation="Post-GC occurrences only, not GC-scanned roots or frame ownership. Main stack starts at RSP; red zone and other threads omitted. Native unwinding and JIT symbols may be incomplete.")
+    if os.environ.get("OPENCLAW_INVITATION_STACK_IDENTIFY") == "1":
+        function_ids = {record["cell"] for record in records if record["class"] == "Function"}
+        matched_ids = {match["cell"] for match in receipt["matches"]} & function_ids
+        identities = {"version": 1, "pid": pid, "startTime": identity["startTime"],
+                      "functions": [{"cell": cell, "address": hex(address)} for address, cell in cells.items()
+                                    if cell in matched_ids]}
+        data = json.dumps(identities) + "\n"
+        assert len(data.encode()) <= 16 * 1024 and len(identities["functions"]) <= 96
+        path = root / "function-identities.json"
+        path.write_text(data)
+        path.chmod(0o600)
+        owner = root.stat()
+        os.chown(path, owner.st_uid, owner.st_gid)
     phase("memory-read")
 
 

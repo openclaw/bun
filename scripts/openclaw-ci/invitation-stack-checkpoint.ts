@@ -3,6 +3,8 @@ export function invitationStackCheckpoint(
   snapshot: unknown,
   address: bigint | undefined,
   attachOnly = false,
+  identityReferences?: WeakRef<object>[],
+  parseAddress?: (description: string) => bigint | undefined,
 ) {
   let debuggerExitCode: number | null = null;
   let debuggerSignal: string | null = null;
@@ -10,6 +12,7 @@ export function invitationStackCheckpoint(
   let errorCategory: string | undefined;
   let debuggerEvents: string[] = [];
   let debuggerPhase: string | undefined;
+  let identity: unknown;
   try {
     const fs = require("node:fs") as typeof import("node:fs");
     const path = require("node:path") as typeof import("node:path");
@@ -19,6 +22,11 @@ export function invitationStackCheckpoint(
     const gdb = process.env.OPENCLAW_INVITATION_GDB === "1";
     if (!root || !commands || (!attachOnly && address === undefined))
       throw new Error("checkpoint-input");
+    if (
+      identityReferences &&
+      (attachOnly || !gdb || !parseAddress || identityReferences.length > 16)
+    )
+      throw new Error("identity-input");
     const directory = fs.mkdtempSync(path.join(root, "worker-"));
     fs.writeFileSync(path.join(directory, "mode.txt"), attachOnly ? "attachment-only" : "stack", {
       mode: 0o600,
@@ -47,6 +55,7 @@ export function invitationStackCheckpoint(
         "PATH=/usr/bin:/bin",
         `OPENCLAW_INVITATION_STACK_DIR=${directory}`,
         `OPENCLAW_INVITATION_STACK_ATTACH_ONLY=${attachOnly ? "1" : "0"}`,
+        `OPENCLAW_INVITATION_STACK_IDENTIFY=${identityReferences ? "1" : "0"}`,
         "/usr/bin/prlimit",
         "--fsize=8388608:8388608",
         "--",
@@ -134,7 +143,82 @@ export function invitationStackCheckpoint(
     if (child.error) throw child.error;
     const receiptPath = path.join(directory, "receipt.json");
     if (fs.statSync(receiptPath).size > 64 * 1024) throw new Error("receipt-budget");
-    receipt = JSON.parse(fs.readFileSync(receiptPath, "utf8"));
+    const parsedReceipt = JSON.parse(fs.readFileSync(receiptPath, "utf8"));
+    const publicKeys = new Set([
+      "version",
+      "attached",
+      "detached",
+      "captured",
+      "diagnosticOnly",
+      "qualifiesRepin",
+      "jitModuleLoading",
+      "limitation",
+      "captureMode",
+      "identityQualified",
+      "executableSHA256",
+      "snapshotCells",
+      "mainThreadQualified",
+      "omittedThreadCount",
+      "frames",
+      "framesCapped",
+      "stackBytes",
+      "matches",
+      "registerMatches",
+      "errorCategory",
+      "detachErrorCategory",
+    ]);
+    if (Object.keys(parsedReceipt).some((key) => !publicKeys.has(key)))
+      throw new Error("receipt-schema");
+    receipt = parsedReceipt;
+    if (identityReferences && parseAddress) {
+      if (
+        debuggerExitCode !== 0 ||
+        debuggerSignal ||
+        !parsedReceipt.captured ||
+        !parsedReceipt.detached
+      )
+        throw new Error("identity-unsettled");
+      const identitiesPath = path.join(directory, "function-identities.json");
+      if (fs.statSync(identitiesPath).size > 16 * 1024) throw new Error("identity-budget");
+      const data = JSON.parse(fs.readFileSync(identitiesPath, "utf8"));
+      if (
+        data.version !== 1 ||
+        data.pid !== process.pid ||
+        data.startTime !== startTime ||
+        !Array.isArray(data.functions) ||
+        data.functions.length > 96 ||
+        !Array.isArray(parsedReceipt.snapshotCells)
+      )
+        throw new Error("identity-binding");
+      const functions = new Map<string, string>();
+      for (const item of data.functions) {
+        if (
+          typeof item.cell !== "string" ||
+          !/^n\d{1,3}$/.test(item.cell) ||
+          typeof item.address !== "string" ||
+          !/^0x[0-9a-f]{1,16}$/.test(item.address) ||
+          functions.has(item.address) ||
+          !parsedReceipt.snapshotCells.some(
+            (cell: { cell: string; class: string }) =>
+              cell.cell === item.cell && cell.class === "Function",
+          )
+        )
+          throw new Error("identity-cell");
+        functions.set(item.address, item.cell);
+      }
+      const { jscDescribe } = require("bun:jsc") as typeof import("bun:jsc");
+      identity = {
+        version: 1,
+        callbacks: identityReferences.map((reference, index) => {
+          const value = reference.deref();
+          if (!value) return { index, status: "collected", cells: [] };
+          const pointer = parseAddress(jscDescribe(value));
+          if (pointer === undefined) return { index, status: "unavailable", cells: [] };
+          const cell = functions.get(`0x${pointer.toString(16)}`);
+          return { index, status: cell ? "matched" : "unmatched", cells: cell ? [cell] : [] };
+        }),
+      };
+    }
   } catch (error) {
     errorCategory = error instanceof Error ? error.name : "Unknown";
   }
@@ -149,6 +233,7 @@ export function invitationStackCheckpoint(
         debuggerPhase,
         errorCategory,
         receipt,
+        identity,
       }) +
       "\n",
   );
