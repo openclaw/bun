@@ -286,6 +286,8 @@ jobs:
         run: |
           ./build/release/bun test test/cli/run/run-aot.test.ts \
             --test-name-pattern '__esModule cannot be added to an imported module namespace|stack traces|files that are CommonJS only by name'
+          ./build/release/bun test test/aot/originals-of-mocks-run-compiled.test.ts \
+            --test-name-pattern 'requireActual ignores'
       - name: Record Node reflection controls
         if: inputs.webkit_source_sha != ''
         run: |

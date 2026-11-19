@@ -47,6 +47,30 @@ test("a", async () => {
   expect(all).not.toContain("more often");
 });
 
+test.each([false, true])("requireActual ignores a mock's module.exports (aot: %s)", async aot => {
+  using directory = tempDir("originals-module-exports", {
+    "package.json": files["package.json"],
+    "value.mjs": `const original = { label: "original" };
+export { original as default, original as "module.exports" };`,
+    "a.test.mjs": `${head}test("a", async () => {
+  const mocked = { label: "mock" };
+  vi.doMock("./value.mjs", () => ({ default: mocked, "module.exports": mocked }));
+  console.log("SAID", (await import("./value.mjs")).default.label);
+  console.log("SAID", jest.requireActual("./value.mjs").label);
+});`,
+  });
+  const { stdout, stderr, exitCode } = await run(
+    [bunExe(), "test", ...(aot ? ["--aot"] : [])],
+    String(directory),
+    { ...bunEnv, BUN_DEBUG_TEST_AOT_WORDS: "" },
+  );
+  const all = stdout + "\n" + stderr;
+  expect(all.split("\n").filter(line => line.startsWith("SAID "))).toEqual(["SAID mock", "SAID original"]);
+  expect(all).toContain(" 1 pass");
+  expect(all).not.toContain("ran from source");
+  expect(exitCode).toBe(0);
+});
+
 test("a body that awaits stores its exports in its own instance", async () => {
   using directory = tempDir("originals-run-compiled", {
     "package.json": files["package.json"],
