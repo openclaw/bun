@@ -25,6 +25,13 @@ def frame(writer, **changes):
 
 
 class DoctorFailureEvidenceTests(unittest.TestCase):
+    def test_repair_admission_frames_identify_legacy_and_schema_waits(self):
+        for phase in ("legacy-owner-check", "lease-schema-preflight"):
+            with self.subTest(phase=phase):
+                log = "\n".join((case(True, True), case(False),
+                    frame(True, v=2, phase=phase, leaseChecks=[], leaseOverflow=False)))
+                self.assertEqual(observe(log, 1)["failureFrames"][0]["phase"], phase)
+
     def test_direct_lease_records_keep_completed_and_pending_cycles(self):
         checks = [
             {"cycle": 0, "schemaMaintenance": True, "phase": "complete", "cleanup": "complete"},

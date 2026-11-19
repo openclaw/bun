@@ -21,11 +21,13 @@ GROUPS = ("large10", "large5", "small4", "large2", "large42_storage", "large42_p
 DOCTOR_FILE = "src/commands/doctor-maintenance.continuation-scope.test.ts"
 DOCTOR_FAILURE_CANDIDATE = "bf665f2db8cbfed047cd084d9ee4ed333653549b"
 DOCTOR_FAILURE_MANIFEST_SHA256 = "d946224b1aa9ffd41f5fae82b68fb88fad9dc87d1f97d3226dcdfee7c3dc3968"
-DOCTOR_FAILURE_PATCH_SHA256 = "e81c67df1a6b6f91b7f96c11e8caa2c31be80aa47f983a98c0bd293071b40f88"
+DOCTOR_FAILURE_PATCH_SHA256 = 'aeb7fc5b71f30f7b8502765e6b6a1bb0d7925c81636273a8362e4973c344faf8'
 DOCTOR_FAILURE_FILES = {
-    'src/commands/doctor-maintenance.continuation-scope.test.ts': ('31af4b9968716bf8e4ccade9b184bd810bb4e3096df3488d4a6f66f3d1a34f2f', '65c725f89eb04d5996a6544a033e5cb4086ecf3939d750a9cd8f3af65939c611'),
-    'src/commands/doctor-maintenance.admission.test-support.ts': ('80cc7c47700e9d5e77beb98fd31ec5a73eb8d31945b24ac0dc40f4ffe0266314', 'f86c09de96ccf2b878afbf7504dcae13453ac0b3aa6bb382e37d82dd71d21806'),
+    'src/commands/doctor-maintenance.continuation-scope.test.ts': ('31af4b9968716bf8e4ccade9b184bd810bb4e3096df3488d4a6f66f3d1a34f2f', 'd1455f767660ca1fa3d6ab055e0c9eacd56a3bd4868cb148615fb05425121c31'),
+    'src/commands/doctor-maintenance.admission.test-support.ts': ('80cc7c47700e9d5e77beb98fd31ec5a73eb8d31945b24ac0dc40f4ffe0266314', 'e297f64cdeec9305fcc645815e23b2a4b72778478da2cacefce34fdce45e73f2'),
     'src/infra/gateway-owner-lease.ts': ('ba584a190558f6d04e5895c208058b101801d044767f02af8c80dfd3b34e72e5', '261917d99da8c7f9fbe53164e547eadf6bf7b234395ade64dfa186487f629110'),
+    'src/commands/doctor-maintenance.ts': ('3ba27a8a9a2caf614986efc33688604f6de75a82288da768776b7dd2fbc4c1ea', '8a1bbf7161ded9da215868cf4426767dc590e9faa6be724adc74da206a1fcb71'),
+    'src/commands/doctor-agent-lease-refusal.ts': ('84c5025a533e9a709b38a6fc1b81c4b9cd052637f6b07a0848b1b29d2ebdc88e', 'bbc3190e3f87527707943f0b05f35f53f03fa36e2e1154b76a5e5e90a163db99'),
 }
 DOCTOR_CASES = tuple(f"keeps Doctor continuation with its repair scope (cached writer: {writer})"
                      for writer in ("true", "false"))
@@ -109,7 +111,7 @@ common = runpy.run_path(str(Path(__file__).with_name("openclaw-repin-regression.
 
 def doctor_failure_observations(log, exit_code):
     prefix = "[shard:bun:agentic-commands-doctor-hosted-2]"
-    phases = set("fixture create-run gateway-release gateway-released database-close database-closed gateway-acquire maintenance-acquire before-state-mutation baseline-capture maintenance-read maintenance-release maintenance-released complete".split())
+    phases = set("fixture create-run gateway-release gateway-released database-close database-closed gateway-acquire maintenance-acquire before-state-mutation baseline-capture maintenance-read maintenance-release maintenance-released complete stop-returned repair-admission legacy-owner-check agent-lease-admission repair-admitted maintenance-resources-acquire update-admission-recheck agent-lease-import agent-owner-acquire lease-reader-import lease-reader lease-schema-import lease-schema-preflight lease-deadline lease-owner-release lease-poll-wait lease-poll-read".split())
     cleanup = set("not-started maintenance-release gateway-release isolation complete".split())
     teardown = set("not-started close-async close-sync directories complete".split())
     restore = set("not-started mocks env complete".split())
@@ -1261,7 +1263,7 @@ def main():
                            "64 combined test/fixture frames per case plus one overflow; fixed schema below512B; whole native log32MiB"
                            if args.doctor_phases or args.doctor_fixture_phases else "4 guard receipts plus one overflow per guard; 2048 fixed frames plus one limit marker per loaded diagnostic module instance; each frame below512B; whole native log32MiB"),
                 "scope": ("classifies only existing returned steps after a failed outcome; no additional await, database read, or success-path logging; no write-failure attribution" if args.resident_receipt else
-                          "test, fixture and direct lease reader projections in the exact56-file Doctor group; per-case synchronous phase assignments and onTestFailed output only; no added awaits or success-path logging" if args.doctor_failure_phases else
+                          "test, fixture, direct lease reader and repair-admission projections in the exact56-file Doctor group; per-case synchronous phase assignments and onTestFailed output only; no added awaits or success-path logging" if args.doctor_failure_phases else
                           "C plus existing phase writes and readonly fixture guard in original116-pattern group; no observation reporter; boundaries only, not cause or unchanged-C qualification" if args.doctor_fixture_phases else
                           "C plus one fixture IPC-observer ownership guard in original116-pattern group; no observation reporter or markers; not unchanged-C qualification" if args.doctor_fixture_fix else
                           "two test/fixture projections in original116-pattern group; stderr writes can perturb scheduling; observed operation boundaries only, no cause or qualification verdict"

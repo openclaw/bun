@@ -13,10 +13,10 @@
  import { captureUpdateRecoveryBaseline } from "../infra/update-recovery-baseline-capture.js";
 @@ -43,14 +44,34 @@
  }));
- 
+
  const fixture = setupDoctorAdmissionFixture();
 +const originalLeaseCheck = ownerLease.assertGatewayOwnerLeaseStopped;
- 
+
  it.each([true, false])(
    "keeps Doctor continuation with its repair scope (cached writer: %s)",
    async (keepWriter) => {
@@ -90,9 +90,12 @@
                const { ref } = await captureUpdateRecoveryBaseline({
                  runId: "doctor-plugin-capture",
                  installRoot: install,
-@@ -149,14 +178,22 @@
+@@ -148,15 +177,25 @@
+             }
              expect(family()).toEqual(original);
            },
++        }, (nextPhase) => {
++          phase = nextPhase;
          });
 +        phase = "maintenance-read";
          maintenance!.run(() => listUpdateRuns({}, { env }, openDoctorStateSchemaReadAdmission));
@@ -115,9 +118,24 @@
  );
 --- a/src/commands/doctor-maintenance.admission.test-support.ts
 +++ b/src/commands/doctor-maintenance.admission.test-support.ts
-@@ -49,19 +49,29 @@
+@@ -39,29 +39,42 @@
+   OPENCLAW_UPDATE_PARENT_ALLOWS_GATEWAY_ACTIVATION: undefined,
+ };
+
+-export function beginDoctorRepair(overrides: Partial<DoctorMaintenanceParams> = {}) {
++export function beginDoctorRepair(
++  overrides: Partial<DoctorMaintenanceParams> = {},
++  diagnostic?: (phase: string) => void,
++) {
+   return beginDoctorMaintenance({
+     root: null,
+     options: { repair: true, nonInteractive: true },
+     runtime: { log() {}, error() {}, exit() {} },
+     ...overrides,
+-  });
++  }, diagnostic);
  }
- 
+
  export function setupDoctorAdmissionFixture() {
 +  let currentDiagnostic: { phase: string; restore: string } | undefined;
    const directories = createTempDirTracker();
@@ -220,9 +238,177 @@
      authority.assertCurrent();
      if (outcome && "value" in outcome) {
        const reply = outcome.value;
-@@ -211,4 +223,5 @@
+@@ -211,6 +223,7 @@
      [...errors, ...cleanupErrors],
      "Gateway owner lease inspection and cleanup failed",
    );
 +  if (diagnostic) diagnostic.phase = "complete";
  }
+
+ export function readGatewayOwnerLease(
+--- a/src/commands/doctor-maintenance.ts
++++ b/src/commands/doctor-maintenance.ts
+@@ -56,7 +56,10 @@
+   resolveUpdateDoctorGitRecovery,
+ } from "./doctor-update-refusal.js";
+
+-export async function beginDoctorMaintenance(params: DoctorMaintenanceParams) {
++export async function beginDoctorMaintenance(
++  params: DoctorMaintenanceParams,
++  diagnostic?: (phase: string) => void,
++) {
+   if (
+     !(params.options.repair === true || params.options.yes === true || params.interactiveRepair)
+   ) {
+@@ -130,7 +133,10 @@
+   };
+   const acquireStoppedMaintenanceResources = (assertAdmission?: () => void) =>
+     acquireWithWait({
+-      acquire: () => state.acquire(assertAdmission),
++      acquire: () => {
++        diagnostic?.("maintenance-resources-acquire");
++        return state.acquire(assertAdmission);
++      },
+       shouldRetry: (error) =>
+         stopped?.stopped === true && error instanceof GatewayStateOwnerContentionError,
+       deadlineMs: stopDeadline ?? performance.now(),
+@@ -321,15 +327,19 @@
+   };
+   const admitRepair = async () => {
+     inspectingActivation = false;
++    diagnostic?.("legacy-owner-check");
+     await assertLegacyGatewayStoppedForMaintenance(state.env);
+     // Retain one process owner across every migration and its resource drainage.
++    diagnostic?.("agent-lease-admission");
+     await admitDoctorAgentLeases({
++      diagnostic,
+       state,
+       wait: waitForMaintenance,
+       acquire: () =>
+-        acquireStoppedMaintenanceResources(assertDeadline).then(() =>
+-          assertUpdateAdmissionCurrent?.(),
+-        ),
++        acquireStoppedMaintenanceResources(assertDeadline).then(() => {
++          diagnostic?.("update-admission-recheck");
++          assertUpdateAdmissionCurrent?.();
++        }),
+       assertCurrent: () => {
+         assertCallerCurrent?.();
+         assertDeadline?.();
+@@ -337,6 +347,7 @@
+       signal: exit.signal,
+       log: params.runtime.log,
+     });
++    diagnostic?.("repair-admitted");
+     // Lease admission can wait longer than the parent Doctor phase allows.
+     assertDeadline?.();
+     repairStoresMayBeOpen = true;
+@@ -557,6 +568,7 @@
+                       stopped = await (state.resources
+                         ? state.resources.run(stopService)
+                         : stopService());
++                      diagnostic?.("stop-returned");
+                       assertDoctorMaintenanceInspection(stopped, env);
+                       if (stopped.serviceUpdateVerdict?.kind === "unavailable") {
+                         warn(stopped.serviceUpdateVerdict.message);
+@@ -587,6 +599,7 @@
+                         `Doctor restores the managed Gateway after repairs settle. If forcibly terminated: ${formatDoctorRecoveryHint(stopped.serviceEnv ?? env)}`,
+                       );
+                     }
++                    diagnostic?.("repair-admission");
+                     await admitRepair();
+                     assertStopCustody();
+                   });
+@@ -607,6 +620,7 @@
+         }
+       }
+       if (!repairStoresMayBeOpen) {
++        diagnostic?.("repair-admission");
+         await admitRepair();
+       }
+       stopped?.windowsTaskAutoStartRecovery?.beginMutation();
+--- a/src/commands/doctor-agent-lease-refusal.ts
++++ b/src/commands/doctor-agent-lease-refusal.ts
+@@ -104,10 +104,13 @@
+ export async function assertDoctorAgentLeaseAdmission(
+   env: NodeJS.ProcessEnv,
+   signal = resolveSqliteInspectionSignal(),
++  diagnostic?: (phase: string) => void,
+ ): Promise<void> {
++  diagnostic?.("lease-reader-import");
+   const { assertNoOpenClawAgentDatabaseLeasesReadOnly } =
+     await import("../state/openclaw-agent-db-lease-inspection.js");
+   try {
++    diagnostic?.("lease-reader");
+     await assertNoOpenClawAgentDatabaseLeasesReadOnly(
+       { env },
+       openDoctorStateSchemaReadAdmission,
+@@ -122,8 +125,10 @@
+       throw createDoctorAgentLeaseRefusal(env, { cause: error, ownerPids: error.ownerPids });
+     }
+     // Classify unreadable state under the held owners without opening a writer.
++    diagnostic?.("lease-schema-import");
+     const { preflightOpenClawDatabaseSchemas } =
+       await import("../state/openclaw-database-preflight.js");
++    diagnostic?.("lease-schema-preflight");
+     const schemas = await preflightOpenClawDatabaseSchemas({
+       env,
+       scope: "state",
+@@ -150,6 +155,7 @@
+  * to close its database, which Doctor's maintenance ownership would refuse.
+  */
+ export async function admitDoctorAgentLeases(params: {
++  diagnostic?: (phase: string) => void;
+   state: {
+     readonly env: NodeJS.ProcessEnv;
+     run<T>(operation: () => T): T;
+@@ -161,6 +167,7 @@
+   signal: AbortSignal;
+   log: (message: string) => void;
+ }): Promise<void> {
++  params.diagnostic?.("agent-lease-import");
+   const { readActiveOpenClawAgentDatabaseLeasesReadOnly } =
+     await import("../state/openclaw-agent-db-lease-inspection.js");
+   // Doctor never waits for a lease it holds itself.
+@@ -172,10 +179,11 @@
+   let waited = false;
+   let nextProgressAt = 0;
+   for (;;) {
++    params.diagnostic?.("agent-owner-acquire");
+     await params.acquire();
+     try {
+       await params.state.run(() =>
+-        assertDoctorAgentLeaseAdmission(params.state.env, params.signal),
++        assertDoctorAgentLeaseAdmission(params.state.env, params.signal, params.diagnostic),
+       );
+       if (waited) {
+         params.log(
+@@ -193,6 +201,7 @@
+         throw error;
+       }
+       holders = foreign;
++      params.diagnostic?.("lease-deadline");
+       deadlineMs ??= await resolveDoctorMaintenanceWaitDeadlineMs(params.state.env);
+       if (performance.now() >= deadlineMs) {
+         // Keep the lease cause, not the inner refusal, so one failure fact is reported.
+@@ -206,6 +215,7 @@
+       waited = true;
+     }
+     // Holding no OpenClaw lock lets the holder record its close.
++    params.diagnostic?.("lease-owner-release");
+     const releaseFailure = await params.state.release();
+     if (releaseFailure) {
+       throw releaseFailure;
+@@ -226,10 +236,12 @@
+         );
+         nextProgressAt = now + DOCTOR_MAINTENANCE_WAIT_PROGRESS_INTERVAL_MS;
+       }
++      params.diagnostic?.("lease-poll-wait");
+       await sleep(Math.min(pollMs, deadlineMs - now), params.signal);
+       pollMs = Math.min(pollMs * 2, 2_000);
+       let live: readonly number[];
+       try {
++        params.diagnostic?.("lease-poll-read");
+         live = [
+           ...new Set(
+             (
