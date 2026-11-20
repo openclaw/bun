@@ -738,7 +738,10 @@ describe.skipIf(Bun.which(python) === null)("the graph of a checkout", () => {
       );
     }
     expect(
-      programs.map(p => [p.name, p.sources.filter(source => !isOutOfMemoryHook(source) && !isIcuDataHook(source)).map(short)]),
+      programs.map(p => [
+        p.name,
+        p.sources.filter(source => !isOutOfMemoryHook(source) && !isIcuDataHook(source)).map(short),
+      ]),
     ).toEqual([
       [
         "jsc",
