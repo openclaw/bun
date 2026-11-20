@@ -802,7 +802,7 @@ impl Subprocess<'_> {
                     if let crate::webcore::readable_stream::Source::File(file) = stream.ptr {
                         // SAFETY: the cached stream roots its source. Pin it across
                         // read callbacks that can re-enter JS and drop the stream.
-                        let source = unsafe { bun_ptr::RefPtr::init_ref(file) };
+                        let source = unsafe { (*file).ref_guard() };
                         crate::webcore::FileReader::resume(&source);
                     }
                 }

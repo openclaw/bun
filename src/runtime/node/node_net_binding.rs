@@ -11,7 +11,7 @@ use bun_uws as uws;
 
 use crate::generated_bindgen::socket_body::SocketHandle;
 #[cfg(unix)]
-use crate::socket::TCPSocket;
+use crate::generated_bindgen::socket_body::js_TCPSocket;
 use crate::socket::{Listener, NewSocket, SocketFlags};
 
 static AUTO_SELECT_FAMILY_DEFAULT: AtomicBool = AtomicBool::new(true);
@@ -23,7 +23,7 @@ pub(crate) fn drain_subprocess_socket(
     #[cfg(unix)]
     {
         let value = value.to_js();
-        if let Some(socket) = TCPSocket::from_js(&value) {
+        if let Some(socket) = js_TCPSocket::from_js(&value) {
             // Copy the handle before callbacks can detach or replace it.
             let (flags, handle) = (socket.flags.get(), socket.socket.get());
             if !flags.contains(SocketFlags::BYPASS_TLS) {

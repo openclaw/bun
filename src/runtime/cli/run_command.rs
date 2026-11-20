@@ -1100,7 +1100,7 @@ Full documentation is available at <magenta>https://bun.com/docs/cli/run<r>
                     .eval
                     .interactive_script
                     .take()
-                    .map(|script| cli_arena().alloc_slice_copy(&script)),
+                    .map(|script| -> &'static [u8] { cli_arena().alloc_slice_copy(&script) }),
             );
             if ctx.runtime_options.eval.eval_and_print {
                 vm.transpiler
