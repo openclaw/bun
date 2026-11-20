@@ -12,6 +12,7 @@ import { cxx } from "../../scripts/build/compile.ts";
 import { resolveConfig, type Config, type PartialConfig, type Toolchain } from "../../scripts/build/config.ts";
 import {
   jscPrograms,
+  linuxIcuRoot,
   prebuiltHasProgramObjects,
   webkit,
   webkitAotFile,
@@ -729,10 +730,16 @@ describe.skipIf(Bun.which(python) === null)("the graph of a checkout", () => {
     const programs = jscPrograms(cfg);
     // Each defines what mimalloc calls when memory runs out, which Bun's run time defines for Bun.
     const isOutOfMemoryHook = (source: string) => source.endsWith("OutOfMemory.cpp");
+    const isIcuDataHook = (source: string) => basename(source) === "ICUData.cpp";
     for (const { name, sources } of programs) {
       expect(sources.filter(isOutOfMemoryHook).map(short)).toEqual([`B/programs/${name}/OutOfMemory.cpp`]);
+      expect(sources.filter(isIcuDataHook).map(short)).toEqual(
+        name === "testaot" && linuxIcuRoot(cfg) !== undefined ? ["B/programs/testaot/ICUData.cpp"] : [],
+      );
     }
-    expect(programs.map(p => [p.name, p.sources.filter(source => !isOutOfMemoryHook(source)).map(short)])).toEqual([
+    expect(
+      programs.map(p => [p.name, p.sources.filter(source => !isOutOfMemoryHook(source) && !isIcuDataHook(source)).map(short)]),
+    ).toEqual([
       [
         "jsc",
         [
@@ -755,7 +762,7 @@ describe.skipIf(Bun.which(python) === null)("the graph of a checkout", () => {
     // A source of several programs is a stub in each that forwards to it.
     const forwarded = programs
       .flatMap(p => p.sources)
-      .filter(source => short(source).startsWith("B/") && !isOutOfMemoryHook(source))
+      .filter(source => short(source).startsWith("B/") && !isOutOfMemoryHook(source) && !isIcuDataHook(source))
       .map(stub => readFileSync(stub, "utf8").replace(/^#include "(.*)"\n$/, (_, path) => short(path)));
     expect([...new Set(forwarded)]).toEqual(["JSC/aot/tests/AOTShell.cpp", "JSC/aot/runtime/AOTNoFeatureRemoved.cpp"]);
 

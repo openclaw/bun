@@ -232,7 +232,7 @@ const files = {
     function serverRemovalBudget(built: Build) {
       const removed = removedFrom(built);
       // Node-compatible minimatch needs private names; retain the removal budget for every other feature.
-      return removed.length + Number(!removed.includes(featureNamed("OperationsOnPrivateNames")));
+      return removed.length + Number(!removed.includes(featureNamed("PrivateNameOperations")));
     }
     const hello = { stdout: "hello world\n", stderr: "", exitCode: 0 };
 
