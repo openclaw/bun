@@ -3845,13 +3845,21 @@ pub struct RuntimeSourceMapHandler<'a> {
 impl bun_js_printer::OnSourceMapChunk for RuntimeSourceMapHandler<'_> {
     fn on_source_map_chunk(
         &self,
-        chunk: bun_sourcemap::Chunk,
+        chunk: Option<bun_sourcemap::Chunk>,
         source: &bun_ast::Source,
         output: &mut bun_core::MutableString,
         module_info: Option<&bun_js_printer::analyze_transpiled_module::ModuleInfo>,
     ) -> bun_js_printer::Result<()> {
-        self.cache
-            .put(&output.list, &chunk.buffer.list, module_info)?;
+        self.cache.put(
+            &output.list,
+            chunk
+                .as_ref()
+                .map_or(&[][..], |chunk| chunk.buffer.list.as_slice()),
+            module_info,
+        )?;
+        let Some(chunk) = chunk else {
+            return Ok(());
+        };
 
         // Take the inline-sourcemap path only when a
         // debugger is present AND it is *not* in `.connect` mode — `.connect`

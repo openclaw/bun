@@ -1242,10 +1242,10 @@ pub fn write_json_string<W: Write + ?Sized, const ENCODING: Encoding>(
 pub type SourceMapHandler<'a> = &'a dyn OnSourceMapChunk;
 
 pub trait OnSourceMapChunk {
-    /// `output` holds the printed code.
+    /// `output` holds the printed code; `chunk` is absent when source maps are disabled.
     fn on_source_map_chunk(
         &self,
-        chunk: SourceMap::Chunk,
+        chunk: Option<SourceMap::Chunk>,
         source: &bun_ast::Source,
         output: &mut MutableString,
         module_info: Option<&analyze_transpiled_module::ModuleInfo>,
@@ -1255,12 +1255,12 @@ pub trait OnSourceMapChunk {
 impl OnSourceMapChunk for core::cell::Cell<Option<SourceMap::Chunk>> {
     fn on_source_map_chunk(
         &self,
-        chunk: SourceMap::Chunk,
+        chunk: Option<SourceMap::Chunk>,
         _: &bun_ast::Source,
         _: &mut MutableString,
         _: Option<&analyze_transpiled_module::ModuleInfo>,
     ) -> crate::Result<()> {
-        self.set(Some(chunk));
+        self.set(chunk);
         Ok(())
     }
 }
@@ -7793,19 +7793,23 @@ pub fn print_ast<'a, const ASCII_ONLY: bool, const GENERATE_SOURCE_MAP: bool>(
             .map_err(|()| crate::Error::Alloc(bun_alloc::AllocError))?;
     }
 
-    if GENERATE_SOURCE_MAP {
-        if let Some(handler) = &printer.options.source_map_handler {
-            // WriterTrait exposes the written buffer via `slice()`.
-            let chunk = printer
-                .source_map_builder
-                .generate_chunk(printer.writer.slice());
-            handler.on_source_map_chunk(
-                chunk,
-                source,
-                &mut printer.writer.ctx.buffer,
-                printer.module_info.as_deref(),
-            )?;
-        }
+    if let Some(handler) = &printer.options.source_map_handler {
+        // Completion also persists the runtime cache when source maps are disabled.
+        let chunk = if GENERATE_SOURCE_MAP {
+            Some(
+                printer
+                    .source_map_builder
+                    .generate_chunk(printer.writer.slice()),
+            )
+        } else {
+            None
+        };
+        handler.on_source_map_chunk(
+            chunk,
+            source,
+            &mut printer.writer.ctx.buffer,
+            printer.module_info.as_deref(),
+        )?;
     }
 
     printer.writer.done();
