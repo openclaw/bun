@@ -64,7 +64,7 @@ export { original as default, original as "module.exports" };`,
     BUN_DEBUG_TEST_AOT_WORDS: "",
   });
   const all = stdout + "\n" + stderr;
-  expect(all.split("\n").filter(line => line.startsWith("SAID "))).toEqual(["SAID mock", "SAID original"]);
+  expect(all.split("\n").filter(line => line.startsWith("SAID ")), all).toEqual(["SAID mock", "SAID original"]);
   expect(all).toContain(" 1 pass");
   expect(all).not.toContain("ran from source");
   expect(exitCode).toBe(0);

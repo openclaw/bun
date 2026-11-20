@@ -156,10 +156,10 @@ public:
     JSModuleGraph* moduleGraph() const { return m_moduleGraph.get(); }
     void setModuleGraph(JSC::VM&, JSModuleGraph*);
 
-    void toSyntheticSource(JSC::JSGlobalObject* globalObject,
+    JSValue toSyntheticSource(JSC::JSGlobalObject* globalObject,
         const JSC::Identifier& moduleKey,
         Vector<JSC::Identifier, 4>& exportNames,
-        JSC::MarkedArgumentBuffer& exportValues);
+        JSC::MarkedArgumentBuffer& exportValues, bool mayBeLazy = false);
 
     JSValue exportsObject()
     {

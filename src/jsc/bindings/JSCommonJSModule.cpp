@@ -1522,34 +1522,35 @@ void populateESMExports(
     }
 }
 
-void JSCommonJSModule::toSyntheticSource(JSC::JSGlobalObject* globalObject,
+JSValue JSCommonJSModule::toSyntheticSource(JSC::JSGlobalObject* globalObject,
     const JSC::Identifier& moduleKey,
     Vector<JSC::Identifier, 4>& exportNames,
-    JSC::MarkedArgumentBuffer& exportValues)
+    JSC::MarkedArgumentBuffer& exportValues, bool mayBeLazy)
 {
     auto scope = DECLARE_THROW_SCOPE(JSC::getVM(globalObject));
     auto result = this->exportsObject();
-    RETURN_IF_EXCEPTION(scope, );
+    RETURN_IF_EXCEPTION(scope, {});
 
-    populateESMExports(globalObject, result, exportNames, exportValues, this->ignoreESModuleAnnotation);
-    RETURN_IF_EXCEPTION(scope, );
+    populateESMExports(globalObject, result, exportNames, exportValues, this->ignoreESModuleAnnotation, mayBeLazy);
+    RETURN_IF_EXCEPTION(scope, {});
 
     auto& vm = globalObject->vm();
     const auto moduleExports = Identifier::fromString(vm, "module.exports"_s);
     exportValues.append(result);
     if (exportValues.hasOverflowed()) {
         throwOutOfMemoryError(globalObject, scope);
-        return;
+        return {};
     }
     // Node's CJS namespace always exposes the original exports through this name.
     for (size_t i = 0; i < exportNames.size(); ++i) {
         if (exportNames[i] == moduleExports) {
             exportValues[i] = exportValues.last();
             exportValues.removeLast();
-            return;
+            return result;
         }
     }
     exportNames.append(moduleExports);
+    return result;
 }
 
 void JSCommonJSModule::setExportsObject(JSC::JSValue exportsObject)
@@ -2069,9 +2070,7 @@ static JSC::SourceCode commonJSModuleSyntheticSourceCode(const SourceOrigin& sou
                             }
                         }
 
-                        JSValue exports = moduleObject->exportsObject();
-                        RETURN_IF_EXCEPTION(scope, nullptr);
-                        populateESMExports(globalObject, exports, exportNames, exportValues, moduleObject->ignoreESModuleAnnotation, true);
+                        JSValue exports = moduleObject->toSyntheticSource(globalObject, moduleKey, exportNames, exportValues, true);
                         RETURN_IF_EXCEPTION(scope, nullptr);
                         for (size_t i = 0; i < exportValues.size(); ++i) {
                             if (!exportValues.at(i)) [[unlikely]]
