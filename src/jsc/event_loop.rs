@@ -1271,12 +1271,11 @@ unsafe fn __bun_watch_process_completion(
     process: *mut bun_spawn::Process,
     event_loop: EventLoopHandle,
 ) -> bun_sys::Result<()> {
-    let (tag, pointer) = event_loop.into_tag_ptr();
-    if tag != 1 {
+    let EventLoopHandle::Js { owner } = event_loop else {
         return Ok(());
-    }
-    // SAFETY: tag 1 denotes the live JS loop passed by Process::watch.
-    let event_loop = unsafe { &*pointer.cast::<EventLoop>() };
+    };
+    // SAFETY: the supplied JS handle refers to the live loop on its owning thread.
+    let event_loop = unsafe { &*owner.owner().cast::<EventLoop>() };
     // spawnSync's private loop cannot run an asynchronous retirement observer.
     if event_loop.isolated_poster.get().is_some() {
         return Ok(());

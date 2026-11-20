@@ -3680,7 +3680,7 @@ impl VirtualMachine {
         let promise = if let Some(builtin) = builtin {
             // Built-ins execute directly, outside the module-loader registry. Their
             // imports already run under the entry point, including Bake's pathless main.
-            self.entry_evaluation_started = true;
+            self.entry_evaluation_started.set(true);
             // The built-in module is the main module, so what it imports loads as the imports of a
             // main module do (`has_loaded`): a file of an unknown type is a file, not a script.
             if !self.transpiler.get().options.disable_transpilation {
@@ -5375,16 +5375,11 @@ impl VirtualMachine {
             return Ok(Err(error));
         }
 
-        let jsc_vm_ptr = global.bun_vm_ptr();
-        // SAFETY: per-thread VM is live (caller is on the JS thread).
-        let (run_hooks, has_loaded) = unsafe {
-            (
-                ((*jsc_vm_ptr).module_hooks_resolve_count.get() > 0
-                    || (*jsc_vm_ptr).module_hooks_load_count.get() > 0)
-                    && !(*jsc_vm_ptr).module_hooks_skip.get(),
-                (*jsc_vm_ptr).has_loaded.get(),
-            )
-        };
+        let vm = global.bun_vm();
+        let run_hooks = (vm.module_hooks_resolve_count.get() > 0
+            || vm.module_hooks_load_count.get() > 0)
+            && !vm.module_hooks_skip.get();
+        let has_loaded = vm.has_loaded.get();
 
         if run_hooks {
             let hook_specifier = specifier.to_utf8();
@@ -5415,9 +5410,7 @@ impl VirtualMachine {
             }
         }
 
-        // SAFETY: this copies the gate before the JS metadata lookup; no VM borrow spans it.
-        let native_url =
-            unsafe { crate::node_module_module::module_hooks_native_url(&*jsc_vm_ptr, specifier) };
+        let native_url = crate::node_module_module::module_hooks_native_url(vm, specifier);
         if native_url {
             // SAFETY: the global and specifier remain live through the synchronous lookup.
             let native = unsafe { crate::cpp::Bun__getModuleHooksBuiltin(global, specifier) }?;

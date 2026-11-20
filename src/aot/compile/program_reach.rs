@@ -2214,10 +2214,7 @@ impl<'a, 's> FileScan<'a, 's> {
                             == Some(BuiltinId::NodeModule)
                 });
             if named || computed {
-                self.add_interest(
-                    self.hir[expression].pos,
-                    Interest::MayRegisterCustomizationHooks,
-                );
+                self.add_interest(expression, Interest::MayRegisterCustomizationHooks);
             }
         }
     }
