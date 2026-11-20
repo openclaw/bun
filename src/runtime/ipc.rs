@@ -913,7 +913,7 @@ pub(crate) struct SendQueue {
     pub(crate) deferred_scheduled: Cell<bool>,
     pub(crate) pending_close: Cell<bool>,
     #[cfg(not(windows))]
-    read_before_close: Cell<bool>,
+    read_before_close: Cell<Option<CloseReason>>,
     /// A user disconnect() waiting for the handle queue to flush; reported as disconnected meanwhile, cleared by any real close.
     pub(crate) close_after_flush: Cell<bool>,
     pub(crate) pending_after_close: Cell<bool>,
@@ -1036,7 +1036,7 @@ impl SendQueue {
             deferred_scheduled: Cell::new(false),
             pending_close: Cell::new(false),
             #[cfg(not(windows))]
-            read_before_close: Cell::new(false),
+            read_before_close: Cell::new(None),
             close_after_flush: Cell::new(false),
             pending_after_close: Cell::new(false),
             write_in_progress: Cell::new(false),
@@ -1149,14 +1149,28 @@ impl SendQueue {
         if self.pending_close.get() {
             log!("SendQueue#closeSocketTask");
             #[cfg(not(windows))]
-            if self.read_before_close.get()
+            if let Some(reason) = self.read_before_close.get()
                 && let SocketUnion::Open(socket) = *self.socket.get()
             {
                 // `pending_close` is still set, so a callback finds the channel disconnected.
-                socket.read_now();
+                if reason == CloseReason::Failure {
+                    if let Some(socket) = socket.socket.get() {
+                        // SAFETY: the deferred task retains this queue across read callbacks.
+                        unsafe { bun_uws::us_socket_t::drain_readable(socket) };
+                    }
+                } else {
+                    socket.read_now();
+                }
             }
+            #[cfg(not(windows))]
+            let reason = self
+                .read_before_close
+                .replace(None)
+                .unwrap_or(CloseReason::Normal);
+            #[cfg(windows)]
+            let reason = CloseReason::Normal;
             self.pending_close.set(false);
-            self.close_socket(CloseReason::Normal, CloseFrom::User);
+            self.close_socket(reason, CloseFrom::User);
         }
         if self.pending_after_close.replace(false) {
             log!("SendQueue#_onAfterIPCClosed");
@@ -1217,7 +1231,7 @@ impl SendQueue {
     pub(crate) fn close_after_exit(&self) {
         #[cfg(not(windows))]
         if !self.pending_close.get() {
-            self.read_before_close.set(true);
+            self.read_before_close.set(Some(CloseReason::Normal));
         }
         self.close_socket_next_tick(true);
     }
@@ -1563,7 +1577,13 @@ impl SendQueue {
             }
             Done::Partial | Done::NoProgress => {}
             Done::Error => {
-                // error. close socket.
+                #[cfg(not(windows))]
+                {
+                    // A peer can exit before our first write while its final replies remain unread.
+                    self.read_before_close.set(Some(CloseReason::Failure));
+                    self.close_socket_next_tick(true);
+                }
+                #[cfg(windows)]
                 self.close_socket(CloseReason::Failure, CloseFrom::User);
             }
         }
