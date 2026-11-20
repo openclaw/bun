@@ -461,18 +461,15 @@ impl<'a> Parser<'a> {
     /// Strip types without running the transformation or binding passes.
     pub fn strip_types(mut self) -> Result<crate::ts_strip::Output, Error> {
         type Pi<'a> = P<'a, true, false>;
-        let lexer = core::mem::replace(
-            &mut self.lexer,
-            js_lexer::Lexer::init_without_reading(
-                self.bump.alloc(bun_ast::Log::default()),
-                self.source,
-                self.bump,
-            ),
+        self.options.features.ts_strip_mode = true;
+        let p = &mut Pi::init(
+            self.bump,
+            self.log,
+            self.source,
+            self.define,
+            self.lexer,
+            self.options,
         );
-        let mut options = core::mem::take(&mut self.options);
-        options.features.ts_strip_mode = true;
-        init_p!(let p: Pi<'_> =
-            (self.bump, self.log, self.source, self.define, lexer, options));
         if p.lexer.token == js_lexer::T::THashbang {
             p.lexer.next()?;
         }

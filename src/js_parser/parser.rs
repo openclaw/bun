@@ -1531,7 +1531,7 @@ pub struct ParseStatementOptions<'a> {
     pub(crate) allow_directive_prologue: bool,
 }
 
-const _: () = assert!(core::mem::size_of::<ParseStatementOptions>() == 32);
+const _: () = assert!(core::mem::size_of::<ParseStatementOptions>() == 40);
 
 impl<'a> ParseStatementOptions<'a> {
     pub(crate) fn has_decorators(&self) -> bool {

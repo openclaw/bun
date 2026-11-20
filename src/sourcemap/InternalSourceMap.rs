@@ -506,44 +506,23 @@ impl InternalSourceMap<'_> {
     /// Matches the semantics of `Mapping.List.find`: returns the last mapping with
     /// generated position `<= (line, column)` whose generated line equals `line`.
     pub fn find(self, line: Ordinal, column: Ordinal) -> Option<Mapping> {
-        let target_line = line.zero_based();
-        let target_col = column.zero_based();
-
-        let after = (self.sync_entries)
-            .partition_point(|entry| entry.get().less_or_equal(target_line, target_col));
-        let entry = self.sync_entries[..after].last()?.get();
-
-        let mut state = entry.to_state();
-        let mut reader = WindowReader::new(self.stream);
-        reader.parse(entry.byte_offset as usize)?;
-
-        let mut best = state;
-        while !reader.done() {
-            let mut nxt = state;
-            reader.next(&mut nxt);
-            if !nxt.less_or_equal(target_line, target_col) {
-                break;
-            }
-            best = nxt;
-            state = nxt;
-        }
-
-        // A `count` of 0 means the window is corrupt. Either its header says 0 or a lane overran.
-        if reader.count == 0 || best.generated_line != target_line {
-            return None;
-        }
-        Some(best.to_mapping())
+        let line = line.zero_based();
+        self.find_closest(line, column.zero_based())
+            .filter(|mapping| mapping.generated.lines.zero_based() == line)
     }
 
     /// Matches the semantics of `Mapping.List.find_closest`: returns the last
     /// mapping with generated position `<= (line, column)` regardless of
     /// whether the generated line matches. Inputs are signed 0-based offsets.
     pub fn find_closest(self, line: i32, column: i32) -> Option<Mapping> {
-        let sync_idx = self.locate_window(line, column)?;
+        let after = self
+            .sync_entries
+            .partition_point(|entry| entry.get().less_or_equal(line, column));
+        let entry = self.sync_entries[..after].last()?.get();
 
-        let mut state = State::default();
-        let mut reader = WindowReader::new(self.stream());
-        self.seed_window(sync_idx, &mut state, &mut reader)?;
+        let mut state = entry.to_state();
+        let mut reader = WindowReader::new(self.stream);
+        reader.parse(entry.byte_offset as usize)?;
 
         let mut best = state;
         while !reader.done() {
@@ -556,6 +535,7 @@ impl InternalSourceMap<'_> {
             state = nxt;
         }
 
+        // A `count` of 0 means the window is corrupt. Either its header says 0 or a lane overran.
         if reader.count == 0 {
             return None;
         }

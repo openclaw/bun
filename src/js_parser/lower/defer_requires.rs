@@ -816,6 +816,7 @@ impl<'a, const TS: bool, const SCAN: bool> P<'a, TS, SCAN> {
         let picked = match member {
             Some(index) => {
                 let member = E::Index {
+                    open_bracket_loc: Loc::EMPTY,
                     target: value,
                     index,
                     optional_chain: None,

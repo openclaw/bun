@@ -467,7 +467,7 @@ impl Process {
                 if this
                     .exit_handler
                     .get()
-                    .is_some_and(|handler| handler.kind() == ProcessExitKind::Subprocess)
+                    .is_some_and(|handler| handler.is(ProcessExitKind::Subprocess))
                 {
                     // SAFETY: the live ProcessHandle owns this process and its registered primary poll.
                     let completion =

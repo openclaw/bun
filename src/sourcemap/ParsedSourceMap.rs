@@ -192,7 +192,7 @@ impl ParsedSourceMap {
     /// `SourceMap.prototype.findEntry` semantics. Inputs are signed 0-based offsets
     /// and may be negative.
     pub fn find_closest_mapping(&self, line: i32, column: i32) -> Option<Mapping> {
-        if let Some(ism) = &self.internal {
+        if let Some(ism) = self.internal() {
             return ism.find_closest(line, column);
         }
         self.mappings.find_closest(line, column)
@@ -299,5 +299,21 @@ impl<'a> fmt::Display for VlqsFmt<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut adapter = bun_io::FmtAdapter::new(f);
         self.0.write_vlqs(&mut adapter).map_err(|_| fmt::Error)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn internal_closest_mapping_crosses_lines() {
+        let blob = crate::internal_source_map::from_vlq(b"KAAA,IACC;AAAC,GCAE").unwrap();
+        let map = ParsedSourceMap::from_internal(Cow::Owned(blob.into_vec()));
+        let previous = map.find_closest_mapping(1, -1).unwrap();
+        assert_eq!(previous.generated.lines.zero_based(), 0);
+        assert_eq!(previous.generated.columns.zero_based(), 9);
+        assert!(map.find_mapping(Ordinal(1), Ordinal(-1)).is_none());
+        assert!(map.find_closest_mapping(0, -1).is_none());
     }
 }
