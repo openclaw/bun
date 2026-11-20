@@ -6338,12 +6338,13 @@ it.skipIf(!isLinux)("a send that the kernel refuses, and takes in the same turn,
     client.ping(() => {});
     neighbor.ping(() => {});
 
+    // Session errors follow socket closure, which can happen after the stream errors.
+    await Promise.all([closed, peerClosed]);
     expect({ encodable: await encodable, unencodable: await unencodable, sessionErrors }).toEqual({
       encodable: ["ERR_HTTP2_SESSION_ERROR"],
       unencodable: ["ERR_HTTP2_SESSION_ERROR"],
       sessionErrors: ["ERR_HTTP2_SESSION_ERROR: Session closed with error code 9"],
     });
-    await Promise.all([closed, peerClosed]);
     neighbor.close();
     // Calls back only once every session is closed.
     await new Promise(resolve => server.close(resolve));
