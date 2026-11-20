@@ -97,7 +97,7 @@ impl FileLowering<'_, '_, '_, '_> {
         }
     }
 
-    /// `bun run` prints `new Error(x)` as `Error(x)`.
+    /// The ordinary printer removes `new` only for these constructors.
     fn is_printed_as_call(&self, site: Call) -> bool {
         let callee = self.skip_type_syntax(site.callee);
         matches!(self.hir[callee].kind, ExprKind::Ident(_))
@@ -108,17 +108,7 @@ impl FileLowering<'_, '_, '_, '_> {
                 .is_some_and(|steps| {
                     matches!(
                         steps[0].id,
-                        BuiltinId::Error
-                            | BuiltinId::TypeError
-                            | BuiltinId::SyntaxError
-                            | BuiltinId::RangeError
-                            | BuiltinId::ReferenceError
-                            | BuiltinId::EvalError
-                            | BuiltinId::URIError
-                            | BuiltinId::AggregateError
-                            | BuiltinId::Object
-                            | BuiltinId::Array
-                            | BuiltinId::Function
+                        BuiltinId::Object | BuiltinId::Array | BuiltinId::Function
                     )
                 })
     }
@@ -283,7 +273,7 @@ mod tests {
     use crate::load::host_platform;
     use crate::lower::LoweringOptions;
 
-    fn reported_positions(source: &str, opcode: Opcode) -> Vec<u32> {
+    fn reported_locations(source: &str, opcode: Opcode) -> Vec<(Option<u32>, Option<u32>)> {
         let options = LoweringOptions {
             platform: host_platform(),
             embeds_function_source: false,
@@ -301,7 +291,16 @@ mod tests {
         let blocks = functions.flat_map(|(_, function)| function.body.blocks());
         let values = blocks.flat_map(|block| block.values());
         let reporting = values.filter(|value| value.opcode == opcode);
-        reporting.filter_map(|value| value.position).collect()
+        reporting
+            .map(|value| (value.position, value.second_position))
+            .collect()
+    }
+
+    fn reported_positions(source: &str, opcode: Opcode) -> Vec<u32> {
+        reported_locations(source, opcode)
+            .into_iter()
+            .filter_map(|(position, _)| position)
+            .collect()
     }
 
     #[track_caller]
@@ -368,6 +367,30 @@ mod tests {
         let texts = ["new a.Plain", "Called", "new a.Inner", "Inner"];
         let expected = texts.map(|text| offset_of(source, text));
         assert_eq!(reported_positions(source, Opcode::Construct), expected);
+    }
+
+    #[test]
+    fn error_construction_records_the_new_keyword() {
+        for name in [
+            "Error",
+            "TypeError",
+            "SyntaxError",
+            "RangeError",
+            "ReferenceError",
+            "EvalError",
+            "URIError",
+            "AggregateError",
+        ] {
+            let source = format!("export function probe(x: any) {{ return new {name}(x); }}");
+            assert_eq!(
+                reported_locations(&source, Opcode::Construct),
+                [(
+                    Some(offset_of(&source, name)),
+                    Some(offset_of(&source, "new"))
+                )],
+                "{name}",
+            );
+        }
     }
 
     #[test]
