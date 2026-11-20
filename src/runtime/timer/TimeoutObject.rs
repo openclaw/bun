@@ -316,6 +316,7 @@ impl TimeoutObject {
     pub(super) fn cancel_from_js(&self, vm: &VirtualMachine, this: JSValue) {
         self.cancel();
         js_timer::destroy_async_hooks(&self.event_loop_timer, vm, this, &self.async_hooks_id);
+        js::callback_set_cached(this, vm.global(), JSValue::NULL);
     }
 
     pub(crate) fn dispose(&self, this_value: JsWrapper<'_, Self>, cx: &mut JsScope<'_>) {
