@@ -282,10 +282,12 @@ jobs:
           BUN_CODEGEN_DIR="$GITHUB_WORKSPACE/build/release/codegen" CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0 \
             CARGO_PROFILE_DEV_OPT_LEVEL=1 CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS='-Cforce-frame-pointers=yes -Zthreads=8' \
             cargo test --no-fail-fast -p bun_sourcemap --lib internal_closest_mapping_crosses_lines
-      - name: Test AOT CLI stacks and module semantics
+      - name: Test AOT schema, CLI stacks and module semantics
         if: ${{ !cancelled() && steps.build.outcome == 'success' && inputs.webkit_source_sha != '' }}
         timeout-minutes: 5
         run: |
+          AOT_SCHEMA="$GITHUB_WORKSPACE/.openclaw-webkit/Source/JavaScriptCore/aot/ir/AOTSchema.def" \
+            ./build/release/bun test ./test/internal/aot-schema-generator.test.ts
           ./build/release/bun test test/cli/run/run-aot.test.ts \
             --test-name-pattern '__esModule cannot be added to an imported module namespace|stack traces|files that are CommonJS only by name'
           ./build/release/bun test test/aot/originals-of-mocks-run-compiled.test.ts \
