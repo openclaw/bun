@@ -23,10 +23,9 @@ pub(crate) fn drain_subprocess_socket(
     #[cfg(unix)]
     {
         let value = value.to_js();
-        if let Some(socket) = value.as_::<TCPSocket>() {
-            // SAFETY: the argument is a live wrapper; copy its handle before
-            // entering callbacks, which may detach or replace it.
-            let (flags, handle) = unsafe { ((*socket).flags.get(), (*socket).socket.get()) };
+        if let Some(socket) = TCPSocket::from_js(&value) {
+            // Copy the handle before callbacks can detach or replace it.
+            let (flags, handle) = (socket.flags.get(), socket.socket.get());
             if !flags.contains(SocketFlags::BYPASS_TLS) {
                 if let Some(raw) = handle.socket.get() {
                     // SAFETY: the JS argument keeps the wrapper live; uSockets

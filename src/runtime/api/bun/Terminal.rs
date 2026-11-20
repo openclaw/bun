@@ -12,6 +12,7 @@
 use core::cell::Cell;
 #[cfg(not(windows))]
 use core::ffi::c_int;
+use core::ffi::c_void;
 #[cfg(windows)]
 use core::sync::atomic::{AtomicU32, Ordering};
 
@@ -1372,7 +1373,9 @@ impl Terminal {
             let result = this.reader.unpause();
             let result = match result {
                 #[cfg(unix)]
-                ReadResult::Pending => this.reader.watch(this.event_loop_handle),
+                ReadResult::Pending => this
+                    .reader
+                    .watch(this.event_loop_handle.as_event_loop_ctx()),
                 other => other,
             };
             this.on_read_result(result);
@@ -1504,15 +1507,17 @@ impl Terminal {
     }
 
     pub(crate) fn read(&self, event: Option<IoEvent>) {
-        let result = self
-            .reader
-            .read_chunks(self.event_loop_handle, event, |chunk, _| {
+        let result = self.reader.read_chunks(
+            self.event_loop_handle.as_event_loop_ctx(),
+            event,
+            |chunk, _| {
                 self.on_read_chunk(&chunk);
                 !self
                     .flags
                     .get()
                     .intersects(Flags::PAUSED | Flags::RESUME_PENDING)
-            });
+            },
+        );
         self.on_read_result(result);
     }
 

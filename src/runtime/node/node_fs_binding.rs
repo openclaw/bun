@@ -327,14 +327,14 @@ impl Binding {
     /// A FileHandle took ownership of the fd (constructor, `kDeserialize`).
     pub(crate) fn track_fd(&self, cx: &mut JsScope<'_>, fd: JsLocal<'_>) {
         if let Some(fd) = <bun_sys::Fd as bun_sys_jsc::FdJsc>::from_js(fd.to_js()) {
-            cx.global().bun_vm().as_mut().track_managed_fd(fd);
+            cx.global().bun_vm().track_managed_fd(fd);
         }
     }
 
     /// A FileHandle gave up its fd without closing it (`kTransfer`).
     pub(crate) fn untrack_fd(&self, cx: &mut JsScope<'_>, fd: JsLocal<'_>) {
         if let Some(fd) = <bun_sys::Fd as bun_sys_jsc::FdJsc>::from_js(fd.to_js()) {
-            cx.global().bun_vm().as_mut().untrack_fd(fd);
+            cx.global().bun_vm().untrack_fd(fd);
         }
     }
 }

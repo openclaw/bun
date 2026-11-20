@@ -2589,8 +2589,7 @@ impl<const SSL: bool, const DEBUG: bool> NewServer<SSL, DEBUG> {
                 && !bun_opaque::opaque_deref_mut(app).set_alpn_protocols(protocols)
             {
                 let _ = global.throw(format_args!("Failed to configure TLS ALPN protocols"));
-                Self::deinit(this);
-                return JSValue::ZERO;
+                return None;
             }
 
             if Self::HAS_H3 && this_ref.config.get().http3 {

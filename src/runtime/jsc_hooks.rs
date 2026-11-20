@@ -2446,35 +2446,7 @@ fn transpile_source_code_of_any_provenance<const DATA_ONLY: bool>(
                     // `package_json_type_module` so the C++ loader applies the
                     // correct evaluation context on cache hits.
                     let tag = if is_commonjs_module && source.path.is_file() {
-                        // Prefer the watcher's already-
-                        // resolved `PackageJSON` (free under `--watch`/`--hot`)
-                        // and only fall back to the resolver dir-info walk
-                        // when the watcher had nothing for `hash`. The
-                        // unconditional `read_dir_info` cost +9.6% instructions
-                        // on the cache-hit path for a 222 KB CJS file.
-                        //
-                        // SAFETY: `bun_watcher::PackageJSON` is the opaque
-                        // forward-decl of `bun_resolver::package_json::
-                        // PackageJSON` (same layout, see the cast at the
-                        // `:561-592` arm below); `package_json` is a
-                        // VM-lifetime backref into the resolver cache.
-                        let pkg = package_json
-                            .map(|p| unsafe {
-                                &*core::ptr::from_ref(p)
-                                    .cast::<bun_resolver::package_json::PackageJSON>()
-                            })
-                            .or_else(|| {
-                                // SAFETY: per fn contract — `transpiler.
-                                // resolver` is a value field of the VM;
-                                // `read_dir_info` is re-entrant on the JS
-                                // thread and returns a stable cache slot.
-                                match unsafe {
-                                    (*transpiler).resolver.read_dir_info(source.path.name().dir)
-                                } {
-                                    Ok(Some(dir_info)) => dir_info.package_json_for_node_scope(),
-                                    _ => None,
-                                }
-                            });
+                        let pkg = package_json_of(jsc_vm, &source.path);
                         if pkg
                             .map(|p| p.module_type == ModuleType::Esm)
                             .unwrap_or(false)
@@ -2594,38 +2566,11 @@ fn transpile_source_code_of_any_provenance<const DATA_ONLY: bool>(
                 let tag = match loader {
                     L::Json | L::Jsonc => ResolvedSourceTag::JsonForObjectLoader,
                     L::Js | L::Jsx | L::Ts | L::Tsx => {
-                        // Note: `bun_watcher::PackageJSON` is an opaque
-                        // forward-decl of
-                        // `bun_resolver::package_json::PackageJSON`; cast
-                        // through to read `module_type`.
-                        // SAFETY: `package_json` (when set) is a VM-lifetime
-                        // backref into the resolver's package.json cache.
-                        let module_type_ = package_json
-                            .map(|pj| unsafe {
-                                (*std::ptr::from_ref::<bun_watcher::PackageJSON>(pj)
-                                    .cast::<bun_resolver::package_json::PackageJSON>())
-                                .module_type
-                            })
-                            .or_else(|| {
-                                // Recover the package.json lookup here so
-                                // a `.cjs` under `"type":"module"` still tags as
-                                // `PackageJsonTypeModule` (mirrors the cache-hit
-                                // branch above).
-                                let dir = path.name().dir;
-                                if !path.is_file() || !bun_paths::is_absolute(dir) {
-                                    return None;
-                                }
-                                // SAFETY: per fn contract — `transpiler.resolver`
-                                // is a value field of the VM; `read_dir_info` is
-                                // re-entrant on the JS thread and returns a
-                                // stable cache slot.
-                                match unsafe { (*transpiler).resolver.read_dir_info(dir) } {
-                                    Ok(Some(dir_info)) => dir_info
-                                        .package_json_for_node_scope()
-                                        .map(|p| p.module_type),
-                                    _ => None,
-                                }
-                            })
+                        let module_type_ = path
+                            .is_file()
+                            .then(|| package_json_of(jsc_vm, &path))
+                            .flatten()
+                            .map(|pkg| pkg.module_type)
                             .unwrap_or(module_type);
                         match module_type_ {
                             ModuleType::Esm => ResolvedSourceTag::PackageJsonTypeModule,
@@ -3965,12 +3910,9 @@ fn transpile_file<const DATA_ONLY: bool>(
         .package_json
         .and_then(|pkg| (!pkg.name.is_empty()).then_some(&*pkg.name));
 
-    // SAFETY: the caller owns this live VM on its JS thread.
-    let module_hooks_active = unsafe {
-        ((*jsc_vm).module_hooks_resolve_count.get() > 0
-            || (*jsc_vm).module_hooks_load_count.get() > 0)
-            && !(*jsc_vm).module_hooks_skip.get()
-    };
+    let module_hooks_active = (jsc_vm.module_hooks_resolve_count.get() > 0
+        || jsc_vm.module_hooks_load_count.get() > 0)
+        && !jsc_vm.module_hooks_skip.get();
     if module_hooks_active
         && lr.virtual_source.is_none()
         && !had_blob

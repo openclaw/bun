@@ -800,16 +800,10 @@ impl Subprocess<'_> {
             {
                 if let Some(stream) = crate::webcore::ReadableStream::from_js_direct(value) {
                     if let crate::webcore::readable_stream::Source::File(file) = stream.ptr {
-                        // SAFETY: the cached stream roots its source. BufferedReader's
-                        // read pins that source while callbacks can re-enter it.
-                        let reader = unsafe { (*file).reader.get() };
-                        // SAFETY: the rooted source owns this reader; read pins it across callbacks.
-                        unsafe {
-                            if !(*reader).is_done() {
-                                (*reader).unpause();
-                                bun_io::BufferedReader::read(reader);
-                            }
-                        }
+                        // SAFETY: the cached stream roots its source. Pin it across
+                        // read callbacks that can re-enter JS and drop the stream.
+                        let source = unsafe { bun_ptr::RefPtr::init_ref(file) };
+                        crate::webcore::FileReader::resume(&source);
                     }
                 }
                 value.ensure_still_alive();

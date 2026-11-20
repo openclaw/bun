@@ -1553,7 +1553,7 @@ where
             )));
         };
         // SAFETY: app is the live SSL NewApp owned by this running server.
-        if !bun_opaque::opaque_deref_mut(app).set_secure_context(
+        if !bun_opaque::opaque_deref_mut(app.as_ptr()).set_secure_context(
             &native_options,
             &additional_ca_options,
             config.protos_bytes(),

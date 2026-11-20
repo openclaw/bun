@@ -1279,7 +1279,7 @@ mod _async_tasks {
         fn drop(&mut self) {
             if self.req.result.int() == i64::from(uv::UV_ECANCELED) {
                 if let Some(fd) = self.args.closed_fd() {
-                    VirtualMachine::get().as_mut().track_managed_fd(fd);
+                    VirtualMachine::get().track_managed_fd(fd);
                 }
             }
         }
@@ -1846,7 +1846,7 @@ mod _async_tasks {
             let value = crate::node::types::FdJsc::to_js(self.into_raw(), global);
             // Windows converts native handles to CRT fds here; close parses that JS-visible fd.
             if let Some(fd) = crate::node::types::FdJsc::from_js(value) {
-                global.bun_vm().as_mut().track_unmanaged_fd(fd);
+                global.bun_vm().track_unmanaged_fd(fd);
             }
             Ok(value)
         }
@@ -1933,7 +1933,7 @@ mod _async_tasks {
         fn drop(&mut self) {
             if !self.ran {
                 if let Some(fd) = self.args.closed_fd() {
-                    VirtualMachine::get().as_mut().track_managed_fd(fd);
+                    VirtualMachine::get().track_managed_fd(fd);
                 }
             }
         }
@@ -4156,7 +4156,7 @@ pub(crate) mod args {
         ) -> JsResult<Close> {
             let fd = FD::from_js_required(ctx, arguments)?;
             // Before the close runs, as Node does, so a reuse of the number is tracked fresh.
-            let was_tracked = ctx.bun_vm().as_mut().untrack_fd(fd);
+            let was_tracked = ctx.bun_vm().untrack_fd(fd);
             Ok(Close { fd, was_tracked })
         }
     }

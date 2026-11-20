@@ -763,8 +763,6 @@ mod bun_test {
     //! the body uses (`bun_test::Execution::Result`, `bun_test::BasicResult`,
     //! `bun_test::DescribeScope`, …). Drop once the body is normalised.
 
-    /// `add_result()` queue payload.
-    pub(super) use crate::test_runner::bun_test::RefDataValue as ResultMsg;
     pub(super) use crate::test_runner::bun_test::*;
     pub(super) use crate::test_runner::execution::{
         Basic as BasicResult, ExpectAssertions, PendingIs as PendingMode,

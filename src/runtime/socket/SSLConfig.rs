@@ -37,26 +37,19 @@ pub(crate) fn set_default_ca_certificates(
     let config = SSLConfig::from_js(VirtualMachine::get(), global, options, false)?
         .ok_or_else(|| global.throw_invalid_arguments(format_args!("Expected CA certificates")))?;
     let config = bun_http::ssl_config::global_registry::intern(config);
-    // SAFETY: called on this VM's JS thread after runtime-state initialization.
-    // Parsing above can enter JS; no state borrow is held across it.
-    unsafe {
-        (*crate::jsc_hooks::runtime_state())
-            .default_ca_config
-            .set(Some(config));
-    }
+    crate::jsc_hooks::runtime_state()
+        .default_ca_config
+        .set(Some(config));
     Ok(JSValue::UNDEFINED)
 }
 
 pub(crate) fn with_default_ca(
     config: Option<bun_http::ssl_config::SharedPtr>,
 ) -> Option<bun_http::ssl_config::SharedPtr> {
-    // SAFETY: fetch runs on the owning VM's JS thread; cloning the Arc cannot enter JS.
-    let defaults = unsafe {
-        (*crate::jsc_hooks::runtime_state())
-            .default_ca_config
-            .get()
-            .clone()
-    };
+    let defaults = crate::jsc_hooks::runtime_state()
+        .default_ca_config
+        .get()
+        .clone();
     let Some(defaults) = defaults else {
         return config;
     };

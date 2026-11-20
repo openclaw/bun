@@ -258,6 +258,14 @@ impl FileReader {
         this.on_read_result(result);
     }
 
+    /// Resume a paused source while keeping it alive across read callbacks.
+    pub(crate) fn resume(this: &RefPtr<Source>) {
+        if !this.context.reader.is_done() {
+            this.context.on_read_result(this.context.reader.unpause());
+            Self::read(this, None);
+        }
+    }
+
     fn on_read_result(&self, result: ReadResult) {
         match result {
             ReadResult::Pending => {}
@@ -956,12 +964,12 @@ impl FileReader {
         {
             // `self.fd` is a cache that `on_start` fills and nothing clears,
             // so gate on reader liveness or a closed fd leaks a stale number.
-            if self.done.get() || self.reader().is_done() {
+            if self.done.get() || self.reader.is_done() {
                 return -1;
             }
             let mut fd = self.fd.get();
             if fd == Fd::INVALID {
-                fd = self.reader().get_fd();
+                fd = self.reader.get_fd();
             }
             if fd == Fd::INVALID { -1 } else { fd.native() }
         }

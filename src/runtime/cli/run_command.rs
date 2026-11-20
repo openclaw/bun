@@ -1095,9 +1095,13 @@ Full documentation is available at <magenta>https://bun.com/docs/cli/run<r>
                 .module_loader
                 .eval_source
                 .set(Box::new(bun_ast::Source::init_path_string(entry, script)));
-            vm.module_loader
-                .interactive_eval_script
-                .set(ctx.runtime_options.eval.interactive_script.take());
+            vm.module_loader.interactive_eval_script.set(
+                ctx.runtime_options
+                    .eval
+                    .interactive_script
+                    .take()
+                    .map(|script| cli_arena().alloc_slice_copy(&script)),
+            );
             if ctx.runtime_options.eval.eval_and_print {
                 vm.transpiler
                     .with_mut(|t| t.options.dead_code_elimination = false);
@@ -1905,7 +1909,7 @@ impl RunCommand {
                 .unwrap_or_else(bun_install::RunCommand::bun_node_dir);
             let node_path = [directory.as_bytes(), b"/node\0"].concat();
             let len = node_path.len() - 1;
-            let stored: &'static [u8] = runner_arena().alloc_slice_copy(&node_path);
+            let stored: &'static [u8] = cli_arena().alloc_slice_copy(&node_path);
             Ok(ZStr::from_buf(stored, len))
         }
         #[cfg(windows)]

@@ -193,14 +193,8 @@ pub(crate) fn get_exec_argv(global: &JSGlobalObject) -> JsResult<JSValue> {
 pub(crate) fn get_active_resources_info(cx: &mut JsScope<'_>) -> JsResult<JSValue> {
     let global = cx.global();
     let all = crate::jsc_hooks::timer_all();
-    if all.is_null() {
-        return JSValue::create_empty_array(global, 0);
-    }
-
-    // SAFETY: this host function runs on the JS thread. `timer_all()` points
-    // to this thread's live RuntimeState for the lifetime of the VM.
-    let (timeout_count, immediate_count) =
-        unsafe { ((*all).active_timer_count, (*all).immediate_ref_count) };
+    let timeout_count = all.active_timer_count.get();
+    let immediate_count = all.immediate_ref_count.get();
     debug_assert!(timeout_count >= 0);
     debug_assert!(immediate_count >= 0);
 
@@ -605,7 +599,9 @@ mod _impl {
             if worker.is_some_and(|w| w.eval_mode()) {
                 args_list.push(BunString::static_("[worker eval]"));
             } else {
-                args_list.push(BunString::clone_utf8(vm.argv1.as_deref().unwrap_or(main)));
+                args_list.push(BunString::clone_utf8(
+                    vm.argv1.get().as_deref().unwrap_or(main),
+                ));
             }
         }
 

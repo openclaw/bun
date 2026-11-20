@@ -20,7 +20,6 @@ use bun_jsc::{
     self as jsc, Debugger, JSGlobalObject, JSPromiseStrong, JSValue, JsResult, StrongOptional,
     Task, VmBound,
 };
-use bun_ptr::CellExt;
 use bun_threading::Condition as Condvar;
 use bun_threading::guarded::GuardedLock;
 use bun_threading::work_pool::{IntrusiveWorkTask as _, Task as WorkPoolTask, WorkPool};

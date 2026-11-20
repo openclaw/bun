@@ -279,10 +279,7 @@ pub(crate) fn create_stdio(cx: &mut JsScope<'_>, fd_value: JsLocal<'_>) -> JsRes
         }
         mode
     };
-    let sink = FileSink::init(
-        fd,
-        EventLoopHandle::init(global.bun_vm().as_mut().event_loop().cast::<()>()),
-    );
+    let sink = FileSink::init(fd, EventLoopHandle::init(global.bun_vm().event_loop_ptr()));
 
     #[cfg(not(windows))]
     let result = {
@@ -292,7 +289,9 @@ pub(crate) fn create_stdio(cx: &mut JsScope<'_>, fd_value: JsLocal<'_>) -> JsRes
         sink.is_socket.set(sys::S::ISSOCK(mode));
         sink.force_sync.set(true);
         sink.writer.set_force_sync(true);
-        let result = sink.writer.start(&*sink, sink.event_loop(), fd, pollable);
+        let result = sink
+            .writer
+            .start(&*sink, sink.event_loop().as_event_loop_ctx(), fd, pollable);
         sink.writer.set_poll_flag(bun_io::FilePollFlag::Nonblocking);
         sink.writer.set_poll_flag(if sys::S::ISSOCK(mode) {
             bun_io::FilePollFlag::Socket
@@ -304,7 +303,8 @@ pub(crate) fn create_stdio(cx: &mut JsScope<'_>, fd_value: JsLocal<'_>) -> JsRes
     #[cfg(windows)]
     let result = {
         sink.writer.set_owns_fd(false);
-        sink.writer.start_sync(&*sink, sink.event_loop(), fd)
+        sink.writer
+            .start_sync(&*sink, sink.event_loop().as_event_loop_ctx(), fd)
     };
     if let sys::Result::Err(err) = result {
         return Err(global.throw_value(err.to_js(global)));
@@ -312,7 +312,7 @@ pub(crate) fn create_stdio(cx: &mut JsScope<'_>, fd_value: JsLocal<'_>) -> JsRes
     sink.writer.update_ref(false);
     sink.started.set(true);
     let vm = global.bun_vm();
-    if vm.test_isolation_enabled {
+    if vm.test_isolation_enabled.get() {
         sink.flush_on_abort.set(true);
         sink.abort_handle.set_only_waits_to_be_closed();
         // SAFETY: the started sink is heap-allocated and leaves its context in on_close.

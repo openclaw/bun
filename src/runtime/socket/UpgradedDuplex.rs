@@ -930,7 +930,7 @@ impl Drop for UpgradedDuplex {
 // https://github.com/nodejs/node/blob/v24.21.0/lib/internal/js_stream_socket.js#L156-L161
 pub(crate) fn end_transport(_cx: &mut JsScope<'_>, owner: JsLocal<'_>) {
     let owner = owner.to_js();
-    if let Some(socket) = js_TLSSocket::from_js(owner) {
+    if let Some(socket) = js_TLSSocket::from_js(&owner) {
         // SAFETY: the queued argument roots the JS owner; close detaches its native handle.
         let socket = unsafe { &*socket.as_ptr() };
         if let bun_uws::InternalSocket::UpgradedDuplex(duplex) = socket.socket.get().socket {
