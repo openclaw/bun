@@ -296,8 +296,9 @@ describe("bundler", () => {
     snapshotSourceMap: {
       "entry.js.map": {
         files: ["../a.cjs", "../entry.js"],
+        // The fork also maps opening call delimiters for syntax-selected stack positions.
         mappingsExactMatch:
-          ";;;;EAAA;AAAA,EACA,QAAO,UAAW,QAAS,GAAG;AAAA,IAAE,OAAO,OAAO;AAAA,IAAQ;AAAA;;;ACDtD,QAAQ,IAAI,WAAkB;",
+          ";;;;EAAA;AAAA,EACA,QAAO,UAAW,QAAS,GAAG;AAAA,IAAE,OAAO,OAAO;AAAA,GAAO,CAAC;AAAA;;;ACDtD,QAAQ,GAAG,CAAC,WAAkB;",
       },
     },
   });
