@@ -8123,8 +8123,6 @@ fn run_on_resolve(
     if !asks_namespace && !asks_file_namespace {
         return Ok(None);
     }
-    // The importer's key ends in the query it was imported with.
-    let importer_with_query = importer.to_utf8();
     let is_file_url = importer.starts_with_ascii(b"file://");
     let decoded_importer;
     let importer = if is_file_url {
@@ -8133,12 +8131,13 @@ fn run_on_resolve(
     } else {
         importer
     };
-    let importer = importer.to_utf8();
+    // Retain the decoded key before removing a module query for namespace lookup.
+    let importer_with_query = importer.to_utf8();
     // A decoded URL has no suffix; a literal '?' in its pathname must remain.
     let importer = if is_file_url {
-        &importer[..]
+        &importer_with_query[..]
     } else {
-        crate::resolver_jsc::module_key_without_query(&importer)
+        crate::resolver_jsc::module_key_without_query(&importer_with_query)
     };
     // import(), require() and import.meta name a module whose key isn't a path (`namespace:path`) as `/namespace:path`. An importer is a loaded module, so the loader knows whether that key or a file is meant; a file is never split at a colon.
     let is_loaded =
