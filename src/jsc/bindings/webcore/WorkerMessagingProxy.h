@@ -46,6 +46,12 @@ namespace Zig {
 class GlobalObject;
 }
 
+// The native thread object (src/jsc/web_worker.rs). Deleting it joins the thread.
+struct WebWorker;
+template<> struct std::default_delete<WebWorker> {
+    void operator()(WebWorker*) const;
+};
+
 namespace WebCore {
 
 class Event;
@@ -55,7 +61,7 @@ class WorkerHeapLimitObserver;
 // The only object shared between a Worker (parent thread, script-visible) and the thread that runs
 // its global scope. Created with the Worker; outlives both the Worker object and the thread.
 //
-// Refs: the Worker object's Ref member, the worker thread (taken before it is spawned, dropped on the
+// Refs: the Worker object's Ref member, the worker thread (m_refForWorkerThread, dropped on the
 // parent thread by workerGlobalScopeDestroyedInternal() or by the parent's own exit path once it has
 // joined the thread), and transient Refs captured by posted tasks. The last deref is therefore always
 // on the parent thread. If the parent context is already gone when the thread finishes, nothing runs
@@ -150,7 +156,6 @@ private:
     RefPtr<ScriptExecutionContext> m_scriptExecutionContext;
     Worker* m_workerObject;
     bool m_askedToTerminate { false };
-    bool m_keepAliveReleased { false };
 
     const ScriptExecutionContextIdentifier m_loaderContextIdentifier;
     // The parent loop that was current at `new Worker()`: a macro that creates a worker and awaits
@@ -159,9 +164,9 @@ private:
     const ScriptExecutionContextIdentifier m_workerContextIdentifier;
     WorkerOptions m_options;
 
-    // The native thread object (src/jsc/web_worker.rs). Holds one ref on it from
-    // startWorkerGlobalScope() until releaseWorkerThread().
-    void* m_workerThread { nullptr };
+    // Both from startWorkerGlobalScope() until releaseWorkerThread().
+    std::unique_ptr<WebWorker> m_workerThread;
+    RefPtr<WorkerMessagingProxy> m_refForWorkerThread;
 
     std::atomic<State> m_state { State::Pending };
 

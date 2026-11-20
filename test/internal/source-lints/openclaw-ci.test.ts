@@ -58,7 +58,7 @@ test.each(["linux", "darwin"])("TLS certificate changes qualify removal and HTTP
 test("both Windows architectures use the complete Windows compatibility selection", () => {
   expect(selectTests([], tracked, false, "windows")).toEqual([...windowsSmoke].sort());
   expect(selectTests([], tracked, true, "windows")).toEqual([...windowsSmoke].sort());
-  expect(windowsSmoke).toHaveLength(42);
+  expect(windowsSmoke).toHaveLength(43);
   for (const file of tracked.filter(file => file.startsWith("test/js/node/worker_threads/") && isTest(file))) {
     expect(windowsSmoke).toContain(file);
   }
@@ -314,100 +314,108 @@ test("CLI diff selects owners at both ends of a moved fixture", () => {
   expect(output).toContain(`Changed files: 2. Fork-delta files: 2. Selected tests: ${selected.length}.`);
 });
 
-test.each(["none", "main", "repair", "rewrite", "invalid"])("sync coverage after fork merge: %s", laterMerge => {
-  const pure = "test/js/custom/upstream.test.ts";
-  const resolved = "test/js/custom/resolved.test.ts";
-  using dir = tempDir(
-    "openclaw-ci-sync",
-    Object.fromEntries([...smoke, ...broader, pure, resolved].map(path => [path, "original\n"])),
-  );
-  const env = {
-    ...bunEnv,
-    GIT_AUTHOR_NAME: "Test",
-    GIT_AUTHOR_EMAIL: "test@example.com",
-    GIT_COMMITTER_NAME: "Test",
-    GIT_COMMITTER_EMAIL: "test@example.com",
-  };
-  const git = (...args: string[]) =>
-    execFileSync("git", ["-c", "commit.gpgsign=false", ...args], {
+test.each(["none", "main", "repair", "rewrite", "development", "invalid"])(
+  "sync coverage after fork merge: %s",
+  laterMerge => {
+    const pure = "test/js/custom/upstream.test.ts";
+    const resolved = "test/js/custom/resolved.test.ts";
+    using dir = tempDir(
+      "openclaw-ci-sync",
+      Object.fromEntries([...smoke, ...broader, pure, resolved].map(path => [path, "original\n"])),
+    );
+    const env = {
+      ...bunEnv,
+      GIT_AUTHOR_NAME: "Test",
+      GIT_AUTHOR_EMAIL: "test@example.com",
+      GIT_COMMITTER_NAME: "Test",
+      GIT_COMMITTER_EMAIL: "test@example.com",
+    };
+    const git = (...args: string[]) =>
+      execFileSync("git", ["-c", "commit.gpgsign=false", ...args], {
+        cwd: String(dir),
+        encoding: "utf8",
+        env,
+      }).trim();
+    const write = (path: string, content: string) => writeFileSync(join(String(dir), path), content);
+    git("init", "--quiet", "--initial-branch=fork-main");
+    git("add", ".");
+    git("commit", "--quiet", "-m", "common ancestor");
+    git("checkout", "--quiet", "-b", "upstream");
+    write(pure, "upstream\n");
+    write(resolved, "upstream\n");
+    git("commit", "--quiet", "-am", "upstream changes");
+    const upstream = git("rev-parse", "HEAD");
+    git("checkout", "--quiet", "fork-main");
+    write(resolved, "fork\n");
+    git("commit", "--quiet", "-am", "fork changes");
+    let base = git("rev-parse", "HEAD");
+    git("checkout", "--quiet", "-b", "sync");
+    const merge = spawnSync("git", ["merge", "--no-ff", "--no-commit", "upstream"], {
       cwd: String(dir),
       encoding: "utf8",
       env,
-    }).trim();
-  const write = (path: string, content: string) => writeFileSync(join(String(dir), path), content);
-  git("init", "--quiet", "--initial-branch=fork-main");
-  git("add", ".");
-  git("commit", "--quiet", "-m", "common ancestor");
-  git("checkout", "--quiet", "-b", "upstream");
-  write(pure, "upstream\n");
-  write(resolved, "upstream\n");
-  git("commit", "--quiet", "-am", "upstream changes");
-  const upstream = git("rev-parse", "HEAD");
-  git("checkout", "--quiet", "fork-main");
-  write(resolved, "fork\n");
-  git("commit", "--quiet", "-am", "fork changes");
-  let base = git("rev-parse", "HEAD");
-  git("checkout", "--quiet", "-b", "sync");
-  const merge = spawnSync("git", ["merge", "--no-ff", "--no-commit", "upstream"], {
-    cwd: String(dir),
-    encoding: "utf8",
-    env,
-  });
-  expect(merge.stdout).toContain("CONFLICT (content)");
-  expect(merge.status).toBe(1);
-  write(resolved, "resolved\n");
-  git("add", ".");
-  const message =
-    laterMerge === "none"
-      ? `chore(sync): merge upstream Bun at ${upstream.slice(0, 10)}`
-      : laterMerge === "main"
-        ? `chore(sync): merge upstream Bun through ${upstream.slice(0, 10)}`
-        : laterMerge === "rewrite"
-          ? `chore(upstream): merge AOT compiler rewrite\n\nMerge oven-sh/bun ${upstream} while preserving imported history and fork contracts.`
-          : `resolve upstream merge\n\nBun-Upstream: ${laterMerge === "invalid" ? "0".repeat(40) : upstream}`;
-  git("commit", "--quiet", "-m", message);
-  if (laterMerge === "main") {
-    git("checkout", "--quiet", "fork-main");
-    write("fork-main.txt", "later main change\n");
-    git("add", ".");
-    git("commit", "--quiet", "-m", "advance fork main");
-    base = git("rev-parse", "HEAD");
-    git("checkout", "--quiet", "sync");
-    git("merge", "--quiet", "--no-ff", "-m", "merge fork main", "fork-main");
-  } else if (laterMerge === "repair" || laterMerge === "rewrite") {
-    git("checkout", "--quiet", "-b", "repair");
-    write("repair.txt", "fork repair\n");
-    git("add", ".");
-    git("commit", "--quiet", "-m", "fork repair");
-    git("checkout", "--quiet", "sync");
-    git("merge", "--quiet", "--no-ff", "-m", "integrate fork repair", "repair");
-  }
-  const select = () =>
-    execFileSync(bunExe(), [resolve(import.meta.dir, "../../../scripts/openclaw-ci/tests.ts"), "select"], {
-      cwd: String(dir),
-      encoding: "utf8",
-      env: {
-        ...env,
-        GITHUB_STEP_SUMMARY: join(String(dir), "summary.md"),
-        GITHUB_EVENT_NAME: "pull_request",
-        OPENCLAW_CI_PLATFORM: "linux",
-        PR_BASE_SHA: base,
-        PR_HEAD_SHA: git("rev-parse", "HEAD"),
-      },
     });
-  if (laterMerge === "invalid") {
-    expect(select).toThrow("Invalid Bun-Upstream parent");
-    return;
-  }
-  const output = select();
-  const selected = JSON.parse(readFileSync(join(String(dir), "build/openclaw-ci/selected.json"), "utf8"));
-  expect(selected).toEqual([...smoke, ...broader, resolved].sort());
-  expect(output).toContain(`Upstream parents (newest first): \`${upstream}\`.`);
-  const counts = laterMerge === "repair" || laterMerge === "rewrite" ? [3, 2] : [2, 1];
-  const coverage = `Changed files: ${counts[0]}. Fork-delta files: ${counts[1]}. Selected tests: ${selected.length}.`;
-  expect(output).toContain(coverage);
-  expect(readFileSync(join(String(dir), "summary.md"), "utf8")).toContain(coverage);
-});
+    expect(merge.stdout).toContain("CONFLICT (content)");
+    expect(merge.status).toBe(1);
+    write(resolved, "resolved\n");
+    git("add", ".");
+    const importSubject =
+      laterMerge === "development"
+        ? "chore(sync): merge upstream Bun development history"
+        : "chore(upstream): merge AOT compiler rewrite";
+    const message =
+      laterMerge === "none"
+        ? `chore(sync): merge upstream Bun at ${upstream.slice(0, 10)}`
+        : laterMerge === "main"
+          ? `chore(sync): merge upstream Bun through ${upstream.slice(0, 10)}`
+          : laterMerge === "rewrite" || laterMerge === "development"
+            ? `${importSubject}\n\nMerge oven-sh/bun ${upstream} while preserving imported history and fork contracts.`
+            : `resolve upstream merge\n\nBun-Upstream: ${laterMerge === "invalid" ? "0".repeat(40) : upstream}`;
+    git("commit", "--quiet", "-m", message);
+    if (laterMerge === "main") {
+      git("checkout", "--quiet", "fork-main");
+      write("fork-main.txt", "later main change\n");
+      git("add", ".");
+      git("commit", "--quiet", "-m", "advance fork main");
+      base = git("rev-parse", "HEAD");
+      git("checkout", "--quiet", "sync");
+      git("merge", "--quiet", "--no-ff", "-m", "merge fork main", "fork-main");
+    } else if (laterMerge === "repair" || laterMerge === "rewrite" || laterMerge === "development") {
+      git("checkout", "--quiet", "-b", "repair");
+      write("repair.txt", "fork repair\n");
+      git("add", ".");
+      git("commit", "--quiet", "-m", "fork repair");
+      git("checkout", "--quiet", "sync");
+      git("merge", "--quiet", "--no-ff", "-m", "integrate fork repair", "repair");
+    }
+    const select = () =>
+      execFileSync(bunExe(), [resolve(import.meta.dir, "../../../scripts/openclaw-ci/tests.ts"), "select"], {
+        cwd: String(dir),
+        encoding: "utf8",
+        env: {
+          ...env,
+          GITHUB_STEP_SUMMARY: join(String(dir), "summary.md"),
+          GITHUB_EVENT_NAME: "pull_request",
+          OPENCLAW_CI_PLATFORM: "linux",
+          PR_BASE_SHA: base,
+          PR_HEAD_SHA: git("rev-parse", "HEAD"),
+        },
+      });
+    if (laterMerge === "invalid") {
+      expect(select).toThrow("Invalid Bun-Upstream parent");
+      return;
+    }
+    const output = select();
+    const selected = JSON.parse(readFileSync(join(String(dir), "build/openclaw-ci/selected.json"), "utf8"));
+    expect(selected).toEqual([...smoke, ...broader, resolved].sort());
+    expect(output).toContain(`Upstream parents (newest first): \`${upstream}\`.`);
+    const counts =
+      laterMerge === "repair" || laterMerge === "rewrite" || laterMerge === "development" ? [3, 2] : [2, 1];
+    const coverage = `Changed files: ${counts[0]}. Fork-delta files: ${counts[1]}. Selected tests: ${selected.length}.`;
+    expect(output).toContain(coverage);
+    expect(readFileSync(join(String(dir), "summary.md"), "utf8")).toContain(coverage);
+  },
+);
 
 test("a successful test step without a completed report cannot produce a green summary", () => {
   using dir = tempDir("openclaw-ci-missing-report", {});

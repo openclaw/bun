@@ -431,6 +431,8 @@ const PUBLISHED_AS: Record<string, string | null> = {
   "node_http_binding.bind.ts": null,
   "node_module_binding.bind.ts": null,
   "node_module_hooks_binding.bind.ts": null,
+
+  "node_http_parser.bind.ts": null,
   "node_net_binding.bind.ts": null,
   "node_os.bind.ts": null,
   "node_process.bind.ts": null,

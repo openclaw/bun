@@ -58,13 +58,13 @@ extern "C" {
 
 // Allocates the thread object holding one ref for the caller, takes the keep-alive on the parent
 // event loop, and spawns the thread. Null (with errorMessage set) if nothing was started.
-void* WebWorker__create(
+WebWorker* WebWorker__create(
     WorkerMessagingProxy*,
     void* parentVM,
     const BunString* name,
     const BunString* url,
     const BunString* evalSource,
-    BunString* errorMessage,
+    Bun::OwnedString* errorMessage,
     bool* errorIsInvalidExecArgv,
     uint32_t parentContextId,
     uint32_t contextId,
@@ -99,12 +99,12 @@ void WebWorker__setRef(void*, bool);
 bool WebWorker__hasRef(void* worker);
 bool WebWorker__getELU(void* worker, double* elapsedMs, double* idleMs);
 // Release that keep-alive. Parent thread.
-void WebWorker__releaseParentPollRef(void*);
+void WebWorker__releaseParentPollRef(WebWorker*);
 // Block until the OS thread has exited. Parent thread, after the worker reported destroyed or was
 // asked to terminate by an exiting parent.
-void WebWorker__join(void*);
+void WebWorker__join(WebWorker*);
 // Drop one ref on the thread object; the last one frees it.
-void WebWorker__deref(void*);
+void WebWorker__deref(WebWorker*);
 
 } // extern "C"
 
@@ -188,6 +188,17 @@ extern "C" void WebWorker__disarmHeapLimitObserver(WorkerMessagingProxy* proxy)
     proxy->disarmHeapLimitObserver();
 }
 
+} // namespace WebCore
+
+void std::default_delete<WebWorker>::operator()(WebWorker* workerThread) const
+{
+    WebCore::WebWorker__releaseParentPollRef(workerThread);
+    WebCore::WebWorker__join(workerThread);
+    WebCore::WebWorker__deref(workerThread);
+}
+
+namespace WebCore {
+
 WorkerMessagingProxy::WorkerMessagingProxy(Worker& workerObject, ScriptExecutionContext& parentContext, WorkerOptions&& options)
     : m_scriptExecutionContext(&parentContext)
     , m_workerObject(&workerObject)
@@ -257,14 +268,12 @@ ExceptionOr<void> WorkerMessagingProxy::startWorkerGlobalScope(const String& scr
         envUseSystemCa = it != m_options.env->end() && it->value == "1"_s ? 1 : 0;
     }
 
-    // The thread holds a ref on the proxy until releaseWorkerThread().
-    ref();
-    BunString errorMessage = BunStringEmpty;
+    Bun::OwnedString errorMessage;
     bool errorIsInvalidExecArgv = false;
     BunString name = Bun::toString(m_options.name);
     BunString url = Bun::toString(scriptURL);
     BunString evalSource = Bun::toString(m_options.evalSource);
-    m_workerThread = WebWorker__create(
+    m_workerThread.reset(WebWorker__create(
         this,
         WebCore::clientData(m_scriptExecutionContext->vm())->bunVM,
         &name,
@@ -296,15 +305,15 @@ ExceptionOr<void> WorkerMessagingProxy::startWorkerGlobalScope(const String& scr
         m_options.execArgvEvalPreloadCount,
         m_options.execArgvBunPreloadCount,
         m_options.execArgvRequirePreloadCount,
-        static_cast<uint8_t>(m_options.execArgvEvalMode));
+        static_cast<uint8_t>(m_options.execArgvEvalMode)));
     m_options.preloadModules.clear();
     m_options.execArgvPreloadModules.clear();
 
     if (!m_workerThread) {
         m_state.store(State::Closed);
-        deref();
         return Exception { errorIsInvalidExecArgv ? WORKER_INVALID_EXEC_ARGV : TypeError, errorMessage.transferToWTFString() };
     }
+    m_refForWorkerThread = this;
     return {};
 }
 
@@ -314,14 +323,14 @@ void WorkerMessagingProxy::terminateWorkerGlobalScope()
         return;
     m_askedToTerminate = true;
     if (m_workerThread)
-        WebWorker__requestTermination(m_workerThread);
+        WebWorker__requestTermination(m_workerThread.get());
 }
 
 void WorkerMessagingProxy::setKeepAlive(bool keepAlive)
 {
-    if (m_askedToTerminate || m_keepAliveReleased || !m_workerThread)
+    if (m_askedToTerminate || !m_workerThread)
         return;
-    WebWorker__setRef(m_workerThread, keepAlive);
+    WebWorker__setRef(m_workerThread.get(), keepAlive);
 }
 
 std::optional<bool> WorkerMessagingProxy::hasRef() const
@@ -329,7 +338,7 @@ std::optional<bool> WorkerMessagingProxy::hasRef() const
     ASSERT(!m_scriptExecutionContext || m_scriptExecutionContext->isContextThread());
     if (!m_workerThread)
         return std::nullopt;
-    return WebWorker__hasRef(m_workerThread);
+    return WebWorker__hasRef(m_workerThread.get());
 }
 
 bool WorkerMessagingProxy::eventLoopUtilization(double& elapsedMs, double& idleMs)
@@ -339,7 +348,7 @@ bool WorkerMessagingProxy::eventLoopUtilization(double& elapsedMs, double& idleM
     // here; whether its VM is still there is answered under the thread's own lock.
     if (!m_workerThread)
         return false;
-    return WebWorker__getELU(m_workerThread, &elapsedMs, &idleMs);
+    return WebWorker__getELU(m_workerThread.get(), &elapsedMs, &idleMs);
 }
 
 void WorkerMessagingProxy::workerObjectDestroyed()
@@ -913,16 +922,11 @@ void WorkerMessagingProxy::workerGlobalScopeDestroyed(int32_t exitCode, bool sto
 void WorkerMessagingProxy::releaseWorkerThread()
 {
     ASSERT(!m_scriptExecutionContext || m_scriptExecutionContext->isContextThread());
-    void* workerThread = std::exchange(m_workerThread, nullptr);
-    if (!workerThread)
+    if (!m_workerThread)
         return;
-    if (!std::exchange(m_keepAliveReleased, true))
-        WebWorker__releaseParentPollRef(workerThread);
-    WebWorker__join(workerThread);
-    WebWorker__deref(workerThread);
+    m_workerThread = nullptr;
     m_state.store(State::Closed);
-    // The ref startWorkerGlobalScope() took on behalf of the thread.
-    deref();
+    m_refForWorkerThread = nullptr;
 }
 
 void WorkerMessagingProxy::dropUndeliveredWorkerMessages()

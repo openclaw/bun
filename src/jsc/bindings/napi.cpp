@@ -296,18 +296,20 @@ napi_get_last_error_info(napi_env env, const napi_extended_error_info** result)
     return napi_ok;
 }
 
-void Napi::NapiRefWeakHandleOwner::finalize(JSC::Handle<JSC::Unknown>, void* context)
+JSC::WeakHandleOwner::FinalizeResult Napi::NapiRefWeakHandleOwner::finalize(JSC::Handle<JSC::Unknown>, void* context)
 {
     auto* weakValue = reinterpret_cast<NapiRef*>(context);
     weakValue->callFinalizerFromGC();
+    return FinalizeResult::KeepImpl;
 }
 
-void Napi::NapiRefSelfDeletingWeakHandleOwner::finalize(JSC::Handle<JSC::Unknown>, void* context)
+JSC::WeakHandleOwner::FinalizeResult Napi::NapiRefSelfDeletingWeakHandleOwner::finalize(JSC::Handle<JSC::Unknown>, void* context)
 {
     auto* weakValue = reinterpret_cast<NapiRef*>(context);
     // The ref goes away right here, so the finalizer is queued as a copy that does not need it.
     weakValue->callFinalizer();
     delete weakValue;
+    return FinalizeResult::KeepImpl;
 }
 
 void NAPICallFrame::extract(size_t* argc, napi_value* argv, napi_value* this_arg, void** data, Zig::GlobalObject* globalObject)
@@ -771,10 +773,7 @@ void Napi::executePendingNapiModule(Zig::GlobalObject* globalObject, const napi_
         return;
     }
 
-    auto* meta = new Bun::NapiModuleMeta(dlopenHandle);
-
-    // TODO: think about the finalizer here
-    Bun::NapiExternal* napi_external = Bun::NapiExternal::create(vm, globalObject->NapiExternalStructure(), meta, nullptr, nullptr, env.ptr());
+    Bun::NapiExternal* napi_external = Bun::NapiExternal::create(vm, globalObject->NapiExternalStructure(), dlopenHandle, nullptr, nullptr, env.ptr());
 
     bool success = resultValue.getObject()->putDirect(vm, WebCore::builtinNames(vm).napiDlopenHandlePrivateName(), napi_external, JSC::PropertyAttribute::DontDelete | JSC::PropertyAttribute::ReadOnly);
     ASSERT(success);
@@ -874,10 +873,10 @@ extern "C" napi_status napi_wrap(napi_env env,
     }
 
     if (result) {
-        ref->weakValueRef.set(jsc_value, Napi::NapiRefWeakHandleOwner::weakValueHandleOwner(), ref);
+        ref->weakValueRef = JSC::Weak<JSCell>(jsc_object, &Napi::NapiRefWeakHandleOwner::weakValueHandleOwner(), ref);
         *result = toNapi(ref);
     } else {
-        ref->weakValueRef.set(jsc_value, Napi::NapiRefSelfDeletingWeakHandleOwner::weakValueHandleOwner(), ref);
+        ref->weakValueRef = JSC::Weak<JSCell>(jsc_object, &Napi::NapiRefSelfDeletingWeakHandleOwner::weakValueHandleOwner(), ref);
     }
 
     NAPI_RETURN_SUCCESS(env);
@@ -1152,10 +1151,10 @@ extern "C" napi_status napi_add_finalizer(napi_env env, napi_value js_object,
     ref->boundCleanup = &env->addFinalizer(wrap_cleanup, native_object, ref);
     ref->nativeObject = native_object;
     if (result) {
-        ref->weakValueRef.set(objectValue, Napi::NapiRefWeakHandleOwner::weakValueHandleOwner(), ref);
+        ref->weakValueRef = JSC::Weak<JSCell>(object, &Napi::NapiRefWeakHandleOwner::weakValueHandleOwner(), ref);
         *result = toNapi(ref);
     } else {
-        ref->weakValueRef.set(objectValue, Napi::NapiRefSelfDeletingWeakHandleOwner::weakValueHandleOwner(), ref);
+        ref->weakValueRef = JSC::Weak<JSCell>(object, &Napi::NapiRefSelfDeletingWeakHandleOwner::weakValueHandleOwner(), ref);
     }
 
     NAPI_RETURN_SUCCESS(env);
@@ -1576,7 +1575,7 @@ extern "C" JS_EXPORT napi_status node_api_get_module_file_name(napi_env env,
 {
     NAPI_PREAMBLE_NO_PENDING_CHECK(env);
     NAPI_CHECK_ARG(env, result);
-    *result = env->filename ? env->filename : "";
+    *result = env->filename ? env->filename.get() : "";
     NAPI_RETURN_SUCCESS(env);
 }
 

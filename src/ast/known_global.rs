@@ -210,7 +210,7 @@ impl KnownGlobal {
                                         || val == 10.0)
                                 {
                                     let arg_loc = arg.loc;
-                                    let mut list = e.args.move_to_list_managed();
+                                    let mut list = bun_alloc::AstAlloc::take(&mut e.args);
                                     list.clear();
                                     // Vec::resize aborts on OOM
                                     list.resize(
@@ -222,7 +222,7 @@ impl KnownGlobal {
                                     );
                                     return Some(js_ast::Expr::init(
                                         E::Array {
-                                            items: Vec::move_from_list(list),
+                                            items: list,
                                             ..Default::default()
                                         },
                                         loc,

@@ -77,6 +77,7 @@ export const windowsSmoke = [
   "test/js/bun/resolve/import-meta-resolve.test.mjs",
   "test/js/bun/resolve/import-meta.test.js",
   "test/js/node/worker_threads/terminate-in-a-message-listener-of-a-worker-that-ends-by-itself.test.ts",
+  "test/js/node/worker_threads/terminate-resolves-where-the-end-of-the-worker-throws.test.ts",
   "test/js/node/worker_threads/what-a-worker-wrote-before-it-exits-is-read.test.ts",
   "test/js/node/worker_threads/worker-stdout-own-functions.test.ts",
 ];
@@ -268,7 +269,8 @@ function upstreamParents(base: string, head: string): string[] {
       // Earlier manual imports named the incoming parent in the subject or first body line.
       const prefix =
         /^chore\(sync\): merge upstream Bun (?:at|through) ([0-9a-f]{10,40})$/.exec(lines[0]!)?.[1] ??
-        (lines[0] === "chore(upstream): merge AOT compiler rewrite"
+        (lines[0] === "chore(upstream): merge AOT compiler rewrite" ||
+        lines[0] === "chore(sync): merge upstream Bun development history"
           ? /^Merge oven-sh\/bun ([0-9a-f]{40})\b/.exec(lines.slice(1).find(line => line.trim()) ?? "")?.[1]
           : undefined);
       imported = prefix ? incoming.filter(parent => parent.startsWith(prefix)) : [];

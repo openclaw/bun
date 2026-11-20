@@ -390,7 +390,7 @@ JSC_DEFINE_HOST_FUNCTION(jsFunctionResolveFileName,
                 return {};
             }
 
-            WTF::Vector<BunString> paths;
+            WTF::Vector<Bun::OwnedString> paths;
 
             // Iterate through the array using forEachInIterable
             forEachInIterable(globalObject, pathsValue, [&](JSC::VM&, JSC::JSGlobalObject* lexicalGlobalObject, JSC::JSValue item) {
@@ -401,28 +401,12 @@ JSC_DEFINE_HOST_FUNCTION(jsFunctionResolveFileName,
                 if (scope.exception())
                     return;
 
-                BunString pathRef = Bun::toStringRef(pathStr);
-                if (!Bun::tryAppendWithinLimit(paths, pathRef)) [[unlikely]] {
-                    pathRef.deref();
+                if (!Bun::tryAppendWithinLimit(paths, Bun::toStringRef(WTF::move(pathStr)))) [[unlikely]]
                     throwOutOfMemoryError(lexicalGlobalObject, scope);
-                }
             });
-
-            if (scope.exception()) {
-                // Clean up on exception
-                for (auto& path : paths) {
-                    path.deref();
-                }
-                return {};
-            }
+            RETURN_IF_EXCEPTION(scope, {});
 
             result = Bun__resolveSyncWithPaths(globalObject, JSC::JSValue::encode(moduleName), JSValue::encode(fromValue), false, true, paths.begin(), paths.size(), JSValue::encode(parentModule));
-
-            // Clean up BunStrings to avoid leaking
-            for (auto& path : paths) {
-                path.deref();
-            }
-
             RETURN_IF_EXCEPTION(scope, {});
 
             if (!JSC::JSValue::decode(result).isString()) {
@@ -1292,7 +1276,7 @@ extern "C" void Bun__NodeCompileCache__setWorkerPriority(bool background)
 #endif
 }
 
-extern "C" int32_t Bun__NodeCompileCache__enable(const BunString* dir, int32_t portable, BunString* outDirectory, BunString* outMessage);
+extern "C" int32_t Bun__NodeCompileCache__enable(const BunString* dir, int32_t portable, Bun::OwnedString* outDirectory, Bun::OwnedString* outMessage);
 extern "C" BunString Bun__NodeCompileCache__getDir();
 extern "C" void Bun__NodeCompileCache__flush();
 
@@ -1329,8 +1313,8 @@ JSC_DEFINE_HOST_FUNCTION(jsFunctionEnableCompileCache,
     }
 
     BunString directoryStr = Bun::toString(directory);
-    BunString outDirectory = { BunStringTag::Empty, {} };
-    BunString outMessage = { BunStringTag::Empty, {} };
+    Bun::OwnedString outDirectory;
+    Bun::OwnedString outMessage;
     int32_t status = Bun__NodeCompileCache__enable(
         directory.isNull() ? nullptr : &directoryStr, portable, &outDirectory, &outMessage);
 
@@ -1338,10 +1322,7 @@ JSC_DEFINE_HOST_FUNCTION(jsFunctionEnableCompileCache,
     Bun::putDirectNamed(vm, result, "status"_s, JSC::jsNumber(status));
     if (!outMessage.isEmpty()) {
         JSValue message = outMessage.transferToJS(globalObject);
-        if (scope.exception()) [[unlikely]] {
-            outDirectory.deref();
-            return {};
-        }
+        RETURN_IF_EXCEPTION(scope, {});
         Bun::putDirectNamed(vm, result, "message"_s, message);
     }
     if (!outDirectory.isEmpty()) {
@@ -1356,7 +1337,7 @@ JSC_DEFINE_HOST_FUNCTION(jsFunctionGetCompileCacheDir,
     (JSGlobalObject * globalObject,
         JSC::CallFrame* callFrame))
 {
-    BunString dir = Bun__NodeCompileCache__getDir();
+    auto dir = Bun::OwnedString::adopt(Bun__NodeCompileCache__getDir());
     if (dir.isEmpty()) {
         return JSC::JSValue::encode(JSC::jsUndefined());
     }

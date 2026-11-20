@@ -4,7 +4,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use bun_collections::HashMap;
-use bun_ptr::RefPtr;
+use bun_ptr::{RefPtr, ThisPtr};
 use bun_sys::{Fd, FdExt as _};
 
 use crate::Process;
@@ -72,7 +72,13 @@ impl CompletionQueue {
                 libc::epoll_ctl(
                     self.fd.get().unwrap().native(),
                     libc::EPOLL_CTL_ADD,
-                    (*process).pidfd,
+                    (*process)
+                        .pidfd
+                        .get()
+                        .as_ref()
+                        .expect("registered process has a pidfd")
+                        .fd()
+                        .native(),
                     &raw mut event,
                 )
             })
@@ -84,7 +90,7 @@ impl CompletionQueue {
                 self.retry.borrow_mut().insert(process, ());
                 self.watched.borrow_mut().insert(process, ());
                 // SAFETY: caller contract; Rc keeps this shared backref stable.
-                unsafe { (*process).completion_queue = self };
+                unsafe { (*process).completion_queue.set(self) };
                 return Ok(());
             }
             if self.watched.borrow().is_empty() {
@@ -96,7 +102,7 @@ impl CompletionQueue {
         }
         self.watched.borrow_mut().insert(process, ());
         // SAFETY: caller contract; removed before process or queue destruction.
-        unsafe { (*process).completion_queue = self };
+        unsafe { (*process).completion_queue.set(self) };
         Ok(())
     }
 
@@ -107,7 +113,7 @@ impl CompletionQueue {
             return;
         }
         // SAFETY: caller keeps process live during deregistration.
-        unsafe { (*process).completion_queue = std::ptr::null() };
+        unsafe { (*process).completion_queue.set(std::ptr::null()) };
         self.retry.borrow_mut().remove(&process);
         #[cfg(target_os = "macos")]
         {
@@ -141,7 +147,13 @@ impl CompletionQueue {
             libc::epoll_ctl(
                 self.fd.get().unwrap().native(),
                 libc::EPOLL_CTL_DEL,
-                (*process).pidfd,
+                (*process)
+                    .pidfd
+                    .get()
+                    .as_ref()
+                    .expect("registered process has a pidfd")
+                    .fd()
+                    .native(),
                 std::ptr::null_mut(),
             )
         });
@@ -169,8 +181,7 @@ impl CompletionQueue {
                 // SAFETY: retry contains only registered owners; no callbacks run
                 // during capture, and each owner still holds its primary watch ref.
                 unsafe {
-                    (*process).ref_();
-                    ready.push(RefPtr::from_raw(process));
+                    ready.push(RefPtr::from_this(ThisPtr::new(process)));
                 }
             }
             retry.clear();
@@ -232,8 +243,7 @@ impl CompletionQueue {
                 // SAFETY: registration retains the primary watch ref. Retain
                 // this snapshot before permitting tasks to detach an owner.
                 unsafe {
-                    (*process).ref_();
-                    ready.push(RefPtr::from_raw(process));
+                    ready.push(RefPtr::from_this(ThisPtr::new(process)));
                 }
             }
             if count < capacity {
@@ -249,7 +259,7 @@ impl Drop for CompletionQueue {
         for &process in self.watched.get_mut().keys() {
             // SAFETY: every registered owner holds its primary watch ref;
             // destruction runs no callbacks and invalidates every backref.
-            unsafe { (*process).completion_queue = std::ptr::null() };
+            unsafe { (*process).completion_queue.set(std::ptr::null()) };
         }
         if let Some(fd) = self.fd.take() {
             close_owned_descriptor(fd);

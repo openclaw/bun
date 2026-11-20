@@ -16,7 +16,7 @@ use bun_ast::op::Level;
 use bun_ast::scope::Kind as ScopeKind;
 use bun_ast::ts::Metadata as TsMetadata;
 use js_ast::{
-    E, Expr, ExprNodeList,
+    E, Expr,
     G::{self, PropertyKind},
     Stmt, symbol,
 };
@@ -129,7 +129,6 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
         }
 
         p.pop_scope();
-        // G::Fn is not Copy (FnBody/TS-metadata aren't), so mutate `func` in place.
         let mut func = func;
         func.flags.insert(flags::Function::IsUniqueFormalParameters);
         let args = func.args.slice();
@@ -231,7 +230,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
         }
 
         Ok(Some(G::Property {
-            ts_decorators: ExprNodeList::from_slice(&opts.ts_decorators),
+            ts_decorators: opts.ts_decorators,
             kind,
             flags: prop_flags,
             key: Some(*key),
@@ -831,7 +830,7 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
                 }
 
                 return Ok(Some(G::Property {
-                    ts_decorators: ExprNodeList::from_slice(&opts.ts_decorators),
+                    ts_decorators: opts.ts_decorators,
                     kind,
                     flags: prop_flags,
                     key: Some(key),

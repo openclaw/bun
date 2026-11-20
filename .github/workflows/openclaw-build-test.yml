@@ -150,19 +150,18 @@ jobs:
         run: |
           bash scripts/openclaw-ci/install-linux-toolchain.sh
           if test -n "$WEBKIT_SOURCE_SHA"; then
-            sudo apt-get install -y --no-install-recommends libicu-dev pkg-config ruby perl
-            # Trimming reads ICU data from the executable, so use its static input contract.
-            icu_root="$RUNNER_TEMP/source-pair-icu"
-            icu_include=$(pkg-config --variable=includedir icu-uc)
-            icu_lib=$(pkg-config --variable=libdir icu-uc)
-            test -s "$icu_include/unicode/utypes.h"
-            for library in libicui18n.a libicuuc.a libicudata.a; do test -s "$icu_lib/$library"; done
-            mkdir -p "$icu_root"
-            ln -s "$icu_include" "$icu_root/include"
-            ln -s "$icu_lib" "$icu_root/lib"
-            echo "BUN_ICU_ROOT=$icu_root" >> "$GITHUB_ENV"
-            echo "Source-pair ICU: $(pkg-config --modversion icu-uc), static system archives." >> "$GITHUB_STEP_SUMMARY"
+            sudo apt-get install -y --no-install-recommends ruby perl
           fi
+      - name: Prepare matched ICU
+        if: inputs.webkit_source_sha != ''
+        timeout-minutes: 45
+        run: |
+          python3 -m unittest discover -s scripts/openclaw-ci -p test_source_pair_icu.py
+          python3 scripts/openclaw-ci/source-pair-icu.py \
+            --webkit .openclaw-webkit --sha "$WEBKIT_SOURCE_SHA" \
+            --output "$RUNNER_TEMP/source-pair-icu" \
+            --evidence build/openclaw-ci/icu-source.json
+          echo "BUN_ICU_ROOT=$RUNNER_TEMP/source-pair-icu" >> "$GITHUB_ENV"
       - name: Restore build caches
         id: cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -270,7 +269,7 @@ jobs:
           else
             bun scripts/rust-test.ts -p bun_trim
           fi
-      - name: Test AOT written positions and module loading
+      - name: Test AOT positions, module loading and source maps
         if: inputs.webkit_source_sha != ''
         timeout-minutes: 20
         run: |
@@ -280,12 +279,35 @@ jobs:
           BUN_CODEGEN_DIR="$GITHUB_WORKSPACE/build/release/codegen" CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0 \
             CARGO_PROFILE_DEV_OPT_LEVEL=1 CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS='-Cforce-frame-pointers=yes -Zthreads=8' \
             cargo test --no-fail-fast -p bun_aot --lib load::contents::tests::file_found_for_a_load_is_read_as_that_load_reads_it
-      - name: Test AOT CLI stacks and module semantics
+          BUN_CODEGEN_DIR="$GITHUB_WORKSPACE/build/release/codegen" CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0 \
+            CARGO_PROFILE_DEV_OPT_LEVEL=1 CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS='-Cforce-frame-pointers=yes -Zthreads=8' \
+            cargo test --no-fail-fast -p bun_sourcemap --lib internal_closest_mapping_crosses_lines
+      - name: Test AOT schema, CLI stacks and module semantics
         if: ${{ !cancelled() && steps.build.outcome == 'success' && inputs.webkit_source_sha != '' }}
         timeout-minutes: 5
         run: |
+          AOT_SCHEMA="$GITHUB_WORKSPACE/.openclaw-webkit/Source/JavaScriptCore/aot/ir/AOTSchema.def" \
+            ./build/release/bun test ./test/internal/aot-schema-generator.test.ts
           ./build/release/bun test test/cli/run/run-aot.test.ts \
             --test-name-pattern '__esModule cannot be added to an imported module namespace|stack traces|files that are CommonJS only by name'
+          ./build/release/bun test test/aot/originals-of-mocks-run-compiled.test.ts \
+            --test-name-pattern 'requireActual ignores'
+      - name: Test runtime ownership integrations
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && inputs.webkit_source_sha != '' }}
+        timeout-minutes: 10
+        run: |
+          ./build/release/bun --expose-internals test \
+            ./test/js/bun/terminal/terminal-spawn.test.ts \
+            ./test/js/bun/spawn/spawn-stdout-filereader-gc-uaf.test.ts \
+            ./test/js/node/process/process-stdio.test.ts \
+            ./test/js/node/tls/ssl-ctx-cache.test.ts \
+            ./test/js/node/tls/node-tls-duplex-end-verify.test.ts \
+            ./test/js/node/http/node-https-server.test.ts \
+            ./test/js/node/worker_threads/worker-track-unmanaged-fds.test.ts \
+            ./test/cli/run/run-eval.test.ts \
+            ./test/js/bun/resolve/resolve-error.test.ts \
+            ./test/cli/run/as-node.test.ts \
+            ./test/cli/run/run-detect-module-type.ts
       - name: Record Node reflection controls
         if: inputs.webkit_source_sha != ''
         run: |

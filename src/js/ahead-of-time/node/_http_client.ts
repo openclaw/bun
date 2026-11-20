@@ -1,10 +1,10 @@
 // What the compiler reads in place of src/js/node/_http_client.ts, which `bun run` evaluates. The two do the same.
-// Written against that file with the SHA-256 06ab0ec44f548d84cf0f55e54d7a7aa5c2e36113f9d023fe04c416c0fa05642b.
+// Written against that file with the SHA-256 16de781fdf2fe5fccf6fff3efe41aa8057a46f1db700d0d75ea9ad997fc4c53a.
 // When that file changes, bring the change here and write the new hash: test/internal/second-texts-of-modules.test.ts.
 
 // Hardcoded module "node:_http_client"
 // This is a port of Node.js's lib/_http_client.js built on top of node:net /
-// node:tls sockets and the llhttp HTTPParser binding, matching the upstream
+// node:tls sockets and the HTTPParser binding, matching the upstream
 // implementation as closely as possible.
 // https://github.com/nodejs/node/blob/v26.3.0/lib/_http_client.js
 const ObjectConstructor: (value: unknown) => object = Object;
@@ -564,7 +564,7 @@ function ClientRequest(
       }
     } else {
       $debug("CLIENT use net.createConnection", opts);
-      this.onSocket(require("node:net").createConnection(opts));
+      this.onSocket(require("node:net").createConnection(opts) as $Node.HttpClientSocket);
     }
   }
   if (onClientRequestCreatedChannel.hasSubscribers) {

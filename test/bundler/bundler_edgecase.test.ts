@@ -840,8 +840,6 @@ describe("bundler", () => {
     target: "bun",
   });
   itBundled("edgecase/RuntimeExternalRequire", {
-    // The fork retains its existing external-require error output.
-    failing: true,
     files: {
       "/entry.ts": /* ts */ `
         console.log(require("hello-1").type);

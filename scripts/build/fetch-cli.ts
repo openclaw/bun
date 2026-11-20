@@ -55,27 +55,6 @@ async function main(): Promise<void> {
       return fetchDep(name, repo, commit, dest, cache, patches);
     }
 
-    case "subst": {
-      // fetch-cli.ts subst <in> <out> [<from> <to>]...
-      // Replaces every literal occurrence of <from> with <to>. Used by
-      // DirectBuild deps to materialize *.h.in templates without running
-      // the upstream configure (e.g. zlib-ng's zlib.h.in → zlib.h, where
-      // the only substitution is `@ZLIB_SYMBOL_PREFIX@` → ``).
-      const [inPath, outPath, ...pairs] = args;
-      assert(inPath !== undefined && outPath !== undefined, "subst: missing in/out");
-      assert(pairs.length % 2 === 0, "subst: replacements must be <from> <to> pairs");
-      let text = await readFile(inPath, "utf8");
-      for (let i = 0; i + 1 < pairs.length; i += 2) {
-        assert(pairs[i]!.length > 0, `subst: empty <from> at index ${i}`);
-        text = text.split(pairs[i]!).join(pairs[i + 1]!);
-      }
-      // dep_subst is restat=1 — preserve mtime when the rendered text is
-      // unchanged so depfile-tracked .o files (lsquic ← zlib.h) don't
-      // recompile after a no-op re-fetch.
-      writeIfChanged(outPath, text);
-      return;
-    }
-
     case "check-undefined": {
       // fetch-cli.ts check-undefined <name> <nm> <rspfile> <stamp> <symbols>
       // <rspfile> is the edge's response file (one object per line);
@@ -117,7 +96,7 @@ async function main(): Promise<void> {
       assert(sha256 !== undefined, "prebuilt: missing sha256 or '-' sentinel");
       const url = Buffer.from(encodedUrl, "base64url").toString("utf8");
       // The fork verifies the complete manifest-pinned archive, including code generators.
-      return fetchPrebuilt(name, url, dest, identity, rmPaths, sha256 === "-" ? undefined : sha256);
+      return fetchPrebuilt(name, url, dest, identity, sha256 === "-" ? undefined : sha256, rmPaths);
     }
 
     case undefined:
@@ -139,7 +118,6 @@ Kinds:
   dep             <name> <repo> <commit> <dest> <cache> [...patches]
   unavailable     <base64url-error-message>
   prebuilt        <name> <base64url-url> <dest> <identity> <sha256|-> [...rm_paths]
-  subst           <in> <out> [<from> <to>]...
   check-undefined <name> <nm> <rspfile> <stamp> <symbol,...>
 
 This is invoked by ninja build rules. You shouldn't need to call it
@@ -325,19 +303,11 @@ async function fetchDep(
   // Github archives have a top-level directory <repo>-<commit>/. Strip it.
   await extractTarGz(tarballPath, dest);
 
-  // ─── Apply patches / overlays ───
+  // ─── Apply patches ───
   for (let i = 0; i < patches.length; i++) {
     const p = patches[i]!;
-    const name = basename(p);
-    if (p.endsWith(".patch")) {
-      console.log(`applying ${name}`);
-      applyPatch(dest, p, patchContents[i]!);
-    } else {
-      // Overlay file: copy into source root. Used for e.g. injecting a
-      // CMakeLists.txt into a project that doesn't have one (tinycc).
-      console.log(`overlay ${name}`);
-      await writeFile(join(dest, name), patchContents[i]!);
-    }
+    console.log(`applying ${basename(p)}`);
+    applyPatch(dest, p, patchContents[i]!);
   }
 
   // ─── Write stamp ───
