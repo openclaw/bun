@@ -3314,6 +3314,7 @@ impl VirtualMachine {
             t.resolver.opts.global_cache = opts.global_cache;
             t.resolver.opts.preserve_symlinks = preserve_symlinks;
             t.resolver.prefer_module_field = false;
+            t.resolver.validate_package_config = true;
         });
 
         // Before the global object, whose creation arms `WTFTimer`s on `RuntimeState::timer`.

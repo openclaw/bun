@@ -304,6 +304,7 @@ jobs:
             ./test/js/node/http/node-https-server.test.ts \
             ./test/js/node/worker_threads/worker-track-unmanaged-fds.test.ts \
             ./test/cli/run/run-eval.test.ts \
+            ./test/js/bun/resolve/resolve-error.test.ts \
             ./test/cli/run/as-node.test.ts \
             ./test/cli/run/run-detect-module-type.ts
       - name: Record Node reflection controls
