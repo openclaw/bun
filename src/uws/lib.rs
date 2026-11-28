@@ -492,6 +492,8 @@ pub mod ssl_wrapper {
         HandshakeError(Option<&'a core::ffi::CStr>),
         /// We closed before the first handshake finished.
         Aborted,
+        /// The peer's close_notify ended the first handshake.
+        PeerClosed,
     }
 
     #[derive(Clone, Copy)]
@@ -990,6 +992,7 @@ pub mod ssl_wrapper {
                 ),
                 // node:tls reads a failure with no error after end() as its own close.
                 HandshakeOutcome::Aborted => (false, us_bun_verify_error_t::default()),
+                HandshakeOutcome::PeerClosed => (false, us_bun_verify_error_t::peer_disconnected()),
             };
             self.flags.set_authorized(success);
             // trigger the handshake callback
@@ -1135,7 +1138,12 @@ pub mod ssl_wrapper {
                     } else {
                         self.flags.set_received_ssl_shutdown(true);
                         let _ = self.shutdown(false);
-                        self.handle_end_of_renegotiation();
+                        if self.flags.handshake_state() == HandshakeState::HandshakePending {
+                            self.flags
+                                .set_handshake_state(HandshakeState::HandshakeCompleted);
+                            self.trigger_handshake_callback(HandshakeOutcome::PeerClosed);
+                        }
+                        self.trigger_close_callback();
                     }
                     return false;
                 }

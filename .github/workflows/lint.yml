@@ -34,12 +34,31 @@ jobs:
         run: |
           bun x tsc --noEmit -p scripts/build/tsconfig.json
           bun x tsc --noEmit -p scripts/tsconfig.json
+      - name: Read the fork engine pin
+        id: webkit
+        run: |
+          bun -e 'import manifest from "./scripts/build/deps/webkit-artifacts.json"; console.log(`revision=${manifest.version}`)' >> "$GITHUB_OUTPUT"
+      - name: Fetch the pinned fork engine sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: openclaw/WebKit
+          ref: ${{ steps.webkit.outputs.revision }}
+          path: vendor/WebKit
+          sparse-checkout: |
+            Source/JavaScriptCore
+            Tools/Scripts/aot
+          persist-credentials: false
+      - name: Check that the engine's generator writes what the build declares
+        env:
+          AOT_SCHEMA: ${{ github.workspace }}/vendor/WebKit/Source/JavaScriptCore/aot/ir/AOTSchema.def
+        run: bun test ./test/internal/aot-schema-generator.test.ts
       - name: Typecheck the built-in modules
         # The code generators write the types src/js/builtins.d.ts references (build/types) and the enums the dev
-        # server's sources import (src/runtime/bake/generated.ts).
+        # server's sources import (src/runtime/bake/generated.ts). A module with a second text in src/js/ahead-of-time is
+        # checked as the compiler reads it.
         run: |
           bun run build:types
-          bun x tsc --noEmit -p src/js/tsconfig.json
+          bun src/codegen/check-types-of-modules.ts
       - name: Typecheck the rest of src
         # The code generators, the class definitions and the other build-time TypeScript, then the dev server.
         run: |

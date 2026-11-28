@@ -3417,8 +3417,7 @@ test("a proxy's own reply to CONNECT never resolves as the https origin's respon
   ]);
 });
 
-// Inherited early close_notify stalls the tunnel; the separate TLS follow-up restores rejection.
-test.failing("an https origin that ends the TLS handshake with close_notify fails the tunneled request", async () => {
+test("an https origin that ends the TLS handshake with close_notify fails the tunneled request", async () => {
   // The proxy opens the tunnel and keeps it open. The origin answers the ClientHello with a close_notify alert,
   // so only the alert says that no TLS session will come.
   const closeNotify = Buffer.from([0x15, 0x03, 0x03, 0x00, 0x02, 0x01, 0x00]);
@@ -3444,7 +3443,6 @@ test.failing("an https origin that ends the TLS handshake with close_notify fail
         await fetch("https://origin.invalid/", {
           proxy: `http://127.0.0.1:${(proxy.address() as net.AddressInfo).port}`,
           keepalive: false,
-          signal: AbortSignal.timeout(1000),
         }).then(
           response => ({ resolved: response.status }),
           e => ({ code: e.code }),

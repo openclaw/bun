@@ -53,6 +53,9 @@ public:
     static bool getOwnPropertySlotByIndex(JSC::JSObject*, JSC::JSGlobalObject*, unsigned, JSC::PropertySlot&);
     static bool deletePropertyByIndex(JSC::JSCell*, JSC::JSGlobalObject*, unsigned);
     static void getOwnPropertyNames(JSC::JSObject*, JSC::JSGlobalObject*, JSC::PropertyNameArrayBuilder&, JSC::DontEnumPropertiesMode);
+    // Fills in a map nothing has read yet, without a Structure per variable. `name` must not be on the map.
+    void putInitialValue(JSC::JSGlobalObject*, const JSC::Identifier& name, JSC::JSValue);
+
     static bool put(JSC::JSCell*, JSC::JSGlobalObject*, JSC::PropertyName, JSC::JSValue, JSC::PutPropertySlot&);
     static bool putByIndex(JSC::JSCell*, JSC::JSGlobalObject*, unsigned, JSC::JSValue, bool shouldThrow);
     static bool defineOwnProperty(JSC::JSObject*, JSC::JSGlobalObject*, JSC::PropertyName, const JSC::PropertyDescriptor&, bool shouldThrow);

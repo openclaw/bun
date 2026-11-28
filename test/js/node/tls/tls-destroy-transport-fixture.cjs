@@ -1,6 +1,5 @@
 "use strict";
 
-const { spawn } = require("node:child_process");
 const { writeSync } = require("node:fs");
 const { Duplex } = require("node:stream");
 const tls = require("node:tls");
@@ -23,52 +22,6 @@ function deferred() {
     resolve = done;
   });
   return { promise, resolve };
-}
-
-async function parent() {
-  const results = [];
-  let active;
-  let timedOut = false;
-  output({
-    type: "runtime",
-    version: process.version,
-    versions: process.versions,
-    platform: process.platform,
-    arch: process.arch,
-  });
-  const watchdog = setTimeout(() => {
-    timedOut = true;
-    output({ type: "watchdog-failure", milliseconds: 5000 });
-    active?.kill("SIGKILL");
-  }, 5000);
-  watchdog.unref();
-  for (const scenario of Object.keys(scenarios)) {
-    if (timedOut) break;
-    results.push(
-      await new Promise(resolve => {
-        let stderrBytes = 0;
-        let spawnError = null;
-        active = spawn(process.execPath, [__filename, "--scenario", scenario], { stdio: ["ignore", "pipe", "pipe"] });
-        active.stdout.on("data", chunk => writeSync(1, chunk));
-        active.stderr.on("data", chunk => {
-          stderrBytes += chunk.length;
-          writeSync(2, chunk);
-        });
-        active.on("error", error => {
-          spawnError = error.message;
-        });
-        active.on("close", (code, signal) => resolve({ scenario, code, signal, stderrBytes, spawnError }));
-      }),
-    );
-    active = undefined;
-  }
-  clearTimeout(watchdog);
-  const pass =
-    !timedOut &&
-    results.length === Object.keys(scenarios).length &&
-    results.every(result => result.code === 0 && !result.signal && !result.stderrBytes && !result.spawnError);
-  output({ type: "parent-result", pass, timedOut, results });
-  process.exitCode = pass ? 0 : 1;
 }
 
 function child(scenario) {
@@ -310,11 +263,7 @@ function child(scenario) {
   });
 }
 
-if (process.argv[2] === "--scenario" && Object.hasOwn(scenarios, process.argv[3])) {
-  child(process.argv[3]);
-} else {
-  parent().catch(error => {
-    writeSync(2, String(error) + "\n");
-    process.exitCode = 1;
-  });
+if (process.argv.length !== 4 || process.argv[2] !== "--scenario" || !Object.hasOwn(scenarios, process.argv[3])) {
+  throw new Error("Expected --scenario with one known scenario name");
 }
+child(process.argv[3]);

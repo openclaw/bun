@@ -3,6 +3,8 @@
 // node:tls sockets and the llhttp HTTPParser binding, matching the upstream
 // implementation as closely as possible.
 // https://github.com/nodejs/node/blob/v26.3.0/lib/_http_client.js
+const ObjectConstructor: (value: unknown) => object = Object;
+const ReflectGet: (target: object, key: PropertyKey, receiver?: unknown) => unknown = Reflect.get;
 const { kEmptyObject, once, ConnResetException, hasObserver, startPerf, stopPerf } = require("internal/shared");
 const kClientRequestStatistics = Symbol("ClientRequestStatistics");
 const {
@@ -16,7 +18,7 @@ const {
 } = require("node:_http_common");
 const { kUniqueHeaders, parseUniqueHeadersOption, OutgoingMessage } = require("node:_http_outgoing");
 const Agent = require("node:_http_agent");
-const { urlToHttpOptions } = require("internal/url");
+const { isURL, urlToHttpOptions } = require("internal/url");
 const {
   kOutHeaders,
   kNeedDrain,
@@ -102,10 +104,6 @@ function closeRequest(req) {
   req.emit("close");
 }
 
-function isURLInstance(input) {
-  return input != null && typeof input === "object" && input instanceof URL;
-}
-
 // When proxying a HTTP request, the following needs to be done:
 // https://datatracker.ietf.org/doc/html/rfc7230#section-5.3.2
 // 1. Rewrite the request path to absolute-form.
@@ -176,7 +174,7 @@ function ClientRequest(input?, options?, cb?): void {
   if (typeof input === "string") {
     const urlStr = input;
     input = urlToHttpOptions(new URL(urlStr));
-  } else if (isURLInstance(input)) {
+  } else if (isURL(input)) {
     // url.URL instance
     input = urlToHttpOptions(input);
   } else {
@@ -1073,7 +1071,7 @@ function destroyRequestOnSocketNT(req, socket, err) {
   }
   // ERR_PROXY_TUNNEL is handled by the proxying logic.
   // Skip if the error was already emitted by the early socketErrorListener.
-  if (err && err.code !== "ERR_PROXY_TUNNEL" && !socket?._hadError) {
+  if (err && ReflectGet(ObjectConstructor(err), "code", err) !== "ERR_PROXY_TUNNEL" && !socket?._hadError) {
     emitErrorEvent(req, err);
   }
   // The request is dead with no parser: close the trace span on the paths
@@ -1104,7 +1102,7 @@ function onSocketNT(req, socket, err) {
 }
 
 function onSocketFinishedDestroy(req, socket, err, er) {
-  if (er?.code === "ERR_STREAM_PREMATURE_CLOSE") {
+  if (er != null && ReflectGet(ObjectConstructor(er), "code", er) === "ERR_STREAM_PREMATURE_CLOSE") {
     er = null;
   }
   destroyRequestOnSocketNT(req, socket, er || err);

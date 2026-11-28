@@ -2,6 +2,148 @@
 
 ## Unreleased
 
+- Give the full macOS fork-delta qualification lane 30 minutes while preserving every individual test deadline.
+
+- Keep cluster worker IPC connected until active server connections finish draining after `worker.disconnect()`.
+
+- Update xwin to recognize current Windows SDK catalog paths while retaining the pinned SDK and CRT versions.
+
+- Preserve inherited file descriptors across `--aot` execution on macOS.
+
+- Pin immutable WebKit release `3357f9d63e6dd87a53f2aade723482130a55c0cd` and its matching AOT generators after Linux and Darwin Bun qualification and Windows ARM64 engine checks.
+
+- Recognize the AOT rewrite import when selecting fork CI coverage, excluding unchanged upstream files while retaining fork repairs and nightly suites.
+
+- Restore macOS file-watcher compilation after the event-loop API migration, using the public loop accessor and platform-scoped descriptor imports.
+
+- Allow stdout and stderr to initialize again after a replaced stream constructor throws, deferring native sink acquisition until the constructor consumes its options.
+
+- Fetch checksum-verified CI release assets through GitHub's public API when browser download routes fail, stage the pinned native LLVM archive, and seed the native engine's existing checksum-keyed prefetch cache.
+
+- Give OpenClaw's full standalone AOT consumer qualification a dedicated high-memory runner after measured memory pressure, while keeping Birdclaw on its existing hosted runner.
+
+- Keep consumer qualification phases and resource counters visible during long-running builds, and diagnose the frozen OpenClaw AOT build with the admitted shipping artifact.
+
+- Let trimming remove unused `node:module.stripTypeScriptTypes` parsing code while retaining the runtime parser when the API is used.
+
+- Let trimming remove compile-cache persistence workers when runtime module loading is absent, and preserve explicit cache activation before a compiled app's first external module load.
+
+- Give shipping structured-clone qualification the native runner's 90-second per-test budget, preserving the large-buffer checks and their shared cross-process serializer.
+
+- Qualify the admitted shipping compiler against frozen OpenClaw's complete AOT standalone and runtime sidecar, including CLI startup outside its source checkout.
+
+- Embed trim tables in the four Linux/macOS release compilers and require each shipping ZIP to compile and run AOT, explicit trim, and retained external-code programs.
+
+- Require the primary Linux shipping ZIP to compile and run the explicit AOT/trim API used by OpenClaw, including retained external code, and preserve failing artifact evidence.
+
+- Build the packaged Bun executables without concurrent unused engine-program links during Windows x64 release qualification.
+
+- Diagnose the remaining Linux AOT size gap with an unchanged upstream build on matched native inputs, reusing the admitted candidate artifact and paired execution checks.
+
+- Use the canonical checksum-pinned LLVM release for Linux native qualification instead of a moving apt snapshot.
+
+- Preserve consumer repository directory names during shipping qualification.
+
+- Let trimming TLS sockets remove Darwin system trust-store loading while preserving plain HTTP and HTTPS peer-certificate chains.
+
+- Preserve the interpreter, built-in module text, locales, and Darwin shared memory when an AOT executable retains `bun run` without the JIT.
+
+- Compare Linux AOT hello sizes against an explicitly admitted historical upstream archive through the existing hosted trim diagnostic, preserving both artifact identities and unchanged size limits.
+
+- Replace preassigned ChildProcess stdio with the spawned process's actual streams while preserving tracing order and failed-spawn EOF and close events.
+
+- Qualify each shipping archive with structured-clone, SharedArrayBuffer and Buffer serialization tests, and exercise the frozen OpenClaw hooks and private descendant handoff paths with the admitted executable.
+
+- Let trimming remove unused SQLite diagnostics, TLS transport code, and Chrome exit handlers while preserving diagnostic subscriptions and plain TCP shutdown.
+
+- Preserve named exports when a Jest mock spreads `jest.requireActual()` with an ESM default export, while retaining `mock.module()` default unwrapping.
+
+- Let isolated test files finish loading after accessing idle stdout or stderr, while retaining stdio cleanup.
+
+- Run native CI with release LTO, trim support, and the generators from its exact engine build, cross-building the macOS test bundle with the supported LLD linker and retaining linker attribution on both platforms, including full fork-delta selection against an explicit base for manual checks and focused artifact diagnostics with explicit source identities.
+
+- Keep `require.main` and `process.mainModule` live across test files, including compiled tests, cache eviction, and changes to `Bun.main`.
+
+- Keep fork repairs in sync CI coverage, and run changed AOT fixtures, including shared inputs and package fixtures, through their actual compiler and program owners.
+
+- Avoid looking up the executable path when a compiled program has no executable-relative source root.
+
+- Keep AOT customization-hook declarations compatible with the pinned engine's member-call schema.
+
+- Pin the qualified immutable WebKit release `8c0ebbe34c570ae20ee14f433a62e83bb6ccf0c6`, including all 21 native archives and matching AOT generator sources, so unused host builtins do not keep text evaluators alive.
+
+- Require the primary Linux x64 release archive to pass frozen OpenClaw and Birdclaw consumer checks before publication, with matching source, engine, and executable hashes and Birdclaw's normal mocked coverage lookups.
+
+- Load compiled modules after resolution-only hook redirects and read properties from the redirected require answer, while preserving source overrides and import attributes.
+
+- Keep inherited CommonJS require overrides local, including nonextensible and primitive receivers.
+
+- Preserve customization-hook resolution and arbitrary hook answers in compiled require calls, including computed requests and deregistration.
+
+- Share the existing prototype require function with newly constructed CommonJS modules, including relative loading and prototype overrides.
+
+- Keep compiled CommonJS `require.main` lazy to avoid recursive module creation when initializing require functions.
+
+- Keep Shell process-exit callbacks removable without affecting child-process completion in compiled programs that use the shell.
+
+- Preserve outer and nested strict-mode directives during runtime transpilation and invalidate previously cached output.
+
+- Preserve the runtime-transpiler trimming guard for module-hook source overrides.
+
+- Keep imported module namespaces non-extensible while preserving separate require(esm) markers and live bindings after the upstream sync.
+
+- Resolve macOS paths through the canonical full-path owner while preserving hard-link names, POSIX locks, and path errors when file descriptors are exhausted.
+
+- Preserve compiled namespace defaults when CommonJS forwards them, while retaining raw native-module mock exports.
+
+- Preserve plugin replacements of bare builtin names during Node hook default resolution while keeping ordinary builtin and recursive-resolution guards.
+
+- Preserve `lstat` ENOTDIR errors with `throwIfNoEntry: false` while retaining `stat` no-entry behavior.
+
+- Remove obsolete missing-script handling reintroduced by the upstream sync while preserving Node-compatible stdin and REPL dispatch.
+
+- Keep heap-limit and negative CA flags covered by the exhaustive runtime startup requirement table after the upstream sync.
+
+- Use live sink accessors for FileSink cancellation and stdio teardown after the upstream sync.
+
+- Preserve filesystem access success values, owned runtime option strings, and AOT input-type admission through the upstream CLI and binding interfaces.
+
+- Restore Worker stack-limit access and reusable path-buffer byte conversion after the upstream sync.
+
+- Keep runtime plugin namespace dispatch aligned with borrowed string bindings after the upstream sync.
+
+- Preserve package-map diagnostics, plugin miss retries, and module-hook identities through the upstream resolver and AOT transpiler interfaces.
+
+- Restore native compilation after the upstream sync by aligning injected-option parsing, event-loop declarations, generated process bindings, VM sandbox checks, and module-loader arguments with their current owners.
+
+- Restore native builds by removing unused UTF-16 path helpers reintroduced during the upstream merge.
+
+- Preserve raw stream failure values across shared completion, destruction, aggregation, pipeline, HTTP, web stream, socket, and TTY adapter contracts, and keep HTTP queue, fallback request, worker cleanup, and native TLS handle types aligned with their runtime owners.
+
+- Restore extra child-process pipe connections after the upstream cache removal and reconcile internal stdio, worker, DNS, HTTP, and native-handle types with their runtime owners.
+
+- Keep the Windows environment getter type compatible with built-in function code generation after the upstream sync.
+
+- Declare `module.stripTypeScriptTypes()` validation, option getters, and warning effects for AOT compilation without treating the input as executed source.
+
+- Preserve the separate native CommonJS module class and bind module utilities and once-listener wrappers in AOT programs, including listener getter and setter effects.
+
+- Describe fork module hooks, native timer and stdio callbacks, and VM test bindings for the upstream AOT generator, including arbitrary-source evaluation and the renamed CommonJS require implementation.
+
+- Declare TLS completion and Worker environment dependencies for AOT code generation, and retain native `module.registerHooks()` dispatch through its declared module owner.
+
+- Honor Rust CI's generator-only WebKit setup with a checksum-pinned source archive and reject native build targets in that setup.
+
+- Preserve `node:sqlite` query diagnostics through upstream module loading and AOT hook classification, keep databases open when a subscriber disposes them, publish constructor aliases and statement disposal types, and support custom SQLite libraries without tracing.
+
+- Accept hardened GNU builds whose fortified memory copies inline, while retaining stack-protector and checked-formatting import checks.
+
+- Avoid copying inactive TLS config payloads during Duplex cleanup so unreachable socket wrappers can be collected.
+
+- Add opt-in native TLS qualification to release dry runs, checking the exact artifact and source with a genuine Node.js reference and per-file JUnit results.
+
+- Preserve native socket ownership when nesting TLS, including pending writes, read backpressure, shutdown completion and buried HTTP/2 listeners. Keep generic Duplex write completions and queued TLS callbacks alive through reentrant teardown and garbage collection.
+
 - Withhold macOS signing and notarization credentials from release dry runs while retaining both Darwin archives for qualification.
 
 - Keep CI build and test diagnostics from dumping environment values or machine identity details.

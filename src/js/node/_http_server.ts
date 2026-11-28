@@ -684,7 +684,8 @@ Server.prototype.close = function (optionalCallback?) {
   http1Fallback?.closeIdleHttp1Connections(this);
   if (!server) {
     if (typeof optionalCallback === "function") process.nextTick(optionalCallback, $ERR_SERVER_NOT_RUNNING());
-    if (!this[kPendingDrainClose]) {
+    // Borrowed close() on a prototype heir has no listener bookkeeping to drain.
+    if (!this[kPendingDrainClose] && this[kPendingCloseGenerations]) {
       this[kPendingDrainClose] = true;
       process.nextTick(emitCloseServer, this);
     }
@@ -742,7 +743,6 @@ Server.prototype.address = function () {
 };
 
 Server.prototype[setSecureContextSymbol] = function (options) {
-  validateObject(options, "options");
   const current = this[tlsSymbol];
   if (!current) {
     throw $ERR_INVALID_ARG_VALUE("options", options, "server is not configured for TLS");
@@ -1196,7 +1196,7 @@ Server.prototype[kRealListen] = function (tls, port, host, socketPath, reusePort
             server.requireHostHeader &&
             (dispatchBits & DISPATCH_HAS_HOST) === 0 &&
             http_req.httpVersionMajor === 1 &&
-            http_req.httpVersionMinor >= 1
+            (http_req.httpVersionMinor ?? 0) >= 1
           ) {
             // The native parser skips its Host check for Upgrade requests; one dispatched normally still needs it.
             rejectMissingHost = true;
@@ -2546,16 +2546,19 @@ function getNodeHTTPServerSocket() {
     }
 
     _write(_chunk, _encoding, _callback) {
+      const handle = this[kHandle];
+      // A Proxy can write through this socket; its native owner holds the drain state.
+      const owner = handle?.duplex ?? this;
       if (_encoding === kWriteOperation) {
         const response = _chunk.response;
         const done = error => {
-          if (this.#pendingResponseCallback !== done) return;
-          this.#pendingResponseCallback = null;
+          if (owner.#pendingResponseCallback !== done) return;
+          owner.#pendingResponseCallback = null;
           response[kResumeResponseSocketWrite] = undefined;
           _callback(error);
           if (!hasResponseSocketWork(this)) scheduleWriteAccountingFlush(response);
         };
-        this.#pendingResponseCallback = done;
+        owner.#pendingResponseCallback = done;
         const resume = () => {
           response[kResumeResponseSocketWrite] = undefined;
           try {
@@ -2568,7 +2571,6 @@ function getNodeHTTPServerSocket() {
         else resume();
         return;
       }
-      const handle = this[kHandle];
       const done = error => {
         _callback(error);
         const response = this._httpMessage;
@@ -2578,12 +2580,12 @@ function getNodeHTTPServerSocket() {
       this._unrefTimer();
       try {
         if (handle) {
-          handle.ondrain ??= this.#onDrain.bind(this);
+          handle.ondrain ??= owner.#onDrain.bind(owner);
           const flushed = handle.write(_chunk, _encoding);
           if (!flushed && handle.ondrain) {
             // Streaming mode (CONNECT tunnels): wait for the native drain
             // callback before completing the write.
-            this.#pendingCallback = done;
+            owner.#pendingCallback = done;
             return false;
           }
         }
@@ -2643,7 +2645,7 @@ function getNodeHTTPTLSServerSocketPrototype() {
     const { TLSSocket } = require("node:tls");
     // Keep the native HTTP socket's I/O methods while exposing the TLS socket identity.
     NodeHTTPTLSServerSocketPrototype = Object.create(TLSSocket.prototype, {
-      ...Object.getOwnPropertyDescriptors(NodeHTTPServerSocket.prototype),
+      ...Object.getOwnPropertyDescriptors(getNodeHTTPServerSocket().prototype),
       ...Object.getOwnPropertyDescriptors({
         constructor: TLSSocket,
         getPeerCertificate(detailed) {
@@ -3147,8 +3149,9 @@ function publishResponseFinish(request, response, socket, server) {
 // read pre-detach state, then detach the socket and advance the pipeline.
 function emitResponseFinish() {
   const req = this.req;
-  // req.socket can be cleared by stream cleanup before the response finishes.
-  const socket = req?.socket ?? this.socket;
+  // The response owns this connection; req.socket can be replaced by user
+  // code or cleared by stream cleanup before the response finishes.
+  const socket = this.socket;
   publishResponseFinish(req, this, socket, socket?.server);
   // Node's resOnFinish: dump a body that nobody consumed or resumed.
   if (req && !req._consuming && !req._readableState?.resumeScheduled) {
@@ -4158,9 +4161,8 @@ ServerResponse.prototype.end = function (chunk, encoding, callback, token = unde
   this._header = " ";
   this[kCorked] = 0;
   // The socket is NOT detached here: like Node.js, res.socket stays assigned
-  // until the response 'finish' machinery runs (the dispatcher detaches it
-  // right after a synchronously-finished handler returns, or via its 'finish'
-  // listener otherwise), so handlers can still reach res.socket after end().
+  // until the response 'finish' machinery runs, so handlers can still reach
+  // res.socket after end().
   this.finished = true;
   process.nextTick(markResponseEndedNT, this);
   this.emit("prefinish");
@@ -4184,7 +4186,24 @@ function queueResponseFinished(res, callback) {
 // 'close' is queued before the 'finish' listeners run, like Node.js's resOnFinish does.
 function emitResponseFinished(res, callback) {
   process.nextTick(emitCloseNT, res);
-  res.emit("finish");
+  const socket = res[kSocket];
+  let detached = false;
+  try {
+    res.emit("finish");
+  } finally {
+    // The finish listener can be removed or throw before detaching. Native
+    // completion must still release this response's connection association.
+    if (isNodeHTTPServerSocket(socket)) {
+      const assigned = socket._httpMessage;
+      // A Proxy or inheritor can finish the same native response with a
+      // different receiver. Release the socket's owner for that request only.
+      if (assigned === res || (assigned && res[kHandle] && assigned[kHandle] === res[kHandle])) {
+        assigned.detachSocket(socket);
+        detached = true;
+      }
+    }
+  }
+  if (detached) advanceResponsePipeline(socket.server, socket);
   if (callback) {
     try {
       callback();

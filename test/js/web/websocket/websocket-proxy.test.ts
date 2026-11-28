@@ -299,8 +299,7 @@ describe("WebSocket wss:// through HTTP proxy (TLS tunnel)", () => {
     gc();
   });
 
-  // Inherited early close_notify stalls the tunnel; see the separate TLS follow-up.
-  test.failing("an origin that ends the TLS handshake with close_notify fails the connection", async () => {
+  test("an origin that ends the TLS handshake with close_notify fails the connection", async () => {
     // The origin answers the ClientHello with a close_notify alert and keeps the tunnel open, so only the alert
     // says that no TLS session will come.
     await using origin = net.createServer(socket => {
@@ -316,14 +315,12 @@ describe("WebSocket wss:// through HTTP proxy (TLS tunnel)", () => {
       proxy: `http://127.0.0.1:${recorded.port}`,
       tls: { rejectUnauthorized: false },
     });
-    const cleanup = setTimeout(() => ws.close(), 1000);
     try {
       expect({ events: await failingSession(ws), requests: recorded.requests }).toEqual({
         events: failed(url, "TLS handshake failed"),
         requests: [connectRequest(originPort)],
       });
     } finally {
-      clearTimeout(cleanup);
       ws.close();
     }
   });
@@ -569,8 +566,8 @@ describe("WebSocket wss:// through HTTP proxy (TLS tunnel)", () => {
   // The upgrade client keeps owning the proxy socket after the 101 and forwards
   // whatever arrives on it into the tunnel. It used to flip into that forwarding
   // mode only after the open event had been dispatched, so bytes read off the
-  // proxy socket while an open handler spins the event loop (expect().resolves
-  // here; a debugger pause does the same) were taken for a response to an
+  // proxy socket while an open handler spins the event loop (Bun.build() waiting
+  // for a plugin's setup() here; a debugger pause does the same) were taken for a response to an
   // upgrade that no longer had a WebSocket attached: the upgrade client failed
   // itself and closed the proxy connection, and the WebSocket that had just
   // fired open stayed OPEN forever without ever receiving a message or a close.
@@ -596,7 +593,7 @@ describe("WebSocket wss:// through HTTP proxy (TLS tunnel)", () => {
 
     // Once the client is inside its open handler, everything the server still
     // sends is the reply to "go". setImmediate runs at the start of the next
-    // loop iteration and the expect().resolves spin below only re-checks its
+    // loop iteration and the Bun.build() spin below only re-checks its
     // promise after that iteration has also polled I/O, so by the time the spin
     // ends the client has read the forwarded reply off the proxy socket.
     let inOpenHandler = false;
@@ -620,7 +617,10 @@ describe("WebSocket wss:// through HTTP proxy (TLS tunnel)", () => {
       ws.onopen = () => {
         inOpenHandler = true;
         ws.send("go");
-        expect(replyReadByClient.promise).resolves.toBeUndefined();
+        Bun.build({
+          entrypoints: ["./none.js"],
+          plugins: [{ name: "spin", setup: () => replyReadByClient.promise }],
+        }).catch(() => {});
         inOpenHandler = false;
         openReturned.resolve();
       };

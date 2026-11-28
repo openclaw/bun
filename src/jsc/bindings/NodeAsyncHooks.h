@@ -1,3 +1,5 @@
+#pragma once
+
 #include "config.h"
 #include "ZigGlobalObject.h"
 #include <wtf/PlatformCallingConventions.h>
@@ -17,5 +19,6 @@ enum class AsyncHooksTimerLifecycleEvent : uint8_t {
 extern "C" void Bun__AsyncHooks__emitTimerLifecycle(
     JSC::JSGlobalObject*, JSC::EncodedJSValue timer, uint64_t asyncHooksId,
     AsyncHooksTimerLifecycleEvent event);
+void beginTrackingAsyncContexts(JSC::JSGlobalObject*);
 
 }

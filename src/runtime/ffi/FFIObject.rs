@@ -26,14 +26,15 @@ unsafe fn deallocator_from_addr(addr: usize) -> jsc::JSTypedArrayBytesDeallocato
 
 /// Frees nothing. `JSBuffer__bufferFromPointerAndLengthAndDeinit` asserts a non-null
 /// deallocator for `len > 0`, so a borrowed view supplies this instead of `None`.
-unsafe extern "C" fn noop_bytes_deallocator(_ptr: *mut c_void, _ctx: *mut c_void) {}
+extern "C" fn noop_bytes_deallocator(_ptr: *mut c_void, _ctx: *mut c_void) {}
 
 /// Unlike `JSValue::create_buffer` (which hard-codes `MarkedArrayBuffer_deallocator`),
 /// this passes the caller's deallocator through so FFI bytes are only freed when asked.
 #[inline]
 fn create_buffer_with_ctx(
     global: &JSGlobalObject,
-    slice: &mut [u8],
+    ptr: *mut u8,
+    len: usize,
     ctx: *mut c_void,
     callback: jsc::JSTypedArrayBytesDeallocator,
 ) -> JsResult<JSValue> {
@@ -47,13 +48,13 @@ fn create_buffer_with_ctx(
             allocation: jsc::array_buffer::ArrayBufferAllocationMode,
         ) -> JSValue;
     }
-    // SAFETY: `global` is live; `slice` stays valid for the Buffer's lifetime.
+    // SAFETY: `global` is live; the allocation stays valid for the Buffer's lifetime.
     // `callback` controls disposal (a no-op when the storage stays caller-owned).
     jsc::call_zero_is_throw(global, || unsafe {
         JSBuffer__bufferFromPointerAndLengthAndDeinit(
             global,
-            slice.as_mut_ptr(),
-            slice.len(),
+            ptr,
+            len,
             ctx,
             callback,
             jsc::array_buffer::ArrayBufferAllocationMode::External,
@@ -104,7 +105,7 @@ pub(crate) unsafe extern "C" fn Bun__FFI__CString__transcode(
 }
 
 unsafe extern "C" {
-    fn Bun__FFI__CStringConstructor(global: *const JSGlobalObject) -> JSValue;
+    safe fn Bun__FFI__CStringConstructor(global: &JSGlobalObject) -> JSValue;
 }
 
 const DOM_CALL: DomCall = DomCall {
@@ -134,10 +135,11 @@ pub(crate) fn to_js(global_object: &JSGlobalObject) -> JSValue {
         );
     }
 
-    // SAFETY: `global_object` is a live JSC handle for the duration of the call.
-    object.put(global_object, b"CString", unsafe {
-        Bun__FFI__CStringConstructor(global_object)
-    });
+    object.put(
+        global_object,
+        b"CString",
+        Bun__FFI__CStringConstructor(global_object),
+    );
 
     // SAFETY: `put` is the C++-side `FFI__ptr__put` helper; global_object is live.
     unsafe { (DOM_CALL.put)(std::ptr::from_ref(global_object).cast_mut(), object) };
@@ -468,12 +470,10 @@ fn ptr_(global_this: &JSGlobalObject, value: JSValue, byte_offset: Option<JSValu
     }
 
     let mut addr: usize = array_buffer.ptr as usize;
-    if let Some(off) = byte_offset {
-        if !off.is_empty_or_undefined_or_null() {
-            if !off.is_number() {
-                return global_this
-                    .to_invalid_arguments(format_args!("Expected number for byteOffset"));
-            }
+    if let Some(off) = byte_offset.filter(|off| !off.is_empty_or_undefined_or_null()) {
+        if !off.is_number() {
+            return global_this
+                .to_invalid_arguments(format_args!("Expected number for byteOffset"));
         }
 
         let bytei64 = off.to_int64();
@@ -668,14 +668,20 @@ pub(crate) fn to_array_buffer<'a>(
         }
     }
 
+    let array_buffer = ArrayBuffer {
+        ptr,
+        len,
+        byte_len: len,
+        typed_array_type: jsc::JSType::ArrayBuffer,
+        ..Default::default()
+    };
     // SAFETY: ptr/len came from get_ptr_slice; FFI-owned memory. The
     // `bun:ffi` user asserts the pointer stays valid for the object's
     // lifetime and that their finalization callback/ctx pair, if
     // provided, is sound to invoke once at GC — `toArrayBuffer(ptr,
     // ...)` is an inherently trusting FFI API.
     unsafe {
-        let slice = core::slice::from_raw_parts_mut(ptr, len);
-        ArrayBuffer::from_bytes(slice, jsc::JSType::ArrayBuffer).to_js_with_context(
+        array_buffer.to_js_with_context(
             global_this,
             ctx.unwrap_or(core::ptr::null_mut()),
             callback,
@@ -731,15 +737,18 @@ pub(crate) fn to_buffer<'a>(
         }
     }
 
-    // SAFETY: ptr/len came from get_ptr_slice; caller-owned FFI memory.
-    let slice = unsafe { core::slice::from_raw_parts_mut(ptr, len) };
     // No finalizer means borrow: the noop deallocator keeps GC from freeing
     // caller-owned storage (oven-sh/bun#35405).
+    let callback = callback.or(Some(noop_bytes_deallocator));
+    // SAFETY: ptr/len came from get_ptr_slice; the `bun:ffi` user asserts that this
+    // caller-owned FFI memory stays valid for the Buffer's lifetime. `callback`
+    // controls disposal (a no-op when the storage stays caller-owned).
     create_buffer_with_ctx(
         global_this,
-        slice,
+        ptr,
+        len,
         ctx.unwrap_or(core::ptr::null_mut()),
-        callback.or(Some(noop_bytes_deallocator)),
+        callback,
     )
 }
 

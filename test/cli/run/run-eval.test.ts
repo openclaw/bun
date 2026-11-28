@@ -97,7 +97,11 @@ test.concurrent.each([
 });
 
 test.concurrent.each(
-  ["-e", "--eval", "--print"].flatMap(flag => [{ args: [flag, ""] }, { args: ["--no-warnings", flag, ""] }]),
+  ["-e", "--eval", "--print"].flatMap(flag =>
+    [[], ["--no-warnings"], ["--input-type=module"], ["--input-type=commonjs"]].map(prefix => ({
+      args: [...prefix, flag, ""],
+    })),
+  ),
 )("preserves Bun help for empty eval $args", async ({ args }) => {
   await using proc = Bun.spawn({
     cmd: [bunExe(), ...args],
@@ -142,6 +146,18 @@ test.concurrent.each([
     label: "direct eval binding access",
     source: `{ function f() { return 7; } console.log(eval("f.name + ':' + f()")); }`,
     expected: "f:7",
+  },
+  {
+    label: "top-level strict directive",
+    source:
+      '"use strict"; module.exports; const receiver = Symbol("receiver"); const get = function() { return this; }; const target = Object.defineProperty({}, "value", { get }); console.log(JSON.stringify([(function() { return this; })() === undefined, get.call(receiver) === receiver, Reflect.get(target, "value", receiver) === receiver]));',
+    expected: "[true,true,true]",
+  },
+  {
+    label: "nested strict directive in sloppy code",
+    source:
+      'module.exports; const receiver = Symbol("receiver"); const get = function() { "use strict"; return this; }; const target = Object.defineProperty({}, "value", { get }); console.log(JSON.stringify([(function() { return this; })() === globalThis, get.call(receiver) === receiver, Reflect.get(target, "value", receiver) === receiver]));',
+    expected: "[true,true,true]",
   },
 ])("eval preserves $label semantics", async ({ source, expected }) => {
   await using proc = Bun.spawn({

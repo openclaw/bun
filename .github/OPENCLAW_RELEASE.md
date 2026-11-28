@@ -41,11 +41,96 @@ and `linux-arm64`. Windows becomes required only when the repository variable
 switch once and passes it through to manifest validation. With it off, Windows
 is neither built for publication nor accepted in the published artifacts.
 PRs and non-publishing dry runs still default to all six targets, including
-both Windows architectures and their compatibility checks.
+both Windows architectures and their compatibility checks. The Windows x64
+build explicitly selects `bun.exe`, which also builds `bun-profile.exe` and
+their binary validations, without linking unused `jsc` and `testaot` programs
+concurrently.
 
 Rebuilding a commit that already has a release (a toolchain or pipeline change,
 not a source change) gets a new tag with `--rebuild 2` (`…-r2`). Published
 assets are never replaced: packagers pin their checksums.
+
+### TLS qualification dry runs
+
+Set `qualify-tls` on a manual dry run to test the built artifacts with the
+socket-retention, duplex-end, duplex-close, raw-end, wrapped-close and HTTP/2
+upgrade suites. Leave `tag` empty and `publish` false. The default target set
+runs all six native platforms; musl containers are rejected because their Node.js
+reference runtime is not qualified.
+
+Each smoke job checks out the exact source commit, verifies genuine Node.js
+26.12.1 for its platform and architecture, and runs the six files with the
+artifact's executable and the checked-in test configuration. No dependency
+installation is added; the six TLS files keep their checked-in timeouts. Each file must execute passing
+cases with no failures; declared platform and Debug/ASAN-only skips remain
+visible in the nine JUnit reports uploaded as `tls-qualification-<target>`.
+The reports also include the three runtime suites described below.
+The opted-in smoke job has a 30-minute limit and its test step a 20-minute limit.
+Normal smoke jobs retain their 15-minute limit. These dry runs do not publish
+artifacts or establish sanitizer coverage for release builds.
+
+## Downstream consumer qualification
+
+Each shipping ZIP runs the structured-clone, SharedArrayBuffer and Buffer
+serialization suites from its exact source with its extracted executable.
+The test harness passes that executable to descendants. Each suite must execute
+passing cases without failures; declared skips remain visible in its JUnit
+report. Normal smoke jobs upload `runtime-qualification-<target>`; TLS dry runs
+include these reports in `tls-qualification-<target>`.
+The structured-clone suite uses the native runner's 90-second per-test budget
+for its 1.5 GiB buffer cases; other suites retain their own normal limits.
+
+Runs containing `linux-x64` qualify the primary release ZIP in two independent
+consumer jobs before publication. Both use the same-run `release` artifact,
+check its manifest source/run identity and archive/executable checksums, and
+verify the executable's full Bun and WebKit revisions before and after testing.
+Profile archives are not consumer inputs.
+
+The frozen OpenClaw and Birdclaw revisions and their Node versions live in
+`scripts/openclaw-release/consumers.py` and the workflow matrix. OpenClaw builds
+and packages its source, exercises all ten Bun-only smoke steps including a real
+browser, runs its two Bun SQLite boundaries, and requires all 31 frozen
+before-tool-call cases to pass under the candidate Bun with no skips or todos.
+That test's revision expectation is temporarily projected onto the admitted
+executable and restored afterward. A candidate parent and descendant also
+verify the same private handoff database path without opening the database.
+It also builds the full experimental AOT standalone with `--trim-allow run`,
+verifies its compiler identity, executable and complete runtime-sidecar hashes,
+and runs its version/help commands outside the source checkout. This proves
+standalone CLI startup; the Bun-only packaged smoke owns Gateway qualification.
+Birdclaw runs its checks,
+unchanged coverage thresholds, build, synthetic CLI/HTTP/database fixture and
+installed-package Bun/Node smoke. Coverage retains Birdclaw's normal mocked
+lookup transports; the other phases disable live profile lookup. Birdclaw's
+package-smoke revision expectation is also temporarily projected onto the
+candidate, then restored.
+
+Consumer jobs have read-only permissions, no signing environment, and private
+HOME/cache/state directories. Their dependency and product processes receive an
+explicit environment without Actions or GitHub credentials. Receipts and logs
+are uploaded as `consumer-openclaw` and `consumer-birdclaw`; a failed or skipped
+consumer blocks publication. These jobs do not update downstream pins or deploy.
+
+OpenClaw's full standalone AOT build and its focused artifact diagnostic use
+`blacksmith-32vcpu-ubuntu-2404`; Birdclaw stays on `ubuntu-24.04`.
+The memory-heavy command is the admitted Bun executable running
+`--no-env-file scripts/build-bun-standalone.mjs <output> --compile-aot --trim-allow run`.
+The [hosted diagnostic](https://github.com/openclaw/bun/actions/runs/42460225353)
+reached a sampled cgroup peak of 15,733,264,384 bytes and exhausted almost all
+3 GiB of swap before a runner shutdown, with under 0.8 GiB of host memory
+available. Its sampled OOM counters remained zero, so this is memory-pressure
+evidence, not proof of an OOM kill. OpenClaw's
+[runner measurements](https://docs.openclaw.ai/ci/runners#blacksmith-runner-capacity)
+found about 15 GiB on the 16-class and 31 GiB on the 32-class. Consumer
+heartbeats record actual capacity and pressure; labels alone do not prove it.
+The command deadlines and complete qualification assertions stay unchanged.
+The [resource-corrected consumer run](https://github.com/openclaw/bun/actions/runs/42463585662)
+passed all 22 phases with the same admitted compiler and frozen consumer.
+Its 32-class runner actually delivered about 124 GiB of host RAM; sampled
+cgroup memory peaked at 50,463,993,856 bytes without swap consumption or OOM
+kills. Standalone compilation completed in about 14 minutes. These observations
+supersede the older sizing assumptions for this run; they do not promise a
+future allocation or establish that a smaller class completes this workload.
 
 ## Tag scheme
 
@@ -157,6 +242,13 @@ its interpreter, so only the JIT's own compile count shows it. On macOS the test
 also verifies the code signature, except on darwin-x64 without a Developer ID,
 which upstream links unsigned.
 
+The four published Linux/macOS targets also compile and run AOT programs from
+the shipping executable: plain AOT, explicit trimming, and trimming with
+`run` retained. The last case executes an external module through the compiled
+program. `compiled-runtime.json` records each command and failure alongside
+the runtime qualification reports. Windows standalone artifacts are outside
+OpenClaw's supported AOT contract.
+
 ## Building
 
 Every target is cross-compiled on upstream's build image, as upstream's own CI
@@ -178,6 +270,12 @@ CodeView emitter cannot encode the ARM64 register tuples used by LTO
 symbol order file (Buildkite publishes that) and without PGO. The version
 string keeps upstream's canary suffix (`1.4.3-canary.1+<commit>`): these are
 not upstream releases.
+
+The four published Linux/macOS targets additionally set `--trimmable=on` so the
+packaged compiler contains the trim table required by explicit AOT trimming.
+Native test binaries alone do not prove that the shipping compiler has it.
+The Linux x64 profile archive retains the same link's `sections.txt` and
+`retained.txt` for native byte attribution.
 
 ### Where the builds run
 
@@ -389,6 +487,7 @@ consumer's responsibility; a green build does not authorize a restart.
 
 ```sh
 bun test test/internal/source-lints/openclaw-release.test.ts
+python3 scripts/openclaw-release/consumers.test.py
 actionlint .github/workflows/openclaw-release.yml
 shellcheck scripts/openclaw-release/sign-macos.sh
 ```

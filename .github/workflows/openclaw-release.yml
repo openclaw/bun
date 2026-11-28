@@ -25,6 +25,10 @@ on:
         description: "Comma-separated targets; empty = enabled release targets (all six in dry runs). Also: linux-x64-musl, linux-arm64-musl"
         type: string
         default: ""
+      qualify-tls:
+        description: "Run the TLS qualification suites on native dry-run artifacts (no tag or musl targets)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -47,6 +51,7 @@ jobs:
       tag: ${{ steps.plan.outputs.tag }}
       webkit: ${{ steps.plan.outputs.webkit }}
       publish: ${{ steps.plan.outputs.publish }}
+      qualify-tls: ${{ steps.plan.outputs.qualify-tls }}
       matrix: ${{ steps.plan.outputs.matrix }}
       darwin: ${{ steps.plan.outputs.darwin }}
       windows: ${{ steps.plan.outputs.windows }}
@@ -74,18 +79,22 @@ jobs:
           bun-version: "1.4.4"
       - name: Test pipeline
         working-directory: pipeline
-        run: bun test test/internal/source-lints/openclaw-release.test.ts
+        run: |
+          bun test test/internal/source-lints/openclaw-release.test.ts
+          python3 scripts/openclaw-release/consumers.test.py
       - name: Plan
         id: plan
         env:
           TARGETS: ${{ inputs.targets }}
           WINDOWS_SIGNED: ${{ vars.OPENCLAW_RELEASE_WINDOWS_SIGNED }}
+          QUALIFY_TLS: ${{ inputs.qualify-tls == true }}
         run: |
           args=(--source source --main origin/main)
           [ -n "$RELEASE_TAG" ] && args+=(--tag "$RELEASE_TAG")
           [ "$PUBLISH" = true ] && args+=(--publish)
           [ "$WINDOWS_SIGNED" = true ] && args+=(--windows-signed)
           [ -n "$TARGETS" ] && args+=(--targets "$TARGETS")
+          [ "$QUALIFY_TLS" = true ] && args+=(--qualify-tls)
           bun pipeline/scripts/openclaw-release/release.ts plan "${args[@]}"
 
   build:
@@ -355,7 +364,7 @@ jobs:
     needs: [plan, build, sign-macos, sign-windows, windows-test-only]
     if: ${{ !cancelled() && needs.build.result == 'success' && needs.sign-macos.result != 'failure' && (needs.plan.outputs.windows != 'true' || (needs.plan.outputs.publish == 'true' && needs.sign-windows.result == 'success') || (needs.plan.outputs.publish != 'true' && needs.windows-test-only.result == 'success')) }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+    timeout-minutes: ${{ needs.plan.outputs.qualify-tls == 'true' && 30 || 15 }}
     strategy:
       fail-fast: false
       matrix:
@@ -371,7 +380,19 @@ jobs:
         with:
           name: ${{ matrix.artifact }}
           path: dist
+      - name: Checkout qualification source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: source
+          ref: ${{ needs.plan.outputs.commit }}
+          persist-credentials: false
+      - name: Setup Node.js reference
+        if: needs.plan.outputs.qualify-tls == 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "26.12.1"
       - name: Smoke test
+        timeout-minutes: ${{ needs.plan.outputs.qualify-tls == 'true' && 20 || 15 }}
         shell: bash
         env:
           TARGET: ${{ matrix.target }}
@@ -379,14 +400,20 @@ jobs:
           CONTAINER: ${{ matrix.container }}
           COMMIT: ${{ needs.plan.outputs.commit }}
           WEBKIT: ${{ needs.plan.outputs.webkit }}
+          QUALIFY_TLS: ${{ needs.plan.outputs.qualify-tls }}
         run: |
           # The release's own executable runs the checks, so the runner needs no other Bun.
           unzip -q "dist/$TRIPLET.zip" -d unpacked
           exe="unpacked/$TRIPLET/bun"
           [ -f "$exe.exe" ] && exe="$exe.exe"
-          smoke=("$exe" pipeline/scripts/openclaw-release/release.ts smoke --zip "dist/$TRIPLET.zip" --target "$TARGET" --commit "$COMMIT" --webkit "$WEBKIT")
+          smoke=("$exe" pipeline/scripts/openclaw-release/release.ts smoke --zip "dist/$TRIPLET.zip" --target "$TARGET" --commit "$COMMIT" --webkit "$WEBKIT" --source source --out qualification-results)
+          if [ "$QUALIFY_TLS" = true ]; then
+            smoke+=(--qualify-tls)
+          fi
           if [ -n "$CONTAINER" ]; then
-            docker run --rm -v "$PWD:/work" -w /work "$CONTAINER" sh -c 'apk add --no-cache libgcc libstdc++ unzip > /dev/null && "$@"' sh "${smoke[@]}"
+            docker run --rm -v "$PWD:/work" -w /work \
+              -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/work/source \
+              "$CONTAINER" sh -c 'apk add --no-cache libgcc libstdc++ unzip git > /dev/null && "$@"' sh "${smoke[@]}"
           else
             "${smoke[@]}"
           fi
@@ -395,6 +422,16 @@ jobs:
             codesign --verify --strict --verbose=2 "$exe"
             codesign -dv "$exe" 2>&1 | grep -E '^(Authority|TeamIdentifier|CodeDirectory)' || true
           fi
+      - name: Upload qualification reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ needs.plan.outputs.qualify-tls == 'true' && 'tls-qualification' || 'runtime-qualification' }}-${{ matrix.target }}
+          path: |
+            qualification-results/*.xml
+            qualification-results/compiled-runtime.json
+          if-no-files-found: error
+          retention-days: 14
 
   windows-compatibility:
     name: Compatibility ${{ matrix.target }}
@@ -504,10 +541,66 @@ jobs:
           retention-days: 30
           compression-level: 0
 
+  consumers:
+    name: Consumer ${{ matrix.consumer }}
+    needs: [plan, manifest]
+    if: ${{ !cancelled() && needs.manifest.result == 'success' && contains(fromJSON(needs.plan.outputs.matrix).*.target, 'linux-x64') }}
+    runs-on: ${{ matrix.consumer == 'openclaw' && 'blacksmith-32vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - consumer: openclaw
+            commit: 7c26e8cccd19b74c3443fb3f0ed6fbf9d7d410a3
+            node: "24.22.1"
+          - consumer: birdclaw
+            commit: 59c9ee27f39238654efc93ff7862b27ad474c044
+            node: "26.12.1"
+    steps:
+      - name: Checkout pipeline
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: pipeline
+          persist-credentials: false
+      - name: Checkout frozen consumer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: openclaw/${{ matrix.consumer }}
+          ref: ${{ matrix.commit }}
+          path: consumer/${{ matrix.consumer }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release
+          path: release
+      - name: Qualify the shipping executable
+        env:
+          CONSUMER: ${{ matrix.consumer }}
+          EXPECTED_COMMIT: ${{ needs.plan.outputs.commit }}
+          EXPECTED_WEBKIT: ${{ needs.plan.outputs.webkit }}
+          EXPECTED_RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python3 pipeline/scripts/openclaw-release/consumers.py "$CONSUMER" release "consumer/$CONSUMER" "$RUNNER_TEMP/consumer-proof"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: consumer-${{ matrix.consumer }}
+          path: |
+            ${{ runner.temp }}/consumer-proof/report.json
+            ${{ runner.temp }}/consumer-proof/*.log
+            ${{ runner.temp }}/consumer-proof/sqlite.json
+            ${{ runner.temp }}/consumer-proof/standalone-manifest.json
+            ${{ runner.temp }}/consumer-proof/smoke/
+          if-no-files-found: error
+          retention-days: 14
+
   publish:
     name: Publish
-    needs: [plan, manifest]
-    if: ${{ !cancelled() && needs.manifest.result == 'success' && needs.plan.outputs.publish == 'true' }}
+    needs: [plan, manifest, consumers]
+    if: ${{ !cancelled() && needs.manifest.result == 'success' && needs.consumers.result == 'success' && needs.plan.outputs.publish == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:

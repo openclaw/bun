@@ -30,6 +30,19 @@ history rule and separate maintainer qualification of upstream changes.
 - Include every added or modified Bun `.test.*` or `.spec.*` file still present.
 - For changed test fixtures, walk upward to the nearest directory containing
   tests and include those files. Deleted fixtures also select their owners.
+- AOT engine IR files under `test/aot/engine-tests/` run directly through the
+  same build's `testaot`. The native build step prepares `engine-test-programs`
+  only when IR files are selected, within its existing deadline. Each selected
+  IR file must pass with no failures or TODOs; `engine-ir.json` retains the
+  runtime identity, selection and output, including failures.
+- AOT parallel programs run through the upstream runner's AOT driver. Changes
+  inside a multi-file program select its containing `main.*`; standalone
+  programs select themselves. Shared declarations, configuration, and hidden
+  package fixtures select runnable programs in the nearest containing subtree.
+  Discovery follows the upstream runner's hidden-path and multi-file rules;
+  the parallel root configuration therefore selects every parallel program.
+  These fixtures do not select unrelated tests at the AOT root. Trim-specific
+  tests still require their trim-enabled build.
 - For `src/js/node/<module>` and `src/runtime/node/<module>`, include the
   corresponding `test/js/node/<module>/` tests.
 - For shared native code, match child_process/subprocess/spawn to child_process;
@@ -54,6 +67,11 @@ failed or expectation-skipped selected file fails the lane; the selection is
 never truncated to fit the budget. A large upstream sync may need separate
 full-suite qualification. Results, failures and per-file times appear in the
 summary; diagnostics are retained for seven days even on failure.
+
+Manual `trim-linux-module-mocks` diagnosis replays the four selected module-mock
+and plugin suites against an admitted immutable native artifact. It uses the
+existing source/run/archive identity checks and records JUnit and command output;
+it does not qualify the controller's source.
 
 When the net suite is selected, the lane also runs that file directly once and
 records its runtime identity, exit status and output in `net-direct.json`.
@@ -120,6 +138,20 @@ Before enabling the repository variable, configure the Azure OIDC secrets in
 [the release signing instructions](OPENCLAW_RELEASE.md#windows-signing-and-qualification).
 
 ## Caches and artifacts
+
+On a cold native cache, the Linux lane seeds its temporary checksum-keyed prefetch cache from
+GitHub's public release API using the exact WebKit manifest asset, size and
+SHA-256. The build's existing prebuilt owner verifies the archive again before
+extraction. This keeps the pinned source and archive identity when GitHub's
+browser download route returns transient errors. Bootstrap setup uses the same
+API downloader only after that exact GitHub download base fails; the normal
+R2 bootstrap route stays unchanged. The downloader uses no credentials, checks
+the API's size and digest, and publishes a temporary file only after verification.
+API request failures retain the normal build fetch; integrity mismatches fail the job.
+The native LLVM installer also stages its versioned archive through this API
+adapter. Only the generated installer's download URL changes to the staged file;
+its canonical source checksum, selected archive members and installation steps
+remain authoritative. API request failures retain the original LLVM URL.
 
 The lane caches the build system's download/prebuilt/ccache directory, Rust
 unit artifacts (`build/release/rust-target`) and Cargo registry/git downloads.

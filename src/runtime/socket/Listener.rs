@@ -68,7 +68,7 @@ pub(crate) struct Listener {
     pub(crate) listener: Cell<ListenerType>,
 
     pub poll_ref: JsCell<KeepAlive>,
-    pub(crate) connection: UnixOrHost,
+    pub(crate) connection: JsCell<UnixOrHost>,
     /// Embedded sweep/iteration list-head for every accepted socket on this
     /// listener. `group.ext` = `*Listener`, so the dispatch handler recovers us
     /// from the socket without a context-ext lookup.
@@ -275,7 +275,7 @@ impl Listener {
 
                 let this_value = Listener {
                     handlers,
-                    connection,
+                    connection: JsCell::new(connection),
                     ssl: ssl_enabled,
                     listener: Cell::new(ListenerType::None),
                     protos: protos_taken,
@@ -400,9 +400,9 @@ impl Listener {
 
         let this_value = Listener {
             handlers,
-            // Placeholder until `this_ref.connection = connection` below.
+            // Placeholder until `this_ref.connection` is written below.
             // Cannot `mem::zeroed()` a Rust enum (UB).
-            connection: UnixOrHost::Fd(Fd::invalid()),
+            connection: JsCell::new(UnixOrHost::Fd(Fd::invalid())),
             ssl: ssl_enabled,
             protos: protos_taken,
             reject_unauthorized: crate::socket::resolve_reject_unauthorized(
@@ -424,8 +424,7 @@ impl Listener {
         let js_value = this_value.to_js();
         let this: *mut Listener = this_value.payload_ptr().as_ptr();
         // SAFETY: the payload of `this_value`; every field touched through this
-        // borrow is `Cell`/`JsCell` or `&self`. The one plain-field write
-        // (`connection`, below) goes through the root pointer instead.
+        // borrow is `Cell`/`JsCell` or `&self`.
         let this_ref = unsafe { &*this };
         this_ref
             .group
@@ -579,10 +578,7 @@ impl Listener {
             return Err(cx.global().throw_value(err));
         }
 
-        // SAFETY: nothing else has the wrapper yet; scoped write through the
-        // root pointer so no `&mut Listener` is materialized (`this_ref` never
-        // reads `connection`).
-        unsafe { (*this).connection = connection };
+        this_ref.connection.with_mut(|c| *c = connection);
         this_ref.listener.set(ListenerType::Uws(listen_socket));
         if !default_data.is_empty() {
             this_ref
@@ -640,27 +636,16 @@ impl Listener {
     ) -> bun_ptr::ThisPtr<NewSocket<SSL>> {
         debug_assert!(SSL == listener.ssl);
 
-        let this_socket = NewSocket::<SSL>::new(NewSocket::<SSL> {
-            ref_count: bun_ptr::RefCount::init(),
-            handlers: JsCell::new(Some(Rc::clone(&listener.handlers))),
-            socket: Cell::new(uws::NewSocketHandler::<SSL>::DETACHED),
-            protos: JsCell::new(listener.protos.clone()),
-            // `protos` is `Option<Box<[u8]>>` so we clone the listener's slice.
-            flags: Cell::new(listener.accepted_socket_flags()),
-            owned_ssl_ctx: JsCell::new(None),
-            this_value: JsCell::new(jsc::JsRef::empty()),
-            poll_ref: JsCell::new(KeepAlive::init()),
-            ref_pollref_on_connect: Cell::new(true),
-            connection: JsCell::new(None),
-            local_binding: JsCell::new(None),
-            server_name: JsCell::new(None),
-            buffered_data_for_node_net: Default::default(),
-            bytes_written: Cell::new(0),
-            native_callback: JsCell::new(crate::socket::NativeCallbacks::None),
-            twin: JsCell::new(None),
-            verify_error: JsCell::new(None),
-            latest_session: Cell::new(None),
-        });
+        let this_socket = allocate_socket(
+            Rc::clone(&listener.handlers),
+            uws::NewSocketHandler::<SSL>::DETACHED,
+            None,
+            None,
+            listener.protos.clone(),
+            None,
+            None,
+            listener.accepted_socket_flags(),
+        );
         let s = this_socket;
         s.ref_();
         // See `on_create`: each accepted named-pipe connection holds the loop
@@ -686,28 +671,16 @@ impl Listener {
 
         debug_assert!(SSL == listener.ssl);
 
-        let this_socket = NewSocket::<SSL>::new(NewSocket::<SSL> {
-            ref_count: bun_ptr::RefCount::init(),
-            handlers: JsCell::new(Some(Rc::clone(&listener.handlers))),
-            socket: Cell::new(socket),
-            protos: JsCell::new(listener.protos.clone()),
-            // `protos` is `Option<Box<[u8]>>` so each accepted socket clones
-            // the listener's slice; one small allocation per accept.
-            flags: Cell::new(listener.accepted_socket_flags()),
-            owned_ssl_ctx: JsCell::new(None),
-            this_value: JsCell::new(jsc::JsRef::empty()),
-            poll_ref: JsCell::new(KeepAlive::init()),
-            ref_pollref_on_connect: Cell::new(true),
-            connection: JsCell::new(None),
-            local_binding: JsCell::new(None),
-            server_name: JsCell::new(None),
-            buffered_data_for_node_net: Default::default(),
-            bytes_written: Cell::new(0),
-            native_callback: JsCell::new(crate::socket::NativeCallbacks::None),
-            twin: JsCell::new(None),
-            verify_error: JsCell::new(None),
-            latest_session: Cell::new(None),
-        });
+        let this_socket = allocate_socket(
+            Rc::clone(&listener.handlers),
+            socket,
+            None,
+            None,
+            listener.protos.clone(),
+            None,
+            None,
+            listener.accepted_socket_flags(),
+        );
         let s = this_socket;
         s.ref_();
         // Each accepted socket holds the event loop on its own (same as a
@@ -869,7 +842,7 @@ impl Listener {
     /// Match Node.js/libuv: unlink the unix socket file before closing the listening fd.
     /// Unlinking after close would race with another process creating a socket at the same path.
     fn unlink_unix_socket_path(&self) {
-        let UnixOrHost::Unix(path) = &self.connection else {
+        let UnixOrHost::Unix(path) = self.connection.get() else {
             return;
         };
         // Abstract sockets (Linux) start with a NUL byte and have no filesystem entry.
@@ -881,21 +854,21 @@ impl Listener {
     }
 
     pub(crate) fn get_unix(&self) -> Option<&[u8]> {
-        match &self.connection {
+        match self.connection.get() {
             UnixOrHost::Unix(unix) => Some(unix),
             _ => None,
         }
     }
 
     pub(crate) fn get_hostname(&self) -> Option<&[u8]> {
-        match &self.connection {
+        match self.connection.get() {
             UnixOrHost::Host { host, .. } => Some(host),
             _ => None,
         }
     }
 
     pub(crate) fn get_port(&self) -> Option<u16> {
-        match &self.connection {
+        match self.connection.get() {
             UnixOrHost::Host { port, .. } => Some(*port),
             _ => None,
         }
@@ -1120,7 +1093,8 @@ impl Listener {
                             ref_pollref_on_connect: Cell::new(true),
                             buffered_data_for_node_net: Default::default(),
                             bytes_written: Cell::new(0),
-                            native_callback: JsCell::new(crate::socket::NativeCallbacks::None),
+                            native_callbacks: JsCell::new(Vec::new()),
+                            native_write_owner: Cell::new(None),
                             twin: JsCell::new(None),
                             verify_error: JsCell::new(None),
                             latest_session: Cell::new(None),
@@ -1214,7 +1188,8 @@ impl Listener {
                             ref_pollref_on_connect: Cell::new(true),
                             buffered_data_for_node_net: Default::default(),
                             bytes_written: Cell::new(0),
-                            native_callback: JsCell::new(crate::socket::NativeCallbacks::None),
+                            native_callbacks: JsCell::new(Vec::new()),
+                            native_write_owner: Cell::new(None),
                             twin: JsCell::new(None),
                             verify_error: JsCell::new(None),
                             latest_session: Cell::new(None),
@@ -1434,6 +1409,91 @@ impl Drop for Listener {
     }
 }
 
+fn allocate_socket<const SSL: bool>(
+    handlers: Rc<Handlers>,
+    socket: uws::NewSocketHandler<SSL>,
+    connection: Option<UnixOrHost>,
+    local_binding: Option<(Box<[u8]>, u16)>,
+    protos: Option<Box<[u8]>>,
+    server_name: Option<Box<[u8]>>,
+    owned_ssl_ctx: Option<boring_sys::OwnedSslCtx>,
+    flags: SocketFlags,
+) -> bun_ptr::ThisPtr<NewSocket<SSL>> {
+    NewSocket::<SSL>::new(NewSocket::<SSL> {
+        ref_count: bun_ptr::RefCount::init(),
+        handlers: JsCell::new(Some(handlers)),
+        socket: Cell::new(socket),
+        connection: JsCell::new(connection),
+        local_binding: JsCell::new(local_binding),
+        protos: JsCell::new(protos),
+        server_name: JsCell::new(server_name),
+        owned_ssl_ctx: JsCell::new(owned_ssl_ctx),
+        flags: Cell::new(flags),
+        this_value: JsCell::new(jsc::JsRef::empty()),
+        poll_ref: JsCell::new(KeepAlive::init()),
+        ref_pollref_on_connect: Cell::new(true),
+        buffered_data_for_node_net: Default::default(),
+        bytes_written: Cell::new(0),
+        native_callbacks: JsCell::new(Vec::new()),
+        native_write_owner: Cell::new(None),
+        twin: JsCell::new(None),
+        verify_error: JsCell::new(None),
+        latest_session: Cell::new(None),
+    })
+}
+
+#[cold]
+#[inline(never)]
+fn synchronous_connect_errno(
+    os_errno: c_int,
+    port: Option<u16>,
+    _connection: &Option<UnixOrHost>,
+) -> c_int {
+    #[cfg(windows)]
+    let os_errno = {
+        let mut e = os_errno;
+        // Node reports ENOENT for a missing pipe path; Winsock's AF_UNIX
+        // connect error does not, so probe.
+        if port.is_none() {
+            if let Some(UnixOrHost::Unix(path)) = _connection {
+                if !bun_sys::exists(path) {
+                    e = bun_sys::SystemErrno::ENOENT as c_int;
+                }
+            }
+        }
+        e
+    };
+    if port.is_none() {
+        // Preserve the real errno from the failed connect(2) on a unix path:
+        // connecting to an existing non-socket file is ENOTSOCK, a
+        // permission-denied path is EACCES, a missing one is ENOENT.
+        if os_errno == bun_sys::SystemErrno::ENAMETOOLONG as c_int {
+            // libuv reports UV_EINVAL for a pipe path it cannot express.
+            bun_sys::SystemErrno::EINVAL as c_int
+        } else if os_errno != 0 {
+            os_errno
+        } else {
+            bun_sys::SystemErrno::ENOENT as c_int
+        }
+    } else {
+        // A synchronous TCP connect failure is almost always the local
+        // bind() (localAddress/localPort) failing - preserve the errnos a
+        // bind() meaningfully produces (EADDRINUSE: port busy,
+        // EADDRNOTAVAIL: address not local, EACCES: privileged port,
+        // EINVAL: address family mismatch); everything else stays
+        // ECONNREFUSED. Mirrors handle_connect_error's whitelist.
+        if os_errno == bun_sys::SystemErrno::EADDRINUSE as c_int
+            || os_errno == bun_sys::SystemErrno::EADDRNOTAVAIL as c_int
+            || os_errno == bun_sys::SystemErrno::EACCES as c_int
+            || os_errno == bun_sys::SystemErrno::EINVAL as c_int
+        {
+            os_errno
+        } else {
+            bun_sys::SystemErrno::ECONNREFUSED as c_int
+        }
+    }
+}
+
 // Note: hoisted from the body of connect_inner; dispatched via const generic.
 fn connect_finish<const IS_SSL: bool>(
     cx: &bun_jsc::JsThread<'_>,
@@ -1477,26 +1537,16 @@ fn connect_finish<const IS_SSL: bool>(
         prev.owned_ssl_ctx.set(owned_ssl_ctx);
         prev
     } else {
-        NewSocket::<IS_SSL>::new(NewSocket::<IS_SSL> {
-            ref_count: bun_ptr::RefCount::init(),
-            handlers: JsCell::new(Some(handlers)),
-            socket: Cell::new(uws::NewSocketHandler::<IS_SSL>::DETACHED),
-            connection: JsCell::new(Some(connection)),
-            local_binding: JsCell::new(local_binding),
-            protos: JsCell::new(ssl.as_mut().and_then(|s| s.take_protos())),
-            server_name: JsCell::new(ssl.as_mut().and_then(|s| s.take_server_name())),
-            owned_ssl_ctx: JsCell::new(owned_ssl_ctx),
-            flags: Cell::new(SocketFlags::default()),
-            this_value: JsCell::new(jsc::JsRef::empty()),
-            poll_ref: JsCell::new(KeepAlive::init()),
-            ref_pollref_on_connect: Cell::new(true),
-            buffered_data_for_node_net: Default::default(),
-            bytes_written: Cell::new(0),
-            native_callback: JsCell::new(crate::socket::NativeCallbacks::None),
-            twin: JsCell::new(None),
-            verify_error: JsCell::new(None),
-            latest_session: Cell::new(None),
-        })
+        allocate_socket(
+            handlers,
+            uws::NewSocketHandler::<IS_SSL>::DETACHED,
+            Some(connection),
+            local_binding,
+            ssl.as_mut().and_then(|s| s.take_protos()),
+            ssl.as_mut().and_then(|s| s.take_server_name()),
+            owned_ssl_ctx,
+            SocketFlags::default(),
+        )
     };
     // Either the caller's JS-owned socket (reconnect) or the fresh one above.
     let socket_ref = socket;
@@ -1528,50 +1578,10 @@ fn connect_finish<const IS_SSL: bool>(
             // Winsock sets the Win32 last-error, not the CRT `_errno()` that
             // `last_errno()` reads.
             #[cfg(windows)]
-            let os_errno = {
-                let mut e = bun_sys::last_error() as c_int;
-                // Node reports ENOENT for a missing pipe path; Winsock's AF_UNIX
-                // connect error does not, so probe.
-                if port.is_none() {
-                    if let Some(UnixOrHost::Unix(path)) = socket_ref.connection.get() {
-                        if !bun_sys::exists(path) {
-                            e = bun_sys::SystemErrno::ENOENT as c_int;
-                        }
-                    }
-                }
-                e
-            };
+            let os_errno = bun_sys::last_error() as c_int;
             #[cfg(not(windows))]
             let os_errno = bun_sys::last_errno();
-            let errno = if port.is_none() {
-                // Preserve the real errno from the failed connect(2) on a unix path:
-                // connecting to an existing non-socket file is ENOTSOCK, a
-                // permission-denied path is EACCES, a missing one is ENOENT.
-                if os_errno == bun_sys::SystemErrno::ENAMETOOLONG as c_int {
-                    // libuv reports UV_EINVAL for a pipe path it cannot express.
-                    bun_sys::SystemErrno::EINVAL as c_int
-                } else if os_errno != 0 {
-                    os_errno
-                } else {
-                    bun_sys::SystemErrno::ENOENT as c_int
-                }
-            } else {
-                // A synchronous TCP connect failure is almost always the local
-                // bind() (localAddress/localPort) failing - preserve the errnos a
-                // bind() meaningfully produces (EADDRINUSE: port busy,
-                // EADDRNOTAVAIL: address not local, EACCES: privileged port,
-                // EINVAL: address family mismatch); everything else stays
-                // ECONNREFUSED. Mirrors handle_connect_error's whitelist.
-                if os_errno == bun_sys::SystemErrno::EADDRINUSE as c_int
-                    || os_errno == bun_sys::SystemErrno::EADDRNOTAVAIL as c_int
-                    || os_errno == bun_sys::SystemErrno::EACCES as c_int
-                    || os_errno == bun_sys::SystemErrno::EINVAL as c_int
-                {
-                    os_errno
-                } else {
-                    bun_sys::SystemErrno::ECONNREFUSED as c_int
-                }
-            };
+            let errno = synchronous_connect_errno(os_errno, port, socket_ref.connection.get());
             {
                 let this = socket;
                 let handled = NewSocket::<IS_SSL>::handle_connect_error(this, errno, 0);
@@ -1881,25 +1891,26 @@ impl WindowsNamedPipeListeningContext {
 pub(crate) extern "C" fn us_dispatch_socket_server_name(
     socket: *mut uws_sys::us_socket_t,
     hostname: *const core::ffi::c_char,
-    abort_handshake: *mut core::ffi::c_int,
+    abort_handshake: Option<&mut core::ffi::c_int>,
 ) -> *mut uws_sys::SslCtx {
     dispatch_server_name(socket, hostname, abort_handshake).cast()
 }
 
 /// Shared decoding of what the JS SNI handler returned. See
 /// `us_dispatch_server_name` for the contract.
-fn decode_sni_result(result: JSValue, abort_handshake: *mut core::ffi::c_int) -> *mut c_void {
+fn decode_sni_result(
+    result: JSValue,
+    abort_handshake: Option<&mut core::ffi::c_int>,
+) -> *mut c_void {
     if result.is_boolean() && result.to_boolean() {
-        if !abort_handshake.is_null() {
-            // SAFETY: live out-parameter for the duration of this dispatch.
-            unsafe { *abort_handshake = 2 };
+        if let Some(abort_handshake) = abort_handshake {
+            *abort_handshake = 2;
         }
         return core::ptr::null_mut();
     }
     if result.to_error().is_some() {
-        if !abort_handshake.is_null() {
-            // SAFETY: live out-parameter for the duration of this dispatch.
-            unsafe { *abort_handshake = 1 };
+        if let Some(abort_handshake) = abort_handshake {
+            *abort_handshake = 1;
         }
         return core::ptr::null_mut();
     }
@@ -1914,9 +1925,8 @@ fn decode_sni_result(result: JSValue, abort_handshake: *mut core::ffi::c_int) ->
     }
     // Anything else is not a SecureContext: Node treats this as an invalid SNI
     // context and drops the connection.
-    if !abort_handshake.is_null() {
-        // SAFETY: live out-parameter for the duration of this dispatch.
-        unsafe { *abort_handshake = 1 };
+    if let Some(abort_handshake) = abort_handshake {
+        *abort_handshake = 1;
     }
     core::ptr::null_mut()
 }
@@ -1940,7 +1950,7 @@ fn decode_sni_result(result: JSValue, abort_handshake: *mut core::ffi::c_int) ->
 extern "C" fn us_dispatch_server_name(
     _ls: *mut uws_sys::ListenSocket,
     hostname: *const core::ffi::c_char,
-    abort_handshake: *mut core::ffi::c_int,
+    abort_handshake: Option<&mut core::ffi::c_int>,
     socket: *mut c_void,
 ) -> *mut c_void {
     dispatch_server_name(socket.cast(), hostname, abort_handshake)
@@ -1949,7 +1959,7 @@ extern "C" fn us_dispatch_server_name(
 fn dispatch_server_name(
     socket: *mut uws_sys::us_socket_t,
     hostname: *const core::ffi::c_char,
-    abort_handshake: *mut core::ffi::c_int,
+    abort_handshake: Option<&mut core::ffi::c_int>,
 ) -> *mut c_void {
     jsc::mark_binding!();
     if socket.is_null() || hostname.is_null() {

@@ -46,7 +46,11 @@ runs:
           canary) release="canary";;
           *)      release="bun-v${BUN_VERSION}";;
         esac
-        curl -LO "${BUN_DOWNLOAD_URL}/${release}/${target}.zip" --retry 5
+        if ! curl --fail --location --output "${target}.zip" "${BUN_DOWNLOAD_URL}/${release}/${target}.zip" --retry 5; then
+          test "$BUN_DOWNLOAD_URL" = https://github.com/oven-sh/bun/releases/download
+          python3 "${{ github.action_path }}/../../../scripts/openclaw-ci/github-release-asset.py" \
+            oven-sh/bun "$release" "${target}.zip" "${target}.zip"
+        fi
         unzip "${target}.zip"
         mkdir -p "$RUNNER_TEMP/.bun/bin"
         mv "${target}"/bun* "$RUNNER_TEMP/.bun/bin/"

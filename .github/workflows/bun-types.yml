@@ -13,6 +13,7 @@ on:
       - "src/cli/init/tsconfig.default.json"
       - "src/**/*.bind.ts"
       - "src/codegen/**"
+      - "scripts/build/deps/webkit-artifacts.json"
       - ".github/workflows/bun-types.yml"
   pull_request:
     paths:
@@ -21,6 +22,7 @@ on:
       - "src/cli/init/tsconfig.default.json"
       - "src/**/*.bind.ts"
       - "src/codegen/**"
+      - "scripts/build/deps/webkit-artifacts.json"
       - ".github/workflows/bun-types.yml"
 
 env:
@@ -43,5 +45,18 @@ jobs:
         run: |
           bun install
           bun install --cwd test
+      - name: Read the fork engine pin
+        id: webkit
+        run: |
+          bun -e 'import manifest from "./scripts/build/deps/webkit-artifacts.json"; console.log(`revision=${manifest.version}`)' >> "$GITHUB_OUTPUT"
+      - name: Fetch the pinned fork engine sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: openclaw/WebKit
+          ref: ${{ steps.webkit.outputs.revision }}
+          path: vendor/WebKit
+          sparse-checkout: |
+            Source/JavaScriptCore/aot
+          persist-credentials: false
       - name: Check types
         run: bun test test/integration/bun-types/bun-types.test.ts

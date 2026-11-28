@@ -928,8 +928,7 @@ describe("a fatal post-handshake SSL error over a Duplex", () => {
     expect(code).toBe(ALERT_BAD_RECORD_MAC);
   });
 
-  // Known inherited gap: a fatal SSL error closes the Duplex before Node does; see the separate close-timing follow-up.
-  it.failing("is reported on a server socket", async () => {
+  it("is reported on a server socket", async () => {
     const result = await withFaultProxy({ connect: tlsConnect, serverOverDuplex: true }, peers => {
       const { client, server, toServer } = peers;
       const events = faultEvents(server, client);
@@ -2269,7 +2268,7 @@ describe("a TLS socket over a Duplex transport follows that transport's teardown
       await once(server.listen(0, "127.0.0.1"), "listening");
       const transport = net.connect({ port: (server.address() as AddressInfo).port, host: "127.0.0.1" });
       await once(transport, "connect");
-      // A held write sends the wrap to the engine that runs over the stream.
+      // Keep a plain write queued across the TLS wrap.
       transport.cork();
       transport.write("x");
       const client = tls.connect({ socket: transport, rejectUnauthorized: false });
@@ -2442,41 +2441,38 @@ describe("a TLS socket over a Duplex transport follows that transport's teardown
       expect(await lifecycle).toEqual(["transport close", "close:false"]);
     });
 
-    it.each([true, false])(
-      "a connected net.Socket with allowHalfOpen: %p is closed with the socket",
-      async allowHalfOpen => {
-        // A half-open socket does not close itself after its EOF, and the TLS
-        // socket does not destroy a net.Socket. So the close of the TLS socket
-        // has to end it, also when no engine exists yet. A FIN over loopback
-        // arrives after the engine started, so the EOF is pushed by hand.
-        const peerSawFin = Promise.withResolvers<void>();
-        await using server = net.createServer({ allowHalfOpen: true }, peer => {
-          peer.on("error", () => {});
-          peer.resume();
-          peer.on("end", () => {
-            peerSawFin.resolve();
-            peer.end();
-          });
+    it.each([true, false])("a peer FIN closes a wrapped net.Socket with allowHalfOpen: %p", async allowHalfOpen => {
+      const peerSawFin = Promise.withResolvers<void>();
+      const acceptedPeer = Promise.withResolvers<net.Socket>();
+      await using server = net.createServer({ allowHalfOpen: true }, peer => {
+        peer.on("error", () => {});
+        peer.resume();
+        peer.on("end", () => {
+          peerSawFin.resolve();
+          peer.end();
         });
-        await once(server.listen(0, "127.0.0.1"), "listening");
-        const transport = net.connect({
-          port: (server.address() as AddressInfo).port,
-          host: "127.0.0.1",
-          allowHalfOpen,
-        });
-        await once(transport, "connect");
-        // A held write sends the wrap to the engine that runs over the stream.
-        transport.cork();
-        transport.write("x");
-        const client = tls.connect({ socket: transport, rejectUnauthorized: false });
-        const lifecycle = recordLifecycle(client);
-        const transportClosed = once(transport, "close");
-        transport.push(null);
-        expect(await lifecycle).toEqual(["end", "error:ECONNRESET", "close:true"]);
-        await Promise.all([transportClosed, peerSawFin.promise]);
-        expect(transport.destroyed).toBe(true);
-      },
-    );
+        acceptedPeer.resolve(peer);
+      });
+      await once(server.listen(0, "127.0.0.1"), "listening");
+      const transport = net.connect({
+        port: (server.address() as AddressInfo).port,
+        host: "127.0.0.1",
+        allowHalfOpen,
+      });
+      await once(transport, "connect");
+      const peer = await acceptedPeer.promise;
+      // Keep a plain write queued across the TLS wrap. The EOF must come from
+      // the peer: push(null) only ends the transport's JavaScript readable.
+      transport.cork();
+      transport.write("x");
+      const client = tls.connect({ socket: transport, rejectUnauthorized: false });
+      const lifecycle = recordLifecycle(client);
+      const transportClosed = once(transport, "close");
+      peer.end();
+      expect(await lifecycle).toEqual(["end", "error:ECONNRESET", "close:true"]);
+      await Promise.all([transportClosed, peerSawFin.promise]);
+      expect(transport.destroyed).toBe(true);
+    });
   });
 });
 
@@ -2674,11 +2670,17 @@ describe("a TLS socket over a Duplex transport reports that transport's error", 
     expect(events).toEqual(["error:transport failed", "close destroyed=true"]);
   });
 
-  it("destroying TLS destroys its transport without ending it", async () => {
+  it.each([
+    ["isolated-immediate", 1],
+    ["isolated-after-check", 1],
+    ["consecutive-immediate-after-check", 2],
+    ["consecutive-after-check-immediate", 2],
+  ] as const)("destroying TLS destroys its transport without ending it: %s", async (scenario, expectedCases) => {
     // Node 24 destroys the transport without accessing end, even if destroy is a no-op.
     // Observe natural quiescence before cleanup so a delayed end getter cannot escape the assertion.
+    // Each process gets its own test budget; consecutive operations stay in the same child.
     await using proc = Bun.spawn({
-      cmd: [bunExe(), join(import.meta.dir, "tls-destroy-transport-fixture.cjs")],
+      cmd: [bunExe(), join(import.meta.dir, "tls-destroy-transport-fixture.cjs"), "--scenario", scenario],
       env: bunEnv,
       stdout: "pipe",
       stderr: "pipe",
@@ -2689,13 +2691,8 @@ describe("a TLS socket over a Duplex transport reports that transport's error", 
       .split("\n")
       .map(line => JSON.parse(line));
     const scenarios = rows.filter(row => row.type === "scenario-result");
-    expect(scenarios.map(row => row.scenario)).toEqual([
-      "isolated-immediate",
-      "isolated-after-check",
-      "consecutive-immediate-after-check",
-      "consecutive-after-check-immediate",
-    ]);
-    expect(scenarios.flatMap(row => row.cases)).toHaveLength(6);
+    expect(scenarios.map(row => row.scenario)).toEqual([scenario]);
+    expect(scenarios[0].cases).toHaveLength(expectedCases);
     for (const scenario of scenarios) {
       expect(scenario).toMatchObject({
         pass: true,
@@ -2717,7 +2714,7 @@ describe("a TLS socket over a Duplex transport reports that transport's error", 
         });
       }
     }
-    expect(rows.at(-1)).toMatchObject({ type: "parent-result", pass: true, timedOut: false });
+    expect(rows.at(-1)).toMatchObject({ type: "scenario-result", scenario, pass: true });
     expect(stderr).toBe("");
     expect(exitCode).toBe(0);
   });
@@ -4526,6 +4523,69 @@ describe.each([
       destroyed: false,
     });
   });
+
+  for (const outcome of ["success", "error", "destroy"] as const) {
+    it.skipIf(!exe)(`joins the held close_notify write completion: ${outcome}`, async () => {
+      const result = await runShutdownFixture(exe!, "duplex-end-completion", outcome);
+      const whileHeld = {
+        endCalls: 0,
+        transportFinishes: 0,
+        transportCloses: 0,
+        transportErrors: 0,
+        clientFinishes: 0,
+        clientCloses: 0,
+        clientErrors: 0,
+        endCallbacks: 0,
+        writableEnded: false,
+      };
+      const common = {
+        log: [],
+        whileHeld,
+        clientErrorCode: null,
+        transportErrorCode: null,
+        endCallbackCode: null,
+      };
+      if (outcome === "success") {
+        expect(result).toEqual({
+          ...common,
+          completionTurn: whileHeld,
+          afterRelease: {
+            ...whileHeld,
+            endCalls: 1,
+            transportFinishes: 1,
+            clientFinishes: 1,
+            endCallbacks: 1,
+            writableEnded: true,
+          },
+        });
+      } else if (outcome === "error") {
+        // Node finishes the upper writable after shutdown has started, but the
+        // transport error must still close both streams without ending the lower.
+        expect(result).toEqual({
+          ...common,
+          clientErrorCode: "EPIPE",
+          transportErrorCode: "EPIPE",
+          afterRelease: {
+            ...whileHeld,
+            transportCloses: 1,
+            transportErrors: 1,
+            clientFinishes: 1,
+            clientCloses: 1,
+            clientErrors: 1,
+            endCallbacks: 1,
+          },
+        });
+      } else {
+        const closed = { ...whileHeld, clientCloses: 1, transportCloses: 1, endCallbacks: 1 };
+        expect(result).toEqual({
+          ...common,
+          beforeRelease: closed,
+          afterRelease: closed,
+          endCallbackCode: "ERR_STREAM_DESTROYED",
+        });
+      }
+    });
+  }
 });
 
 // Runs report(mode, version) of a fixture module in node, for every row at

@@ -775,16 +775,22 @@ test("child_process.spawn tracing matches synchronous spawn outcomes", async () 
       const trace = tracingChannel('child_process.spawn');
       const events = [];
       let observerOptions;
+      function checkStdio(message) {
+        const child = message.process;
+        assert.deepEqual([child.stdin, child.stdout, child.stderr, child.stdio],
+          [undefined, undefined, undefined, undefined]);
+      }
       const listeners = {
         start(message) {
+          checkStdio(message);
           events.push(['start', message]);
           assert.equal(message.process.spawnfile, message.options.file);
           assert.equal(message.process.spawnargs, message.options.args);
           observerOptions = message.options;
           message.process.once('spawn', () => events.push(['spawn']));
         },
-        end(message) { events.push(['end', message]); },
-        error(message) { events.push(['error', message]); },
+        end(message) { checkStdio(message); events.push(['end', message]); },
+        error(message) { checkStdio(message); events.push(['error', message]); },
         asyncStart() { events.push(['asyncStart']); },
         asyncEnd() { events.push(['asyncEnd']); },
       };

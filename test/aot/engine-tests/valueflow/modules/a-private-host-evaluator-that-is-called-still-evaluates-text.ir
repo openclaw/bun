@@ -1,0 +1,16 @@
+# Private host evaluators are retained only through reached uses.
+# REQUIRES: entries-of-bun
+# RUN: causes
+# CHECK: cause EvaluatesText NativeFunctionsNodeVMCompilationCacheCppJsRunNodeVMSourceForTesting
+# RUN(USES): uses
+# USES: use NativeFunctionsNodeVMCompilationCacheCppJsRunNodeVMSourceForTesting
+
+module m0 path="main.js" displayPath="main.js" body=f0
+entry module=m0
+function f0 name="main" module=m0 kind=Module results=[{type=anything}] {
+    v0 = Builtin builtin=NativeFunctionsNodeVMCompilationCacheCppJsRunNodeVMSourceForTesting
+    v1 = String string="1 + 1"
+    v2 = Undefined
+    v3 = Call v0, -, v1, v2, v2, v2, v2
+    Return
+}

@@ -77,7 +77,8 @@ jobs:
               // Merge APIs retain both histories and any concurrent commits; no ref is force-updated.
               for (const sha of [main, upstream]) {
                 await github.rest.repos.merge({
-                  ...repo, base: branch, head: sha, commit_message: `Merge ${sha} into ${branch}`,
+                  ...repo, base: branch, head: sha,
+                  commit_message: `Merge ${sha} into ${branch}${sha === upstream ? `\n\nBun-Upstream: ${upstream}` : ""}`,
                 });
               }
               const synced = (await github.rest.git.getRef({ ...repo, ref: `heads/${branch}` })).data.object.sha;

@@ -1,7 +1,7 @@
 // Shutdown shapes issued before a TLS handshake completes, as one report per
 // mode. Runs on bun and on node, so node-tls-connect.test.ts can assert the
-// same report for both. "duplex-end-established" is the one shape issued after
-// the handshake: it shares the stream transport below.
+// same report for both. The established shutdown modes share the stream
+// transport below and issue end() after the handshake.
 //
 // The readable side's 'end' is not part of these shapes, so the log does not
 // subscribe to it: bun emits an extra one after destroy() (pre-existing, it
@@ -345,6 +345,164 @@ if (mode === "end" || mode === "end-strict" || mode === "destroySoon") {
   raw.destroy();
   server.close();
   report({ transportFinalCalled: transport.finalCalled, server: outcome, destroyed });
+} else if (mode === "duplex-end-completion") {
+  const outcome = process.argv[3];
+  if (!["success", "error", "destroy"].includes(outcome)) throw new Error("unknown completion outcome");
+  const failure = Promise.withResolvers();
+  failure.promise.catch(() => {});
+  const wait = promise => Promise.race([promise, failure.promise]);
+  let phase = "setup";
+  const unexpectedClose = source => {
+    if (phase !== "error" && phase !== "destroy" && phase !== "cleanup") {
+      failure.reject(new Error(`${source} closed before the expected completion`));
+    }
+  };
+  const unexpectedError = (source, error) => {
+    if (phase !== "error" && phase !== "cleanup") {
+      failure.reject(new Error(`${source} failed: ${error.code ?? error.name}`));
+    }
+  };
+  const held = Promise.withResolvers();
+  const clientFinished = Promise.withResolvers();
+  const clientClosed = Promise.withResolvers();
+  const transportFinished = Promise.withResolvers();
+  const transportClosed = Promise.withResolvers();
+  const peerSawCloseNotify = Promise.withResolvers();
+  const counts = {
+    endCalls: 0,
+    transportFinishes: 0,
+    transportCloses: 0,
+    transportErrors: 0,
+    clientFinishes: 0,
+    clientCloses: 0,
+    clientErrors: 0,
+    endCallbacks: 0,
+  };
+  let clientErrorCode = null;
+  let transportErrorCode = null;
+  let endCallbackCode = null;
+  let peer;
+  let raw;
+  let transport;
+  let client;
+  let release;
+  let result;
+  const server = tls.createServer(
+    { key: process.env.TLS_KEY, cert: process.env.TLS_CERT, allowHalfOpen: true, maxVersion: "TLSv1.2" },
+    socket => {
+      peer = socket;
+      socket.on("error", error => unexpectedError("peer", error));
+      socket.on("close", () => unexpectedClose("peer"));
+      socket.on("end", () => peerSawCloseNotify.resolve());
+      socket.resume();
+    },
+  );
+  // Capture the accepted socket before the handshake too, so setup failures are owned.
+  let accepted;
+  server.on("connection", socket => (accepted = socket));
+  server.on("error", error => failure.reject(error));
+  server.on("tlsClientError", error => unexpectedError("server handshake", error));
+  try {
+    await wait(new Promise(resolve => server.listen(0, "127.0.0.1", resolve)));
+    raw = net.connect(server.address().port, "127.0.0.1");
+    raw.on("error", error => unexpectedError("raw transport", error));
+    raw.on("close", () => unexpectedClose("raw transport"));
+    await wait(once(raw, "connect"));
+    transport = transportOver(raw);
+    client = tls.connect({ socket: transport.stream, rejectUnauthorized: false, allowHalfOpen: true });
+    client.on("error", error => {
+      counts.clientErrors++;
+      clientErrorCode = error.code ?? null;
+      unexpectedError("client", error);
+    });
+    client.on("finish", () => {
+      counts.clientFinishes++;
+      clientFinished.resolve();
+    });
+    client.on("close", () => {
+      counts.clientCloses++;
+      clientClosed.resolve();
+      unexpectedClose("client");
+    });
+    transport.stream.on("error", error => {
+      counts.transportErrors++;
+      transportErrorCode = error.code ?? null;
+      unexpectedError("transport", error);
+    });
+    transport.stream.on("finish", () => {
+      counts.transportFinishes++;
+      transportFinished.resolve();
+    });
+    transport.stream.on("close", () => {
+      counts.transportCloses++;
+      transportClosed.resolve();
+      unexpectedClose("transport");
+    });
+    await wait(once(client, "secureConnect"));
+
+    const write = transport.stream._write;
+    transport.stream._write = function (chunk, encoding, callback) {
+      if (chunk[0] !== 0x15) return write.call(this, chunk, encoding, callback);
+      // Deliver the real TLS 1.2 alert, but leave its transport write outstanding.
+      write.call(this, chunk, encoding, error => {
+        if (error) return held.reject(error);
+        release = callback;
+        held.resolve();
+      });
+    };
+    const end = transport.stream.end;
+    transport.stream.end = function (...args) {
+      counts.endCalls++;
+      return end.apply(this, args);
+    };
+    const snapshot = () => ({ ...counts, writableEnded: transport.stream.writableEnded });
+    client.end(error => {
+      counts.endCallbacks++;
+      endCallbackCode = error?.code ?? null;
+    });
+    await wait(held.promise);
+    await wait(new Promise(resolve => setImmediate(resolve)));
+    const whileHeld = snapshot();
+    let beforeRelease;
+    let completionTurn;
+    if (outcome === "destroy") {
+      phase = "destroy";
+      client.destroy();
+      await wait(Promise.all([clientClosed.promise, transportClosed.promise]));
+      beforeRelease = snapshot();
+    }
+    if (outcome === "success") {
+      // Queue this before releasing the write. JSStreamSocket completes it in an
+      // Immediate; calling end() synchronously from the callback is too early.
+      const observer = new Promise(resolve => setImmediate(() => resolve(snapshot())));
+      release();
+      completionTurn = await wait(observer);
+      await wait(Promise.all([clientFinished.promise, transportFinished.promise, peerSawCloseNotify.promise]));
+    } else {
+      phase = outcome;
+      release(outcome === "error" ? Object.assign(new Error("held transport write failed"), { code: "EPIPE" }) : undefined);
+      if (outcome === "error") await wait(Promise.all([clientClosed.promise, transportClosed.promise]));
+      await wait(new Promise(resolve => setImmediate(resolve)));
+    }
+    result = {
+      whileHeld,
+      beforeRelease,
+      completionTurn,
+      afterRelease: snapshot(),
+      clientErrorCode,
+      transportErrorCode,
+      endCallbackCode,
+    };
+  } finally {
+    phase = "cleanup";
+    client?.destroy();
+    transport?.stream.destroy();
+    raw?.destroy();
+    peer?.destroy();
+    accepted?.destroy();
+    await new Promise(resolve => server.close(resolve));
+  }
+  report(result);
 } else if (mode === "duplex-end-established") {
   // After the handshake, against a server that reads the close_notify and
   // does not answer it (allowHalfOpen). The transport must be ended anyway.

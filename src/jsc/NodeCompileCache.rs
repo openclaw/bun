@@ -42,10 +42,6 @@ struct CacheState {
     entries: HashMap<u64, Entry, IdentityContext<u64>>,
 }
 
-// SAFETY: `CacheState` is only reached through the global `STATE` mutex; the
-// `sys::Dir` fd is just an integer handle.
-unsafe impl Send for CacheState {}
-
 struct Entry {
     /// `path.text` of the module (absolute file path).
     filename: Box<[u8]>,
@@ -295,21 +291,25 @@ fn portable_from_env() -> bool {
 pub fn init_from_env_once() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
+        // A standalone app can enable the cache before its first external load.
+        if is_enabled() {
+            return;
+        }
         init_logging();
         if let Some(dir) = env_var::NODE_COMPILE_CACHE::get_not_empty() {
             if env_var::NODE_DISABLE_COMPILE_CACHE::get().is_some() {
                 cclog!("[compile cache] Disabled by NODE_DISABLE_COMPILE_CACHE.\n");
-                ENABLED.store(1, Ordering::Relaxed);
+                let _ = ENABLED.compare_exchange(0, 1, Ordering::Relaxed, Ordering::Relaxed);
                 return;
             }
             if crate::virtual_machine::standalone_module_graph().is_some() {
                 cclog!("[compile cache] Disabled in standalone executables.\n");
-                ENABLED.store(1, Ordering::Relaxed);
+                let _ = ENABLED.compare_exchange(0, 1, Ordering::Relaxed, Ordering::Relaxed);
                 return;
             }
             let _ = enable_with_dir(dir, portable_from_env());
         } else {
-            ENABLED.store(1, Ordering::Relaxed);
+            let _ = ENABLED.compare_exchange(0, 1, Ordering::Relaxed, Ordering::Relaxed);
         }
     });
 }
@@ -926,37 +926,42 @@ fn wake_main_loop() {
 
 /// Register the weak wakeup target before parking. The worker only creates
 /// its JSC VM after an idle observation or an explicit/exit flush requests it.
+/// Only runtime module loading can populate the entries this worker persists.
 pub fn prepare_idle(vm: &crate::virtual_machine::VirtualMachine) -> bool {
-    MAIN_VM.get_or_init(|| vm.handle());
-    if !is_enabled()
-        || !(BACKGROUND_NEEDED.load(Ordering::Relaxed)
-            || BACKGROUND_PENDING.load(Ordering::Relaxed))
-    {
-        return false;
-    }
-    let _ = persist_worker();
-    true
+    bun_removable_features::removable_body!(RuntimeTranspiler, ReturnDefault, {
+        MAIN_VM.get_or_init(|| vm.handle());
+        if !is_enabled()
+            || !(BACKGROUND_NEEDED.load(Ordering::Relaxed)
+                || BACKGROUND_PENDING.load(Ordering::Relaxed))
+        {
+            return false;
+        }
+        let _ = persist_worker();
+        true
+    })
 }
 
 /// Cumulative kernel wait time excludes JS callbacks, including libuv's.
 /// Accumulate a window: periodic timers must not starve an otherwise idle VM.
 pub fn on_idle(total_idle_ns: u64) {
-    let now = bun_uws::us_loop_idle_clock_ns();
-    let (since, idle_before) = IDLE_WINDOW.get();
-    if since == 0 || LAST_FETCH_NS.load(Ordering::Relaxed) > since {
-        IDLE_WINDOW.set((now, total_idle_ns));
-        return;
-    }
-    let elapsed = now.saturating_sub(since);
-    if elapsed >= BACKGROUND_QUIET_NS {
-        IDLE_WINDOW.set((now, total_idle_ns));
-        if total_idle_ns.saturating_sub(idle_before) >= elapsed / 100 * BACKGROUND_IDLE_PERCENT
-            && BACKGROUND_NEEDED.load(Ordering::Relaxed)
-            && can_persist_in_background()
-        {
-            schedule_persist();
+    bun_removable_features::removable_body!(RuntimeTranspiler, ReturnDefault, {
+        let now = bun_uws::us_loop_idle_clock_ns();
+        let (since, idle_before) = IDLE_WINDOW.get();
+        if since == 0 || LAST_FETCH_NS.load(Ordering::Relaxed) > since {
+            IDLE_WINDOW.set((now, total_idle_ns));
+            return;
         }
-    }
+        let elapsed = now.saturating_sub(since);
+        if elapsed >= BACKGROUND_QUIET_NS {
+            IDLE_WINDOW.set((now, total_idle_ns));
+            if total_idle_ns.saturating_sub(idle_before) >= elapsed / 100 * BACKGROUND_IDLE_PERCENT
+                && BACKGROUND_NEEDED.load(Ordering::Relaxed)
+                && can_persist_in_background()
+            {
+                schedule_persist();
+            }
+        }
+    });
 }
 
 fn can_persist_in_background() -> bool {
@@ -1293,14 +1298,16 @@ fn persist_pass(background: bool) {
 
 /// `module.flushCompileCache()`.
 pub fn flush() {
-    if !is_enabled() {
-        return;
-    }
-    cclog!("[compile cache] module.flushCompileCache() requested.\n");
-    if let Some(done) = request_flush() {
-        let _ = done.recv();
-    }
-    cclog!("[compile cache] module.flushCompileCache() finished.\n");
+    bun_removable_features::removable_body!(RuntimeTranspiler, ReturnDefault, {
+        if !is_enabled() {
+            return;
+        }
+        cclog!("[compile cache] module.flushCompileCache() requested.\n");
+        if let Some(done) = request_flush() {
+            let _ = done.recv();
+        }
+        cclog!("[compile cache] module.flushCompileCache() finished.\n");
+    });
 }
 
 /// Exit-time persist; runs once, from the main VM's `on_exit`.
@@ -1333,27 +1340,29 @@ pub fn persist_before_self_signal(termination_signal: bool) {
 }
 
 fn persist_with_signal_budget(bounded: bool) {
-    let started = Instant::now();
-    let mut deadline = bounded.then_some(started + EXIT_PERSIST_BUDGET);
-    if let Some(done) = request_flush() {
-        loop {
-            if deadline.is_none() && TERMINATION_SIGNAL_RECEIVED.load(Ordering::Relaxed) {
-                deadline = Some(started + EXIT_PERSIST_BUDGET);
-            }
-            // Also notice a native signal delivered while a normal exit is already waiting.
-            let wait = deadline.map_or(Duration::from_millis(10), |end| {
-                end.saturating_duration_since(Instant::now())
-            });
-            match done.recv_timeout(wait) {
-                Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
-                Err(mpsc::RecvTimeoutError::Timeout) => {
-                    if deadline.is_some_and(|end| Instant::now() >= end) {
-                        break;
+    bun_removable_features::removable_body!(RuntimeTranspiler, ReturnDefault, {
+        let started = Instant::now();
+        let mut deadline = bounded.then_some(started + EXIT_PERSIST_BUDGET);
+        if let Some(done) = request_flush() {
+            loop {
+                if deadline.is_none() && TERMINATION_SIGNAL_RECEIVED.load(Ordering::Relaxed) {
+                    deadline = Some(started + EXIT_PERSIST_BUDGET);
+                }
+                // Also notice a native signal delivered while a normal exit is already waiting.
+                let wait = deadline.map_or(Duration::from_millis(10), |end| {
+                    end.saturating_duration_since(Instant::now())
+                });
+                match done.recv_timeout(wait) {
+                    Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                    Err(mpsc::RecvTimeoutError::Timeout) => {
+                        if deadline.is_some_and(|end| Instant::now() >= end) {
+                            break;
+                        }
                     }
                 }
             }
         }
-    }
+    });
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -1361,17 +1370,14 @@ fn persist_with_signal_budget(bounded: bool) {
 // ──────────────────────────────────────────────────────────────────────────
 
 #[unsafe(no_mangle)]
-/// # Safety
-/// `dir` is null or a live `BunString`; both out-params are valid for write.
-pub unsafe extern "C" fn Bun__NodeCompileCache__enable(
-    dir: *const BunString,
+pub extern "C" fn Bun__NodeCompileCache__enable(
+    dir: Option<&BunString>,
     // -1 = not specified (fall back to NODE_COMPILE_CACHE_PORTABLE).
     portable: i32,
-    out_directory: *mut BunString,
-    out_message: *mut BunString,
+    out_directory: &mut core::mem::MaybeUninit<BunString>,
+    out_message: &mut core::mem::MaybeUninit<BunString>,
 ) -> i32 {
-    // SAFETY: C++ passes null or a live BunString plus valid out-params.
-    let dir_utf8 = unsafe { dir.as_ref() }.map(|d| d.to_utf8());
+    let dir_utf8 = dir.map(|d| d.to_utf8());
     let dir_slice = dir_utf8.as_ref().map(|d| d.slice());
     let result = enable(
         dir_slice,
@@ -1382,12 +1388,10 @@ pub unsafe extern "C" fn Bun__NodeCompileCache__enable(
         },
     );
     if let Some(directory) = result.directory {
-        // SAFETY: out-param is valid for write per fn contract.
-        unsafe { out_directory.write(BunString::clone_utf8(&directory)) };
+        out_directory.write(BunString::clone_utf8(&directory));
     }
     if let Some(message) = result.message {
-        // SAFETY: out-param is valid for write per fn contract.
-        unsafe { out_message.write(BunString::clone_utf8(message.as_bytes())) };
+        out_message.write(BunString::clone_utf8(message.as_bytes()));
     }
     result.status
 }
