@@ -245,7 +245,6 @@ impl_cares_linked!(
     c_ares::struct_ares_caa_reply,
     c_ares::struct_ares_srv_reply,
     c_ares::struct_ares_mx_reply,
-    c_ares::struct_ares_txt_reply,
     c_ares::struct_ares_naptr_reply,
 );
 
@@ -367,35 +366,33 @@ fn mx_reply_to_js(
     Ok(obj)
 }
 
-// ── struct_ares_txt_reply ──────────────────────────────────────────────────
+// ── struct_ares_txt_ext ────────────────────────────────────────────────────
 pub(crate) fn txt_reply_to_js_response(
-    this: &mut c_ares::struct_ares_txt_reply,
+    this: &mut c_ares::struct_ares_txt_ext,
     global_this: &JSGlobalObject,
     _lookup_name: &'static [u8],
 ) -> JsResult<JSValue> {
-    cares_list_to_js_array(this, global_this, txt_reply_to_js)
-}
-
-fn txt_reply_to_js(
-    this: &c_ares::struct_ares_txt_reply,
-    global_this: &JSGlobalObject,
-) -> JsResult<JSValue> {
-    let array = JSValue::create_empty_array(global_this, 1)?;
-    let value = this.txt_bytes();
-    array.put_index(global_this, 0, utf8_to_js(global_this, value)?)?;
-    Ok(array)
-}
-
-fn txt_reply_to_js_for_any(
-    this: &mut c_ares::struct_ares_txt_reply,
-    global_this: &JSGlobalObject,
-    _lookup_name: &'static [u8],
-) -> JsResult<JSValue> {
-    let array =
-        cares_list_to_js_array(this, global_this, |node, g| utf8_to_js(g, node.txt_bytes()))?;
-    let obj = JSValue::create_empty_object(global_this, 1);
-    obj.put(global_this, b"entries", array);
-    Ok(obj)
+    let records = JSValue::create_empty_array(global_this, 0)?;
+    let mut next = Some(&*this);
+    let mut i = 0;
+    while let Some(mut chunk) = next {
+        let entries = JSValue::create_empty_array(global_this, 0)?;
+        records.put_index(global_this, i, entries)?;
+        i += 1;
+        let mut j = 0;
+        loop {
+            let value = bstr::String::clone_latin1(chunk.txt_bytes()).into_js(global_this)?;
+            entries.put_index(global_this, j, value)?;
+            j += 1;
+            // SAFETY: c-ares owns the list until the completion callback returns.
+            next = unsafe { chunk.next.as_ref() };
+            match next {
+                Some(part) if part.record_start == 0 => chunk = part,
+                _ => break,
+            }
+        }
+    }
+    Ok(records)
 }
 
 // ── struct_ares_naptr_reply ────────────────────────────────────────────────
@@ -513,7 +510,11 @@ fn any_reply_append(
     response: JSValue,
     lookup_name: &'static [u8],
 ) -> JsResult<()> {
-    let transformed = if response.is_string() {
+    let transformed = if lookup_name == b"txt" {
+        let obj = JSValue::create_empty_object(global_this, 2);
+        obj.put(global_this, b"entries", response);
+        obj
+    } else if response.is_string() {
         let obj = JSValue::create_empty_object(global_this, 1);
         obj.put(global_this, b"value", response);
         obj
@@ -546,8 +547,6 @@ fn any_reply_append_all(
     response: JSValue,
     lookup_name: &'static [u8],
 ) -> JsResult<()> {
-    // The caller computes `response` (via either `*_to_js_response` or, for txt,
-    // `txt_reply_to_js_for_any`) and passes it in directly — see any_reply_to_js below.
     if response.is_array() {
         let mut iterator = response.array_iterator(global_this)?;
         while let Some(item) = iterator.next()? {
@@ -599,10 +598,8 @@ fn any_reply_to_js(
     }
     if !this.txt_reply.is_null() {
         // SAFETY: non-null c-ares-owned linked list head.
-        // txt is the only reply type with the `to_js_for_any` shape (an `entries`
-        // wrapper object) instead of the plain `to_js_response` shape.
         let response =
-            txt_reply_to_js_for_any(unsafe { &mut *this.txt_reply }, global_this, b"txt")?;
+            txt_reply_to_js_response(unsafe { &mut *this.txt_reply }, global_this, b"txt")?;
         any_reply_append_all(global_this, array, &mut i, response, b"txt")?;
     }
     if !this.srv_reply.is_null() {
